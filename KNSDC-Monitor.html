@@ -4338,29 +4338,28 @@ function selectAllPromo(){
   renderPromoList();
 }
 
-function promoteSelected(){
+async function promoteSelected() {
   if(!promoSelections.size){ toast('Select participants to promote!'); return; }
   const fromRound = document.getElementById('promo-from-round').value;
   const toRound = {audition:'qualified',qualified:'semifinal',semifinal:'final'}[fromRound];
+  const promises = [];
   promoSelections.forEach(id=>{
     const p = participants.find(x=>x.id===id);
     if(p){
-      // Archive current scores to roundScores before clearing
       if(!p.roundScores) p.roundScores = {};
       p.roundScores[fromRound] = JSON.parse(JSON.stringify(p.scores || {}));
-      
-      // Load next round's scores if they exist, or clean slate
       p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
-      
       p.round=toRound;
       p.stageStatus='waiting';
+      promises.push(syncEngine.updateParticipant(p.id, p));
     }
   });
+  toast('Promoting participants, please wait...');
+  await Promise.all(promises);
   const count = promoSelections.size;
   promoSelections.clear();
-  syncAll();
   renderPromoList();
-  toast(`🔺 ${count} participant${count>1?'s':''} promoted to ${toRound.toUpperCase()}!`);
+  toast(🔺  participant promoted to !);
 }
 
 function downloadRoundResult(){
