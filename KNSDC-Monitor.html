@@ -4430,22 +4430,31 @@ function openSubjectModal(id=null){
   openM('subject-modal');
 }
 
-function saveSubject(){
+async function saveSubject(){
   const name=document.getElementById('sm-name').value.trim();
   const max=parseInt(document.getElementById('sm-max').value);
   if(!name||!max){toast('Name and max marks required!');return;}
-  const obj={name,maxMarks:max,desc:document.getElementById('sm-desc').value};
-  if(editingSubjId){Object.assign(subjects.find(s=>s.id===editingSubjId),obj);}
-  else{obj.id=nxtId.subj++;subjects.push(obj);}
-  closeM('subject-modal');syncAll();renderSubjects();toast('Subject saved!');
-  broadcast('DATA_SYNC', { categories, subjects });
+  const obj={name,maxMarks:max,desc:document.getElementById('sm-desc').value,eventId:activeEventId};
+  if(editingSubjId){
+    const success = await syncEngine.updateSubject(editingSubjId, obj);
+    if(!success){toast('❌ Error updating subject');return;}
+  } else {
+    obj.id=Date.now();
+    const success = await syncEngine.createSubject(obj);
+    if(!success){toast('❌ Error creating subject');return;}
+  }
+  closeM('subject-modal');
+  renderSubjects();
+  toast('Subject saved!');
+  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
 }
-function deleteSubject(id){
-  subjects=subjects.filter(s=>s.id!==id);
-  syncAll();
+async function deleteSubject(id){
+  if(!confirm('Delete this subject?')) return;
+  const success = await syncEngine.deleteSubject(id);
+  if(!success){toast('❌ Error deleting subject');return;}
   renderSubjects();
   toast('Subject deleted');
-  broadcast('DATA_SYNC', { categories, subjects });
+  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
 }
 
 
@@ -4566,24 +4575,16 @@ function renderEventSettings() {
   if (descInp) descInp.value = activeEv.description || '';
 }
 
-function saveEventSettings() {
+async function saveEventSettings() {
   const name = document.getElementById('set-ev-name').value.trim();
   const banner = document.getElementById('set-ev-logo').value.trim();
   const description = document.getElementById('set-ev-desc').value.trim();
-  
+
   if (!name) { toast('Event name is required!'); return; }
-  
-  syncEngine.setData(state => {
-    const newState = { ...state };
-    const evIdx = newState.events.findIndex(e => String(e.id) === String(activeEventId));
-    if (evIdx !== -1) {
-      newState.events[evIdx] = { ...newState.events[evIdx], name, banner, description };
-      newState.eventName = name;
-    }
-    return newState;
-  });
-  
-  toast('✅ Event branding updated!');
+
+  const success = await syncEngine.updateEvent(activeEventId, { name, banner, description });
+  if(!success) { toast('❌ Error saving event settings'); return; }
+  toast('✅ Event settings saved!');
 }
 
 // ══════════════════════════════════════════
