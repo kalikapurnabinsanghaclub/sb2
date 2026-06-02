@@ -2881,11 +2881,13 @@ function saveEditReg(){
   toast('Registration updated!');
 }
 
-function deleteReg(id){
+async function deleteReg(id) {
   if(!confirm('Remove this registration?')) return;
+  const success = await syncEngine.deleteParticipant(id);
+  if (!success) { toast('❌ Error deleting registration'); return; }
+  
   const idx = participants.findIndex(p=>p.id===id);
   if(idx>-1) participants.splice(idx,1);
-  syncAll();
   renderApplied();
   toast('Registration removed');
 }
@@ -2987,7 +2989,11 @@ window.updateArDates = (venueId) => {
   }
 };
 
-function saveNewReg(){
+function saveNewReg() {
+  saveNewRegAsync();
+}
+
+async function saveNewRegAsync() {
   const s = syncEngine.getData();
   const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
   if (!activeEv) return;
@@ -3066,8 +3072,15 @@ function saveNewReg(){
     regDate: new Date().toISOString()
   };
 
+  const success = await syncEngine.createParticipant(newP);
+  if (!success) {
+    toast('❌ Error saving registration to database');
+    return;
+  }
+  
+  // Also push to local array for immediate render
   participants.push(newP);
-  syncAll();
+  
   renderApplied();
   updateNbadges();
   closeM('add-reg-modal');
@@ -3258,17 +3271,24 @@ function saveFormField(){
 
 function removeFormField(i){ formFields.splice(i,1); syncAll(); renderFormBuilder(); }
 function previewForm(){ renderFormPreview(); toast('Preview updated'); }
-function saveForm(){ 
+async function saveForm() {
+  const s = syncEngine.getData();
+  const evIdx = (s.events || []).findIndex(e => String(e.id) === String(activeEventId));
+  if (evIdx !== -1) {
+    const ev = s.events[evIdx];
+    const success = await syncEngine.updateEvent(activeEventId, { ...ev, formFields: formFields });
+    if (!success) { toast('❌ Error saving form configuration'); return; }
+  }
   syncEngine.setData(state => {
     const newState = { ...state };
-    const evIdx = newState.events.findIndex(e => String(e.id) === String(activeEventId));
-    if (evIdx !== -1) {
-      newState.events[evIdx].formFields = formFields;
+    const idx = newState.events.findIndex(e => String(e.id) === String(activeEventId));
+    if (idx !== -1) {
+      newState.events[idx].formFields = formFields;
     }
     return newState;
   });
   broadcastControlsToPublic();
-  toast('Form configuration saved for current event!'); 
+  toast('Form configuration saved for current event!');
 }
 
 // ── CATEGORIES ────────────────────────────
@@ -3296,18 +3316,29 @@ function openCatModal(id=null){
   openM('cat-modal');
 }
 
-function saveCat(){
+async function saveCat() {
   const name=document.getElementById('cm-name').value.trim();
   if(!name){toast('Name required!');return;}
-  const obj={name,ageMin:parseInt(document.getElementById('cm-agemin').value)||0,ageMax:parseInt(document.getElementById('cm-agemax').value)||99,color:document.getElementById('cm-color').value};
-  if(editingCatId){Object.assign(categories.find(c=>c.id===editingCatId),obj);}
-  else{obj.id=nxtId.cat++;categories.push(obj);}
-  closeM('cat-modal');syncAll();renderCategories();toast('Category saved!');
+  const obj={name,ageMin:parseInt(document.getElementById('cm-agemin').value)||0,ageMax:parseInt(document.getElementById('cm-agemax').value)||99,color:document.getElementById('cm-color').value, eventId: activeEventId};
+  
+  if(editingCatId){
+    const success = await syncEngine.updateCategory(editingCatId, obj);
+    if (!success) { toast('❌ Error saving category'); return; }
+    Object.assign(categories.find(c=>c.id===editingCatId),obj);
+  } else {
+    obj.id=Date.now();
+    const success = await syncEngine.createCategory(obj);
+    if (!success) { toast('❌ Error creating category'); return; }
+    categories.push(obj);
+  }
+  closeM('cat-modal');renderCategories();toast('Category saved!');
   broadcast('DATA_SYNC', { categories, subjects });
 }
-function deleteCat(id){
+
+async function deleteCat(id) {
+  const success = await syncEngine.deleteCategory(id);
+  if (!success) { toast('❌ Error deleting category'); return; }
   categories=categories.filter(c=>c.id!==id);
-  syncAll();
   renderCategories();
   toast('Category deleted');
   broadcast('DATA_SYNC', { categories, subjects });
@@ -3366,15 +3397,31 @@ function openVenueModal(id=null){
   openM('venue-modal');
 }
 
-function saveVenue(){
+async function saveVenue() {
   const name=document.getElementById('vm-name').value.trim();
   if(!name){toast('Name required!');return;}
-  const obj={name,location:document.getElementById('vm-loc').value,capacity:parseInt(document.getElementById('vm-cap').value)||0,dates:[document.getElementById('vm-dates').value].filter(Boolean)};
-  if(editingVenueId){Object.assign(venues.find(v=>v.id===editingVenueId),obj);}
-  else{obj.id=nxtId.venue++;venues.push(obj);}
-  closeM('venue-modal');syncAll();renderVenueDates();toast('Venue saved!');
+  const obj={name,location:document.getElementById('vm-loc').value,capacity:parseInt(document.getElementById('vm-cap').value)||0,dates:[document.getElementById('vm-dates').value].filter(Boolean), eventId: activeEventId};
+  
+  if(editingVenueId){
+    const success = await syncEngine.updateVenue(editingVenueId, obj);
+    if (!success) { toast('❌ Error saving venue'); return; }
+    Object.assign(venues.find(v=>v.id===editingVenueId),obj);
+  } else {
+    obj.id=Date.now();
+    const success = await syncEngine.createVenue(obj);
+    if (!success) { toast('❌ Error creating venue'); return; }
+    venues.push(obj);
+  }
+  closeM('venue-modal');renderVenueDates();toast('Venue saved!');
 }
-function deleteVenue(id){venues=venues.filter(v=>v.id!==id);syncAll();renderVenueDates();toast('Venue deleted');}
+
+async function deleteVenue(id) {
+  const success = await syncEngine.deleteVenue(id);
+  if (!success) { toast('❌ Error deleting venue'); return; }
+  venues=venues.filter(v=>v.id!==id);
+  renderVenueDates();
+  toast('Venue deleted');
+}
 
 // ══════════════════════════════════════════
 // VENUE MONITOR
