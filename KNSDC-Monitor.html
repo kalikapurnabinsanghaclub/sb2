@@ -1223,6 +1223,10 @@
         <div class="card-title">Eligible Participants</div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-ghost btn-sm" onclick="selectAllPromo()" style="border-radius:8px">Select All</button>
+          <div style="display:flex;gap:4px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:2px">
+            <input type="number" id="promo-auto-n" value="3" min="1" style="width:40px;border:none;background:transparent;text-align:center;font-weight:700;font-size:12px;outline:none;color:var(--text)">
+            <button class="btn btn-ghost btn-sm" onclick="autoSelectTopN()" style="border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700">Auto-Select Top N/Cat</button>
+          </div>
           <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700" onclick="promoteSelected()">🔺 Promote Selected</button>
           <button class="btn btn-blue btn-sm" onclick="downloadRoundResult()" style="border-radius:8px">⬇ CSV</button>
         </div>
@@ -4386,16 +4390,53 @@ function togglePromo(id){
 
 function selectAllPromo(){
   const fromRound = document.getElementById('promo-from-round').value;
-  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done');
+  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
   eligible.forEach(p=>promoSelections.add(p.id));
+  renderPromoList();
+}
+
+function autoSelectTopN(){
+  const n = parseInt(document.getElementById('promo-auto-n').value) || 3;
+  const fromRound = document.getElementById('promo-from-round').value;
+  
+  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  
+  eligible.forEach(p => {
+    if (!p.roundScores) p.roundScores = {};
+    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
+    let total = 0;
+    if (p.scores) {
+      Object.keys(p.scores).forEach(jId => {
+        subjects.forEach(s => total += Number(p.scores[jId][s.id]) || 0);
+      });
+    }
+    p._tempScore = total;
+  });
+  
+  const byCat = {};
+  eligible.forEach(p => {
+    if(!byCat[p.catId]) byCat[p.catId] = [];
+    byCat[p.catId].push(p);
+  });
+  
+  promoSelections.clear();
+  Object.values(byCat).forEach(catList => {
+    catList.sort((a,b) => b._tempScore - a._tempScore);
+    const topN = catList.slice(0, n);
+    topN.forEach(p => promoSelections.add(p.id));
+  });
+  
+  toast(`Auto-selected top ${n} participants per category!`);
   renderPromoList();
 }
 
 async function promoteSelected() {
   if(!promoSelections.size){ toast('Select participants to promote!'); return; }
+  if(!confirm(`Promote ${promoSelections.size} participants via Bulk Sync?`)) return;
   const fromRound = document.getElementById('promo-from-round').value;
   const toRound = {audition:'qualified',qualified:'semifinal',semifinal:'final'}[fromRound];
-  const promises = [];
+  
+  toast('Promoting participants via Bulk Sync, please wait...');
   promoSelections.forEach(id=>{
     const p = participants.find(x=>x.id===id);
     if(p){
@@ -4404,11 +4445,10 @@ async function promoteSelected() {
       p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
       p.round=toRound;
       p.stageStatus='waiting';
-      promises.push(syncEngine.updateParticipant(p.id, p));
     }
   });
-  toast('Promoting participants, please wait...');
-  await Promise.all(promises);
+  
+  syncAll();
   const count = promoSelections.size;
   promoSelections.clear();
   renderPromoList();
