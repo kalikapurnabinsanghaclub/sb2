@@ -5215,19 +5215,28 @@ async function saveAgreement(){
   const venueEl = document.getElementById('agr-venue');
   const venueName = venueEl ? (venueEl.options[venueEl.selectedIndex]?.text || '') : '';
   const obj={name,phone,email,password,city:document.getElementById('agr-city').value,eventId:document.getElementById('agr-event').value,date:document.getElementById('agr-date').value,dateUpto:document.getElementById('agr-date-upto').value,time:document.getElementById('agr-time').value,venueId:parseInt(document.getElementById('agr-venue').value),venueName:venueName,spec:document.getElementById('agr-spec').value,amount:parseInt(document.getElementById('agr-amount').value)||0,advance:parseInt(document.getElementById('agr-advance').value)||0,notes:document.getElementById('agr-notes').value,status:'pending',submitted:false,paymentReceived:0,photoUrl:'',agreedTc:false};
-  if(editingAgrId){Object.assign(agreements.find(a=>a.id===editingAgrId),obj);}
-  else{obj.id=nxtId.agr++;agreements.push(obj);}
+  
+  let agrId = editingAgrId;
+  if(editingAgrId){
+    const success = await syncEngine.updateAgreement(editingAgrId, obj);
+    if(!success){toast('❌ Error updating agreement');return;}
+    Object.assign(agreements.find(a=>a.id===editingAgrId),obj);
+  } else {
+    obj.id=Date.now();
+    agrId = obj.id;
+    const success = await syncEngine.createAgreement(obj);
+    if(!success){toast('❌ Error creating agreement');return;}
+    agreements.push(obj);
+  }
   closeM('agreement-modal');
-  syncAll();
   renderAgreements();
 
   // ── Auto-create judge credentials in Supabase ──
   if(email && password && syncEngine && syncEngine.saveJudgeCredential) {
-    const agrId = editingAgrId || (agreements[agreements.length-1]?.id);
     const eventId = obj.eventId;
     const result = await syncEngine.saveJudgeCredential(email, password, name, eventId, agrId);
     if(result.success) {
-      toast(editingAgrId ? '✅ Agreement updated & judge credentials synced!' : '✅ Agreement created — Judge can now log in!');
+      toast(editingAgrId ? '✅ Agreement updated & credentials synced!' : '✅ Agreement created — Judge can log in!');
     } else {
       toast('⚠️ Agreement saved but credential sync failed: ' + result.error);
     }
@@ -5236,9 +5245,11 @@ async function saveAgreement(){
   }
 }
 
-function deleteAgreement(id){
+async function deleteAgreement(id){
+  if(!confirm('Delete this agreement?')) return;
+  const success = await syncEngine.deleteAgreement(id);
+  if(!success){toast('❌ Error deleting agreement');return;}
   agreements=agreements.filter(a=>a.id!==id);
-  syncAll();
   renderAgreements();
   toast('Agreement removed');
 }
