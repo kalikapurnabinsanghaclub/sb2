@@ -1243,12 +1243,14 @@ function openVerificationModal() {
   document.getElementById('vm-name').textContent = JUDGE.name || '-';
   document.getElementById('vm-event').textContent = JUDGE.eventName || '-';
   document.getElementById('vm-venue').textContent = JUDGE.venue || '-';
-  document.getElementById('vm-date').textContent = JUDGE.date
-    ? new Date(JUDGE.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})
-    : '-';
-  document.getElementById('vm-date-upto').textContent = JUDGE.dateUpto
-    ? new Date(JUDGE.dateUpto).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})
-    : '-';
+  const safeDate = d => {
+    if(!d || d==='null' || d==='undefined') return '-';
+    const p = new Date(d);
+    return isNaN(p.getTime()) ? '-' : p.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+  };
+
+  document.getElementById('vm-date').textContent = safeDate(JUDGE.date);
+  document.getElementById('vm-date-upto').textContent = safeDate(JUDGE.dateUpto);
   document.getElementById('vm-amount').textContent = '₹' + (JUDGE.amount || 0);
   document.getElementById('vm-advance-text').textContent = '₹' + (JUDGE.advance || 0);
   document.getElementById('vm-remaining-text').textContent = '₹' + ((JUDGE.amount || 0) - (JUDGE.advance || 0));
@@ -1315,7 +1317,10 @@ function submitVerification() {
         verifiedAt: new Date().toISOString()
       };
       let judges = [...(state.judges || [])];
-      let existingJudge = judges.find(j => String(j.email).toLowerCase() === String(judgeAgreements[idx].email).toLowerCase() || j.name.toLowerCase() === judgeAgreements[idx].name.toLowerCase());
+      let existingJudge = judges.find(j => 
+        (j.email && String(j.email).toLowerCase() === String(judgeAgreements[idx].email || '').toLowerCase()) || 
+        (j.name && String(j.name).toLowerCase() === String(judgeAgreements[idx].name || '').toLowerCase())
+      );
       
       if (existingJudge) {
         existingJudge.present = true;
