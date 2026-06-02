@@ -2505,15 +2505,33 @@ function renderDashStats(){
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
   const total = data.length;
   const present = data.filter(p=>p.present).length;
-  const below13 = data.filter(p=>p.age<13).length;
-  const above13 = data.filter(p=>p.age>=13).length;
   const judgesPresent = judges.filter(j=>j.present).length;
+  
+  // Calculate dynamic category distribution
+  const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+  let categoryCards = '';
+  const colors = ['blue', 'purple', 'amber', 'green', 'cyan'];
+  
+  if (evCats.length > 0) {
+    evCats.forEach((cat, index) => {
+      const catCount = data.filter(p => p.catId === cat.id).length;
+      const colorCls = cat.color || colors[index % colors.length];
+      categoryCards += `<div class="stat ${colorCls}"><div class="stat-icon">⭐</div><div class="stat-num">${catCount}</div><div class="stat-lbl">${cat.name}</div><div class="stat-sub">Category</div></div>`;
+    });
+  } else {
+    const below13 = data.filter(p=>p.age<13).length;
+    const above13 = data.filter(p=>p.age>=13).length;
+    categoryCards = `
+      <div class="stat blue"><div class="stat-icon">🧒</div><div class="stat-num">${below13}</div><div class="stat-lbl">Below 13</div><div class="stat-sub">Age category</div></div>
+      <div class="stat purple"><div class="stat-icon">🧑</div><div class="stat-num">${above13}</div><div class="stat-lbl">Above 13</div><div class="stat-sub">Age category</div></div>
+    `;
+  }
+  
   const el = document.getElementById('dash-stats');
   el.innerHTML = `
     <div class="stat amber"><div class="stat-icon">🟣</div><div class="stat-num">${total}</div><div class="stat-lbl">Total Registered</div></div>
     <div class="stat green"><div class="stat-icon">✅</div><div class="stat-num">${present}</div><div class="stat-lbl">Present Today</div></div>
-    <div class="stat blue"><div class="stat-icon">🧒</div><div class="stat-num">${below13}</div><div class="stat-lbl">Below 13</div><div class="stat-sub">Age category</div></div>
-    <div class="stat purple"><div class="stat-icon">🧑</div><div class="stat-num">${above13}</div><div class="stat-lbl">Above 13</div><div class="stat-sub">Age category</div></div>
+    ${categoryCards}
     <div class="stat cyan"><div class="stat-icon">⚖️</div><div class="stat-num">${judgesPresent}</div><div class="stat-lbl">Judges Present</div></div>
   `;
 }
@@ -2651,13 +2669,26 @@ function renderAttendanceBreakdown(){
       <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%;background:var(--green2)"></div></div>
     </div>`;
   });
-  // Below/above 13
-  const b13 = data.filter(p=>p.age<13&&p.present).length;
-  const a13 = data.filter(p=>p.age>=13&&p.present).length;
-  html += `<hr/><div style="display:flex;gap:10px;margin-top:10px">
-    <div class="stat blue" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${b13}</div><div class="stat-lbl">Below 13 present</div></div>
-    <div class="stat purple" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${a13}</div><div class="stat-lbl">Above 13 present</div></div>
-  </div>`;
+  // Dynamic Category present breakdown
+  const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+  let categoryBreakdown = '';
+  
+  if (evCats.length > 0) {
+    categoryBreakdown = '<hr/><div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">';
+    evCats.forEach(cat => {
+      const pCount = data.filter(p => p.catId === cat.id && p.present).length;
+      categoryBreakdown += `<div class="stat ${cat.color || 'blue'}" style="flex:1;min-width:120px;padding:12px"><div class="stat-num" style="font-size:22px">${pCount}</div><div class="stat-lbl">${cat.name}</div></div>`;
+    });
+    categoryBreakdown += '</div>';
+  } else {
+    const b13 = data.filter(p=>p.age<13&&p.present).length;
+    const a13 = data.filter(p=>p.age>=13&&p.present).length;
+    categoryBreakdown = `<hr/><div style="display:flex;gap:10px;margin-top:10px">
+      <div class="stat blue" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${b13}</div><div class="stat-lbl">Below 13 present</div></div>
+      <div class="stat purple" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${a13}</div><div class="stat-lbl">Above 13 present</div></div>
+    </div>`;
+  }
+  html += categoryBreakdown;
   document.getElementById('attendance-breakdown').innerHTML = html;
 }
 
