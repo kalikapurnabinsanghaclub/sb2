@@ -29,6 +29,11 @@
   }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<!-- SheetJS for Excel export -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- jsPDF and AutoTable for PDF export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root {
     --primary: #FF6B35;
@@ -959,7 +964,8 @@
           <select style="width:150px!important" onchange="filterAppliedVenue(this.value)" id="venue-filter-sel">
             <option value="">All Venues</option>
           </select>
-          <button class="btn btn-amber btn-sm" onclick="downloadRegs()">⬇ Download</button>
+          <button class="btn btn-amber btn-sm" onclick="downloadRegs('excel')" style="background:#107c41;border:none">📊 Excel</button>
+          <button class="btn btn-red btn-sm" onclick="downloadRegs('pdf')" style="background:#da0b20;border:none">📄 PDF</button>
           <button class="btn btn-success btn-sm" onclick="openAddRegModal()">＋ Add</button>
         </div>
       </div>
@@ -3120,7 +3126,7 @@ async function saveNewRegAsync() {
   openM('reg-success-modal');
 }
 
-function downloadRegs() {
+function downloadRegs(format = 'excel') {
   const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   
   // 1. Identify all unique form field labels used in this event
@@ -3153,15 +3159,37 @@ function downloadRegs() {
     rows.push([...standardData, ...dynamicData]);
   });
 
-  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `registrations_event_${activeEventId}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  toast('Downloaded registrations with form answers!');
+  const activeEvName = (EVENTS && EVENTS.find(e => String(e.id) === String(activeEventId))?.name) || 'Event';
+  const fileName = `Registrations_${activeEvName}`;
+
+  if (format === 'excel') {
+    if (typeof XLSX === 'undefined') { toast('Excel library not loaded yet. Try again.'); return; }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Registrations");
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
+    toast('✅ Downloaded Excel file!');
+  } else if (format === 'pdf') {
+    if (!window.jspdf || !window.jspdf.jsPDF) { toast('PDF library not loaded yet. Try again.'); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('landscape');
+    
+    doc.setFontSize(16);
+    doc.text(`Registrations: ${activeEvName}`, 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Total: ${eventParticipants.length}`, 14, 22);
+    
+    doc.autoTable({
+      head: [rows[0]],
+      body: rows.slice(1),
+      startY: 25,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] }
+    });
+    
+    doc.save(`${fileName}.pdf`);
+    toast('✅ Downloaded PDF file!');
+  }
 }
 
 // ── FORM BUILDER ──────────────────────────
