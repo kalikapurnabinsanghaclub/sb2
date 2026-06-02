@@ -529,3 +529,16 @@ END $$;
 --
 -- ⚠️  Change all passwords via Admin Panel → Staff & Roles → 🔑 Password
 -- ══════════════════════════════════════════════════════════════
+
+
+-- ==========================================
+-- 14. SCORING SUBJECTS TABLE
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.scoring_subjects (
+    id BIGINT PRIMARY KEY,
+    name TEXT NOT NULL,
+    max_marks INTEGER DEFAULT 10,
+    description TEXT,
+    event_id BIGINT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
