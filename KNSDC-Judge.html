@@ -1638,15 +1638,15 @@ function updateLiveTotal() {
   document.getElementById('live-total').textContent = total;
 }
 
-function saveScores() {
+async function saveScores() {
   if(!scoringParticipantId) { toast('No participant selected!'); return; }
   const p = participants.find(x=>x.id===scoringParticipantId);
   if(!p) return;
-  
+
   const myScores = p.scores[JUDGE.id] || {};
   const hasScored = Object.keys(myScores).length > 0;
   const isEditAllowed = switchStates['edit-score'] || switchStates['editScore'];
-  
+
   if (hasScored && !isEditAllowed) {
     toast('Score is locked by Admin!');
     return;
@@ -1663,13 +1663,18 @@ function saveScores() {
     p.roundScores[p.round][JUDGE.id][s.id] = val;
   });
   p.comment = document.getElementById('judge-comment').value;
-  
-  // Persist scores through sync engine
-  syncEngine.updateState({ participants });
+
+  toast('Saving score...');
+  const success = await syncEngine.updateParticipant(p.id, p);
+  if(!success) { toast('❌ Error saving score to database'); return; }
 
   renderParticipantsTable();
-  renderDashboard();
-  toast(`✅ Scores saved for ${p.name}!`);
+  updateStats();
+  toast('✅ Score submitted successfully!');
+  setTimeout(() => {
+    document.getElementById('scoring-panel-container').style.display = 'none';
+    document.getElementById('welcome-hero').style.display = 'block';
+  }, 1000);
 }
 
 function clearScorePanel() {
@@ -1768,11 +1773,11 @@ function updateModalSliderColor(id, max, val) {
   if(card) card.classList.toggle('active-subj', val>0);
 }
 
-function saveModalScores() {
+async function saveModalScores() {
   if(!editingModalParticipantId) return;
   const p = participants.find(x=>x.id===editingModalParticipantId);
   if(!p) return;
-  
+
   if(!p.scores[JUDGE.id]) p.scores[JUDGE.id] = {};
   if(!p.roundScores) p.roundScores = {};
   if(!p.roundScores[p.round]) p.roundScores[p.round] = {};
@@ -1784,23 +1789,25 @@ function saveModalScores() {
     p.roundScores[p.round][JUDGE.id][s.id] = val;
   });
   p.comment = document.getElementById('modal-judge-comment').value;
-  
+
   p.isEdited = p.isEdited || {};
   p.isEdited[JUDGE.id] = true;
-  
+
   const isGlobalLocked = switchStates['lock-score'] || switchStates['lockScore'];
+  toast('Updating score...');
+  const success = await syncEngine.updateParticipant(p.id, p);
+  if(!success) { toast('❌ Error updating score'); return; }
+
   if (isGlobalLocked) {
     switchStates['edit-score'] = false;
     switchStates['editScore'] = false;
-    syncEngine.updateState({ participants, switchStates });
-  } else {
-    syncEngine.updateState({ participants });
+    syncEngine.updateState({ switchStates });
   }
-  
+
   closeEditModal();
   renderParticipantsTable();
-  renderDashboard();
-  toast(`✅ Edits saved for ${p.name}!`);
+  updateStats();
+  toast('✅ Edit saved!');
 }
 
 function renderParticipantsTable() {
