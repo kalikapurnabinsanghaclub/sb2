@@ -647,6 +647,15 @@
       <div class="card">
         <div class="card-title" style="margin-bottom:12px">Round Pipeline</div>
         <div class="pipeline" id="dash-pipeline"></div>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;flex-wrap:wrap">
+           <div style="font-size:12px;font-weight:800;color:var(--gold2);white-space:nowrap;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🚀</span> AUTO-SYNC PIPELINE</div>
+           <select id="dash-promo-from" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:#fff;outline:none;font-family:var(--fm);font-weight:700">
+              <option value="audition">Audition → Qualified</option>
+              <option value="qualified">Qualified → Semifinal</option>
+              <option value="semifinal">Semifinal → Final</option>
+           </select>
+           <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--gold),var(--gold2));color:#000;border:none;border-radius:8px;padding:6px 12px;font-weight:800;font-size:11px;flex:1;min-width:140px" onclick="autoPromoteTopN()">⚡ PROMOTE TOP N PER CAT</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2232,6 +2241,69 @@ window.staffLogout = () => {
     window.location.href = 'index.html';
   }
 };
+
+async function autoPromoteTopN() {
+  const nInput = prompt("Enter Top N to promote per category (e.g. 3):", "3");
+  if(!nInput) return;
+  const n = parseInt(nInput);
+  if(!n) return;
+  
+  const fromRound = document.getElementById('dash-promo-from').value;
+  const toRound = {audition:'qualified',qualified:'semifinal',semifinal:'final'}[fromRound];
+
+  const activeEvId = JUDGE.eventId && JUDGE.eventId !== "0" ? JUDGE.eventId : window.syncEngine.getData().activeEventId;
+  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEvId)||!p.eventId));
+  if(!eligible.length) { toast("No eligible participants to promote!"); return; }
+
+  // Calculate scores
+  eligible.forEach(p => {
+    if (!p.roundScores) p.roundScores = {};
+    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
+    let total = 0;
+    if (p.scores) {
+      Object.keys(p.scores).forEach(jId => {
+        SUBJECTS.forEach(s => total += Number(p.scores[jId][s.id]) || 0);
+      });
+    }
+    p._tempScore = total;
+  });
+  
+  const byCat = {};
+  eligible.forEach(p => {
+    if(!byCat[p.catId]) byCat[p.catId] = [];
+    byCat[p.catId].push(p);
+  });
+  
+  const toPromote = [];
+  Object.values(byCat).forEach(catList => {
+    catList.sort((a,b) => b._tempScore - a._tempScore);
+    const topN = catList.slice(0, n);
+    toPromote.push(...topN);
+  });
+  
+  if(!confirm(`Promote ${toPromote.length} participants from ${fromRound.toUpperCase()} to ${toRound.toUpperCase()}?`)) return;
+
+  toast('Auto-Promoting via Bulk Sync...');
+  
+  // Directly update syncEngine state
+  window.syncEngine.setData(state => {
+    const newState = { ...state };
+    newState.participants = newState.participants.map(p => {
+      const match = toPromote.find(tp => tp.id === p.id);
+      if(match) {
+        if(!p.roundScores) p.roundScores = {};
+        p.roundScores[fromRound] = JSON.parse(JSON.stringify(p.scores || {}));
+        p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
+        p.round = toRound;
+        p.stageStatus = 'waiting';
+      }
+      return p;
+    });
+    return newState;
+  });
+  
+  toast(`🔺 Successfully auto-promoted ${toPromote.length} participants!`);
+}
 </script>
 </body>
 </html>
