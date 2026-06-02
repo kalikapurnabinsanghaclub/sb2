@@ -681,12 +681,24 @@ function hydrateChat(state) {
   sosActive = s.sosActive || false;
   const container = document.getElementById('chat-msgs');
   if(!container) return;
-  container.innerHTML = chatHistory.map(m => `
-    <div class="msg-bubble ${(m.from && m.from.includes('Host')) ? 'msg-out' : 'msg-in'} ${m.sos ? 'sos-msg' : ''}" style="${m.sos ? 'border:2px solid var(--rose); background:rgba(220,38,38,0.1); color:var(--rose)' : ''}">
-      <div class="msg-meta"><span>${m.from}</span><span>${m.time}</span></div>
-      <div class="msg-text">${m.text}</div>
+  container.innerHTML = chatHistory.map(m => {
+    let myName = 'Host';
+    try { 
+      const n = JSON.parse(localStorage.getItem('kns_user')).name;
+      if (n && n !== 'undefined' && n !== 'null') myName = n;
+    } catch(e){}
+    const type = (m.from || '').startsWith('Host') ? 'msg-out' : 'msg-in';
+    const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
+    let inlineStyle = '';
+    if (m.sos) inlineStyle = 'color:var(--rose)';
+    if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+    const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
+    return `
+    <div class="msg-bubble ${type} ${m.sos ? 'sos-msg' : ''}" style="${inlineStyle}">
+      <div class="msg-meta"><span>${dispFrom}</span><span>${m.time}</span></div>
+      <div class="msg-text">${typeof parseMentions === 'function' ? parseMentions(m.text) : m.text}</div>
     </div>
-  `).join('');
+  `;}).join('');
   if(chatOpen) container.scrollTop = container.scrollHeight;
   else if(chatHistory.length > 0) {
     const dot = document.getElementById('chat-dot');
@@ -694,12 +706,19 @@ function hydrateChat(state) {
   }
 }
 
+function parseMentions(txt) {
+  if (!txt) return '';
+  return txt.replace(/@(monitor|judge|admin|host)/gi, m => `<span style="color: #10b981; font-weight: 700; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 6px;">${m}</span>`);
+}
+
 function sendMsg() {
   const inp = document.getElementById('chat-inp');
   const text = inp.value.trim();
   if(!text) return;
   const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  const msg = { from: 'Host · Priya', text, type: 'out', time, sos: false };
+  let myName = 'Host';
+  try { myName = JSON.parse(localStorage.getItem('kns_user')).name || 'Host'; } catch(e){}
+  const msg = { from: `Host · ${myName}`, text, type: 'out', time, sos: false };
   syncEngine.setData(s => ({ ...s, chatMessages: [...(s.chatMessages || []), msg] }));
   inp.value = '';
 }
