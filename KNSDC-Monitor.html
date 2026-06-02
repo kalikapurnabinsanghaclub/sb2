@@ -4407,6 +4407,7 @@ function renderSubjects(){
         <button class="btn btn-danger btn-xs" onclick="deleteSubject(${s.id})" style="padding:6px;min-width:32px">🗑</button>
       </div>
     </div>`).join('');
+  renderTemplateChips();
   renderScoreSheetPreview();
 }
 
@@ -4438,6 +4439,69 @@ function renderScoreSheetPreview(){
         <span style="font-family:var(--fh);font-size:28px;font-weight:900;color:var(--amber2)">${total} <small style="font-size:12px;color:var(--text-muted);font-weight:400">pts</small></span>
       </div>
     </div>`;
+}
+
+// ══════════════════════════════════════════
+// SUBJECT TEMPLATE LIBRARY
+// ══════════════════════════════════════════
+const SUBJECT_TEMPLATES = [
+  { name: 'Steps', maxMarks: 10, desc: 'Accuracy and clarity of dance steps, footwork precision and variety.' },
+  { name: 'Tal', maxMarks: 10, desc: 'Adherence to rhythmic cycle (tala), maintaining proper beat structure and tempo.' },
+  { name: 'Rhythm & Timing', maxMarks: 10, desc: 'Synchronization with music beats, tempo consistency and rhythmic accuracy.' },
+  { name: 'Technique & Execution', maxMarks: 10, desc: 'Technical proficiency, body control, balance, flexibility and skill execution.' },
+  { name: 'Costume & Presentation', maxMarks: 10, desc: 'Appropriateness of costume, stage presence, grooming and visual appeal.' },
+  { name: 'Choreography', maxMarks: 10, desc: 'Creativity and structure of the dance composition, transitions and formations.' },
+  { name: 'Musicality', maxMarks: 10, desc: 'Emotional connection with music, expression through movement and musical interpretation.' },
+  { name: 'Overall Performance', maxMarks: 10, desc: 'General impression, entertainment value, confidence and audience engagement.' },
+  { name: 'Expression', maxMarks: 10, desc: 'Facial expression and emotional storytelling through dance.' },
+  { name: 'Energy & Stamina', maxMarks: 10, desc: 'Consistent energy level, endurance and dynamic stage presence throughout.' },
+  { name: 'Creativity', maxMarks: 10, desc: 'Originality of movement, innovative choreographic elements and unique style.' },
+  { name: 'Grace & Poise', maxMarks: 10, desc: 'Elegance of movement, fluidity and refined body posture.' },
+  { name: 'Synchronization', maxMarks: 10, desc: 'Group coordination, unison timing and formation accuracy (for group acts).' },
+  { name: 'Stage Utilization', maxMarks: 10, desc: 'Effective use of stage space, movement across the performance area.' },
+  { name: 'Audience Impact', maxMarks: 10, desc: 'Crowd engagement, entertainment value and memorable performance quality.' }
+];
+
+function renderTemplateChips() {
+  const el = document.getElementById('template-chips');
+  if (!el) return;
+  const activeNames = subjects.map(s => s.name.toLowerCase());
+  el.innerHTML = SUBJECT_TEMPLATES.map(t => {
+    const isAdded = activeNames.includes(t.name.toLowerCase());
+    return `<button class="btn btn-sm" onclick="${isAdded ? '' : "addFromTemplate('" + t.name.replace(/'/g, "\\'") + "')"}"
+      style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;
+      border:1.5px solid ${isAdded ? 'var(--green2,#10b981)' : 'var(--amber2)'};
+      background:${isAdded ? 'rgba(16,185,129,0.08)' : 'rgba(217,119,6,0.06)'};
+      color:${isAdded ? 'var(--green2,#10b981)' : 'var(--amber2)'};
+      cursor:${isAdded ? 'default' : 'pointer'};
+      opacity:${isAdded ? '0.7' : '1'};
+      transition:all 0.2s"
+      title="${t.desc}">
+      ${isAdded ? '✅' : '＋'} ${t.name}
+    </button>`;
+  }).join('');
+}
+
+async function addFromTemplate(name) {
+  const template = SUBJECT_TEMPLATES.find(t => t.name === name);
+  if (!template) return;
+  const obj = { id: Date.now(), name: template.name, maxMarks: template.maxMarks, desc: template.desc, eventId: activeEventId };
+  const success = await syncEngine.createSubject(obj);
+  if (!success) { toast('❌ Error adding subject'); return; }
+  renderSubjects();
+  toast('✅ ' + name + ' added!');
+  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
+}
+
+async function clearAllSubjects() {
+  if (!confirm('Are you sure you want to remove ALL scoring subjects? This cannot be undone.')) return;
+  const allSubjs = [...subjects];
+  for (const s of allSubjs) {
+    await syncEngine.deleteSubject(s.id);
+  }
+  renderSubjects();
+  toast('All subjects cleared');
+  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
 }
 
 function openSubjectModal(id=null){
