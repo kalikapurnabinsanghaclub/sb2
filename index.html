@@ -4168,10 +4168,24 @@
     function renderResults() {
       // Compute max score from active event's subjects and judges
       const rsState = syncEngine.getData();
-      const rsActiveEv = (rsState.events || []).find(e => String(e.id) === String(rsState.activeEventId));
+      const rsActiveEvId = String(rsState.activeEventId);
+      const rsActiveEv = (rsState.events || []).find(e => String(e.id) === rsActiveEvId);
       const rsSubjects = rsActiveEv?.subjects || rsState.subjects || [];
-      const rsJudges = (rsState.judges || []).filter(j => j.present !== false);
-      const numJudges = rsJudges.length || 1;
+      const rsJudgeAgreements = rsState.judgeAgreements || [];
+      
+      const eventJudges = (rsState.judges || []).filter(j => {
+        if (j.present === false) return false;
+        // Check if this judge is assigned to the active event
+        const isAssigned = rsJudgeAgreements.some(a => 
+          String(a.eventId) === rsActiveEvId &&
+          ((a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+           (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase()))
+        );
+        return isAssigned;
+      });
+      
+      const numJudges = eventJudges.length > 0 ? eventJudges.length : ((rsState.judges || []).filter(j => j.present !== false).length || 1);
+      
       const maxPerJudge = rsSubjects.reduce((a, s) => a + (s.maxMarks || 10), 0);
       const maxTotalScore = numJudges * maxPerJudge;
       window._KNSDC_MAX_SCORE = maxTotalScore;

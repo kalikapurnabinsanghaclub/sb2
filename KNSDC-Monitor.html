@@ -2304,9 +2304,13 @@ function broadcastResultsToPublic() {
   const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
   if (!activeEv || !activeEv.switchStates?.resultPublic) return;
 
-  const evSubjects = s.subjects || [];
+  const evSubjects = activeEv.subjects && activeEv.subjects.length > 0 ? activeEv.subjects : (s.subjects || []);
   const evCats = activeEv.categories || [];
-  const presentJudges = judges.filter(j => j.present);
+  const agreements = s.judgeAgreements || [];
+  const presentJudges = judges.filter(j => {
+    if (!j.present) return false;
+    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+  });
   const maxPossible = presentJudges.length * evSubjects.length * 10;
   
   const leaderboard = [...participants]
@@ -4312,7 +4316,11 @@ function renderJudgeStats(){
     return;
   }
   if(judgeChartInstance) judgeChartInstance.destroy();
-  const presentJudges = judges.filter(j=>j.present);
+  const presentJudges = judges.filter(j => {
+    if (!j.present) return false;
+    const agreements = syncEngine.getData()?.judgeAgreements || [];
+    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+  });
   const jLabels = presentJudges.map(j=>j.name.split(' ')[0]);
   const jAvgs = presentJudges.map(j=>{
     const total = participants.reduce((acc,p)=>acc+subjects.reduce((s2,s)=>s2+(p.scores[j.id]?p.scores[j.id][s.id]||0:0),0),0);
@@ -4542,7 +4550,11 @@ async function promoteSelected() {
 function downloadRoundResult(){
   const fromRound = document.getElementById('promo-from-round').value;
   const data = participants.filter(p=>p.round===fromRound);
-  const presentJudges = judges.filter(j=>j.present);
+  const presentJudges = judges.filter(j => {
+    if (!j.present) return false;
+    const agreements = syncEngine.getData()?.judgeAgreements || [];
+    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+  });
   const rows = [['Rank','ID','Name','Category','Age'].concat(subjects.map(s=>s.name)).concat(['Total'])];
   [...data].sort((a,b)=>{
     const sa=presentJudges.reduce((acc,j)=>acc+subjects.reduce((s2,s)=>s2+(a.scores[j.id]?a.scores[j.id][s.id]||0:0),0),0);
