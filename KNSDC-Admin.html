@@ -2851,7 +2851,7 @@ window.previewEventBanner = () => {
   }
 };
 
-window.saveNewEvent = () => {
+window.saveNewEvent = async () => {
   const name = document.getElementById('cev-name').value.trim();
   const org = document.getElementById('cev-org').value.trim();
   const venue = document.getElementById('cev-venue').value.trim();
@@ -2867,48 +2867,53 @@ window.saveNewEvent = () => {
   if (!startDate) { toast('Start date is required!'); return; }
   if (!startTime) { toast('Start time is required!'); return; }
 
+  const newId = Date.now();
+  const roundSchedules = {};
+  ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
+    const vEl = document.getElementById(`cev-round-${r}-venue`);
+    const dEl = document.getElementById(`cev-round-${r}-date`);
+    const tEl = document.getElementById(`cev-round-${r}-time`);
+    roundSchedules[r] = {
+      venue: vEl ? vEl.value.trim() : '',
+      date: dEl ? dEl.value : '',
+      time: tEl ? tEl.value : ''
+    };
+  });
+
+  const capEl = document.getElementById('cev-capacity');
+  const bannerEl = document.getElementById('cev-banner');
+  const descEl = document.getElementById('cev-desc');
+
+  const newEvent = {
+    id: newId,
+    name,
+    org,
+    type,
+    venue,
+    capacity: capEl ? (parseInt(capEl.value) || null) : null,
+    startDate,
+    startTime,
+    endDate: endDate || null,
+    endTime: endTime || null,
+    banner: bannerEl ? bannerEl.value.trim() : '',
+    description: descEl ? descEl.value.trim() : '',
+    staff: [],
+    roundSchedules,
+    createdAt: newId
+  };
+  
+  // 1. Save to Supabase
+  const success = await syncEngine.createEvent(newEvent);
+  if (!success) {
+    toast('❌ Error saving event to database');
+    return;
+  }
+
+  // 2. Update remaining state (notices, donations, active event)
   syncEngine.setData(state => {
     const newState = { ...state };
-    if (!newState.events) newState.events = [];
-    if (!newState.upcomingEvents) newState.upcomingEvents = [];
     if (!newState.notices) newState.notices = [];
-    
-    const newId = Date.now();
-    const roundSchedules = {};
-    ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
-      const vEl = document.getElementById(`cev-round-${r}-venue`);
-      const dEl = document.getElementById(`cev-round-${r}-date`);
-      const tEl = document.getElementById(`cev-round-${r}-time`);
-      roundSchedules[r] = {
-        venue: vEl ? vEl.value.trim() : '',
-        date: dEl ? dEl.value : '',
-        time: tEl ? tEl.value : ''
-      };
-    });
-
-    const capEl = document.getElementById('cev-capacity');
-    const bannerEl = document.getElementById('cev-banner');
-    const descEl = document.getElementById('cev-desc');
-
-    const newEvent = {
-      id: newId,
-      name,
-      org,
-      type,
-      venue,
-      capacity: capEl ? (parseInt(capEl.value) || null) : null,
-      startDate,
-      startTime,
-      endDate: endDate || null,
-      endTime: endTime || null,
-      banner: bannerEl ? bannerEl.value.trim() : '',
-      description: descEl ? descEl.value.trim() : '',
-      staff: [],
-      roundSchedules,
-      createdAt: newId
-    };
-    
-    newState.events.push(newEvent);
+    if (!newState.donations) newState.donations = [];
     
     // Create public notice
     const newNotice = {
@@ -2921,26 +2926,7 @@ window.saveNewEvent = () => {
     };
     newState.notices.unshift(newNotice);
 
-    // Push to upcomingEvents for Public Portal visibility
-    newState.upcomingEvents.push({
-      id: newId,
-      title: name,
-      date: startDate,
-      time: startTime,
-      endDate: endDate || null,
-      endTime: endTime || null,
-      venue: venue,
-      category: type,
-      description: newEvent.description,
-      image: newEvent.banner || "https://images.unsplash.com/photo-1514525253344-981c1caa8ec4?w=800",
-      roundSchedules: newEvent.roundSchedules,
-      publicReg: true,
-      stagePreview: true,
-      resultPublic: true
-    });
-    
     // Auto-create a donation campaign for this event
-    if (!newState.donations) newState.donations = [];
     newState.donations.push({
       id: Date.now(),
       name: `${name} Support Campaign`,
@@ -2990,7 +2976,7 @@ window.editEvent = (id) => {
     openM('edit-event-modal');
 };
 
-window.saveEditedEvent = () => {
+window.saveEditedEvent = async () => {
     const id = document.getElementById('edit-ev-id').value;
     const name = document.getElementById('edit-cev-name').value;
     const org = document.getElementById('edit-cev-org').value;
@@ -3005,66 +2991,47 @@ window.saveEditedEvent = () => {
         return;
     }
     
-    syncEngine.setData(state => {
-        const newState = { ...state };
-        const roundSchedules = {};
-        ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
-          roundSchedules[r] = {
-            venue: document.getElementById(`edit-cev-round-${r}-venue`).value.trim(),
-            date: document.getElementById(`edit-cev-round-${r}-date`).value,
-            time: document.getElementById(`edit-cev-round-${r}-time`).value
-          };
-        });
-
-        // Update main events array
-        const evIdx = newState.events.findIndex(e => String(e.id) === String(id));
-        if(evIdx !== -1) {
-            newState.events[evIdx] = {
-                ...newState.events[evIdx],
-                name, org, venue, startDate, startTime,
-                endDate: endDate || null,
-                endTime: endTime || null,
-                type: document.getElementById('edit-cev-type').value,
-                capacity: parseInt(document.getElementById('edit-cev-capacity').value),
-                banner: document.getElementById('edit-cev-banner').value,
-                description: document.getElementById('edit-cev-desc').value,
-                roundSchedules
-            };
-        }
-        
-        // Update upcomingEvents for public portal
-        const upIdx = (newState.upcomingEvents || []).findIndex(e => String(e.id) === String(id));
-        if(upIdx !== -1) {
-            newState.upcomingEvents[upIdx] = {
-                ...newState.upcomingEvents[upIdx],
-                title: name,
-                date: startDate,
-                time: startTime,
-                endDate: endDate || null,
-                endTime: endTime || null,
-                venue,
-                category: document.getElementById('edit-cev-type').value,
-                description: document.getElementById('edit-cev-desc').value,
-                image: document.getElementById('edit-cev-banner').value || newState.upcomingEvents[upIdx].image,
-                roundSchedules
-            };
-        }
-        
-        return newState;
+    const roundSchedules = {};
+    ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
+      roundSchedules[r] = {
+        venue: document.getElementById(`edit-cev-round-${r}-venue`).value.trim(),
+        date: document.getElementById(`edit-cev-round-${r}-date`).value,
+        time: document.getElementById(`edit-cev-round-${r}-time`).value
+      };
     });
+
+    const updatedEvent = {
+        name, org, venue, startDate, startTime,
+        endDate: endDate || null,
+        endTime: endTime || null,
+        type: document.getElementById('edit-cev-type').value,
+        capacity: parseInt(document.getElementById('edit-cev-capacity').value),
+        banner: document.getElementById('edit-cev-banner').value,
+        description: document.getElementById('edit-cev-desc').value,
+        roundSchedules
+    };
+
+    // Save to Supabase
+    const success = await syncEngine.updateEvent(id, updatedEvent);
+    if (!success) {
+        toast('❌ Error updating event in database');
+        return;
+    }
+        
+
     
     closeM('edit-event-modal');
     toast('✅ Event updated successfully!');
     renderEventsPage(syncEngine.getData());
 };
 
-window.deleteEvent = (id) => {
+window.deleteEvent = async (id) => {
     if (!confirm('Are you sure you want to delete this event? This will also remove it from the public portal.')) return;
-    syncEngine.setData(state => ({
-        ...state,
-        events: (state.events || []).filter(e => String(e.id) !== String(id)),
-        upcomingEvents: (state.upcomingEvents || []).filter(e => String(e.id) !== String(id))
-    }));
+    const success = await syncEngine.deleteEvent(id);
+    if (!success) {
+        toast('❌ Error deleting event from database');
+        return;
+    }
     renderEventsPage(syncEngine.getData());
     toast('🗑️ Event deleted successfully.');
 };
