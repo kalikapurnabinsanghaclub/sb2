@@ -1169,18 +1169,25 @@ function initIdentity() {
         JUDGE.advance  = parseInt(matchedAgr.advance) || 0;
         JUDGE.notes    = matchedAgr.notes    || '';
 
-        // Resolve venue name — use saved venueName first, then lookup by venueId
-        if (matchedAgr.venueName) {
-          JUDGE.venue = matchedAgr.venueName;
-        } else if (matchedAgr.venueId && state.venues) {
-          const v = state.venues.find(v => String(v.id) === String(matchedAgr.venueId));
-          if (v) JUDGE.venue = v.name;
+        // Resolve event name from eventId
+        let ev = null;
+        if (matchedAgr.eventId && state.events) {
+          ev = state.events.find(e => String(e.id) === String(matchedAgr.eventId));
+          if (ev) JUDGE.eventName = ev.name || ev.title || JUDGE.eventName;
         }
 
-        // Resolve event name from eventId
-        if (matchedAgr.eventId && state.events) {
-          const ev = state.events.find(e => String(e.id) === String(matchedAgr.eventId));
-          if (ev) JUDGE.eventName = ev.name || ev.title || JUDGE.eventName;
+        // Resolve venue name — use saved venueName first, then lookup by venueId in event, then global venues
+        if (matchedAgr.venueName) {
+          JUDGE.venue = matchedAgr.venueName;
+        } else if (matchedAgr.venueId) {
+          let v = null;
+          if (ev && ev.venues) {
+            v = ev.venues.find(vx => String(vx.id) === String(matchedAgr.venueId));
+          }
+          if (!v && state.venues) {
+            v = state.venues.find(vx => String(vx.id) === String(matchedAgr.venueId));
+          }
+          if (v) JUDGE.venue = v.name;
         }
       }
     }
