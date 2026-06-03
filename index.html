@@ -1798,6 +1798,50 @@
     </div>
   </div>
 
+  <!-- ════════════════ EVENT DETAIL MODAL ════════════════ -->
+  <div id="eventDetailModal" class="modal-bg hidden" onclick="if(event.target===event.currentTarget) closeEventDetailModal()">
+    <div style="background:#fff; width:90%; max-width:600px; border-radius:24px; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); animation:bounceIn 0.4s ease both;">
+      <div id="edm-banner" style="width:100%; height:200px; background:#f1f5f9; background-size:cover; background-position:center; position:relative;">
+        <button onclick="closeEventDetailModal()" style="position:absolute; top:16px; right:16px; background:rgba(0,0,0,0.5); color:#fff; border:none; width:36px; height:36px; border-radius:50%; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;">✕</button>
+      </div>
+      <div style="padding:32px;">
+        <div style="display:inline-block;background:rgba(233, 30, 140, 0.1);color:#E91E8C;border-radius:20px;padding:4px 12px;font-size:0.75rem;font-weight:800;margin-bottom:12px;letter-spacing:0.5px" id="edm-cat">Category</div>
+        <h2 id="edm-title" style="font-family:'Playfair Display',serif; font-size:2rem; font-weight:800; color:#1e293b; margin-bottom:16px; line-height:1.2;">Event Title</h2>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; background:#f8fafc; padding:16px; border-radius:16px; border:1px solid #e2e8f0;">
+          <div>
+            <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Date</div>
+            <div style="font-weight:700; color:#334155; font-size:0.95rem;" id="edm-date">--</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Venue</div>
+            <div style="font-weight:700; color:#334155; font-size:0.95rem;" id="edm-venue">--</div>
+          </div>
+          <div style="grid-column:1 / -1;">
+            <div style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Organizer</div>
+            <div style="font-weight:700; color:#334155; font-size:0.95rem;" id="edm-org">--</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <h3 style="font-size:1.1rem; font-weight:800; color:#1e293b; margin-bottom:10px;">About this Event</h3>
+          <p id="edm-desc" style="color:#475569; font-size:0.95rem; line-height:1.6; white-space:pre-wrap;"></p>
+        </div>
+
+        <div id="edm-schedule-container" style="display:none; margin-bottom:24px;">
+          <h3 style="font-size:1.1rem; font-weight:800; color:#1e293b; margin-bottom:10px;">Schedule</h3>
+          <div id="edm-schedule" style="background:rgba(79, 70, 229, 0.05); border:1px solid rgba(79, 70, 229, 0.15); border-radius:12px; padding:16px;">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:12px; margin-top:32px;">
+          <button id="edm-reg-btn" class="btn" style="flex:1; background:linear-gradient(135deg,#7B2D8B,#E91E8C); color:#fff; padding:12px; border-radius:12px; font-weight:800; border:none; cursor:pointer;">Register Now</button>
+          <button id="edm-support-btn" class="btn" style="padding:12px 24px; border-radius:12px; background:rgba(34, 197, 94, 0.1); border:1px solid rgba(34, 197, 94, 0.3); color:#22c55e; font-weight:800; cursor:pointer;">🤝 Support</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ════════════════ AUTH MODAL ════════════════ -->
   <div id="authModal" class="modal-bg hidden" onclick="if(event.target===event.currentTarget) hideAuth()">
     <div class="fwrap">
@@ -2304,6 +2348,9 @@
           disp: ev.startDate || ev.date,
           cat: ev.type || ev.category || "General",
           venue: ev.venue || ev.location || 'Kalikapur Community Hall',
+          banner: ev.banner || ev.image || null,
+          description: ev.description || '',
+          org: ev.org || ev.organizer || 'KNSDC',
           roundSchedules: ev.roundSchedules || {},
           formFields: ev.formFields || null,
           switchStates: {
@@ -4960,38 +5007,82 @@
       const ev = EVENTS.find(e => String(e.id) === String(id));
       if (!ev) return;
       
-      let scheduleHtml = `<div style="margin-bottom:8px">📅 ${ev.disp} | 📍 ${ev.venue}</div>`;
+      const modal = document.getElementById('eventDetailModal');
+      
+      // Banner
+      const bannerEl = document.getElementById('edm-banner');
+      if (ev.banner) {
+        bannerEl.style.backgroundImage = `url('${ev.banner}')`;
+      } else {
+        bannerEl.style.backgroundImage = 'linear-gradient(135deg, #1e293b, #334155)';
+      }
+      
+      document.getElementById('edm-cat').textContent = ev.cat || 'Event';
+      document.getElementById('edm-title').textContent = ev.name || 'Unknown Event';
+      document.getElementById('edm-date').textContent = ev.disp || '--';
+      document.getElementById('edm-venue').textContent = ev.venue || '--';
+      document.getElementById('edm-org').textContent = ev.org || 'KNSDC';
+      document.getElementById('edm-desc').textContent = ev.description || 'No description provided.';
+      
+      const schedCont = document.getElementById('edm-schedule-container');
+      const schedBody = document.getElementById('edm-schedule');
       
       if (ev.roundSchedules && Object.keys(ev.roundSchedules).length > 0) {
-        scheduleHtml += `<div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">`;
-        scheduleHtml += `<div style="font-size:0.7rem; font-weight:800; color:#FFD23F; text-transform:uppercase; margin-bottom:5px;">Competition Schedule:</div>`;
+        let scheduleHtml = '';
         const rounds = ['audition', 'qualified', 'semifinal', 'final'];
         rounds.forEach(r => {
           const s = ev.roundSchedules[r];
           if (s && (s.date || s.venue)) {
-            scheduleHtml += `<div style="font-size:0.75rem; margin-bottom:3px;"><strong style="text-transform:capitalize;">${r}:</strong> ${s.date || 'TBA'} @ ${s.time || 'TBA'} (${s.venue || 'TBA'})</div>`;
+            scheduleHtml += `<div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,0,0,0.05); padding-bottom:8px;">
+              <div>
+                <strong style="text-transform:capitalize; color:#4f46e5;">${r}</strong>
+                <div style="font-size:0.85rem; color:#64748b;">${s.venue || 'TBA'}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-weight:700; color:#1e293b; font-size:0.9rem;">${s.date || 'TBA'}</div>
+                <div style="font-size:0.8rem; color:#64748b;">${s.time || 'TBA'}</div>
+              </div>
+            </div>`;
           }
         });
-        scheduleHtml += `</div>`;
-      }
-      
-      showToast(ev.name, scheduleHtml, ev.icon, 'notice');
-      
-      // Highlight the event card
-      const grid = document.getElementById("eventsGrid");
-      if (grid) {
-        const cards = grid.children;
-        for (let card of cards) {
-          if (card.innerHTML.includes(ev.name)) {
-            card.style.transform = 'scale(1.05)';
-            card.style.boxShadow = `0 10px 30px ${ev.col}33`;
-            setTimeout(() => {
-              card.style.transform = '';
-              card.style.boxShadow = '';
-            }, 3000);
-          }
+        if (scheduleHtml) {
+          schedBody.innerHTML = scheduleHtml;
+          schedCont.style.display = 'block';
+        } else {
+          schedCont.style.display = 'none';
         }
+      } else {
+        schedCont.style.display = 'none';
       }
+      
+      const isRegOpen = (ev.switchStates && ev.switchStates.publicReg !== undefined) ? ev.switchStates.publicReg : isRegistrationOpen;
+      
+      const regBtn = document.getElementById('edm-reg-btn');
+      if (isRegOpen) {
+        regBtn.textContent = 'Register Now';
+        regBtn.style.background = 'linear-gradient(135deg, #7B2D8B, #E91E8C)';
+        regBtn.style.cursor = 'pointer';
+        regBtn.onclick = () => {
+          closeEventDetailModal();
+          showAuth(true, ev.id);
+        };
+      } else {
+        regBtn.textContent = 'Registration Closed';
+        regBtn.style.background = '#9ca3af';
+        regBtn.style.cursor = 'not-allowed';
+        regBtn.onclick = null;
+      }
+      
+      document.getElementById('edm-support-btn').onclick = () => {
+        closeEventDetailModal();
+        openDonationForm(ev.name, ev.col);
+      };
+      
+      modal.classList.remove('hidden');
+    }
+
+    function closeEventDetailModal() {
+      document.getElementById('eventDetailModal').classList.add('hidden');
     }
 
     function hideAuth() {
