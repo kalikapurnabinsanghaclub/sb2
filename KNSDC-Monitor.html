@@ -3400,11 +3400,15 @@ async function saveCat() {
   if(editingCatId){
     const success = await syncEngine.updateCategory(editingCatId, obj);
     if (!success) { toast('❌ Error saving category'); return; }
+    const existing = categories.find(c=>c.id===editingCatId);
+    if(existing) Object.assign(existing, obj);
   } else {
     obj.id=Date.now();
     const success = await syncEngine.createCategory(obj);
     if (!success) { toast('❌ Error creating category'); return; }
+    if(!categories.find(c=>c.id===obj.id)) categories.push(obj);
   }
+  syncAll();
   closeM('cat-modal');renderCategories();toast('Category saved!');
   broadcast('DATA_SYNC', { categories, subjects });
 }
@@ -3412,6 +3416,8 @@ async function saveCat() {
 async function deleteCat(id) {
   const success = await syncEngine.deleteCategory(id);
   if (!success) { toast('❌ Error deleting category'); return; }
+  categories = categories.filter(c => c.id !== id);
+  syncAll();
   renderCategories();
   toast('Category deleted');
   broadcast('DATA_SYNC', { categories, subjects });
@@ -3478,17 +3484,23 @@ async function saveVenue() {
   if(editingVenueId){
     const success = await syncEngine.updateVenue(editingVenueId, obj);
     if (!success) { toast('❌ Error saving venue'); return; }
+    const existing = venues.find(v=>v.id===editingVenueId);
+    if(existing) Object.assign(existing, obj);
   } else {
     obj.id=Date.now();
     const success = await syncEngine.createVenue(obj);
     if (!success) { toast('❌ Error creating venue'); return; }
+    if(!venues.find(v=>v.id===obj.id)) venues.push(obj);
   }
+  syncAll();
   closeM('venue-modal');renderVenueDates();toast('Venue saved!');
 }
 
 async function deleteVenue(id) {
   const success = await syncEngine.deleteVenue(id);
   if (!success) { toast('❌ Error deleting venue'); return; }
+  venues = venues.filter(v => v.id !== id);
+  syncAll();
   renderVenueDates();
   toast('Venue deleted');
 }
@@ -4720,11 +4732,15 @@ async function saveSubject(){
   if(editingSubjId){
     const success = await syncEngine.updateSubject(editingSubjId, obj);
     if(!success){toast('❌ Error updating subject');return;}
+    const existing = subjects.find(s=>s.id===editingSubjId);
+    if(existing) Object.assign(existing, obj);
   } else {
     obj.id=Date.now();
     const success = await syncEngine.createSubject(obj);
     if(!success){toast('❌ Error creating subject');return;}
+    if(!subjects.find(s=>s.id===obj.id)) subjects.push(obj);
   }
+  syncAll();
   closeM('subject-modal');
   renderSubjects();
   toast('Subject saved!');
@@ -4734,6 +4750,8 @@ async function deleteSubject(id){
   if(!confirm('Delete this subject?')) return;
   const success = await syncEngine.deleteSubject(id);
   if(!success){toast('❌ Error deleting subject');return;}
+  subjects = subjects.filter(s => s.id !== id);
+  syncAll();
   renderSubjects();
   toast('Subject deleted');
   broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
