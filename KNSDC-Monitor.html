@@ -651,6 +651,19 @@
   /* SCORE INPUT CELL */
   .score-cell input { width: 70px!important; text-align: center; font-family: var(--fm)!important; font-size: 14px!important; padding: 8px!important; border-radius: 8px!important; }
 
+  /* SECRET SCORE VISIBILITY CONTROL */
+  body[data-scores-hidden="1"] .podium-score,
+  body[data-scores-hidden="1"] #on-stage-judge-scores,
+  body[data-scores-hidden="1"] #judge-score-matrix,
+  body[data-scores-hidden="1"] #score-dist-chart,
+  body[data-scores-hidden="1"] #max-avg-chart,
+  body[data-scores-hidden="1"] #round-compare-chart,
+  body[data-scores-hidden="1"] .score-cell,
+  body[data-scores-hidden="1"] .score-bar-wrap { visibility: hidden !important; }
+  body[data-scores-hidden="1"] .judge-score-val { filter: blur(8px) !important; pointer-events: none !important; user-select: none !important; }
+  body[data-scores-hidden="1"] [data-score-text] { font-size: 0 !important; }
+  body[data-scores-hidden="1"] [data-score-text]::after { content: '🔒'; font-size: 12px; }
+
   /* FLOWCHART */
   .flow-node { background: #fff; border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 14px; padding: 14px 20px; text-align: center; font-size: 12px; font-family: var(--fh); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
   .flow-node.active { border-color: var(--blue); background: rgba(59, 130, 246, 0.05); color: var(--blue); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1); }
@@ -1329,6 +1342,7 @@
       <div class="tab active" onclick="settingsTab('subjects',this)">⚪ Judge Subjects</div>
       <div class="tab" onclick="settingsTab('event',this)">Event & Sponsor</div>
       <div class="tab" onclick="settingsTab('payment',this)">Payment / QR</div>
+      <div class="tab" onclick="settingsTab('security',this)" style="color:var(--text-muted)">📌</div>
     </div>
 
     <div id="st-subjects">
@@ -1414,6 +1428,34 @@
               <button class="btn btn-ghost btn-sm" style="border-radius:8px" onclick="toast('Upload feature coming soon!')">📤 CHANGE IMAGE</button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="st-security" style="display:none">
+      <div class="card glass-card" style="max-width:480px;margin:0 auto;background:linear-gradient(135deg, rgba(100,116,139,0.06), transparent);border:1.5px solid rgba(100,116,139,0.15)">
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="font-size:32px;margin-bottom:8px">📌</div>
+          <div style="font-weight:900;font-size:16px;color:var(--text);letter-spacing:0.5px">Score Visibility Control</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Hide or reveal judge scores across the entire Monitor</div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:var(--surface2);border-radius:14px;border:1px solid var(--border);margin-bottom:16px">
+          <div>
+            <div style="font-weight:800;font-size:13px" id="score-vis-label">Scores are HIDDEN 🔒</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Toggle requires PIN to reveal</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="score-vis-toggle" onchange="handleScoreVisToggle(this)"/>
+            <span class="tslider"></span>
+          </label>
+        </div>
+
+        <div id="score-pin-prompt" style="display:none;padding:16px;background:rgba(217,119,6,0.05);border:1px dashed var(--amber2);border-radius:12px;text-align:center">
+          <div style="font-size:11px;font-weight:700;color:var(--amber2);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Enter PIN to Reveal Scores</div>
+          <input type="password" id="score-pin-input" placeholder="Enter PIN" style="width:160px;text-align:center;font-family:var(--fm);font-size:18px;letter-spacing:6px;padding:10px;border-radius:10px;border:2px solid var(--border);margin-bottom:10px" onkeydown="if(event.key==='Enter')verifyScorePin()"/>
+          <div><button class="btn btn-amber btn-sm" onclick="verifyScorePin()" style="border-radius:10px;font-weight:800">Unlock 🔓</button></div>
+          <div id="score-pin-error" style="display:none;color:#ef4444;font-size:11px;margin-top:8px;font-weight:700">❌ Wrong PIN</div>
         </div>
       </div>
     </div>
@@ -2138,7 +2180,7 @@ function renderLeaderboard() {
                 <div class="podium-player">
                     <div class="podium-avatar" style="border-color:var(--blue2)">${top3[1].name[0]}</div>
                     <div class="podium-name">${top3[1].name}</div>
-                    <div class="podium-score">${top3[1].totalScore} pts</div>
+                    <div class="podium-score"><span class="judge-score-val">${top3[1].totalScore} pts</span></div>
                 </div>
                 <div class="podium-base p-2nd">2</div>
             </div>` : ''}
@@ -2147,7 +2189,7 @@ function renderLeaderboard() {
                 <div class="podium-player">
                     <div class="podium-avatar" style="width:72px;height:72px;font-size:32px;border-color:var(--amber2)">${top3[0].name[0]}</div>
                     <div class="podium-name" style="font-size:18px">${top3[0].name}</div>
-                    <div class="podium-score" style="font-size:14px;color:var(--amber2)">${top3[0].totalScore} pts</div>
+                    <div class="podium-score" style="font-size:14px;color:var(--amber2)"><span class="judge-score-val">${top3[0].totalScore} pts</span></div>
                 </div>
                 <div class="podium-base p-1st">1</div>
             </div>
@@ -2157,7 +2199,7 @@ function renderLeaderboard() {
                 <div class="podium-player">
                     <div class="podium-avatar" style="border-color:var(--cyan2)">${top3[2].name[0]}</div>
                     <div class="podium-name">${top3[2].name}</div>
-                    <div class="podium-score">${top3[2].totalScore} pts</div>
+                    <div class="podium-score"><span class="judge-score-val">${top3[2].totalScore} pts</span></div>
                 </div>
                 <div class="podium-base p-3rd">3</div>
             </div>` : ''}
@@ -2197,7 +2239,7 @@ function renderLeaderboard() {
                                 </td>
                                 <td><span class="badge ${cat ? cat.color : 'b-gray'}">${cat ? cat.name : 'Unknown'}</span></td>
                                 <td style="text-align:right">
-                                    <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore}</div>
+                                    <div class="judge-score-val" style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore}</div>
                                     <div style="font-size:9px;color:var(--text-muted)">/ ${((judges.length > 0 ? judges.length : 1) * subjects.length * 10)} max</div>
                                 </td>
                             </tr>
@@ -4641,13 +4683,68 @@ function downloadRoundResult(){
 function settingsTab(tab, el){
   document.querySelectorAll('#pp-settings .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  ['subjects','event','payment'].forEach(t=>{
+  ['subjects','event','payment','security'].forEach(t=>{
     document.getElementById('st-'+t).style.display=t===tab?'block':'none';
   });
   if(tab==='subjects') renderSubjects();
   if(tab==='event') renderEventSettings();
+  if(tab==='security') syncScoreVisUI();
 }
 
+// ══════════════════════════════════════════
+// SECRET SCORE VISIBILITY CONTROL
+// ══════════════════════════════════════════
+const SCORE_PIN = '244466666';
+
+function applyScoreVisibility() {
+  const hidden = localStorage.getItem('kns_scores_hidden') !== '0';
+  document.body.setAttribute('data-scores-hidden', hidden ? '1' : '0');
+}
+
+function syncScoreVisUI() {
+  const hidden = localStorage.getItem('kns_scores_hidden') !== '0';
+  const toggle = document.getElementById('score-vis-toggle');
+  const label = document.getElementById('score-vis-label');
+  const pinPrompt = document.getElementById('score-pin-prompt');
+  if (toggle) toggle.checked = !hidden;
+  if (label) label.innerHTML = hidden ? 'Scores are HIDDEN 🔒' : 'Scores are VISIBLE 🔓';
+  if (pinPrompt) pinPrompt.style.display = 'none';
+}
+
+function handleScoreVisToggle(cb) {
+  const wantShow = cb.checked;
+  if (wantShow) {
+    // Wants to show scores → need PIN
+    cb.checked = false;
+    document.getElementById('score-pin-prompt').style.display = 'block';
+    document.getElementById('score-pin-input').value = '';
+    document.getElementById('score-pin-error').style.display = 'none';
+    setTimeout(() => document.getElementById('score-pin-input').focus(), 100);
+  } else {
+    // Hiding scores → no PIN needed
+    localStorage.setItem('kns_scores_hidden', '1');
+    applyScoreVisibility();
+    syncScoreVisUI();
+    toast('🔒 Judge scores are now HIDDEN');
+  }
+}
+
+function verifyScorePin() {
+  const input = document.getElementById('score-pin-input').value.trim();
+  if (input === SCORE_PIN) {
+    localStorage.setItem('kns_scores_hidden', '0');
+    applyScoreVisibility();
+    syncScoreVisUI();
+    toast('🔓 Judge scores are now VISIBLE');
+  } else {
+    document.getElementById('score-pin-error').style.display = 'block';
+    document.getElementById('score-pin-input').value = '';
+    setTimeout(() => document.getElementById('score-pin-input').focus(), 100);
+  }
+}
+
+// Apply on page load
+applyScoreVisibility();
 function renderSubjects(){
   const el = document.getElementById('subjects-list');
   if(!el) return;
@@ -5432,7 +5529,7 @@ function renderAssignedJudges() {
       '</div>' +
       '<div style="text-align:right;flex-shrink:0">' +
       '<div class="badge b-green" style="margin-bottom:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT</div>' +
-      '<div style="font-size:10px;color:#64748b;font-family:var(--fm)">' + (scoresGiven > 0 ? '&#x2696;&#xFE0F; ' + scoresGiven + ' scored' : 'No scores yet') + '</div>' +
+      '<div class="judge-score-val" style="font-size:10px;color:#64748b;font-family:var(--fm)">' + (scoresGiven > 0 ? '&#x2696;&#xFE0F; ' + scoresGiven + ' scored' : 'No scores yet') + '</div>' +
       '</div>' +
       '</div>' +
 
@@ -5440,7 +5537,7 @@ function renderAssignedJudges() {
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">' +
       '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:var(--fm)">Agreement Date</div><div style="font-size:12px;font-weight:700">' + (a.date || '&mdash;') + '</div></div>' +
       '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:var(--fm)">Report Time</div><div style="font-size:12px;font-weight:700">' + (a.time || '&mdash;') + '</div></div>' +
-      '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:var(--fm)">Scores Given</div><div style="font-size:14px;font-weight:900;color:' + (scoresGiven>0?'#059669':'#94a3b8') + '">' + scoresGiven + '</div></div>' +
+      '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:var(--fm)">Scores Given</div><div class="judge-score-val" style="font-size:14px;font-weight:900;color:' + (scoresGiven>0?'#059669':'#94a3b8') + '">' + scoresGiven + '</div></div>' +
       '</div>' +
 
       // Payment bar
