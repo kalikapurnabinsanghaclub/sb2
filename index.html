@@ -1932,9 +1932,14 @@
         <div id="successRegId" style="font-size: 3rem; font-weight: 900; color: #fff; letter-spacing: 4px; font-family: 'Cinzel Decorative', serif;">KN001</div>
       </div>
 
-      <div style="text-align: left; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 30px; font-size: 0.85rem;">
+      <div style="text-align: left; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 20px; font-size: 0.85rem;">
         <div style="color: #fff; margin-bottom: 4px;">📅 <span id="successEventDate">---</span></div>
         <div style="color: #fff;">📍 <span id="successEventVenue">---</span></div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-bottom: 25px;">
+        <button class="btn" style="flex:1; justify-content: center; background: #2563eb; color: #fff; padding: 12px; border-radius: 12px; border:none; font-weight:700;" onclick="downloadReg('pdf')">⬇ Download PDF</button>
+        <button class="btn" style="flex:1; justify-content: center; background: #ea580c; color: #fff; padding: 12px; border-radius: 12px; border:none; font-weight:700;" onclick="downloadReg('jpg')">⬇ Download JPG</button>
       </div>
 
       <button class="btn btn-p" style="width: 100%; justify-content: center; padding: 15px; border-radius: 16px; font-size: 1rem; font-weight: 800; box-shadow: 0 10px 20px rgba(233, 30, 140, 0.3);" onclick="document.getElementById('regSuccessModal').classList.add('hidden')">Got it, Thanks! 🚀</button>
@@ -1943,6 +1948,8 @@
   </div>
 
   <!-- ════════════════ JAVASCRIPT ════════════════ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="lib/supabase.js"></script>
   <script src="lib/localSync-v4.js?v=2"></script>
   <script>
@@ -5293,6 +5300,17 @@
           });
       }
 
+      // Store details for download
+      window.lastRegDetails = {
+        id: newId,
+        name: name,
+        event: ev ? ev.name : "Unknown Event",
+        date: ev ? ev.disp : "---",
+        venue: ev ? ev.venue : "---",
+        category: (document.getElementById('suCat') && document.getElementById('suCat').value) || "General",
+        timestamp: Date.now()
+      };
+
       // Show Success Modal
       document.getElementById("successRegId").textContent = newId;
       document.getElementById("successEventDate").textContent = ev ? ev.disp : "---";
@@ -5442,6 +5460,109 @@
     setupSync();
     init();
     window.addEventListener('load', init);
+    // ════════════ DOWNLOAD REGISTRATION FORM ════════════
+    function downloadReg(format) {
+      if (!window.lastRegDetails) {
+        alert("Registration details not found. Please try again.");
+        return;
+      }
+      
+      const details = window.lastRegDetails;
+      
+      const div = document.createElement('div');
+      div.style.cssText = 'position:absolute; left:-9999px; top:-9999px; width:600px; background:#ffffff; padding:40px; font-family:"Nunito", sans-serif; color:#0f172a; border-radius:0; box-sizing:border-box;';
+      
+      div.innerHTML = `
+        <div style="background: linear-gradient(135deg, #1A237E, #7B2D8B); padding: 25px; border-radius: 16px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; color: white;">
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <div style="width: 56px; height: 56px; border-radius: 50%; background: #FFD23F; color: #1A237E; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px; font-family: 'Cinzel Decorative', serif;">KNS</div>
+            <div>
+              <div style="font-size: 20px; font-weight: 800; text-transform: uppercase;">Registration Confirmed</div>
+              <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-top: 4px;">Kalikapur Nabin Sangha DC</div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 12px; color: rgba(255,255,255,0.7); text-transform: uppercase; font-weight: 800; letter-spacing: 1px; margin-bottom: 4px;">PARTICIPANT ID</div>
+            <div style="font-size: 28px; font-weight: 900; color: #FFD23F; font-family: 'Cinzel Decorative', serif;">${details.id}</div>
+          </div>
+        </div>
+        
+        <div style="border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; margin-bottom: 25px;">
+          <div style="background: #f8fafc; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; font-weight: 800; font-size: 16px; color: #334155;">Participant Details</div>
+          <div style="padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Full Name</div>
+              <div style="font-size: 16px; font-weight: 700; color: #0f172a;">${details.name}</div>
+            </div>
+            <div>
+              <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Category / Event</div>
+              <div style="font-size: 16px; font-weight: 700; color: #0f172a;">${details.category}</div>
+            </div>
+          </div>
+        </div>
+        
+        <div style="border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; margin-bottom: 25px;">
+          <div style="background: #f8fafc; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; font-weight: 800; font-size: 16px; color: #334155;">Event Details</div>
+          <div style="padding: 20px; display: grid; grid-template-columns: 1fr; gap: 15px;">
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="font-size: 20px;">🏆</div>
+              <div>
+                <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">Event Name</div>
+                <div style="font-size: 15px; font-weight: 700; color: #0f172a;">${details.event}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="font-size: 20px;">📅</div>
+              <div>
+                <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">Date</div>
+                <div style="font-size: 15px; font-weight: 700; color: #0f172a;">${details.date}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="font-size: 20px;">📍</div>
+              <div>
+                <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">Venue</div>
+                <div style="font-size: 15px; font-weight: 700; color: #0f172a;">${details.venue}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div style="text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px dashed #cbd5e1; padding-top: 15px; margin-top: 10px;">
+          Generated automatically on ${new Date().toLocaleString()}<br>Please bring this document (digital or printed) on the event day.
+        </div>
+      `;
+      
+      document.body.appendChild(div);
+      
+      // Allow DOM to render
+      setTimeout(() => {
+        if (typeof html2canvas === 'undefined') { alert('Library not loaded'); return; }
+        html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
+          if (format === 'jpg') {
+            const link = document.createElement('a');
+            link.download = `Registration_${details.id}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+            document.body.removeChild(div);
+          } else if (format === 'pdf') {
+            if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded'); return; }
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            pdf.addImage(imgData, 'JPEG', 0, 10, pdfWidth, pdfHeight);
+            pdf.save(`Registration_${details.id}.pdf`);
+            document.body.removeChild(div);
+          }
+        });
+      }, 300);
+    }
+    
+    window.downloadReg = downloadReg;
   </script>
 
 </body>
