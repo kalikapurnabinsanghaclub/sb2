@@ -2939,6 +2939,16 @@ function filterAppliedVenue(v){ renderApplied('','',v); }
 
 function roundBadge(r){ return{audition:'b-amber',qualified:'b-cyan',semifinal:'b-purple',final:'b-orange'}[r]||'b-gray'; }
 
+function handleFileEdit(input, hiddenId) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+     document.getElementById(hiddenId).value = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function openEditReg(id){
   const p = participants.find(x=>x.id===id);
   document.getElementById('er-id').value = id;
@@ -2963,6 +2973,16 @@ function openEditReg(id){
     
     if (f.type === 'textarea') {
       html += `<div class="fg" style="grid-column:1/-1"><label class="fl">${f.label}</label><textarea id="${fieldId}">${val}</textarea></div>`;
+    } else if (f.type === 'photo' || f.type === 'audio' || f.type === 'video' || f.type === 'file') {
+      const acceptStr = f.type === 'photo' ? 'image/*' : f.type === 'audio' ? 'audio/*' : f.type === 'video' ? 'video/*' : '*/*';
+      const isImg = val && val.startsWith('data:image');
+      html += `<div class="fg" style="grid-column:1/-1"><label class="fl">${f.label}</label>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${val ? (isImg ? `<img src="${val}" style="max-height:100px; border-radius:8px; align-self:flex-start;"/>` : `<div style="font-size:12px; color:var(--text-muted);">Current File Uploaded ✅</div>`) : ''}
+          <input type="file" accept="${acceptStr}" onchange="handleFileEdit(this, '${fieldId}')" style="background:var(--bg-card); color:var(--text); padding:8px; border-radius:8px; border:1px dashed var(--border);"/>
+          <input type="hidden" id="${fieldId}" value="${val}"/>
+        </div>
+      </div>`;
     } else if (f.options && f.options.length) {
       html += `<div class="fg"><label class="fl">${f.label}</label><select id="${fieldId}">
         <option value="">--Select--</option>
