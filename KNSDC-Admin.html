@@ -3014,6 +3014,27 @@ window.saveNewEvent = async () => {
     return;
   }
 
+  // 1.5 Auto-generate Venues for Monitor
+  const uniqueVenues = new Set();
+  if (venue) uniqueVenues.add(venue);
+  Object.values(roundSchedules).forEach(r => {
+    if (r.venue) uniqueVenues.add(r.venue);
+  });
+  
+  let delay = 100;
+  for (const vName of uniqueVenues) {
+    const vObj = {
+      id: Date.now() + delay,
+      name: vName,
+      location: vName,
+      capacity: newEvent.capacity || 100,
+      dates: [],
+      eventId: newId
+    };
+    await syncEngine.createVenue(vObj);
+    delay += 100;
+  }
+
   // 2. Update remaining state (notices, donations, active event)
   syncEngine.setData(state => {
     const newState = { ...state };
