@@ -1685,6 +1685,7 @@
           <select id="er-present"><option value="false">Absent</option><option value="true">Present</option></select>
         </div>
       </div>
+      <div id="er-dynamic-fields" class="g2" style="margin-top:10px; border-top:1px solid var(--border); padding-top:10px;"></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeM('edit-reg-modal')">Cancel</button>
@@ -2941,10 +2942,39 @@ function roundBadge(r){ return{audition:'b-amber',qualified:'b-cyan',semifinal:'
 function openEditReg(id){
   const p = participants.find(x=>x.id===id);
   document.getElementById('er-id').value = id;
-  document.getElementById('er-name').value = p.name;
-  document.getElementById('er-phone').value = p.phone;
-  document.getElementById('er-age').value = p.age;
+  document.getElementById('er-name').value = p.name || '';
+  document.getElementById('er-phone').value = p.phone || '';
+  document.getElementById('er-age').value = p.age || '';
   document.getElementById('er-present').value = String(p.present);
+  
+  // Render Dynamic custom fields
+  const ev = events.find(e => String(e.id) === String(p.eventId));
+  const fFields = ev && ev.formFields ? ev.formFields : [];
+  let html = '';
+  fFields.forEach((f, i) => {
+    if (f.type === 'category' || f.type === 'venue') return;
+    const labelUpper = (f.label || '').toUpperCase();
+    if (labelUpper.includes('NAME') && f.type === 'text') return;
+    if (labelUpper.includes('PHONE') || labelUpper.includes('MOBILE')) return;
+    if (labelUpper.includes('AGE') && f.type === 'number') return;
+    
+    const val = (p.formAnswers && p.formAnswers[f.label]) ? p.formAnswers[f.label] : '';
+    const fieldId = `er-custom-${i}`;
+    
+    if (f.type === 'textarea') {
+      html += `<div class="fg" style="grid-column:1/-1"><label class="fl">${f.label}</label><textarea id="${fieldId}">${val}</textarea></div>`;
+    } else if (f.options && f.options.length) {
+      html += `<div class="fg"><label class="fl">${f.label}</label><select id="${fieldId}">
+        <option value="">--Select--</option>
+        ${f.options.map(opt => `<option value="${opt}" ${val===opt?'selected':''}>${opt}</option>`).join('')}
+      </select></div>`;
+    } else {
+      const typeAttr = f.type === 'email' ? 'email' : f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text';
+      html += `<div class="fg"><label class="fl">${f.label}</label><input type="${typeAttr}" id="${fieldId}" value="${val}"/></div>`;
+    }
+  });
+  document.getElementById('er-dynamic-fields').innerHTML = html;
+  
   renderApplied(); // ensure selects populated
   setTimeout(()=>{
     document.getElementById('er-cat').value = p.catId;
@@ -2962,6 +2992,26 @@ function saveEditReg(){
   p.catId = parseInt(document.getElementById('er-cat').value);
   p.venueId = parseInt(document.getElementById('er-venue').value);
   p.present = document.getElementById('er-present').value==='true';
+  
+  // Save Dynamic custom fields
+  const ev = events.find(e => String(e.id) === String(p.eventId));
+  const fFields = ev && ev.formFields ? ev.formFields : [];
+  if (!p.formAnswers) p.formAnswers = {};
+  
+  fFields.forEach((f, i) => {
+    if (f.type === 'category' || f.type === 'venue') return;
+    const labelUpper = (f.label || '').toUpperCase();
+    if (labelUpper.includes('NAME') && f.type === 'text') return;
+    if (labelUpper.includes('PHONE') || labelUpper.includes('MOBILE')) return;
+    if (labelUpper.includes('AGE') && f.type === 'number') return;
+    
+    const fieldId = `er-custom-${i}`;
+    const el = document.getElementById(fieldId);
+    if (el) {
+       p.formAnswers[f.label] = el.value;
+    }
+  });
+  
   closeM('edit-reg-modal');
   syncAll();
   renderApplied();
