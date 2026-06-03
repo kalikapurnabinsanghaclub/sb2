@@ -3144,7 +3144,33 @@ window.saveEditedEvent = async () => {
         return;
     }
         
-
+    // 1.5 Auto-generate Venues for Monitor if they don't exist
+    const state = syncEngine.getData();
+    const existingVenues = (state.venues || []).filter(v => String(v.eventId) === String(id));
+    const uniqueVenues = new Set();
+    if (venue) uniqueVenues.add(venue);
+    Object.values(roundSchedules).forEach(r => {
+      if (r.venue) uniqueVenues.add(r.venue);
+    });
+    
+    let delay = 100;
+    for (const vName of uniqueVenues) {
+      if (!vName) continue;
+      // Check if this venue name already exists for this event
+      const alreadyExists = existingVenues.some(v => v.name.toLowerCase() === vName.toLowerCase());
+      if (!alreadyExists) {
+        const vObj = {
+          id: Date.now() + delay,
+          name: vName,
+          location: vName,
+          capacity: updatedEvent.capacity || 100,
+          dates: [],
+          eventId: id
+        };
+        await syncEngine.createVenue(vObj);
+        delay += 100;
+      }
+    }
     
     closeM('edit-event-modal');
     toast('✅ Event updated successfully!');
