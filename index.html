@@ -4820,8 +4820,18 @@
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="date" id="${id}" onchange="calcPublicAge(this.value)" style="${inputStyle}"></div>`;
         } else if (f.type === 'address' || f.type === 'textarea') {
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><textarea class="inp su-df" data-label="${f.label}" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></textarea></div>`;
-        } else if (f.type === 'file_link' || f.type === 'video' || f.type === 'audio') {
+        } else if (f.type === 'file_link') {
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="text" id="${id}" placeholder="Paste link (e.g., Google Drive, YouTube)" style="${inputStyle}"></div>`;
+        } else if (f.type === 'video_link_or_file' || f.type === 'audio_link_or_file') {
+          const accept = f.type === 'video_link_or_file' ? 'video/*' : 'audio/*';
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <input type="text" placeholder="Paste Link here" style="${inputStyle}" onchange="document.getElementById('${id}').value = this.value">
+              <div style="font-size:0.85rem;color:rgba(255,255,255,0.7);text-align:center;font-weight:bold;">— OR UPLOAD FILE —</div>
+              <input type="file" accept="${accept}" style="${inputStyle}; padding:10px; background:rgba(0,0,0,0.2)" onchange="convertPublicFileToBase64(this, '${id}')">
+              <input type="hidden" class="inp su-df" data-label="${f.label}" id="${id}">
+            </div>
+          </div>`;
         } else if (f.type === 'file' || f.type === 'photo') {
           // Monitor-only field, ignore rendering on public form
         } else if (f.type === 'radio') {
@@ -4913,6 +4923,22 @@
       const age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
       const ageInputs = Array.from(document.querySelectorAll('input.su-df[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
       if (ageInputs.length > 0) ageInputs[0].value = age;
+    };
+
+    window.convertPublicFileToBase64 = function(input, targetId) {
+      const file = input.files[0];
+      if(!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+         showToast("File too large", "Please select a file smaller than 5MB, or paste a link instead.", "⚠️");
+         input.value = "";
+         return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById(targetId).value = e.target.result;
+        showToast("Success", "File processed successfully!", "✅");
+      };
+      reader.readAsDataURL(file);
     };
 
     function showEventDetail(id) {
