@@ -1003,15 +1003,16 @@
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
             <button class="btn btn-amber btn-sm" style="background:linear-gradient(135deg,var(--purple),var(--blue))" onclick="addStandardTrio()">✨ Add Standard Trio (Name, Gender, Phone)</button>
             <div style="width:100%; height:1px; background:var(--border); margin:4px 0;"></div>
-            <button class="btn btn-ghost btn-sm" onclick="addFormField('text')">＋ Text</button>
-            <button class="btn btn-ghost btn-sm" onclick="addFormField('number')">＋ Number</button>
+            <button class="btn btn-ghost btn-sm" onclick="addFormField('address')">＋ Address</button>
+            <button class="btn btn-ghost btn-sm" onclick="addFormField('dob')">＋ Date of Birth</button>
             <button class="btn btn-ghost btn-sm" onclick="addFormField('age')">＋ Age</button>
-            <button class="btn btn-ghost btn-sm" onclick="addFormField('radio')">＋ Radio</button>
-            <button class="btn btn-ghost btn-sm" onclick="addFormField('checkbox')">＋ Checkbox</button>
+            <button class="btn btn-ghost btn-sm" onclick="addFormField('email')">＋ Email ID</button>
+            <button class="btn btn-ghost btn-sm" onclick="addFormField('photo')">＋ Upload Photo</button>
+            <button class="btn btn-ghost btn-sm" onclick="addFormField('video')">＋ Upload Video or Link</button>
+            <button class="btn btn-ghost btn-sm" onclick="addFormField('audio')">＋ Upload Audio or Link</button>
             <button class="btn btn-ghost btn-sm" onclick="addFormField('category')">＋ Category Selection</button>
             <button class="btn btn-ghost btn-sm" onclick="addFormField('venue')">＋ Venue Selection</button>
             <button class="btn btn-ghost btn-sm" onclick="addFormField('tc')">＋ T&amp;C</button>
-            <button class="btn btn-ghost btn-sm" onclick="addFormField('payment')">＋ Payment Fee</button>
           </div>
         </div>
         <div class="card">
@@ -2969,6 +2970,19 @@ function openAddRegModal(){
       inputHtml = `<input id="${id}" type="text" placeholder="${f.placeholder || ''}" data-label="${f.label}" />`;
     } else if (f.type === 'number') {
       inputHtml = `<input id="${id}" type="number" placeholder="${f.placeholder || ''}" data-label="${f.label}" />`;
+    } else if (f.type === 'email') {
+      inputHtml = `<input id="${id}" type="email" placeholder="${f.placeholder || ''}" data-label="${f.label}" />`;
+    } else if (f.type === 'dob' || f.type === 'date') {
+      inputHtml = `<input id="${id}" type="date" data-label="${f.label}" onchange="calcAge(this.value)" />`;
+    } else if (f.type === 'address' || f.type === 'textarea') {
+      inputHtml = `<textarea id="${id}" placeholder="${f.placeholder || ''}" data-label="${f.label}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface)"></textarea>`;
+    } else if (f.type === 'file') {
+      inputHtml = `<div style="display:flex;gap:10px;align-items:center">
+                     <input type="file" id="${id}_file" accept="image/*" onchange="convertFileToBase64(this, '${id}')" />
+                     <input type="hidden" id="${id}" data-label="${f.label}" />
+                   </div>`;
+    } else if (f.type === 'file_link') {
+      inputHtml = `<input id="${id}" type="text" placeholder="Paste link (e.g., Google Drive, YouTube)" data-label="${f.label}" />`;
     } else if (f.type === 'radio') {
       inputHtml = `<div style="display:flex;gap:10px;margin-top:5px;flex-wrap:wrap">
         ${(f.options || []).map(opt => `
@@ -3011,7 +3025,7 @@ function openAddRegModal(){
       </label>`;
     }
 
-    html += `<div class="fg" style="margin-bottom:15px; grid-column: ${f.type === 'tc' ? '1/-1' : 'auto'}">
+    html += `<div class="fg" style="margin-bottom:15px; grid-column: ${f.type === 'tc' || f.type === 'address' ? '1/-1' : 'auto'}">
       <label class="fl">${f.label} ${f.required ? '*' : ''}</label>
       ${inputHtml}
     </div>`;
@@ -3027,6 +3041,26 @@ function openAddRegModal(){
   container.innerHTML = html;
   openM('add-reg-modal');
 }
+
+window.calcAge = (dobString) => {
+  if(!dobString) return;
+  const dob = new Date(dobString);
+  const diff = Date.now() - dob.getTime();
+  const age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+  const ageInputs = Array.from(document.querySelectorAll('input[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
+  if (ageInputs.length > 0) ageInputs[0].value = age;
+};
+
+window.convertFileToBase64 = (input, targetId) => {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById(targetId).value = e.target.result;
+    toast('Photo processed successfully');
+  };
+  reader.readAsDataURL(file);
+};
 
 window.updateArDates = (venueId) => {
   const s = syncEngine.getData();
@@ -3271,6 +3305,11 @@ function renderFormPreview(){
   document.getElementById('form-preview').innerHTML = formFields.map(f=>{
     if(f.type==='text') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><input placeholder="${f.placeholder||''}" disabled/></div>`;
     if(f.type==='number') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><input type="number" placeholder="${f.placeholder||''}" disabled/></div>`;
+    if(f.type==='email') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><input type="email" placeholder="${f.placeholder||''}" disabled/></div>`;
+    if(f.type==='textarea') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><textarea placeholder="${f.placeholder||''}" disabled></textarea></div>`;
+    if(f.type==='date') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><input type="date" disabled/></div>`;
+    if(f.type==='file') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><input type="file" disabled/></div>`;
+    if(f.type==='file_link') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><input type="text" placeholder="Paste Link or Upload" disabled/></div>`;
     if(f.type==='radio') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">${(f.options||[]).map(o=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="radio" name="prev_${f.label}" disabled/> ${o}</label>`).join('')}</div></div>`;
     if(f.type==='checkbox') return `<div class="fg">${(f.options||[]).map(o=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" disabled/> ${o}</label>`).join('')}</div>`;
     if(f.type==='category') return `<div class="fg"><label class="fl">${f.label}${f.required?' *':''}</label><select style="cursor:pointer"><option value="">— Select Category —</option>${cats.map(c=>`<option>${c.name}</option>`).join('')}</select></div>`;
@@ -3291,6 +3330,12 @@ function addFormField(type){
   if(type==='radio') { label='Gender'; options=['Male','Female','Other']; }
   if(type==='age') { type='number'; label='Age'; }
   if(type==='payment') { label='Registration Fee'; }
+  if(type==='dob') { type='date'; label='Date of Birth'; }
+  if(type==='address') { type='textarea'; label='Address'; }
+  if(type==='email') { type='email'; label='Email ID'; }
+  if(type==='photo') { type='file'; label='Upload Photo'; }
+  if(type==='video') { type='file_link'; label='Upload Video or Link'; }
+  if(type==='audio') { type='file_link'; label='Upload Audio or Link'; }
 
   formFields.push({type, label, placeholder:'', required:true, options, tcText});
   syncAll();
@@ -3511,7 +3556,8 @@ async function deleteVenue(id) {
 function renderVenueMonitor(){
   const vsel = document.getElementById('venue-select');
   if (!vsel) return;
-  vsel.innerHTML = '<option value="">— Select Venue —</option>' + venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+  const filteredVenues = venues.filter(v => String(v.eventId) === String(activeEventId) || !v.eventId);
+  vsel.innerHTML = '<option value="">— Select Venue —</option>' + filteredVenues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
   const vdsel = document.getElementById('venue-date-sel');
   vdsel.innerHTML = '<option value="">All Dates</option>';
   renderVenueParticipants();
