@@ -5239,7 +5239,7 @@ window.updateHostVenueDropdown = function() {
     (activeEv?.venues || []).map(v => `<option value="${v.id}">${v.name}</option>`).join('');
 };
 
-window.saveHost = function() {
+window.saveHost = async function() {
   const name = document.getElementById('host-name').value.trim();
   const venueId = document.getElementById('host-venue').value;
   const date = document.getElementById('host-date').value;
@@ -5270,6 +5270,12 @@ window.saveHost = function() {
   
   hostAssignments.push(newHost);
   syncEngine.updateState({ hostAssignments });
+  
+  // Sync to staff credentials so it appears in Admin
+  if (syncEngine.addStaffMember) {
+    await syncEngine.addStaffMember(email, pass, name, 'host');
+  }
+
   closeM('host-modal');
   renderHostAssign();
   toast('Host assigned successfully!');
@@ -5564,6 +5570,12 @@ async function saveAgreement(){
   if(email && password && syncEngine && syncEngine.saveJudgeCredential) {
     const eventId = obj.eventId;
     const result = await syncEngine.saveJudgeCredential(email, password, name, eventId, agrId);
+    
+    // Sync to staff credentials so it appears in Admin Staff & Roles list
+    if (syncEngine.addStaffMember) {
+      await syncEngine.addStaffMember(email, password, name, 'judge');
+    }
+
     if(result.success) {
       toast(editingAgrId ? '✅ Agreement updated & credentials synced!' : '✅ Agreement created — Judge can log in!');
     } else {
