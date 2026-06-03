@@ -203,6 +203,7 @@ CREATE TABLE IF NOT EXISTS public.events (
     "stagePreview"  BOOLEAN DEFAULT false,
     "resultPublic"  BOOLEAN DEFAULT false,
     active          BOOLEAN DEFAULT false,
+    form_fields     JSONB DEFAULT '[]'::jsonb,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 

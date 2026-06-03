@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS public.events (
   image text,
   "publicReg" boolean,
   "stagePreview" boolean,
-  "resultPublic" boolean
+  "resultPublic" boolean,
+  form_fields jsonb
 );
 
 -- Past Events
