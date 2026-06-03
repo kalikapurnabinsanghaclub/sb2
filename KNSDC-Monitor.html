@@ -34,6 +34,7 @@
 <!-- jsPDF and AutoTable for PDF export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root {
     --primary: #FF6B35;
@@ -1252,6 +1253,7 @@
           </div>
           <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700" onclick="promoteSelected()">🔺 Promote Selected</button>
           <button class="btn btn-blue btn-sm" onclick="downloadPromoPDF()" style="border-radius:8px">⬇ PDF</button>
+          <button class="btn btn-blue btn-sm" onclick="downloadPromoJPG()" style="border-radius:8px">⬇ JPG</button>
         </div>
       </div>
       <div id="promo-list" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:12px"></div>
@@ -4707,10 +4709,10 @@ function downloadPromoPDF(){
   };
   
   // Table Data
-  const head = [['#', 'Participant Name', 'ID', 'Category', 'Age']];
+  const head = [['#', 'Participant Name', 'Category', 'Age']];
   const body = data.map((p, idx) => {
     const cat = categories.find(c => c.id === p.catId);
-    return [idx + 1, p.name, p.id, cat ? cat.name : '-', p.age || '-'];
+    return [idx + 1, p.name, cat ? cat.name : '-', p.age || '-'];
   });
   
   doc.autoTable({
@@ -4751,6 +4753,81 @@ function downloadPromoPDF(){
   
   doc.save(`Promotion_${toRound}_${new Date().getTime()}.pdf`);
   toast('✅ Downloaded PDF!');
+}
+
+function downloadPromoJPG(){
+  if (typeof html2canvas === 'undefined') { toast('JPG library not loaded yet.'); return; }
+  
+  const fromRound = document.getElementById('promo-from-round').value;
+  const toRound = {audition:'qualified',qualified:'semifinal',semifinal:'final'}[fromRound];
+  const catFilter = document.getElementById('promo-cat-filter').value;
+  const venueFilter = document.getElementById('promo-venue-filter') ? document.getElementById('promo-venue-filter').value : '';
+
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const eventName = activeEv.name || 'Promotion List';
+  const organizer = activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha';
+  const evDate = activeEv.date || new Date().toISOString().split('T')[0];
+  const vObj = venues.find(v => String(v.id) === String(venueFilter));
+  const venueName = vObj ? vObj.name : 'All Venues';
+  
+  let data = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  if(catFilter) data = data.filter(p=>p.catId===parseInt(catFilter));
+  if(venueFilter) data = data.filter(p=>p.venueId===parseInt(venueFilter));
+  if (promoSelections.size > 0) data = data.filter(p => promoSelections.has(p.id));
+  
+  if (data.length === 0) { toast('No participants found to download.'); return; }
+
+  const div = document.createElement('div');
+  div.style.cssText = 'position:absolute; left:-9999px; top:-9999px; width:800px; background:#ffffff; padding:40px; font-family:sans-serif; color:#0f172a; border-radius:0;';
+  
+  let rowsHtml = data.map((p, idx) => {
+    const cat = categories.find(c => c.id === p.catId);
+    return `<tr style="background:${idx%2===0?'#fff':'#f8fafc'}"><td style="padding:10px;border-bottom:1px solid #e2e8f0">${idx+1}</td><td style="padding:10px;border-bottom:1px solid #e2e8f0;font-weight:600">${p.name}</td><td style="padding:10px;border-bottom:1px solid #e2e8f0">${cat?cat.name:'-'}</td><td style="padding:10px;border-bottom:1px solid #e2e8f0">${p.age||'-'}</td></tr>`;
+  }).join('');
+
+  div.innerHTML = `
+    <div style="background:#f8fafc; padding:20px; border-radius:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; gap:16px; align-items:center;">
+        <div style="width:48px; height:48px; border-radius:50%; background:#1e40af; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:16px;">KNS</div>
+        <div>
+          <div style="font-size:24px; font-weight:800; color:#0f172a; text-transform:uppercase">${eventName}</div>
+          <div style="font-size:14px; color:#64748b; margin-top:4px;">Organized by: ${organizer}</div>
+          <div style="font-size:13px; color:#64748b; margin-top:2px;">Venue: ${venueName}  |  Date: ${evDate}</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:18px; font-weight:800; color:#d97706; text-transform:uppercase">PROMOTION LIST: ${toRound}</div>
+        <div style="font-size:14px; color:#64748b; margin-top:4px;">${data.length} Participants</div>
+      </div>
+    </div>
+    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:14px;">
+      <thead>
+        <tr style="background:#3b82f6; color:#fff;">
+          <th style="padding:12px 10px; font-weight:700; border-top-left-radius:8px;">#</th>
+          <th style="padding:12px 10px; font-weight:700;">Participant Name</th>
+          <th style="padding:12px 10px; font-weight:700;">Category</th>
+          <th style="padding:12px 10px; font-weight:700; border-top-right-radius:8px;">Age</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+    <div style="margin-top:20px; text-align:center; font-size:12px; color:#94a3b8;">
+      Generated securely from KNSDC Monitor
+    </div>
+  `;
+  document.body.appendChild(div);
+  
+  html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = `Promotion_${toRound}_${new Date().getTime()}.jpg`;
+    link.href = canvas.toDataURL('image/jpeg', 0.9);
+    link.click();
+    document.body.removeChild(div);
+    toast('✅ Downloaded JPG!');
+  });
 }
 
 // ══════════════════════════════════════════
@@ -5948,6 +6025,7 @@ window.togglePromo = togglePromo;
 window.selectAllPromo = selectAllPromo;
 window.promoteSelected = promoteSelected;
 window.downloadPromoPDF = downloadPromoPDF;
+window.downloadPromoJPG = downloadPromoJPG;
 window.settingsTab = settingsTab;
 window.toggleFloatChat = toggleFloatChat;
 window.sendFloatMsg = sendFloatMsg;
