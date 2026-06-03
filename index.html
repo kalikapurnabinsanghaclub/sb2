@@ -4835,7 +4835,7 @@
             <div style="display:flex;flex-direction:column;gap:10px;">
               <input type="text" placeholder="Paste Link here" style="${inputStyle}" onchange="document.getElementById('${id}').value = this.value">
               <div style="font-size:0.85rem;color:rgba(255,255,255,0.7);text-align:center;font-weight:bold;">— OR UPLOAD FILE —</div>
-              <input type="file" accept="${accept}" style="${inputStyle}; padding:10px; background:rgba(0,0,0,0.2)" onchange="convertPublicFileToBase64(this, '${id}')">
+              <input type="file" accept="${accept}" style="${inputStyle}; padding:10px; background:rgba(0,0,0,0.2)" onchange="uploadPublicFileToCloud(this, '${id}')">
               <input type="hidden" class="inp su-df" data-label="${f.label}" id="${id}">
             </div>
           </div>`;
@@ -4932,20 +4932,28 @@
       if (ageInputs.length > 0) ageInputs[0].value = age;
     };
 
-    window.convertPublicFileToBase64 = function(input, targetId) {
+    window.uploadPublicFileToCloud = async function(input, targetId) {
       const file = input.files[0];
       if(!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-         showToast("File too large", "Please select a file smaller than 5MB, or paste a link instead.", "⚠️");
+      if (file.size > 20 * 1024 * 1024) {
+         showToast("File too large", "Please select a file smaller than 20MB, or paste a link instead.", "⚠️");
          input.value = "";
          return;
       }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        document.getElementById(targetId).value = e.target.result;
-        showToast("Success", "File processed successfully!", "✅");
-      };
-      reader.readAsDataURL(file);
+      
+      showToast("Uploading...", "Please wait while your file is securely uploaded.", "⏳");
+      input.disabled = true;
+      
+      const url = await syncEngine.uploadFile(file);
+      input.disabled = false;
+      
+      if (url) {
+        document.getElementById(targetId).value = url;
+        showToast("Success", "File uploaded successfully!", "✅");
+      } else {
+        showToast("Error", "Failed to upload file. Please try again or paste a link.", "❌");
+        input.value = "";
+      }
     };
 
     function showEventDetail(id) {

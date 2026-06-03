@@ -2939,14 +2939,31 @@ function filterAppliedVenue(v){ renderApplied('','',v); }
 
 function roundBadge(r){ return{audition:'b-amber',qualified:'b-cyan',semifinal:'b-purple',final:'b-orange'}[r]||'b-gray'; }
 
-function handleFileEdit(input, hiddenId) {
+async function handleFileEdit(input, hiddenId) {
   const file = input.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-     document.getElementById(hiddenId).value = e.target.result;
-  };
-  reader.readAsDataURL(file);
+  
+  if (file.size > 20 * 1024 * 1024) {
+    alert("File is too large! Please upload a file smaller than 20MB.");
+    input.value = "";
+    return;
+  }
+  
+  input.disabled = true;
+  const originalBg = input.style.background;
+  input.style.background = 'rgba(255,210,63,0.2)'; // Amber tint for loading
+  
+  const url = await syncEngine.uploadFile(file);
+  
+  input.disabled = false;
+  input.style.background = originalBg;
+  
+  if (url) {
+     document.getElementById(hiddenId).value = url;
+  } else {
+     alert("Error uploading file. Please try again.");
+     input.value = "";
+  }
 }
 
 function openEditReg(id){
