@@ -64,7 +64,7 @@ export const renderAbout = (data) => {
               Building Community,<br/>
               <span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Celebrating Culture</span>
             </h3>
-            <p style="color: #4b5563; line-height: 1.9; font-size: 1.05rem; margin-bottom: 20px;">Kalikapur Nabin Sangha DC (KNSDC) is one of South Kolkata's most vibrant community organisations, founded in 1985 with a vision to unite youth through culture, sports and social welfare.</p>
+            <p style="color: #4b5563; line-height: 1.9; font-size: 1.05rem; margin-bottom: 20px;">Kalikapur Nabin Sangha DC (KNSDC) is one of South 24 Pgs's most vibrant community organisations, founded in 1985 with a vision to unite youth through culture, sports and social welfare.</p>
             <p style="color: #4b5563; line-height: 1.9; font-size: 1.05rem; margin-bottom: 32px;">Over four decades we've grown from a small neighbourhood club to a cornerstone of the Kalikapur community.</p>
             <div style="display: flex; gap: 14px; flex-wrap: wrap;">
               <div class="glass" style="display: flex; align-items: center; gap: 10px; border-radius: 14px; padding: 12px 20px;"><span>🎯</span><span style="font-weight: 700;">Our Mission</span></div>
