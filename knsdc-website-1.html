@@ -163,6 +163,61 @@
       from { transform: translateZ(-950px) rotateY(0deg); }
       to { transform: translateZ(-950px) rotateY(-360deg); }
     }
+    /* 3D Book Styles */
+    .book-container {
+      perspective: 1500px;
+      width: 100%;
+      height: 400px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 40px 0;
+    }
+    .book {
+      position: relative;
+      width: 300px;
+      height: 400px;
+      transform-style: preserve-3d;
+      /* offset to center the open book */
+      transform: translateX(150px);
+    }
+    .book-page {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      transform-origin: left center;
+      transform-style: preserve-3d;
+      transition: transform 1.5s ease-in-out;
+      border-radius: 4px 12px 12px 4px;
+      box-shadow: inset 4px 0 10px rgba(0,0,0,0.1), 2px 2px 10px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    .book-page.flipped {
+      transform: rotateY(-180deg);
+    }
+    .page-front, .page-back {
+      position: absolute;
+      width: 100%; height: 100%;
+      backface-visibility: hidden;
+      overflow: hidden;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #ddd;
+    }
+    .page-front {
+      border-radius: 4px 12px 12px 4px;
+    }
+    .page-back {
+      transform: rotateY(180deg);
+      border-radius: 12px 4px 4px 12px;
+      box-shadow: inset -4px 0 10px rgba(0,0,0,0.1);
+    }
+    .page-front img, .page-back img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
   </style>
 </head>
 <body>
@@ -1055,6 +1110,78 @@
     function renderGallery() {
       const grid = document.getElementById("galleryGrid");
       if (!grid) return;
+
+      if (window.bookFlipTimer) {
+        clearInterval(window.bookFlipTimer);
+        window.bookFlipTimer = null;
+      }
+
+      if (currentGalleryFilter === "All") {
+        grid.style.display = "block";
+        let pagesHTML = "";
+        const images = GALLERY;
+        let pageZIndex = images.length;
+        
+        for (let i = 0; i < images.length; i += 2) {
+          const frontImg = images[i];
+          const backImg = images[i+1];
+          const pageIndex = i/2;
+          
+          pagesHTML += `
+            <div class="book-page" style="z-index: ${pageZIndex--};" id="book-page-${pageIndex}">
+              <div class="page-front" onclick="if(window.openImageModal) openImageModal('${frontImg.url}')">
+                <img src="${frontImg.url}" alt="${frontImg.cap}">
+              </div>
+              <div class="page-back" ${backImg ? `onclick="if(window.openImageModal) openImageModal('${backImg.url}')"` : ''}>
+                ${backImg ? `<img src="${backImg.url}" alt="${backImg.cap}">` : `<div style="padding: 20px; text-align: center; color: #888; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">End of Gallery</div>`}
+              </div>
+            </div>
+          `;
+        }
+        
+        grid.innerHTML = `
+          <div class="book-container">
+            <div class="book" id="autoFlipBook">
+              ${pagesHTML}
+            </div>
+          </div>
+        `;
+        
+        let currentPage = 0;
+        const totalPages = Math.ceil(images.length / 2);
+        
+        window.bookFlipTimer = setInterval(() => {
+          const book = document.getElementById("autoFlipBook");
+          if (!book) {
+            clearInterval(window.bookFlipTimer);
+            return;
+          }
+          
+          if (currentPage >= totalPages) {
+            for (let j = 0; j < totalPages; j++) {
+              const p = document.getElementById(`book-page-${j}`);
+              if(p) {
+                p.classList.remove('flipped');
+                p.style.zIndex = totalPages - j;
+              }
+            }
+            currentPage = 0;
+          } else {
+            const p = document.getElementById(`book-page-${currentPage}`);
+            if (p) {
+              p.classList.add('flipped');
+              setTimeout(() => {
+                if (p.classList.contains('flipped')) {
+                  p.style.zIndex = currentPage + 1;
+                }
+              }, 750);
+            }
+            currentPage++;
+          }
+        }, 3000);
+        
+        return;
+      }
 
       if (currentGalleryFilter === "Cultural") {
         grid.style.display = "block";
