@@ -1251,7 +1251,7 @@
             <button class="btn btn-ghost btn-sm" onclick="autoSelectTopN()" style="border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700">Auto-Select Top N/Cat</button>
           </div>
           <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700" onclick="promoteSelected()">🔺 Promote Selected</button>
-          <button class="btn btn-blue btn-sm" onclick="downloadRoundResult()" style="border-radius:8px">⬇ CSV</button>
+          <button class="btn btn-blue btn-sm" onclick="downloadPromoPDF()" style="border-radius:8px">⬇ PDF</button>
         </div>
       </div>
       <div id="promo-list" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:12px"></div>
@@ -4637,31 +4637,120 @@ async function promoteSelected() {
   toast(`🔺 ${count} participant${count>1?'s':''} promoted to ${toRound.toUpperCase()}!`);
 }
 
-function downloadRoundResult(){
+function downloadPromoPDF(){
+  if (!window.jspdf || !window.jspdf.jsPDF) { toast('PDF library not loaded yet.'); return; }
+  
   const fromRound = document.getElementById('promo-from-round').value;
-  const data = participants.filter(p=>p.round===fromRound);
-  const presentJudges = judges.filter(j => {
-    if (!j.present) return false;
-    const agreements = syncEngine.getData()?.judgeAgreements || [];
-    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+  const toRound = {audition:'qualified',qualified:'semifinal',semifinal:'final'}[fromRound];
+  const catFilter = document.getElementById('promo-cat-filter').value;
+  const venueFilter = document.getElementById('promo-venue-filter') ? document.getElementById('promo-venue-filter').value : '';
+
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const eventName = activeEv.name || 'Promotion List';
+  const organizer = activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha';
+  const evDate = activeEv.date || new Date().toISOString().split('T')[0];
+  const vObj = venues.find(v => String(v.id) === String(venueFilter));
+  const venueName = vObj ? vObj.name : 'All Venues';
+  
+  let data = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  if(catFilter) data = data.filter(p=>p.catId===parseInt(catFilter));
+  if(venueFilter) data = data.filter(p=>p.venueId===parseInt(venueFilter));
+  
+  // If selections exist, only download selected
+  if (promoSelections.size > 0) {
+    data = data.filter(p => promoSelections.has(p.id));
+  }
+  
+  if (data.length === 0) {
+    toast('No participants found to download.');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4'); // Portrait
+  
+  // Header Function
+  const drawHeader = (doc) => {
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, 210, 40, 'F');
+    
+    // Logo Placeholder
+    doc.setFillColor(30, 64, 175); // Blue
+    doc.circle(25, 20, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.text('KNS', 20.5, 21.5);
+    
+    // Event Details
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(16);
+    doc.text(eventName.toUpperCase(), 40, 16);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(10);
+    doc.text(`Organized by: ${organizer}`, 40, 22);
+    
+    doc.setFontSize(9);
+    doc.text(`Venue: ${venueName}  |  Date: ${evDate}`, 40, 28);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(217, 119, 6); // Amber
+    doc.setFontSize(12);
+    doc.text(`PROMOTION LIST: ${toRound.toUpperCase()}`, 195, 20, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`${data.length} Participants`, 195, 26, { align: 'right' });
+  };
+  
+  // Table Data
+  const head = [['#', 'Participant Name', 'ID', 'Category', 'Age']];
+  const body = data.map((p, idx) => {
+    const cat = categories.find(c => c.id === p.catId);
+    return [idx + 1, p.name, p.id, cat ? cat.name : '-', p.age || '-'];
   });
-  const rows = [['Rank','ID','Name','Category','Age'].concat(subjects.map(s=>s.name)).concat(['Total'])];
-  [...data].sort((a,b)=>{
-    const sa=presentJudges.reduce((acc,j)=>acc+subjects.reduce((s2,s)=>s2+(a.scores[j.id]?a.scores[j.id][s.id]||0:0),0),0);
-    const sb=presentJudges.reduce((acc,j)=>acc+subjects.reduce((s2,s)=>s2+(b.scores[j.id]?b.scores[j.id][s.id]||0:0),0),0);
-    return sb-sa;
-  }).forEach((p,rank)=>{
-    const cat=categories.find(c=>c.id===p.catId);
-    const subjScores=subjects.map(s=>Math.round(presentJudges.reduce((acc,j)=>acc+(p.scores[j.id]?p.scores[j.id][s.id]||0:0),0)/presentJudges.length*10)/10);
-    const total=presentJudges.reduce((acc,j)=>acc+subjects.reduce((s2,s)=>s2+(p.scores[j.id]?p.scores[j.id][s.id]||0:0),0),0);
-    rows.push([rank+1,p.id,p.name,cat?cat.name:'',p.age,...subjScores,total]);
+  
+  doc.autoTable({
+    head: head,
+    body: body,
+    startY: 45,
+    theme: 'grid',
+    headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+    styles: { fontSize: 10, cellPadding: 4 },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    didDrawPage: function (data) {
+      if (data.pageNumber === 1) {
+        drawHeader(doc);
+      } else {
+        // Draw minimal header on subsequent pages
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${eventName} - Promotion List`, 14, 15);
+      }
+      
+      // Footer: Page numbers
+      const str = 'Page ' + doc.internal.getNumberOfPages();
+      doc.setFontSize(9);
+      doc.setTextColor(150);
+      doc.text(str, data.settings.margin.left, doc.internal.pageSize.height - 10);
+    }
   });
-  const csv=rows.map(r=>r.join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download=`${fromRound}_results.csv`;
-  a.click();
-  toast(`Downloaded ${fromRound}_results.csv`);
+  
+  // We need to add the total pages logic (X of Y) after autoTable finishes
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(9);
+    doc.setTextColor(150);
+    doc.text(' of ' + pageCount, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10, { align: 'right' });
+  }
+  
+  doc.save(`Promotion_${toRound}_${new Date().getTime()}.pdf`);
+  toast('✅ Downloaded PDF!');
 }
 
 // ══════════════════════════════════════════
