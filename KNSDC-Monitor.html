@@ -2464,6 +2464,7 @@ function triggerCTA(){
   else if(page==='chat') triggerSOS();
   else if(page==='judgeassign') openAgreementModal();
   else if(page==='settings') saveEventSettings();
+  else if(page==='statistics') exportStatistics();
 }
 
 function updateNbadges(){
@@ -4351,7 +4352,7 @@ function renderRoundwiseStats(){
     if(!data.length) return '';
     return `<div class="card" style="margin-bottom:12px">
       <div class="card-header" style="margin-bottom: 12px;"><div class="card-title" style="margin-bottom: 0;">${labels[i]} (${data.length})</div><span class="badge ${roundBadge(r)}">${r.toUpperCase()}</span></div>
-      <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Name</th><th>ID</th><th>Category</th><th style="text-align:center">Audition (J | P)</th><th style="text-align:center">Qualified (J | P)</th><th style="text-align:center">Semifinal (J | P)</th><th style="text-align:center">Final (J | P)</th><th style="text-align:center">Status</th><th style="text-align:center;color:var(--purple)">🌟 Total Rating</th></tr></thead>
+      <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Name</th><th>Category</th><th style="text-align:center">Audition (J | P)</th><th style="text-align:center">Qualified (J | P)</th><th style="text-align:center">Semifinal (J | P)</th><th style="text-align:center">Final (J | P)</th><th style="text-align:center">Status</th><th style="text-align:center;color:var(--purple)">🌟 Total Rating</th></tr></thead>
       <tbody>${data.map((p,idx)=>{
         const cat=categories.find(c=>c.id===p.catId);
         
@@ -4386,7 +4387,6 @@ function renderRoundwiseStats(){
         return `<tr>
           <td style="color:var(--text-muted);font-family:var(--fm)">${idx+1}</td>
           <td><strong>${p.name}</strong></td>
-          <td style="font-family:var(--fm);font-size:11px;color:var(--amber2)">${p.id}</td>
           <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
           <td style="text-align:center">${getRoundScoreStr(p, 'audition')}</td>
           <td style="text-align:center">${getRoundScoreStr(p, 'qualified')}</td>
@@ -4827,6 +4827,31 @@ function downloadPromoJPG(){
     link.click();
     document.body.removeChild(div);
     toast('✅ Downloaded JPG!');
+  });
+}
+
+function exportStatistics() {
+  if (typeof html2canvas === 'undefined') { toast('JPG library not loaded yet.'); return; }
+  
+  const statsContainer = document.getElementById('pp-statistics');
+  if (!statsContainer) return;
+  
+  toast('Generating Statistics Export...');
+  
+  const originalBg = statsContainer.style.background;
+  statsContainer.style.background = '#f4f7f9';
+  
+  html2canvas(statsContainer, { scale: 2, useCORS: true, logging: false }).then(canvas => {
+    statsContainer.style.background = originalBg;
+    const link = document.createElement('a');
+    link.download = `Statistics_${currentStatsTab.toUpperCase()}_${new Date().getTime()}.jpg`;
+    link.href = canvas.toDataURL('image/jpeg', 0.9);
+    link.click();
+    toast('✅ Downloaded Statistics JPG!');
+  }).catch(err => {
+    statsContainer.style.background = originalBg;
+    console.error(err);
+    toast('❌ Error generating export');
   });
 }
 
@@ -6026,6 +6051,7 @@ window.selectAllPromo = selectAllPromo;
 window.promoteSelected = promoteSelected;
 window.downloadPromoPDF = downloadPromoPDF;
 window.downloadPromoJPG = downloadPromoJPG;
+window.exportStatistics = exportStatistics;
 window.settingsTab = settingsTab;
 window.toggleFloatChat = toggleFloatChat;
 window.sendFloatMsg = sendFloatMsg;
