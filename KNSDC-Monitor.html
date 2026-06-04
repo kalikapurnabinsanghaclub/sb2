@@ -801,7 +801,14 @@
     <img src="logo.jpg" alt="Logo" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
     <div>
       <div class="logo-mark">KNSDC</div>
-      <div class="logo-sub">Monitor Panel</div>
+      <div class="logo-sub" id="sidebar-portal-label">Monitor Panel</div>
+    </div>
+  </div>
+  <div style="padding:10px 16px 0; font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
+    <div id="sidebar-user-avatar" style="width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex-shrink:0;">M</div>
+    <div style="overflow:hidden;">
+      <div id="sidebar-user-name" style="font-weight:700;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Loading...</div>
+      <div id="sidebar-user-role" style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">...</div>
     </div>
   </div>
   <div class="event-selector">
@@ -1502,14 +1509,14 @@
 <div class="modal-overlay" id="monitor-profile-modal" style="display:none; z-index:2500;" onclick="closeOnBg(event,'monitor-profile-modal')">
   <div class="modal" style="max-width:400px; padding:0; overflow:hidden;">
     <div class="modal-header" style="padding:24px 28px; border-bottom:1px solid rgba(0,0,0,0.05); background:#fff;">
-      <div class="modal-title" style="font-family:var(--fh); font-size:18px; font-weight:800;">Monitor Details</div>
+      <div class="modal-title" style="font-family:var(--fh); font-size:18px; font-weight:800;" id="mpm-modal-title">My Profile</div>
       <button class="btn btn-ghost btn-sm" onclick="closeM('monitor-profile-modal')" style="border-radius:50%; width:32px; height:32px; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
     </div>
     <div class="modal-body" style="padding:28px;">
       <div style="text-align:center; margin-bottom:20px">
         <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--blue2), var(--blue)); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 32px; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3); margin: 0 auto 12px" id="mpm-initial">M</div>
         <div style="font-family:var(--fh); font-size:18px; font-weight:800; color:var(--text)" id="mpm-name">-</div>
-        <div style="font-size:12px; color:var(--blue2); font-weight:700; margin-top:2px" id="mpm-role">Monitor Panel</div>
+        <div style="font-size:12px; font-weight:700; margin-top:2px" id="mpm-role">Monitor Panel</div>
       </div>
       
       <div style="background:rgba(241, 245, 249, 0.8); border:1px solid rgba(226, 232, 240, 0.8); border-radius:12px; padding:16px; margin-bottom:16px; font-size:13px">
@@ -1519,9 +1526,12 @@
         <div style="display:flex; justify-content:space-between; padding:6px 0">
           <span style="color:var(--text-muted); font-weight:600">Account Type</span><strong id="mpm-type" style="color:var(--blue2);">-</strong>
         </div>
+        <div style="display:flex; justify-content:space-between; padding:6px 0; border-top:1px solid rgba(0,0,0,0.06); margin-top:4px" id="mpm-portal-row">
+          <span style="color:var(--text-muted); font-weight:600">Portal Access</span><strong id="mpm-portal" style="color:var(--green2);">Monitor Panel</strong>
+        </div>
       </div>
-      <div style="font-size:11px; color:var(--text-dim); text-align:center;">
-        <em>Note: Monitor passwords are securely hashed by the Admin and cannot be displayed here.</em>
+      <div style="font-size:11px; color:var(--text-dim); text-align:center;" id="mpm-note">
+        <em>Passwords are securely hashed and cannot be displayed here.</em>
       </div>
     </div>
   </div>
@@ -1907,28 +1917,86 @@
 <script>
 const syncEngine = new (window.LocalSync || LocalSync)();
 
+// Role-specific profile configuration
+const ROLE_PROFILE_CONFIG = {
+  monitor: { label: 'Monitor Panel', color: '#3b82f6', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)', shadow: 'rgba(59,130,246,0.3)', title: 'Monitor Details', portal: 'Monitor Panel' },
+  judge:   { label: 'Judge Portal',   color: '#059669', gradient: 'linear-gradient(135deg, #047857, #059669)', shadow: 'rgba(5,150,105,0.3)',  title: 'Judge Details',   portal: 'Judge Portal' },
+  host:    { label: 'Host Portal',    color: '#7c3aed', gradient: 'linear-gradient(135deg, #6d28d9, #7c3aed)', shadow: 'rgba(124,58,237,0.3)', title: 'Host Details',    portal: 'Host Portal' },
+  admin:   { label: 'Admin Panel',    color: '#e11d48', gradient: 'linear-gradient(135deg, #be123c, #e11d48)', shadow: 'rgba(225,29,72,0.3)',  title: 'Admin Details',   portal: 'Admin Panel' }
+};
+
+function updateSidebarUserInfo() {
+  const localUser = localStorage.getItem('kns_user');
+  const localRole = localStorage.getItem('kns_role') || 'monitor';
+  const cfg = ROLE_PROFILE_CONFIG[localRole] || ROLE_PROFILE_CONFIG.monitor;
+  let name = 'Monitor', email = '';
+  if (localUser) {
+    try { const u = JSON.parse(localUser); name = u.name || 'Monitor'; email = u.email || ''; } catch(e) {}
+  }
+  const avatarEl = document.getElementById('sidebar-user-avatar');
+  const nameEl = document.getElementById('sidebar-user-name');
+  const roleEl = document.getElementById('sidebar-user-role');
+  const portalEl = document.getElementById('sidebar-portal-label');
+  if (avatarEl) { avatarEl.textContent = name.charAt(0).toUpperCase(); avatarEl.style.background = cfg.color; }
+  if (nameEl) nameEl.textContent = name;
+  if (roleEl) { roleEl.textContent = cfg.label; roleEl.style.color = cfg.color; }
+  if (portalEl) portalEl.textContent = 'Monitor Panel'; // Portal name stays fixed
+}
+
 function showMonitorProfileModal() {
   const localUser = localStorage.getItem('kns_user');
   const localRole = localStorage.getItem('kns_role') || 'monitor';
+  const cfg = ROLE_PROFILE_CONFIG[localRole] || ROLE_PROFILE_CONFIG.monitor;
   
   let email = 'Unknown';
-  let name = 'Monitor';
+  let name = 'Staff';
   
   if (localUser) {
     try {
       const u = JSON.parse(localUser);
       email = u.email || 'Unknown';
-      name = u.name || 'Monitor';
+      name = u.name || 'Staff';
     } catch(e) {}
   }
+
+  // Set modal title dynamically
+  const titleEl = document.getElementById('mpm-modal-title');
+  if (titleEl) titleEl.textContent = cfg.title;
   
+  // Set avatar with role-specific color
+  const avatarEl = document.getElementById('mpm-initial');
+  if (avatarEl) {
+    avatarEl.textContent = name.charAt(0).toUpperCase();
+    avatarEl.style.background = cfg.gradient;
+    avatarEl.style.boxShadow = `0 4px 10px ${cfg.shadow}`;
+  }
+  
+  // Set role label with role-specific color
+  const roleEl = document.getElementById('mpm-role');
+  if (roleEl) {
+    roleEl.textContent = cfg.label;
+    roleEl.style.color = cfg.color;
+  }
+
+  // Set portal info
+  const portalEl = document.getElementById('mpm-portal');
+  if (portalEl) { portalEl.textContent = 'Monitor Panel (Hub)'; portalEl.style.color = cfg.color; }
+  
+  // Set type badge color
+  const typeEl = document.getElementById('mpm-type');
+  if (typeEl) {
+    typeEl.textContent = localRole.charAt(0).toUpperCase() + localRole.slice(1);
+    typeEl.style.color = cfg.color;
+  }
+
   document.getElementById('mpm-name').textContent = name;
-  document.getElementById('mpm-initial').textContent = name.charAt(0).toUpperCase();
   document.getElementById('mpm-email').textContent = email;
-  document.getElementById('mpm-type').textContent = localRole.charAt(0).toUpperCase() + localRole.slice(1);
   
   document.getElementById('monitor-profile-modal').style.display = 'flex';
 }
+
+// Call on load to sync sidebar
+try { updateSidebarUserInfo(); } catch(e) {}
 
 // Authentication Guard
 function showUnauthorizedOverlay(message) {
@@ -2011,7 +2079,14 @@ async function checkAuth(requiredRoles) {
   return false;
 }
 
-checkAuth(['monitor']);
+// Monitor portal: only 'monitor' role is allowed.
+// Judges, Hosts must use their dedicated portals.
+checkAuth(['monitor']).then(authorized => {
+  if (authorized) {
+    // Re-run sidebar update after auth completes
+    try { updateSidebarUserInfo(); } catch(e) {}
+  }
+});
 
 let participants = [];
 let categories = [];
