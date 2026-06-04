@@ -811,11 +811,16 @@
       <div id="sidebar-user-role" style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">...</div>
     </div>
   </div>
-  <div class="event-selector">
-    <label>Active Event</label>
-    <select id="global-event-sel" onchange="switchEvent(this.value)">
-    </select>
+  <div class="event-selector" id="event-selector-wrap">
+    <label>Assigned Event</label>
+    <div id="assigned-event-display" style="background:rgba(255,255,255,0.9);border:1.5px solid rgba(59,130,246,0.25);padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></span>
+      <span id="assigned-event-name">Loading...</span>
+      <span style="margin-left:auto;font-size:9px;color:#3b82f6;font-weight:800;letter-spacing:0.5px;">LOCKED</span>
+    </div>
   </div>
+  <!-- Hidden select still needed for JS compatibility -->
+  <select id="global-event-sel" style="display:none;"></select>
 
   <div class="nav-section">
     <div class="nav-label">Monitor</div>
@@ -2140,8 +2145,37 @@ function hydrate() {
   if (!s) return;
   
   EVENTS = s.events || [];
-  activeEventId = s.activeEventId;
+
+  // ── Monitor Auto-Event Lock ──
+  // Find the event assigned to this monitor by matching their email
+  // against event.staff[]. If found, lock to that event.
+  const monitorUser = localStorage.getItem('kns_user');
+  let monitorEmail = '';
+  try { monitorEmail = JSON.parse(monitorUser).email || ''; } catch(e) {}
+
+  if (monitorEmail) {
+    const assignedEv = EVENTS.find(e =>
+      Array.isArray(e.staff) && e.staff.map(x => (x || '').toLowerCase()).includes(monitorEmail.toLowerCase())
+    );
+    if (assignedEv && String(assignedEv.id) !== String(activeEventId)) {
+      // Silently lock to assigned event
+      activeEventId = String(assignedEv.id);
+      syncEngine.setData(state => ({ ...state, activeEventId: String(assignedEv.id), eventName: assignedEv.name }));
+    } else if (assignedEv) {
+      activeEventId = String(assignedEv.id);
+    } else {
+      // No assigned event found — use stored or first available
+      activeEventId = s.activeEventId || (EVENTS[0] ? String(EVENTS[0].id) : null);
+    }
+  } else {
+    activeEventId = s.activeEventId;
+  }
+
   const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  
+  // Update locked event display in sidebar
+  const assignedNameEl = document.getElementById('assigned-event-name');
+  if (assignedNameEl) assignedNameEl.textContent = activeEv ? activeEv.name : 'No Event Assigned';
   
   participants = (s.participants || []).map(p => {
     if (p && p.present === undefined) p.present = true;
@@ -2259,21 +2293,12 @@ function syncAll() {
 }
 
 window.switchEvent = (val) => {
-  // 1. Save current event's state to its slot before switching
-  if (activeEventId) syncAll();
-  
+  // Monitor portal: event switching is DISABLED.
+  // Each monitor is locked to their assigned event only.
+  // This function is kept for internal hydrate() compatibility only.
   const ev = EVENTS.find(e => String(e.id) === String(val));
   if (!ev) return;
-  
   activeEventId = val;
-  syncEngine.setData(state => ({ 
-    ...state,
-    activeEventId: val, 
-    eventName: ev.name 
-  }));
-  
-  toast(`🚀 Switched to: ${ev.name}`);
-  // 2. Load new event's state and refresh UI
   hydrate();
 };
 
