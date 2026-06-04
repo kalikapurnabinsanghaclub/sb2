@@ -1381,6 +1381,19 @@
         <label class="fl">Description</label>
         <textarea id="cev-desc" placeholder="Brief description of this event…" style="min-height:60px"></textarea>
       </div>
+
+      <!-- EVENT MONITOR ASSIGNMENT -->
+      <div style="margin-top:20px; padding-top:15px; border-top:1px dashed var(--border)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+           <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm); letter-spacing:1px; text-transform:uppercase; font-weight:800">🖥️ Event Monitor Assignment (Optional)</div>
+           <div style="font-size:10px; color:var(--blue);">Will auto-sync to Staff & Role Mgmt</div>
+        </div>
+        <div class="g2">
+          <div class="fg" style="margin:0"><label class="fl">Monitor Name</label><input type="text" id="cev-monitor-name" placeholder="e.g. Rahul Monitor"/></div>
+          <div class="fg" style="margin:0"><label class="fl">Monitor Email</label><input type="email" id="cev-monitor-email" placeholder="monitor@kns.org"/></div>
+        </div>
+        <div class="fg" style="margin-top:12px; margin-bottom:0"><label class="fl">Monitor Login Password</label><input type="password" id="cev-monitor-pass" placeholder="Set a strong password"/></div>
+      </div>
       
       <!-- ROUND SCHEDULES SECTION -->
       <div style="margin-top:20px; padding-top:15px; border-top:1px dashed var(--border)">
@@ -2535,8 +2548,6 @@ window.editEvent = (id) => {
   document.getElementById('cev-time').value = ev.startTime || '';
   document.getElementById('cev-capacity').value = ev.capacity || '';
   document.getElementById('cev-banner').value = ev.banner || '';
-  document.getElementById('cev-desc').value = ev.description || '';
-  
   // Set staff
   (ev.staff || []).forEach(sid => {
     const chk = document.getElementById('cev-staff-' + sid);
@@ -3022,6 +3033,27 @@ window.saveNewEvent = async () => {
     createdAt: newId
   };
   
+  // Handle Event Monitor Assignment
+  const monitorName = document.getElementById('cev-monitor-name')?.value.trim();
+  const monitorEmail = document.getElementById('cev-monitor-email')?.value.trim();
+  const monitorPass = document.getElementById('cev-monitor-pass')?.value.trim();
+
+  if (monitorEmail && monitorPass && monitorName) {
+    console.log('[CreateEvent] Assigning monitor to event...', monitorEmail);
+    newEvent.staff.push(monitorEmail.toLowerCase());
+    
+    // Auto-create staff member
+    if (window.syncEngine) {
+       toast('Syncing monitor credentials...');
+       const res = await window.syncEngine.addStaffMember(monitorEmail, monitorPass, monitorName, 'monitor');
+       if (!res.success) {
+         toast('Event created, but Monitor creation failed: ' + res.error);
+       } else {
+         toast('Monitor account synced successfully!');
+       }
+    }
+  }
+  
   // 1. Save to Supabase
   const success = await syncEngine.createEvent(newEvent);
   if (!success) {
@@ -3086,6 +3118,7 @@ window.saveNewEvent = async () => {
   closeM('create-event-modal');
   toast('✅ Event "' + name + '" created & notice published!');
   renderEventsPage(syncEngine.getData());
+  renderStaffPage(); // Refresh Staff tab in case a monitor was assigned
 };
 
 window.editEvent = (id) => {
