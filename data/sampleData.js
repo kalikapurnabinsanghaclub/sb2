@@ -103,6 +103,8 @@ export const galleryImages = [
   { id: 10, src: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=600&h=400&fit=crop", title: "Planning Session", category: "Community" },
   { id: 11, src: "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=600&h=400&fit=crop", title: "Dance Performance", category: "Culture" },
   { id: 12, src: "https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&h=400&fit=crop", title: "Team Building", category: "Community" },
+  { id: 13, src: "Sports/photo_6127538719637049299_y.jpg", title: "Sports Action 1", category: "Sports" },
+  { id: 14, src: "Sports/photo_6127538719637049300_y.jpg", title: "Sports Action 2", category: "Sports" }
 ];
 
 export const notices = [
