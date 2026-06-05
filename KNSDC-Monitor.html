@@ -1027,7 +1027,75 @@
    top: 5px;
    border-radius: 0px 0px 0px 5px;
   }
+
+  /* MIC PLUG SWITCH ANIMATION */
+  .mic-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 24px;
+    cursor: pointer;
+  }
+  .mic-switch input { opacity: 0; width: 0; height: 0; }
+  .mic-slider {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #e2e8f0;
+    border-radius: 12px;
+    transition: 0.4s;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+  .mic-socket {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 16px;
+    background: #1e293b;
+    border-radius: 3px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
+    transition: 0.4s;
+  }
+  .mic-plug {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: 4px;
+    display: flex;
+    align-items: center;
+    transition: 0.4s cubic-bezier(0.4, 0.0, 0.2, 1);
+    z-index: 2;
+  }
+  .plug-tip {
+    width: 8px;
+    height: 8px;
+    background: linear-gradient(to bottom, #f3f4f6, #9ca3af, #f3f4f6);
+    border-radius: 0 3px 3px 0;
+    border-right: 1px solid #4b5563;
+  }
+  .plug-body {
+    width: 14px;
+    height: 12px;
+    background: #0f172a;
+    border-radius: 2px 0 0 2px;
+  }
+  .plug-wire {
+    width: 40px;
+    height: 3px;
+    background: #334155;
+    position: absolute;
+    right: 100%;
+  }
+  .mic-switch input:checked + .mic-slider { background: #bbf7d0; }
+  .mic-switch input:checked + .mic-slider .mic-plug { left: calc(100% - 28px); }
+  .mic-switch input:checked + .mic-slider .mic-socket {
+    background: #22c55e;
+    box-shadow: inset 0 0 8px rgba(0,0,0,0.2), 0 0 8px #4ade80;
+  }
 </style>
+
 </head>
 <body>
 <!-- SIDEBAR -->
@@ -5611,6 +5679,28 @@ function handleScoreVisToggle(cb) {
     toast('🔒 Judge scores are now HIDDEN');
   }
 }
+
+
+function handleHostScoreVisToggle(cb) {
+  const isVisible = cb.checked;
+  syncEngine.setData(s => ({ ...s, hostScoresVisible: isVisible }));
+  toast(isVisible ? '🎤 Host scores are now VISIBLE (Plug In)' : '🔇 Host scores are now HIDDEN (Plug Out)');
+}
+
+// Ensure the UI stays in sync if another monitor changes it
+syncEngine.subscribe(state => {
+  if (!state) return;
+  const toggle = document.getElementById('host-score-vis-toggle');
+  const label = document.getElementById('host-score-vis-label');
+  const isVisible = state.hostScoresVisible !== false; // Default true if not set
+  
+  if (toggle && toggle.checked !== isVisible) {
+    toggle.checked = isVisible;
+  }
+  if (label) {
+    label.innerHTML = isVisible ? 'Host Live Ranking: ON 🎤' : 'Host Live Ranking: OFF 🔒';
+  }
+});
 
 function verifyScorePin() {
   const input = document.getElementById('score-pin-input').value.trim();
