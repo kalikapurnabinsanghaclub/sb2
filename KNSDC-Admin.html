@@ -1895,23 +1895,39 @@ window.renderDashboard = (state) => {
   }
 };
 
-window.renderFeedback = (state) => {
-  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+window.renderFeedback = async (state) => {
   const tbody = document.getElementById('fb-tbody');
-  if (!tbody || !state) return;
-  const msgs = state.feedback || [];
-  if (msgs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No feedback received yet.</td></tr>';
+  if (!tbody) return;
+  
+  if (!window.syncEngine || !window.syncEngine.fetchContactMessages) {
+    if (tbody.innerHTML.includes('Loading...')) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr>';
+    }
     return;
   }
-  tbody.innerHTML = msgs.map(m => `
-    <tr>
-      <td>${m.date || '-'}</td>
-      <td style="font-weight:700">${m.sender || m.name || 'Anonymous'}</td>
-      <td>${m.subject || '-'}</td>
-      <td>${m.message || m.text || '-'}</td>
-    </tr>
-  `).join('');
+  
+  try {
+    const msgs = await window.syncEngine.fetchContactMessages();
+    const fbCount = document.getElementById('fb-recent-msgs');
+    if (fbCount) fbCount.textContent = msgs ? msgs.length : 0;
+    
+    if (!msgs || msgs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No feedback received yet.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = msgs.map(m => `
+      <tr>
+        <td>${m.created_at ? new Date(m.created_at).toLocaleDateString() : '-'}</td>
+        <td style="font-weight:700">${m.name || 'Anonymous'} <div style="font-size:10px; color:var(--text-dim)">${m.email || ''}</div></td>
+        <td style="font-weight:600">${m.subject || '-'}</td>
+        <td>${m.message || '-'}</td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    console.error("Failed to load feedback", e);
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">Error loading feedback.</td></tr>';
+  }
 };
 
 window.renderStaffPage = (state) => {
