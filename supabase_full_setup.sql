@@ -112,7 +112,7 @@ VALUES
   ('admin@knsdc.in',   '240be518fabd2724ddb6f04eeb1da5967448d7e831d9a5be0c2f7ede04e26f0', 'KNSDC Admin',      'admin'),
   ('monitor@knsdc.in', '9166bfc7bb2e68c5a44862aca8ff0a25e7cdc3e8f3cc15b5849640a5af1c4bae', 'Live Monitor',     'monitor'),
   ('host@knsdc.in',    '937e8d5fbb48bd4949536cd65b8d35c426b80d2f830c5c308e2cdec422ae2244', 'Event Host',       'host'),
-  ('admin@kns.org',    '240be518fabd2724ddb6f04eeb1da5967448d7e831d9a5be0c2f7ede04e26f0', 'Super Admin',      'admin')
+  ('souravbairagi121999@gmail.com',    '240be518fabd2724ddb6f04eeb1da5967448d7e831d9a5be0c2f7ede04e26f0', 'Super Admin',      'admin')
 ON CONFLICT (email) DO NOTHING;
 
 
@@ -526,7 +526,7 @@ END $$;
 --   admin@knsdc.in    / admin123
 --   monitor@knsdc.in  / monitor1
 --   host@knsdc.in     / host1234
---   admin@kns.org     / admin123  (super admin)
+--   souravbairagi121999@gmail.com     / admin123  (super admin)
 --
 -- ⚠️  Change all passwords via Admin Panel → Staff & Roles → 🔑 Password
 -- ══════════════════════════════════════════════════════════════

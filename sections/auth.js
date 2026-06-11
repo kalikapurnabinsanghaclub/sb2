@@ -16,7 +16,7 @@ export const renderAuthModal = (type, state) => {
         </div>
         <div style="margin-bottom: 20px; font-size: 0.82rem; color: var(--color-text-dim);">
           <p><strong>Demo Logins:</strong></p>
-          <p>Admin: admin@kns.org | monitor@kns.org</p>
+          <p>Admin: souravbairagi121999@gmail.com | monitor@kns.org</p>
           <p>Judge: judge@kns.org | Host: host@kns.org</p>
           <p>Password: admin123 (or any 4+ chars)</p>
         </div>
@@ -93,7 +93,7 @@ export const handleLogin = (email, password) => {
   // Simple mock logic
   if (email && password.length >= 4) {
     let role = 'member';
-    if (email === 'admin@kns.org' || email === 'monitor@kns.org') role = 'monitor';
+    if (email === 'souravbairagi121999@gmail.com' || email === 'monitor@kns.org') role = 'monitor';
     else if (email === 'judge@kns.org') role = 'judge';
     else if (email === 'host@kns.org') role = 'host';
 
