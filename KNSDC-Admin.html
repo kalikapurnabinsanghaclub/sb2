@@ -1845,7 +1845,96 @@ window.renderEventsPage = (state) => {
 window.refreshUI = (pageId) => {
   const state = window.syncEngine ? window.syncEngine.getData() : null;
   if (!state) return;
-  if (pageId === 'events' && window.renderEventsPage) window.renderEventsPage(state);
+  if ((!pageId || pageId === 'events') && window.renderEventsPage) window.renderEventsPage(state);
+  if ((!pageId || pageId === 'staff') && window.renderStaffPage) window.renderStaffPage(state);
+  if ((!pageId || pageId === 'participants') && window.renderAdminParticipants) window.renderAdminParticipants(state);
+  if ((!pageId || pageId === 'public-regs') && window.renderPublicRegs) window.renderPublicRegs(state);
+};
+
+window.renderStaffPage = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  const tbody = document.getElementById('staff-tbody');
+  if (!tbody || !state) return;
+  
+  const staffList = [];
+  (state.events || []).forEach(ev => {
+    (ev.staff || []).forEach(s => {
+       staffList.push({ email: s, eventName: ev.name, role: 'Event Monitor' });
+    });
+  });
+  
+  if (staffList.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No staff members assigned yet. Add one in the Events tab.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = staffList.map(s => `
+    <tr>
+      <td style="font-weight:700">Staff User</td>
+      <td>${s.email}</td>
+      <td><span class="badge" style="background:var(--blue);color:#fff">${s.role}</span></td>
+      <td>${s.eventName}</td>
+      <td>
+        <button class="btn btn-primary" style="padding:4px 10px;font-size:12px" onclick="toast('Edit not available yet')">Edit</button>
+      </td>
+    </tr>
+  `).join('');
+};
+
+window.renderAdminParticipants = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  const tbody = document.getElementById('admin-p-tbody');
+  if (!tbody || !state) return;
+  
+  const parts = state.participants || [];
+  const q = (document.getElementById('admin-p-search')?.value || '').toLowerCase();
+  
+  const filtered = parts.filter(p => !q || (p.name||'').toLowerCase().includes(q) || String(p.id||'').toLowerCase().includes(q));
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No participants found.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = filtered.map(p => {
+    const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+    return `
+      <tr>
+        <td style="font-weight:700">#${p.id || '-'}</td>
+        <td style="font-weight:700">${p.name || '-'}</td>
+        <td>${ev ? ev.name : (p.eventName || p.event || '-')}</td>
+        <td><span class="badge" style="background:var(--green);color:#fff">${p.category || p.cat || '-'}</span></td>
+        <td>
+          <button class="btn btn-primary" style="padding:4px 10px;font-size:12px" onclick="toast('Edit not available yet')">Edit</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
+window.renderPublicRegs = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  const tbody = document.getElementById('public-regs-tbody');
+  if (!tbody || !state) return;
+  
+  const regs = state.publicRegistrations || [];
+  if (regs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No public registrations pending.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = regs.map(r => `
+    <tr>
+      <td style="font-weight:700">${r.name || '-'}</td>
+      <td>${r.event || '-'}</td>
+      <td>${r.email || r.phone || '-'}</td>
+      <td>Submitted</td>
+      <td>
+        <button class="btn btn-green" style="padding:4px 10px;font-size:12px" onclick="toast('Registration Approved')">Approve</button>
+        <button class="btn btn-red" style="padding:4px 10px;font-size:12px" onclick="toast('Registration Rejected')">Reject</button>
+      </td>
+    </tr>
+  `).join('');
 };
 
 window.populateDropdowns = (state) => {
