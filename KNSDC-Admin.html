@@ -1845,10 +1845,73 @@ window.renderEventsPage = (state) => {
 window.refreshUI = (pageId) => {
   const state = window.syncEngine ? window.syncEngine.getData() : null;
   if (!state) return;
+  if ((!pageId || pageId === 'dashboard') && window.renderDashboard) window.renderDashboard(state);
   if ((!pageId || pageId === 'events') && window.renderEventsPage) window.renderEventsPage(state);
   if ((!pageId || pageId === 'staff') && window.renderStaffPage) window.renderStaffPage(state);
   if ((!pageId || pageId === 'participants') && window.renderAdminParticipants) window.renderAdminParticipants(state);
   if ((!pageId || pageId === 'public-regs') && window.renderPublicRegs) window.renderPublicRegs(state);
+  if ((!pageId || pageId === 'feedback') && window.renderFeedback) window.renderFeedback(state);
+};
+
+window.renderDashboard = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  if (!state) return;
+  const events = state.events || [];
+  
+  const upcomingName = document.getElementById('upcoming-name');
+  const upcomingMeta = document.getElementById('upcoming-meta');
+  const completedName = document.getElementById('completed-name');
+  const completedMeta = document.getElementById('completed-meta');
+  const ongoingName = document.getElementById('ongoing-name');
+  const ongoingMeta = document.getElementById('ongoing-meta');
+
+  const nowStr = new Date().toISOString().slice(0, 10);
+  const upcoming = events.filter(e => e.date >= nowStr).sort((a,b) => a.date.localeCompare(b.date));
+  const completed = events.filter(e => e.date < nowStr).sort((a,b) => b.date.localeCompare(a.date));
+  
+  if (upcoming.length > 0) {
+    if (upcomingName) upcomingName.textContent = upcoming[0].name;
+    if (upcomingMeta) upcomingMeta.textContent = upcoming[0].date;
+  } else {
+    if (upcomingName) upcomingName.textContent = 'No events planned';
+    if (upcomingMeta) upcomingMeta.textContent = 'Check event registry';
+  }
+  
+  if (completed.length > 0) {
+    if (completedName) completedName.textContent = completed[0].name;
+    if (completedMeta) completedMeta.textContent = completed[0].date;
+  } else {
+    if (completedName) completedName.textContent = 'N/A';
+    if (completedMeta) completedMeta.textContent = 'History empty';
+  }
+  
+  const activeEvent = events.find(e => String(e.id) === String(state.activeEventId));
+  if (activeEvent) {
+    if (ongoingName) ongoingName.textContent = activeEvent.name;
+    if (ongoingMeta) ongoingMeta.textContent = `Active ID: ${activeEvent.id}`;
+  } else {
+    if (ongoingName) ongoingName.textContent = 'No ongoing event';
+    if (ongoingMeta) ongoingMeta.textContent = 'Select active event from the events panel';
+  }
+};
+
+window.renderFeedback = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  const tbody = document.getElementById('fb-tbody');
+  if (!tbody || !state) return;
+  const msgs = state.feedback || [];
+  if (msgs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No feedback received yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = msgs.map(m => `
+    <tr>
+      <td>${m.date || '-'}</td>
+      <td style="font-weight:700">${m.sender || m.name || 'Anonymous'}</td>
+      <td>${m.subject || '-'}</td>
+      <td>${m.message || m.text || '-'}</td>
+    </tr>
+  `).join('');
 };
 
 window.renderStaffPage = (state) => {
