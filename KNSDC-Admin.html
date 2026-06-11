@@ -1927,34 +1927,101 @@ window.renderFeedback = async (state) => {
   }
 };
 
-window.renderStaffPage = (state) => {
-  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+window.renderStaffPage = async (state) => {
   const tbody = document.getElementById('staff-tbody');
-  if (!tbody || !state) return;
-  
-  const staffList = [];
-  (state.events || []).forEach(ev => {
-    (ev.staff || []).forEach(s => {
-       staffList.push({ email: s, eventName: ev.name, role: 'Event Monitor' });
-    });
-  });
-  
-  if (staffList.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No staff members assigned yet. Add one in the Events tab.</td></tr>';
+  if (!tbody) return;
+  if (!window.syncEngine || !window.syncEngine.listStaffMembers) {
+    if (tbody.innerHTML.includes('Loading...')) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr>';
+    }
     return;
   }
   
-  tbody.innerHTML = staffList.map(s => `
-    <tr>
-      <td style="font-weight:700">Staff User</td>
-      <td>${s.email}</td>
-      <td><span class="badge" style="background:var(--blue);color:#fff">${s.role}</span></td>
-      <td>${s.eventName}</td>
-      <td>
-        <button class="btn btn-primary" style="padding:4px 10px;font-size:12px" onclick="toast('Edit not available yet')">Edit</button>
-      </td>
-    </tr>
-  `).join('');
+  try {
+    const staffList = await window.syncEngine.listStaffMembers();
+    if (!staffList || staffList.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No staff members assigned yet. Add one in the Events tab.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = staffList.map(s => `
+      <tr>
+        <td style="font-weight:700">${s.name || 'Staff User'}</td>
+        <td>${s.email}</td>
+        <td><span class="badge" style="background:var(--blue);color:#fff">${s.role ? s.role.toUpperCase() : 'UNKNOWN'}</span></td>
+        <td>${s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'}</td>
+        <td>
+          <button class="btn btn-ghost btn-xs" onclick="openStaffPasswordModal('${s.email}')">🔑 Edit</button>
+          <button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="deleteStaff('${s.email}')">🗑️ Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    console.error("Failed to load staff", e);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Error loading staff list.</td></tr>';
+  }
+};
+
+window.saveNewStaff = async () => {
+  const name = document.getElementById('ns-name').value.trim();
+  const email = document.getElementById('ns-email').value.trim();
+  const pass = document.getElementById('ns-pass').value.trim();
+  const role = document.getElementById('ns-role').value;
+  const errEl = document.getElementById('ns-error');
+  
+  if (!name || !email || !pass) {
+    errEl.textContent = "Please fill in all fields.";
+    errEl.style.display = "block";
+    return;
+  }
+  
+  const res = await window.syncEngine.addStaffMember(email, pass, name, role);
+  if (res.success) {
+    errEl.style.display = "none";
+    closeM('add-staff-modal');
+    document.getElementById('ns-name').value = '';
+    document.getElementById('ns-email').value = '';
+    document.getElementById('ns-pass').value = '';
+    toast('✅ Staff member added!');
+    window.refreshUI('staff');
+  } else {
+    errEl.textContent = res.error || "Failed to add staff";
+    errEl.style.display = "block";
+  }
+};
+
+window.deleteStaff = async (email) => {
+  if (!confirm("Are you sure you want to delete staff member: " + email + "?")) return;
+  const res = await window.syncEngine.deleteStaffMember(email);
+  if (res.success) {
+    toast('🗑️ Staff member deleted!');
+    window.refreshUI('staff');
+  } else {
+    alert("Error deleting: " + res.error);
+  }
+};
+
+window.openStaffPasswordModal = (email) => {
+  document.getElementById('chpw-email').value = email;
+  document.getElementById('chpw-pass').value = '';
+  openM('chpw-staff-modal');
+};
+
+window.saveStaffPassword = async () => {
+  const email = document.getElementById('chpw-email').value;
+  const newPass = document.getElementById('chpw-pass').value.trim();
+  if (!newPass) {
+    toast('Please enter a new password');
+    return;
+  }
+  
+  const res = await window.syncEngine.updateStaffPassword(email, newPass);
+  if (res.success) {
+    closeM('chpw-staff-modal');
+    toast('✅ Password updated!');
+  } else {
+    alert("Error updating password: " + res.error);
+  }
 };
 
 window.renderAdminParticipants = (state) => {
