@@ -892,11 +892,12 @@
         <table>
           <thead>
             <tr>
+              <th style="width:16px"></th>
               <th>Event Name</th>
               <th>Organizer</th>
               <th>Date / Time</th>
-              <th>Staff</th>
-              <th>Type</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="events-page-tbody"></tbody>
@@ -1788,23 +1789,52 @@ window.renderEventsPage = (state) => {
   if (!tbody) return;
   const evs = state.events || [];
   if (evs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">No events found. Create one!</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">No events found. Create one!</td></tr>';
     return;
   }
-  tbody.innerHTML = evs.map(e => `
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  tbody.innerHTML = evs.map(e => {
+    const startDate = e.startDate ? new Date(e.startDate) : null;
+    const endDate   = e.endDate   ? new Date(e.endDate)   : startDate;
+    if (startDate) startDate.setHours(0,0,0,0);
+    if (endDate)   endDate.setHours(0,0,0,0);
+
+    let status = 'upcoming';
+    if (startDate && endDate) {
+      if (today > endDate)         status = 'completed';
+      else if (today >= startDate) status = 'ongoing';
+      else                         status = 'upcoming';
+    }
+
+    const squareColor = status === 'completed' ? '#ef4444'
+                       : status === 'ongoing'   ? '#22c55e'
+                       : '#f59e0b';
+    const statusLabel = status === 'completed' ? 'Completed'
+                       : status === 'ongoing'   ? 'Ongoing'
+                       : 'Upcoming';
+    const statusBg    = status === 'completed' ? 'rgba(239,68,68,0.1)'
+                       : status === 'ongoing'   ? 'rgba(34,197,94,0.1)'
+                       : 'rgba(245,158,11,0.1)';
+
+    return `
     <tr>
-      <td style="font-weight:700;color:var(--blue)">${e.name}</td>
+      <td><div style="width:14px;height:14px;border-radius:3px;background:${squareColor};flex-shrink:0"></div></td>
+      <td><span style="font-weight:700;color:var(--blue)">${e.name}</span>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${e.type || ''}</div></td>
       <td>${e.org || e.organizer || 'KNSDC'}</td>
-      <td><span style="font-size:11px;background:#f1f5f9;padding:4px 8px;border-radius:4px;font-weight:700">${e.startDate || 'TBA'} ${e.startTime || ''}</span></td>
-      <td>${e.staff ? e.staff.length : 0} staff</td>
+      <td><span style="font-size:11px;background:#f1f5f9;padding:4px 8px;border-radius:4px;font-weight:700">${e.startDate || 'TBA'} ${e.startTime || ''}</span>
+          ${e.endDate ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Ends: ${e.endDate} ${e.endTime || ''}</div>` : ''}</td>
+      <td><span style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;background:${statusBg};color:${squareColor}">${statusLabel}</span></td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-ghost btn-xs" onclick="editEvent('${e.id}')">✏ Edit</button>
-          <button class="btn btn-ghost btn-xs" style="color:red" onclick="deleteEvent('${e.id}')">🗑</button>
+          <button class="btn btn-ghost btn-xs" style="color:red" onclick="deleteEvent('${e.id}')">🗑 Delete</button>
         </div>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 };
 
 window.refreshUI = (pageId) => {
