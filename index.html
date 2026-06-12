@@ -3047,52 +3047,28 @@
         // Merge lists, prioritizing rawEvents (master records with switchStates) over simplified lists
         const allEventSource = [...rawUpcoming, ...rawPast, ...rawEvents];
         
-        // Remove duplicates if same ID exists, prioritizing the full event object (rawEvents)
-        // Use String() for ID to ensure consistency between string and number IDs
-        const uniqueEvents = Array.from(new Map(allEventSource.map(item => [String(item.id), item])).values());
-
-        // Upcoming: Date is Today or Future
-        EVENTS = uniqueEvents.filter(ev => {
-          const ed = ev.endDate || ev.startDate || ev.date || "";
-          const et = ev.endTime || ev.startTime || ev.time || "23:59";
-          if (!ed) return true;
-          const safeDateStr = ed.includes('-') ? ed.replace(/-/g, '/') : ed;
-          const evEndObj = new Date(`${safeDateStr} ${et}:00`);
-          if (isNaN(evEndObj.getTime())) {
-            const evDate = ed.includes(' ') ? ed.split(' ')[0] : ed;
-            return evDate >= todayStr;
-          }
-          return evEndObj >= new Date();
-        }).map(ev => ({
-          id: ev.id,
-          name: ev.name || ev.title || "Unknown Event",
-          date: (ev.startDate || ev.date || "").includes(' ') ? (ev.startDate || ev.date).split(' ')[0] : (ev.startDate || ev.date),
-          disp: ev.startDate || ev.date,
-          cat: ev.type || ev.category || "General",
-          venue: ev.venue || ev.location || 'Kalikapur Community Hall',
-          banner: ev.banner || ev.image || null,
-          description: ev.description || '',
-          org: ev.org || ev.organizer || 'KNSDC',
-          roundSchedules: ev.roundSchedules || {},
-          formFields: (state.eventFormFields && state.eventFormFields[ev.id]) ? state.eventFormFields[ev.id] : (ev.formFields || null),
-          switchStates: (() => {
+        // Apply real-time dictionary toggles to the existing EVENTS array (fetched via fetchEventsDirectly)
+        if (window.EVENTS && window.EVENTS.length > 0) {
+          EVENTS = window.EVENTS.map(ev => {
             const dictSwitches = (state.eventSwitches && state.eventSwitches[ev.id]) ? state.eventSwitches[ev.id] : {};
             const merged = { ...ev.switchStates, ...dictSwitches };
             return {
-              publicReg: merged.publicReg !== false,
-              stagePreview: merged.stagePreview !== false,
-              resultPublic: merged.resultPublic !== false,
-              promoPublic: merged.promoPublic !== false,
-              downloadPublic: merged.downloadPublic !== false,
-              publicVoting: merged.publicVoting === true,
-              ...merged
+              ...ev,
+              formFields: (state.eventFormFields && state.eventFormFields[ev.id]) ? state.eventFormFields[ev.id] : (ev.formFields || null),
+              switchStates: {
+                publicReg: merged.publicReg !== false,
+                stagePreview: merged.stagePreview !== false,
+                resultPublic: merged.resultPublic !== false,
+                promoPublic: merged.promoPublic !== false,
+                downloadPublic: merged.downloadPublic !== false,
+                publicVoting: merged.publicVoting === true,
+                ...merged
+              },
+              categories: (ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
+              venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
             };
-          })(),
-          categories: (ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
-          venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id)),
-          icon: (ev.type || ev.category) === 'Cultural' ? '💃' : (ev.type || ev.category) === 'Sports' ? '⚽' : '📅',
-          col: (ev.type || ev.category) === 'Cultural' ? '#7B2D8B' : (ev.type || ev.category) === 'Sports' ? '#F59E0B' : '#FF6B35'
-        }));
+          });
+        }
 
         renderEvents();
         renderMarquee();
@@ -6216,7 +6192,7 @@
         };
         if (customFallbacks[user] && pass === customFallbacks[user].pass) {
           const role = customFallbacks[user].role;
-          showToast("Welcome (Local Auth Mode)!", "Logged in as " + role, "👋");
+          showToast("Welcome!", "Logged in as " + role, "👋");
           localStorage.setItem('kns_role', role);
           localStorage.setItem('kns_user', JSON.stringify({ name: user.split('@')[0], email: user }));
           
@@ -6227,29 +6203,6 @@
             'monitor': 'KNSDC-Monitor.html'
           };
           setTimeout(() => { window.location.href = portalMap[role] || 'portal.html'; }, 1000);
-          return;
-        }
-
-        // Demo logins checking (convenience fallback if Supabase auth fails/local demo)
-        const demoLogins = {
-          'souravbairagi121999@gmail.com': 'admin',
-          'monitor@kns.org': 'monitor',
-          'judge@kns.org': 'judge',
-          'host@kns.org': 'host'
-        };
-        if (demoLogins[user] && pass === 'admin123') {
-          const role = demoLogins[user];
-          showToast("Welcome (Demo Mode)!", "Logged in as " + role + " (demo)", "👋");
-          localStorage.setItem('kns_role', role);
-          localStorage.setItem('kns_user', JSON.stringify({ name: user.split('@')[0], email: user }));
-          
-          const portalMap = {
-            'admin': 'KNSDC-Admin.html',
-            'host': 'KNSDC-Host.html',
-            'judge': 'KNSDC-Judge.html',
-            'monitor': 'KNSDC-Monitor.html'
-          };
-          setTimeout(() => { window.location.href = portalMap[role]; }, 1000);
           return;
         }
 
