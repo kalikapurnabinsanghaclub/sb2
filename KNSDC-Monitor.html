@@ -2479,7 +2479,7 @@ let venues = [];
 let activeEventId = null;
 let currentOnStage = null;
 let stageQueue = [];
-let switchStates = { publicReg: true, stagePreview: true, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, publicVoting: false, whatsapp: false };
+let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, publicVoting: false, whatsapp: false };
 let nxtId = { reg: 1, cat: 1, venue: 1, subj: 1, agr: 1 };
 let formFields = [];
 let agreements = [
@@ -2597,11 +2597,19 @@ function hydrate() {
   currentOnStage = actualOnStage ? actualOnStage.id : null;
 
   if (activeEv) {
-    switchStates = activeEv.switchStates || switchStates;
+    if (s && s.eventSwitches && s.eventSwitches[activeEventId]) {
+      switchStates = { ...switchStates, ...s.eventSwitches[activeEventId] };
+    } else {
+      switchStates = activeEv.switchStates || switchStates;
+    }
     subjects = activeEv.subjects && activeEv.subjects.length > 0 ? activeEv.subjects : (s.subjects || []);
     categories = activeEv.categories && activeEv.categories.length > 0 ? activeEv.categories : (s.categories || []);
     venues = activeEv.venues && activeEv.venues.length > 0 ? activeEv.venues : (s.venues || []);
-    formFields = activeEv.formFields && activeEv.formFields.length > 0 ? activeEv.formFields : (s.formFields || []);
+    if (s && s.eventFormFields && s.eventFormFields[activeEventId]) {
+      formFields = [...s.eventFormFields[activeEventId]];
+    } else {
+      formFields = activeEv.formFields && activeEv.formFields.length > 0 ? activeEv.formFields : (s.formFields || []);
+    }
   } else {
     subjects = s.subjects || [];
     categories = s.categories || [];
@@ -2679,7 +2687,15 @@ function syncAll() {
       newState.events[evIdx].categories = [...categories];
       newState.events[evIdx].venues = [...venues];
       newState.events[evIdx].formFields = [...formFields];
+      newState.events[evIdx].formFields = [...formFields];
     }
+    
+    if (!newState.eventSwitches) newState.eventSwitches = {};
+    if (activeEventId) newState.eventSwitches[activeEventId] = { ...switchStates };
+    
+    if (!newState.eventFormFields) newState.eventFormFields = {};
+    if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
+
     newState.participants = [...participants];
     if (!newState.publicVotes) newState.publicVotes = {};
     newState.judges = [...judges];
@@ -6889,6 +6905,9 @@ function toggleSystemStatus(isLive) {
 
   // Save all memory states including the newly turned off switches
   syncAll();
+  
+  // Visually update the switches on the monitor screen
+  renderSwitches();
   
   // Broadcast controls update to public interface
   if (typeof broadcastControlsToPublic === 'function') {

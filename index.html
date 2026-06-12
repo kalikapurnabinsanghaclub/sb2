@@ -2922,27 +2922,33 @@
         const { data, error } = await client.from('events').select('*').order('start_date', { ascending: true });
         if (error || !data || data.length === 0) return;
         const today = new Date();
-        const mapped = data.map(dbEv => ({
-          id: dbEv.id,
-          name: dbEv.name || 'Unknown Event',
-          date: dbEv.start_date || '',
-          startDate: dbEv.start_date || '',
-          startTime: dbEv.start_time || '',
-          endDate: dbEv.end_date || '',
-          endTime: dbEv.end_time || '',
-          disp: dbEv.start_date || '',
-          cat: dbEv.type || 'General',
-          venue: dbEv.venue || 'Kalikapur Community Hall',
-          banner: dbEv.banner || null,
-          description: dbEv.description || '',
-          org: dbEv.org || 'KNSDC',
-          roundSchedules: dbEv.round_schedules || {},
-          staff: dbEv.staff || [],
-          formFields: dbEv.form_fields || null,
-          switchStates: dbEv.switch_states || { publicReg: true, stagePreview: true, resultPublic: true },
-          icon: dbEv.type === 'Cultural' ? '\u{1F483}' : dbEv.type === 'Sports' ? '\u26BD' : '\uD83D\uDCC5',
-          col: dbEv.type === 'Cultural' ? '#7B2D8B' : dbEv.type === 'Sports' ? '#F59E0B' : '#FF6B35'
-        }));
+        const syncState = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
+        const mapped = data.map(dbEv => {
+          const stateSwitches = syncState.eventSwitches ? syncState.eventSwitches[dbEv.id] : null;
+          const evSwitches = stateSwitches || dbEv.switch_states || { publicReg: false, stagePreview: false, resultPublic: false };
+          
+          return {
+            id: dbEv.id,
+            name: dbEv.name || 'Unknown Event',
+            date: dbEv.start_date || '',
+            startDate: dbEv.start_date || '',
+            startTime: dbEv.start_time || '',
+            endDate: dbEv.end_date || '',
+            endTime: dbEv.end_time || '',
+            disp: dbEv.start_date || '',
+            cat: dbEv.type || 'General',
+            venue: dbEv.venue || 'Kalikapur Community Hall',
+            banner: dbEv.banner || null,
+            description: dbEv.description || '',
+            org: dbEv.org || 'KNSDC',
+            roundSchedules: dbEv.round_schedules || {},
+            staff: dbEv.staff || [],
+            formFields: dbEv.form_fields || null,
+            switchStates: evSwitches,
+            icon: dbEv.type === 'Cultural' ? '\u{1F483}' : dbEv.type === 'Sports' ? '\u26BD' : '\uD83D\uDCC5',
+            col: dbEv.type === 'Cultural' ? '#7B2D8B' : dbEv.type === 'Sports' ? '#F59E0B' : '#FF6B35'
+          };
+        });
         const activeEvents = mapped.filter(ev => {
           const ed = ev.endDate || ev.startDate || '';
           const et = ev.endTime || '23:59';
@@ -3008,8 +3014,7 @@
         const uniqueEvents = Array.from(new Map(allEventSource.map(item => [String(item.id), item])).values());
 
         // Upcoming: Date is Today or Future
-        if (!window._eventsRealtimeSubscribed || EVENTS.length === 0) {
-          EVENTS = uniqueEvents.filter(ev => {
+        EVENTS = uniqueEvents.filter(ev => {
           const ed = ev.endDate || ev.startDate || ev.date || "";
           const et = ev.endTime || ev.startTime || ev.time || "23:59";
           if (!ed) return true;
@@ -3046,7 +3051,6 @@
           icon: (ev.type || ev.category) === 'Cultural' ? '💃' : (ev.type || ev.category) === 'Sports' ? '⚽' : '📅',
           col: (ev.type || ev.category) === 'Cultural' ? '#7B2D8B' : (ev.type || ev.category) === 'Sports' ? '#F59E0B' : '#FF6B35'
         }));
-        }
 
         renderEvents();
         renderMarquee();
@@ -4551,7 +4555,7 @@
       }
 
       // Check if we have an active stage preview enabled
-      const hasLiveStage = !isOffline && liveEvent && liveEvent.switchStates?.stagePreview !== false;
+      const hasLiveStage = liveEvent && liveEvent.switchStates?.stagePreview !== false;
 
       // Handle visibility of the live section and navigation links
       const liveSection = document.getElementById('live');
