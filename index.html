@@ -2994,12 +2994,33 @@
           const evEndObj = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
           return isNaN(evEndObj.getTime()) ? true : evEndObj >= today;
         });
+        const pastEvents = mapped.filter(ev => {
+          const ed = ev.endDate || ev.startDate || '';
+          const et = ev.endTime || '23:59';
+          if (!ed) return false;
+          const evEndObj = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
+          return isNaN(evEndObj.getTime()) ? false : evEndObj < today;
+        });
         if (activeEvents.length > 0) {
           EVENTS = activeEvents;
           if (typeof renderEvents === 'function') renderEvents();
           if (typeof renderMarquee === 'function') renderMarquee();
           if (typeof checkLiveStatus === 'function') checkLiveStatus();
           console.log('[DirectFetch] ' + activeEvents.length + ' events loaded from Supabase.');
+        }
+        if (pastEvents.length > 0) {
+          PREV = pastEvents.map((ev, idx) => ({
+            id: ev.id,
+            name: ev.name || ev.title || "Past Event",
+            year: ev.startDate || ev.date || "2025",
+            cat: ev.type || ev.category || "General",
+            desc: ev.description || "A successful event hosted by KNSDC.",
+            parts: Math.floor(Math.random() * 500) + 100,
+            winner: "Community",
+            col: (ev.type || ev.category) === 'Cultural' ? '#FF6B35' : '#7B2D8B',
+            scores: null
+          }));
+          if (typeof renderPrevEvents === 'function') renderPrevEvents();
         }
         if (!window._eventsRealtimeSubscribed) {
           window._eventsRealtimeSubscribed = true;
@@ -3100,31 +3121,6 @@
             sel.appendChild(opt);
           });
         }
-
-        // 2. Sync Past Events (Date is in the past)
-        PREV = uniqueEvents.filter(ev => {
-          const ed = ev.endDate || ev.startDate || ev.date || "";
-          const et = ev.endTime || ev.startTime || ev.time || "23:59";
-          if (!ed) return false;
-          const safeDateStr = ed.includes('-') ? ed.replace(/-/g, '/') : ed;
-          const evEndObj = new Date(`${safeDateStr} ${et}:00`);
-          if (isNaN(evEndObj.getTime())) {
-            const evDate = ed.includes(' ') ? ed.split(' ')[0] : ed;
-            return evDate && evDate < todayStr;
-          }
-          return evEndObj < new Date();
-        }).map((ev, idx) => ({
-          id: ev.id,
-          name: ev.name || ev.title || "Past Event",
-          year: ev.startDate || ev.date || "2025",
-          cat: ev.type || ev.category || "General",
-          desc: ev.description || "A successful event hosted by KNSDC.",
-          parts: ev.participantsCount || Math.floor(Math.random() * 500) + 100,
-          winner: ev.highlights ? ev.highlights[0] : "Community",
-          col: (ev.type || ev.category) === 'Cultural' ? '#FF6B35' : '#7B2D8B',
-          scores: ev.highlights ? ev.highlights.map(h => ({ n: h, s: "Awarded" })) : null
-        }));
-        renderPrevEvents();
 
         // 3. Sync Leadership
         if (state.teamMembers) {
