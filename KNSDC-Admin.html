@@ -909,45 +909,16 @@
 
   <!-- ════════════════ TOTAL REGISTRATION ════════════════ -->
   <div class="pp" id="pp-participants">
-
-    <!-- Pending Public Registrations Card -->
     <div class="card" style="margin-bottom:20px">
       <div class="card-header">
         <div>
-          <div class="card-title">🌐 Public Portal Registrations</div>
-          <div style="font-size:10px; color:var(--text-muted); margin-top:2px">New applications pending review and approval</div>
+          <div class="card-title">👥 Total Registration</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:2px">All public applications and approved participants</div>
         </div>
         <div style="display:flex; gap:10px">
-           <button class="btn btn-ghost btn-sm" onclick="refreshUI('participants')">🔄 Refresh</button>
-        </div>
-      </div>
-      <div class="tbl-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Applicant Name</th>
-              <th>Event Applied</th>
-              <th>Contact</th>
-              <th>Form Details</th>
-              <th>Verification</th>
-            </tr>
-          </thead>
-          <tbody id="public-regs-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Section: Event-Wise Participant Intelligence -->
-    <div class="card" style="margin-bottom:20px">
-      <div class="card-header">
-        <div>
-          <div class="card-title">👥 Participant Intelligence</div>
-          <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Event-wise registration tracking & analysis</div>
-        </div>
-        <div style="display:flex; gap:10px">
-          <div class="sbox"><span class="sicon">🔍</span><input type="text" id="admin-p-search" placeholder="ID, Name or Phone..." oninput="renderAdminParticipants()"/></div>
+          <div class="sbox"><span class="sicon">🔍</span><input type="text" id="admin-p-search" placeholder="Name or Phone..." oninput="renderAdminParticipants()"/></div>
           <select id="admin-p-event-filter" onchange="renderAdminParticipants()" style="width:150px!important"></select>
-          <select id="admin-p-cat-filter" onchange="renderAdminParticipants()" style="width:150px!important"></select>
+          <button class="btn btn-ghost btn-sm" onclick="refreshUI('participants')">🔄 Refresh</button>
         </div>
       </div>
       <div class="tbl-wrap" style="max-height:600px; overflow-y:auto">
@@ -956,24 +927,12 @@
             <tr>
               <th>ID</th>
               <th>Name</th>
-              <th>Phone</th>
+              <th>Contact</th>
               <th>Event</th>
-              <th>Category</th>
-              <th>Status</th>
+              <th>Status / Verification</th>
             </tr>
           </thead>
           <tbody id="admin-p-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-              <th>Contact</th>
-              <th>Form Details</th>
-              <th>Verification</th>
-            </tr>
-          </thead>
-          <tbody id="public-regs-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -1855,7 +1814,6 @@ window.refreshUI = (pageId) => {
   if ((!pageId || pageId === 'events') && window.renderEventsPage) window.renderEventsPage(state);
   if ((!pageId || pageId === 'staff') && window.renderStaffPage) window.renderStaffPage(state);
   if ((!pageId || pageId === 'participants') && window.renderAdminParticipants) window.renderAdminParticipants(state);
-  if ((!pageId || pageId === 'participants') && window.renderPublicRegs) window.renderPublicRegs(state);
   if ((!pageId || pageId === 'feedback') && window.renderFeedback) window.renderFeedback(state);
 };
 
@@ -2039,54 +1997,52 @@ window.renderAdminParticipants = (state) => {
   if (!tbody || !state) return;
   
   const parts = state.participants || [];
+  const regs = state.publicRegistrations || [];
+  
   const q = (document.getElementById('admin-p-search')?.value || '').toLowerCase();
   
-  const filtered = parts.filter(p => !q || (p.name||'').toLowerCase().includes(q) || String(p.id||'').toLowerCase().includes(q));
+  const filteredParts = parts.filter(p => !q || (p.name||'').toLowerCase().includes(q) || String(p.id||'').toLowerCase().includes(q) || (p.phone||'').toLowerCase().includes(q));
+  const filteredRegs = regs.filter(r => !q || (r.name||'').toLowerCase().includes(q) || (r.phone||'').toLowerCase().includes(q) || (r.email||'').toLowerCase().includes(q));
 
-  if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No participants found.</td></tr>';
+  if (filteredParts.length === 0 && filteredRegs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No registrations found.</td></tr>';
     return;
   }
   
-  tbody.innerHTML = filtered.map(p => {
+  let html = '';
+  html += filteredRegs.map(r => `
+    <tr style="background:rgba(245, 158, 11, 0.05)">
+      <td style="font-weight:700; color:var(--text-muted)">Pending</td>
+      <td style="font-weight:700">${r.name || '-'}</td>
+      <td>${r.email || r.phone || '-'}</td>
+      <td>${r.event || '-'}</td>
+      <td>
+        <button class="btn btn-green" style="padding:4px 10px;font-size:12px;margin-right:4px" onclick="toast('Registration Approved')">Approve</button>
+        <button class="btn btn-red" style="padding:4px 10px;font-size:12px" onclick="toast('Registration Rejected')">Reject</button>
+      </td>
+    </tr>
+  `).join('');
+
+  html += filteredParts.map(p => {
     const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
     return `
       <tr>
         <td style="font-weight:700">#${p.id || '-'}</td>
         <td style="font-weight:700">${p.name || '-'}</td>
+        <td>${p.phone || '-'}</td>
         <td>${ev ? ev.name : (p.eventName || p.event || '-')}</td>
-        <td><span class="badge" style="background:var(--green);color:#fff">${p.category || p.cat || '-'}</span></td>
         <td>
-          <button class="btn btn-primary" style="padding:4px 10px;font-size:12px" onclick="toast('Edit not available yet')">Edit</button>
+          <span class="badge" style="background:var(--green);color:#fff">Approved</span>
         </td>
       </tr>
     `;
   }).join('');
+  
+  tbody.innerHTML = html;
 };
 
 window.renderPublicRegs = (state) => {
-  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
-  const tbody = document.getElementById('public-regs-tbody');
-  if (!tbody || !state) return;
-  
-  const regs = state.publicRegistrations || [];
-  if (regs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No public registrations pending.</td></tr>';
-    return;
-  }
-  
-  tbody.innerHTML = regs.map(r => `
-    <tr>
-      <td style="font-weight:700">${r.name || '-'}</td>
-      <td>${r.event || '-'}</td>
-      <td>${r.email || r.phone || '-'}</td>
-      <td>Submitted</td>
-      <td>
-        <button class="btn btn-green" style="padding:4px 10px;font-size:12px" onclick="toast('Registration Approved')">Approve</button>
-        <button class="btn btn-red" style="padding:4px 10px;font-size:12px" onclick="toast('Registration Rejected')">Reject</button>
-      </td>
-    </tr>
-  `).join('');
+  // Merged into renderAdminParticipants
 };
 
 window.populateDropdowns = (state) => {
