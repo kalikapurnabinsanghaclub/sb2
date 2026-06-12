@@ -2962,8 +2962,8 @@
         const today = new Date();
         const syncState = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
         const mapped = data.map(dbEv => {
-          const stateSwitches = syncState.eventSwitches ? syncState.eventSwitches[dbEv.id] : null;
-          const evSwitches = stateSwitches || dbEv.switch_states || { publicReg: false, stagePreview: false, resultPublic: false };
+          const stateSwitches = syncState.eventSwitches ? (syncState.eventSwitches[dbEv.id] || {}) : {};
+          const evSwitches = { ...(dbEv.switch_states || { publicReg: false, stagePreview: false, resultPublic: false }), ...stateSwitches };
           
           return {
             id: dbEv.id,
@@ -3074,16 +3074,20 @@
           description: ev.description || '',
           org: ev.org || ev.organizer || 'KNSDC',
           roundSchedules: ev.roundSchedules || {},
-          formFields: ev.formFields || null,
-          switchStates: {
-            publicReg: ev.publicReg !== false && ev.switchStates?.publicReg !== false,
-            stagePreview: ev.stagePreview !== false && ev.switchStates?.stagePreview !== false,
-            resultPublic: ev.resultPublic !== false && ev.switchStates?.resultPublic !== false,
-            promoPublic: ev.promoPublic !== false && ev.switchStates?.promoPublic !== false,
-            downloadPublic: ev.downloadPublic !== false && ev.switchStates?.downloadPublic !== false,
-            publicVoting: ev.publicVoting === true || ev.switchStates?.publicVoting === true,
-            ...ev.switchStates
-          },
+          formFields: (state.eventFormFields && state.eventFormFields[ev.id]) ? state.eventFormFields[ev.id] : (ev.formFields || null),
+          switchStates: (() => {
+            const dictSwitches = (state.eventSwitches && state.eventSwitches[ev.id]) ? state.eventSwitches[ev.id] : {};
+            const merged = { ...ev.switchStates, ...dictSwitches };
+            return {
+              publicReg: merged.publicReg !== false,
+              stagePreview: merged.stagePreview !== false,
+              resultPublic: merged.resultPublic !== false,
+              promoPublic: merged.promoPublic !== false,
+              downloadPublic: merged.downloadPublic !== false,
+              publicVoting: merged.publicVoting === true,
+              ...merged
+            };
+          })(),
           categories: (ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
           venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id)),
           icon: (ev.type || ev.category) === 'Cultural' ? '💃' : (ev.type || ev.category) === 'Sports' ? '⚽' : '📅',
@@ -3181,9 +3185,12 @@
         }
 
         // 5. Sync Live Results & Ranking
-        const showResults = state.switchStates?.resultPublic === true;
-        const showPromo = state.switchStates?.promoPublic === true;
-        const showDownload = state.switchStates?.downloadPublic === true;
+        const todayStrLocal = new Date().toISOString().split('T')[0];
+        const activeEvGlobal = EVENTS.find(e => String(e.id) === String(state.activeEventId)) || EVENTS.find(e => e.date === todayStrLocal) || EVENTS[0];
+        
+        const showResults = activeEvGlobal?.switchStates?.resultPublic === true;
+        const showPromo = activeEvGlobal?.switchStates?.promoPublic === true;
+        const showDownload = activeEvGlobal?.switchStates?.downloadPublic === true;
 
         const resBtn = document.getElementById("resultsTabBtn");
         const proBtn = document.getElementById("promoTabBtn"); // Updated to match HTML ID
@@ -3311,7 +3318,7 @@
         activeEventIds.forEach(eid => {
           const ev = events.find(e => String(e.id) === String(eid));
           if (!ev || ev.switchStates?.stagePreview === false) return;
-          const publicVotingOn = state.allSwitches?.publicVoting === true || state.switchStates?.publicVoting === true || ev.publicVoting === true || ev.switchStates?.publicVoting === true;
+          const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
 
           visibleCount++;
           const eventCats = ev.categories || categories;
@@ -3412,7 +3419,7 @@
 
 
               <!-- ★ Live Broadcast Section ★ -->
-              ${((ev.switchStates?.liveStream || state.switchStates?.liveStream) && (ev.switchStates?.liveStreamUrl || state.switchStates?.liveStreamUrl)) ? `
+              ${(ev.switchStates?.liveStream && ev.switchStates?.liveStreamUrl) ? `
               <div style="margin-top: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 24px 32px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
                 <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
@@ -3425,7 +3432,7 @@
                   </div>
                 </div>
                 ${(() => {
-                  let input = ev.switchStates?.liveStreamUrl || state.switchStates?.liveStreamUrl || '';
+                  let input = ev.switchStates?.liveStreamUrl || '';
                   if(!input) return '';
                   let embedUrl = input;
                   if (input.toLowerCase().startsWith('<iframe')) {
@@ -3534,7 +3541,7 @@
         activeEventIds.forEach(eid => {
           const ev = events.find(e => String(e.id) === String(eid));
           if (!ev || ev.switchStates?.stagePreview === false) return;
-          const publicVotingOn = (state.allSwitches?.publicVoting === true || state.switchStates?.publicVoting === true) && (ev.publicVoting === true || ev.switchStates?.publicVoting === true);
+          const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
           if (publicVotingOn) {
             const onStage = participants.find(p => p.eventId == eid && p.stageStatus === 'on-stage');
             if (onStage) {
@@ -3578,7 +3585,7 @@
           // Check if public voting is enabled at all
           const anyVotingOn = activeEventIds.some(eid => {
             const ev = events.find(e => String(e.id) === String(eid));
-            return ev && (state.allSwitches?.publicVoting === true || state.switchStates?.publicVoting === true || ev.publicVoting === true || ev.switchStates?.publicVoting === true);
+            return ev && (ev.publicVoting === true || ev.switchStates?.publicVoting === true);
           });
 
           if (activeVotingPerformer && activeVotingRound) {
@@ -3609,7 +3616,7 @@
 
             ratingBox.style.display = 'block';
             // Build the live stream HTML if it's on
-            const liveStreamHtml = ((evObj?.switchStates?.liveStream || state.switchStates?.liveStream) && (evObj?.switchStates?.liveStreamUrl || state.switchStates?.liveStreamUrl)) ? `
+            const liveStreamHtml = (evObj?.switchStates?.liveStream && evObj?.switchStates?.liveStreamUrl) ? `
               <div style="margin-bottom: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 24px 32px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
                 <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
@@ -3622,7 +3629,7 @@
                   </div>
                 </div>
                 ${(() => {
-                  let input = evObj?.switchStates?.liveStreamUrl || state.switchStates?.liveStreamUrl || '';
+                  let input = evObj?.switchStates?.liveStreamUrl || '';
                   if(!input) return '';
                   let embedUrl = input;
                   if (input.toLowerCase().startsWith('<iframe')) {
@@ -4693,7 +4700,7 @@
             </div>
 
             <!-- ★ Live Broadcast Section (Inside renderLiveUI) ★ -->
-            ${((ev.switchStates?.liveStream || state.switchStates?.liveStream) && (ev.switchStates?.liveStreamUrl || state.switchStates?.liveStreamUrl)) ? `
+            ${(ev.switchStates?.liveStream && ev.switchStates?.liveStreamUrl) ? `
               <div style="margin-bottom: 40px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 24px; padding: 30px 40px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
                 <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
@@ -4706,7 +4713,7 @@
                   </div>
                 </div>
                 ${(() => {
-                  let input = ev.switchStates?.liveStreamUrl || state.switchStates?.liveStreamUrl || '';
+                  let input = ev.switchStates?.liveStreamUrl || '';
                   if(!input) return '';
                   let embedUrl = input;
                   if (input.toLowerCase().startsWith('<iframe')) {
@@ -4728,7 +4735,7 @@
             <!-- ★ Public Rating Slider (Inside renderLiveUI) ★ -->
             <div id="liveRatingSection" style="margin-bottom: 40px;">
               ${(() => {
-                const publicVotingOn = state.allSwitches?.publicVoting === true || state.switchStates?.publicVoting === true || ev.publicVoting === true || ev.switchStates?.publicVoting === true;
+                const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
                 if (!publicVotingOn) return '';
                 
                 const lsKey = onStage ? `knsdc_vote_${onStage.id}_${onStage.round}` : '';
