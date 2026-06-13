@@ -6890,24 +6890,31 @@ try {
 
 function toggleSystemStatus(isLive) {
   if (!isLive) {
-    // Automatically turn off the 6 core emergency-off switches in memory
-    switchStates.stagePreview = false;
-    switchStates.lockScore = false;
-    switchStates.editScore = false;
-    switchStates.resultPublic = false;
-    switchStates.promoPublic = false;
-    switchStates.downloadPublic = false;
-    switchStates.publicVoting = false;
-    switchStates.liveStream = false;
+    // Master switch OFF → turn off EVERY switch EXCEPT publicReg
+    const savedPublicReg = switchStates.publicReg;
+    const allKeys = Object.keys(switchStates);
+    allKeys.forEach(k => {
+      if (k !== 'publicReg') switchStates[k] = false;
+    });
+    // Ensure publicReg stays as it was
+    switchStates.publicReg = savedPublicReg;
+    // Also clear live stream URL
+    switchStates.liveStreamUrl = '';
   }
 
   // Set the systemStatus directly in syncEngine
   syncEngine.setData(st => {
-    return {
+    const newState = {
       ...st,
       systemStatus: isLive ? 'live' : 'offline',
       switchStates: { ...switchStates }
     };
+    // Also update per-event switches so reload picks up the OFF state
+    if (activeEventId) {
+      if (!newState.eventSwitches) newState.eventSwitches = {};
+      newState.eventSwitches[activeEventId] = { ...switchStates };
+    }
+    return newState;
   });
 
   // Save all memory states including the newly turned off switches
