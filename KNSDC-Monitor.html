@@ -2596,12 +2596,16 @@ function hydrate() {
   const actualOnStage = participants.find(p => p.stageStatus === 'on-stage' && (String(p.eventId) === String(activeEventId) || !p.eventId));
   currentOnStage = actualOnStage ? actualOnStage.id : null;
 
+  // ── Restore switch states: prioritize per-event cloud data, then global fallback ──
+  if (s && s.eventSwitches && s.eventSwitches[activeEventId]) {
+    switchStates = { ...switchStates, ...s.eventSwitches[activeEventId] };
+  } else if (activeEv && activeEv.switchStates) {
+    switchStates = { ...switchStates, ...activeEv.switchStates };
+  } else if (s && s.switchStates) {
+    switchStates = { ...switchStates, ...s.switchStates };
+  }
+
   if (activeEv) {
-    if (s && s.eventSwitches && s.eventSwitches[activeEventId]) {
-      switchStates = { ...switchStates, ...s.eventSwitches[activeEventId] };
-    } else {
-      switchStates = activeEv.switchStates || switchStates;
-    }
     subjects = activeEv.subjects && activeEv.subjects.length > 0 ? activeEv.subjects : (s.subjects || []);
     categories = activeEv.categories && activeEv.categories.length > 0 ? activeEv.categories : (s.categories || []);
     venues = activeEv.venues && activeEv.venues.length > 0 ? activeEv.venues : (s.venues || []);
@@ -2614,7 +2618,6 @@ function hydrate() {
     subjects = s.subjects || [];
     categories = s.categories || [];
     venues = s.venues || [];
-    switchStates = s.switchStates || switchStates;
     formFields = s.formFields || [];
   }
 
@@ -3361,8 +3364,9 @@ function toggleSwitch(sw, cb){
   const row = document.getElementById('sw-'+sw);
   if(!row) return;
 
+  // Public Registration can always be toggled, even when offline
   const state = syncEngine.getData() || {};
-  if (state.systemStatus === 'offline') {
+  if (state.systemStatus === 'offline' && sw !== 'public-reg') {
     cb.checked = false;
     row.classList.remove('on');
     toast('⚠️ Please turn the system LIVE first before enabling switches!');
