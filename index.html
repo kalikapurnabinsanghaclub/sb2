@@ -5824,7 +5824,11 @@
 
       // No account fields needed - direct participation form only
 
-      const fields = ev.formFields || [];
+      let fields = ev.formFields || [];
+      if (typeof fields === 'string') {
+        try { fields = JSON.parse(fields); } catch(e) { fields = []; }
+      }
+      
       fields.forEach((f, idx) => {
         const id = `df_${idx}`;
         const labelStyle = `font-size:0.75rem; color:#FFD23F; font-weight:800; letter-spacing:1px; text-transform:uppercase; display:block; margin-bottom:8px; opacity: 0.9;`;
@@ -5853,7 +5857,13 @@
             </div>
           </div>`;
         } else if (f.type === 'file' || f.type === 'photo') {
-          // Monitor-only field, ignore rendering on public form
+          const accept = f.type === 'photo' ? 'image/*' : '*/*';
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <input type="file" accept="${accept}" style="${inputStyle}; padding:10px; background:rgba(0,0,0,0.2)" onchange="uploadPublicFileToCloud(this, '${id}')">
+              <input type="hidden" class="inp su-df" data-label="${f.label}" id="${id}">
+            </div>
+          </div>`;
         } else if (f.type === 'radio') {
           const isGender = f.label.toUpperCase().includes('GENDER');
           html += `
@@ -6255,7 +6265,11 @@
       // Check required fields
       const ev = EVENTS.find(e => String(e.id) === String(eventId));
       if (ev && ev.formFields) {
-        for (let f of ev.formFields) {
+        let fFields = ev.formFields;
+        if (typeof fFields === 'string') {
+          try { fFields = JSON.parse(fFields); } catch(e) { fFields = []; }
+        }
+        for (let f of fFields) {
           if (f.required && !formData[f.label] && f.type !== 'tc') {
             showToast("Required Field", `Please fill in: ${f.label}`, "⚠️");
             return;
