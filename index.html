@@ -6335,31 +6335,23 @@
       }
       */
 
-      allParticipants.push(newP);
+      // Utilize the proper sync pipeline for auto-sync with database
+      if (syncEngine.supabase) {
+        syncEngine.createParticipant(newP).then((success) => {
+          if (!success) {
+            console.error('[Supabase] Error auto-syncing participant to database');
+          } else {
+            console.log('[Supabase] Participant auto-synced successfully');
+          }
+        });
+      } else {
+        allParticipants.push(newP);
+        syncEngine.updateState({ participants: allParticipants });
+      }
+
       const updatedNxtId = { ...(s.nxtId || { reg: 1 }) };
       updatedNxtId.reg = (updatedNxtId.reg || 1) + 1;
-      syncEngine.updateState({ participants: allParticipants, nxtId: updatedNxtId });
-
-      // Save to Supabase public_registrations table
-      if (syncEngine.supabase) {
-        const parsedEventId = parseInt(eventId);
-        syncEngine.supabase
-          .from('public_registrations')
-          .insert({
-            event_id: isNaN(parsedEventId) ? null : parsedEventId,
-            name: name,
-            phone: phone || '—',
-            age: age || null,
-            timestamp: Date.now()
-          })
-          .then(({ error }) => {
-            if (error) {
-              console.error('[Supabase] Error saving public registration record:', error);
-            } else {
-              console.log('[Supabase] Public registration record saved successfully');
-            }
-          });
-      }
+      syncEngine.updateState({ nxtId: updatedNxtId });
 
       // Store details for download
       window.lastRegDetails = {
