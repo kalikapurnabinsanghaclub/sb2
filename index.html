@@ -6535,11 +6535,6 @@
       }
     }
 
-    // Initialize the Public Portal
-    setupSync();
-    init();
-    window.addEventListener('load', init);
-
     // Network Connection Loader Logic
     function setLoaderState(show, text = 'LOADING') {
       const pl = document.getElementById("pageLoader");
@@ -6557,14 +6552,26 @@
       }
     }
 
+    // Register loader events and fallbacks immediately
     window.addEventListener('offline', () => setLoaderState(true, 'OFFLINE'));
     window.addEventListener('online', () => setLoaderState(false));
-
-    // Fallback: hide loader after 5 seconds to prevent permanent freeze
-    setTimeout(() => setLoaderState(false), 5000);
-    
-    // Explicitly hide loader when page finishes loading
     window.addEventListener('load', () => setLoaderState(false));
+    setTimeout(() => setLoaderState(false), 3000); // 3 seconds fallback freeze prevention
+
+    // Initialize the Public Portal
+    try {
+      setupSync();
+    } catch (e) {
+      console.error('[Sync Setup Error] Failed to setupSync:', e);
+    }
+
+    try {
+      init();
+      window.addEventListener('load', init);
+    } catch (e) {
+      console.error('[Init Error] Failed to run init:', e);
+      setLoaderState(false); // Ensure loader is dismissed on error
+    }
 
     // ════════════ DOWNLOAD REGISTRATION FORM ════════════
     function downloadReg(format) {
