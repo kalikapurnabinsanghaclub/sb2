@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS public.judge_credentials (
     password_hash TEXT NOT NULL,
     name          TEXT NOT NULL,
     event_id      TEXT,
-    agreement_id  INTEGER,
+    agreement_id  BIGINT,
     created_at    TIMESTAMPTZ DEFAULT NOW(),
     updated_at    TIMESTAMPTZ DEFAULT NOW()
 );

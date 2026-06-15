@@ -2586,7 +2586,7 @@ function hydrate() {
   });
   judges = s.judges || [];
   nxtId = s.nxtId || nxtId;
-  agreements = s.judgeAgreements || [];
+  agreements = s.judgeAgreements || s.agreements || [];
   hostAssignments = s.hostAssignments || [];
   chatHistory = s.chatMessages || [];
   sosActive = s.sosActive || false;
@@ -4288,10 +4288,10 @@ function previewForm(){ renderFormPreview(); toast('Preview updated'); }
 async function saveForm() {
   const s = syncEngine.getData();
   const evIdx = (s.events || []).findIndex(e => String(e.id) === String(activeEventId));
+  let dbSuccess = true;
   if (evIdx !== -1) {
     const ev = s.events[evIdx];
-    const success = await syncEngine.updateEvent(activeEventId, { ...ev, formFields: formFields });
-    if (!success) { toast('❌ Error saving form configuration'); return; }
+    dbSuccess = await syncEngine.updateEvent(activeEventId, { ...ev, formFields: formFields });
   }
   syncEngine.setData(state => {
     const newState = { ...state };
@@ -4299,10 +4299,16 @@ async function saveForm() {
     if (idx !== -1) {
       newState.events[idx].formFields = formFields;
     }
+    if (!newState.eventFormFields) newState.eventFormFields = {};
+    if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
     return newState;
   });
   broadcastControlsToPublic();
-  toast('Form configuration saved for current event!');
+  if (dbSuccess) {
+    toast('Form configuration saved successfully!');
+  } else {
+    toast('⚠️ Saved to live session (DB sync skipped)');
+  }
 }
 
 // ── CATEGORIES ────────────────────────────
@@ -6769,7 +6775,8 @@ async function saveAgreement(){
     if(!success){toast('❌ Error updating agreement');return;}
     Object.assign(agreements.find(a=>a.id===editingAgrId),obj);
   } else {
-    obj.id=Date.now();
+    // Generate a random 9-digit integer to prevent PostgreSQL integer overflow (max 32-bit signed int is 2,147,483,647)
+    obj.id = Math.floor(Math.random() * 1000000000) + 1;
     agrId = obj.id;
     const success = await syncEngine.createAgreement(obj);
     if(!success){toast('❌ Error creating agreement');return;}
