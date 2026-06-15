@@ -6457,7 +6457,10 @@ window.updateHostVenueDropdown = function() {
     (activeEv?.venues || []).map(v => `<option value="${v.id}">${v.name}</option>`).join('');
 };
 
+let saveHostInProgress = false;
 window.saveHost = async function() {
+  if (saveHostInProgress) return;
+  
   const name = document.getElementById('host-name').value.trim();
   const venueId = document.getElementById('host-venue').value;
   const date = document.getElementById('host-date').value;
@@ -6469,34 +6472,56 @@ window.saveHost = async function() {
     return;
   }
   
-  const evId = document.getElementById('host-event').value;
-  const s = syncEngine.getData();
-  const activeEv = (s.events || []).find(e => String(e.id) === String(evId));
-  const vName = (activeEv?.venues || []).find(v => String(v.id) === String(venueId))?.name || 'Unknown Venue';
-
-  const newHost = {
-    id: Date.now().toString(),
-    eventId: evId,
-    name,
-    venueId,
-    venueName: vName,
-    date,
-    email,
-    password: pass,
-    status: 'assigned'
-  };
-  
-  hostAssignments.push(newHost);
-  syncEngine.updateState({ hostAssignments });
-  
-  // Sync to staff credentials so it appears in Admin
-  if (syncEngine.addStaffMember) {
-    await syncEngine.addStaffMember(email, pass, name, 'host');
+  saveHostInProgress = true;
+  const btn = document.querySelector('#host-modal .btn-amber');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
   }
 
-  closeM('host-modal');
-  renderHostAssign();
-  toast('Host assigned successfully!');
+  try {
+    const evId = document.getElementById('host-event').value;
+    const s = syncEngine.getData();
+    const activeEv = (s.events || []).find(e => String(e.id) === String(evId));
+    const vName = (activeEv?.venues || []).find(v => String(v.id) === String(venueId))?.name || 'Unknown Venue';
+
+    const newHost = {
+      id: Date.now().toString(),
+      eventId: evId,
+      name,
+      venueId,
+      venueName: vName,
+      date,
+      email,
+      password: pass,
+      status: 'assigned'
+    };
+    
+    // Guard: Prevent duplicate email hosts in local list
+    const exists = hostAssignments.some(h => h.email.toLowerCase() === email.toLowerCase());
+    if (!exists) {
+      hostAssignments.push(newHost);
+      syncEngine.updateState({ hostAssignments });
+    }
+    
+    // Sync to staff credentials so it appears in Admin
+    if (syncEngine.addStaffMember) {
+      await syncEngine.addStaffMember(email, pass, name, 'host');
+    }
+
+    closeM('host-modal');
+    renderHostAssign();
+    toast('Host assigned successfully!');
+  } catch (err) {
+    console.error(err);
+    toast('Error saving host!');
+  } finally {
+    saveHostInProgress = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Save Host';
+    }
+  }
 };
 
 window.deleteHost = function(id) {
