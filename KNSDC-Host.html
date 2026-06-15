@@ -412,18 +412,61 @@
   .mobile-overlay.show { display:block; }
   .menu-toggle { display:none; background:none; border:none; font-size:24px; cursor:pointer; color:var(--text); padding:0 8px; }
   
+  .bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.05);
+    z-index: 1000;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .bottom-nav-item {
+    background: transparent;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    flex: 1;
+    height: 100%;
+    gap: 4px;
+    transition: all 0.2s;
+  }
+  .bottom-nav-item .nav-icon {
+    font-size: 20px;
+  }
+  .bottom-nav-item.active {
+    color: #2563eb;
+  }
+
   @media (max-width: 768px) {
-    .sidebar { position:fixed; left:0; top:0; bottom:0; transform:translateX(-100%); width:260px; z-index:100; box-shadow:none; }
-    .sidebar.open { transform:translateX(0); box-shadow:4px 0 24px rgba(15,23,42,0.1); }
-    .menu-toggle { display:block; }
-    .topbar { padding:0 16px; gap:12px; }
-    .topbar-title { font-size:16px; }
-    .content { padding:16px; }
-    .g2, .g4 { grid-template-columns: 1fr; gap:16px; }
-    .card, .stat-card, .stage-hero { padding:20px; }
-    .chat-panel { width:100vw; height:100dvh; bottom:0; right:0; border-radius:0; animation:slideUp 0.35s cubic-bezier(0.16,1,0.3,1); }
+    body { flex-direction: column !important; overflow: hidden !important; height: 100vh !important; }
+    .sidebar { display: none !important; }
+    .bottom-nav { display: flex; }
+    .main { height: calc(100vh - 64px) !important; overflow: hidden !important; }
+    .topbar { height: 60px !important; padding: 0 16px !important; flex-wrap: nowrap !important; gap: 10px !important; }
+    .topbar-title { font-size: 18px !important; }
+    .content { padding: 16px !important; overflow-y: auto !important; height: calc(100% - 60px) !important; padding-bottom: 32px !important; }
+    
+    .g2, .g4 { grid-template-columns: 1fr !important; gap: 16px !important; }
+    .card, .stat-card, .stage-hero { padding: 20px !important; }
+    .chat-panel { width:100vw !important; height:100dvh !important; bottom:0 !important; right:0 !important; border-radius:0 !important; animation:slideUp 0.35s cubic-bezier(0.16,1,0.3,1) !important; }
     @keyframes slideUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
-    .float-chat { bottom:16px; right:16px; }
+    .float-chat { bottom:16px !important; right:16px !important; }
+    .modal { max-height: 90vh !important; }
+    .mbody { overflow-y: auto !important; }
   }
   /* MODAL GLASSMORPHISM AND ANIMATIONS */
   .modal-overlay {
@@ -633,6 +676,26 @@
   </button>
 </div>
 
+<!-- MOBILE BOTTOM NAVIGATION -->
+<div class="bottom-nav">
+  <button class="bottom-nav-item active" onclick="showTab('dashboard', this)">
+    <span class="nav-icon">📊</span>
+    <span class="bottom-nav-text">Dashboard</span>
+  </button>
+  <button class="bottom-nav-item" onclick="showTab('stage', this)">
+    <span class="nav-icon">🎤</span>
+    <span class="bottom-nav-text">Stage</span>
+  </button>
+  <button class="bottom-nav-item" onclick="showTab('leaderboard', this)">
+    <span class="nav-icon">🏆</span>
+    <span class="bottom-nav-text">Rankings</span>
+  </button>
+  <button class="bottom-nav-item" onclick="showHostProfileModal()">
+    <span class="nav-icon">👤</span>
+    <span class="bottom-nav-text">Profile</span>
+  </button>
+</div>
+
 <div id="toast"></div>
 
 <script src="lib/supabase.js"></script>
@@ -792,16 +855,17 @@ window.showTab = function(tab, el) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   const target = document.getElementById('sec-' + tab);
   if(target) target.classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if(el) el.classList.add('active');
-  document.getElementById('page-title').textContent = el ? el.textContent.trim() : 'Dashboard';
+  document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(n => n.classList.remove('active'));
   
-  // Close sidebar on mobile after clicking
-  const sidebar = document.querySelector('.sidebar');
-  const overlay = document.getElementById('mobile-overlay');
-  if (window.innerWidth <= 768 && sidebar) {
-    sidebar.classList.remove('open');
-    if(overlay) overlay.classList.remove('show');
+  document.querySelectorAll(`.nav-item, .bottom-nav-item`).forEach(item => {
+    if (item.getAttribute('onclick') && item.getAttribute('onclick').includes(`'${tab}'`)) {
+      item.classList.add('active');
+    }
+  });
+
+  const titleEl = document.getElementById('page-title');
+  if (titleEl) {
+    titleEl.textContent = tab === 'dashboard' ? '📊 Dashboard' : tab === 'stage' ? '🎤 On-Stage Queue' : '🏆 Leaderboard';
   }
 }
 
@@ -1286,6 +1350,8 @@ window.renderLeaderboard = () => {
           <span style="color:var(--text-muted); font-weight:600">Portal Access</span><strong id="hpm-portal" style="color:var(--green2);">Host Panel</strong>
         </div>
       </div>
+      <!-- Logout Button (For Mobile/All layout consistency) -->
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;color:var(--red2);border-color:rgba(239, 68, 68, 0.2);background:white;box-shadow:0 2px 4px rgba(239, 68, 68, 0.05);margin-top:16px" onclick="staffLogout()">🚪 Logout</button>
     </div>
   </div>
 </div>
