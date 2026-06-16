@@ -12,9 +12,10 @@ try:
     with urllib.request.urlopen(req) as response:
         data = json.loads(response.read().decode())
         if data:
-            payload = data[0].get('payload', {})
-            print(f"systemStatus in DB: {payload.get('systemStatus', 'NOT SET')}")
+            row = data[0]
+            print("Payload Keys:", row.get("payload", {}).keys())
+            print("Judge Agreements in Payload:", row.get("payload", {}).get("judgeAgreements"))
         else:
             print("No data found")
 except Exception as e:
-    print(f"Error: {e}")
+    print("Error:", e)
