@@ -3482,15 +3482,33 @@ function renderStageView(){
 function renderAttendanceBreakdown(){
   const venues_local = venues;
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
-  const dates = [...new Set(data.map(p=>p.date))].sort();
+  
+  const dates = [...new Set(data.map(p => {
+    const d = p.date || p.regDate || '';
+    return d.includes('T') ? d.split('T')[0] : d;
+  }))].filter(Boolean).sort();
+  
   let html = '';
   dates.forEach(d => {
-    const dp = data.filter(p=>p.date===d);
+    const dp = data.filter(p => {
+      const pd = p.date || p.regDate || '';
+      const pDateOnly = pd.includes('T') ? pd.split('T')[0] : pd;
+      return pDateOnly === d;
+    });
     const present = dp.filter(p=>p.present).length;
     const pct = dp.length>0 ? Math.round(present/dp.length*100) : 0;
+    
+    let label = d;
+    try {
+      const dt = new Date(d);
+      if (!isNaN(dt.getTime())) {
+        label = dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+    } catch(e) {}
+
     html += `<div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-        <span style="font-family:var(--fm);color:var(--text-dim)">${d}</span>
+        <span style="font-family:var(--fm);color:var(--text-dim)">📅 ${label}</span>
         <span>${present}/${dp.length} <span class="badge b-green">${pct}%</span></span>
       </div>
       <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%;background:var(--green2)"></div></div>
