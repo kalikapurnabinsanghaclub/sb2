@@ -1340,6 +1340,7 @@ function initIdentity() {
         JUDGE.amount   = parseInt(matchedAgr.amount)  || 0;
         JUDGE.advance  = parseInt(matchedAgr.advance) || 0;
         JUDGE.notes    = matchedAgr.notes    || '';
+        JUDGE.signature = matchedAgr.signature || '';
 
         // Resolve event name from eventId
         let ev = null;
@@ -1403,7 +1404,7 @@ function checkAgreementStatus() {
     const border = isConfirmed ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)';
     const labelText = isConfirmed ? 'CONFIRMED' : 'VERIFIED';
     
-    wrap.innerHTML = `<div style="display:inline-flex;align-items:center;gap:6px;background:${bg};color:${color};padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;border:1px solid ${border};">
+    wrap.innerHTML = `<div style="display:inline-flex;align-items:center;gap:6px;background:${bg};color:${color};padding:6px 12px;border-radius:20px;font-size:12px;font-weight:700;border:1px solid ${border};cursor:pointer;" onclick="openVerificationModal()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
       ${labelText}
     </div>`;
@@ -1416,6 +1417,8 @@ function checkAgreementStatus() {
 }
 
 function openVerificationModal() {
+  const isVerified = (JUDGE.status === 'verified' || JUDGE.status === 'confirmed');
+
   // Populate read-only fields from Monitor data
   document.getElementById('vm-name').textContent = JUDGE.name || '-';
   document.getElementById('vm-event').textContent = JUDGE.eventName || '-';
@@ -1432,13 +1435,29 @@ function openVerificationModal() {
   document.getElementById('vm-advance-text').textContent = '₹' + (JUDGE.advance || 0);
   document.getElementById('vm-remaining-text').textContent = '₹' + ((JUDGE.amount || 0) - (JUDGE.advance || 0));
 
-  // Reset judge-fill fields
-  document.getElementById('vm-advance').value = '';
-  document.getElementById('vm-remaining').value = '';
-  document.getElementById('vm-signature').value = '';
-  document.getElementById('vm-tc').checked = false;
-  document.getElementById('vm-match-badge').style.display = 'none';
-  document.getElementById('vm-submit-btn').style.background = '#3b82f6';
+  // Reset or fill judge-fill fields
+  document.getElementById('vm-advance').value = isVerified ? (JUDGE.advance || 0) : '';
+  document.getElementById('vm-advance').disabled = isVerified;
+  document.getElementById('vm-remaining').value = isVerified ? '₹' + ((JUDGE.amount || 0) - (JUDGE.advance || 0)) : '';
+  document.getElementById('vm-signature').value = isVerified ? (JUDGE.signature || 'Digitally Signed') : '';
+  document.getElementById('vm-signature').disabled = isVerified;
+  document.getElementById('vm-tc').checked = isVerified;
+  document.getElementById('vm-tc').disabled = isVerified;
+  
+  // Update match badge state
+  if (isVerified) {
+    document.getElementById('vm-match-badge').style.display = 'block';
+    document.getElementById('vm-match-badge').textContent = '✅ Agreement Verified & Synced';
+  } else {
+    document.getElementById('vm-match-badge').style.display = 'none';
+  }
+  
+  // Toggle submit button visibility
+  const submitBtn = document.getElementById('vm-submit-btn');
+  if (submitBtn) {
+    submitBtn.style.display = isVerified ? 'none' : 'block';
+    submitBtn.style.background = '#3b82f6';
+  }
 
   // Reset thank-you screen
   document.getElementById('vm-form-body').style.display = 'block';
