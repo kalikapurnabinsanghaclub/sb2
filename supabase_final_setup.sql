@@ -256,6 +256,8 @@ CREATE TABLE IF NOT EXISTS public.public_registrations (
     status     TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','waitlist')),
     notes      TEXT,
     form_data  JSONB DEFAULT '{}'::jsonb,
+    scores     JSONB DEFAULT '{}'::jsonb,
+    round_scores JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
