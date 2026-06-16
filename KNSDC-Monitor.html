@@ -3343,7 +3343,16 @@ function renderDashStats(){
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
   const total = data.length;
   const present = data.filter(p=>p.present).length;
-  const judgesPresent = judges.filter(j=>j.present).length;
+  const sState = syncEngine.getData() || {};
+  let activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0'));
+  activeJudges = activeJudges.filter(j => {
+    const agr = (sState.judgeAgreements || []).find(a => 
+      (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+      (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+    );
+    return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+  });
+  const judgesPresent = activeJudges.length;
   
   // Calculate dynamic category distribution
   const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
