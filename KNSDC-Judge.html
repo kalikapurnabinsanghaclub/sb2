@@ -2178,14 +2178,31 @@ function insMention(m) {
 }
 
 function parseMentions(txt) {
-  return txt.replace(/@(monitor|host|judge|admin)/gi, m => `<span class="at-m">${m}</span>`);
+  if (!txt) return '';
+  return txt.replace(/@(monitor|host|judge|admin)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
 }
 
 function addMsg(from, text, type='out', sos=false) {
-  const now = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  const isMentioned = text && /@(monitor|judge|admin|host)/i.test(text);
+  
+  let inlineStyle = '';
+  if (sos) inlineStyle = 'color:var(--rose)';
+  if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+
   const el = document.createElement('div');
   el.className = `cmsg ${type}${sos?' sos':''}`;
-  el.innerHTML = `<div class="cmeta">${from} · ${now}</div><div>${parseMentions(text)}</div>`;
+  el.style.cssText = inlineStyle;
+  
+  const dispFrom = (from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
+  const parts = dispFrom.split(' · ');
+  const rolePart = parts[0];
+  const namePart = parts.slice(1).join(' · ');
+  const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
+
+  const evId = syncEngine.state ? syncEngine.state.activeEventId : null;
+  el.innerHTML = `<div class="cmeta">${styledFrom} · ${timeStr}</div><div>${parseMentions(text)}</div>`;
   
   const mc = document.getElementById('chat-msgs');
   if(mc) {
@@ -2200,7 +2217,8 @@ function addMsg(from, text, type='out', sos=false) {
   }
 
   // Add to local state array and sync
-  chatMessages.push({ from, text, type, sos, time: now });
+  const msgObj = { from, text, type, sos, time: timeStr, timestamp: now.getTime(), role: 'judge', eventId: evId };
+  chatMessages.push(msgObj);
   syncEngine.updateState({ chatMessages });
 
   if(currentPage!=='chat') {
@@ -2439,14 +2457,24 @@ syncEngine.subscribe((state) => {
   if (state.currentOnStage) currentOnStage = state.currentOnStage;
   if (state.switchStates) switchStates = state.switchStates;
   if (state.chatMessages) {
-    chatMessages = state.chatMessages;
+    chatMessages = state.chatMessages.filter(m => m.eventId === state.activeEventId || m.role === 'admin');
     // Re-render both chat interfaces
     const msgHtml = chatMessages.map(m => {
-      const type = (m.from || '').startsWith('Judge') ? 'out' : 'in';
+      const type = (m.role === 'judge') ? 'out' : 'in';
       const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
+      
+      let inlineStyle = '';
+      if (m.sos) inlineStyle = 'color:var(--rose)';
+      if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+
       const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
-      return `<div class="cmsg ${type}${m.sos?' sos':''}${isMentioned ? ' mentioned' : ''}">
-        <div class="cmeta">${dispFrom} · ${m.time}</div>
+      const parts = dispFrom.split(' · ');
+      const rolePart = parts[0];
+      const namePart = parts.slice(1).join(' · ');
+      const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
+
+      return `<div class="cmsg ${type}${m.sos?' sos':''}" style="${inlineStyle}">
+        <div class="cmeta">${styledFrom} · ${m.time} ${m.eventId && m.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
         <div>${parseMentions(m.text)}</div>
       </div>`;
     }).join('');

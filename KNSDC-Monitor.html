@@ -6499,7 +6499,8 @@ function insPageMention(m){
 }
 
 function parseMentions(txt){
-  return txt.replace(/@(monitor|judge|admin|host)/gi,(m)=>`<span class="at-m">${m}</span>`);
+  if (!txt) return '';
+  return txt.replace(/@(monitor|judge|admin|host)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
 }
 
 function getMyName() {
@@ -6511,11 +6512,23 @@ function getMyName() {
 
 function buildMsgEl(msg){
   const d=document.createElement('div');
-  const type = (msg.from || '').startsWith('Monitor') ? 'out' : 'in';
+  const type = (msg.role === 'monitor') ? 'out' : 'in';
   const isMentioned = msg.text && /@(monitor|judge|admin|host)/i.test(msg.text);
-  d.className=`cmsg ${type}${msg.sos?' sos':''}${isMentioned ? ' mentioned' : ''}`;
+  
+  let inlineStyle = '';
+  if (msg.sos) inlineStyle = 'color:var(--rose)';
+  if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+
+  d.className=`cmsg ${type}${msg.sos?' sos':''}`;
+  d.style.cssText = inlineStyle;
+  
   const dispFrom = (msg.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
-  d.innerHTML=`<div class="cmeta">${dispFrom} · ${msg.time}</div><div>${parseMentions(msg.text)}</div>`;
+  const parts = dispFrom.split(' · ');
+  const rolePart = parts[0];
+  const namePart = parts.slice(1).join(' · ');
+  const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
+
+  d.innerHTML=`<div class="cmeta">${styledFrom} · ${msg.time} ${msg.eventId && msg.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${msg.eventId})</span>` : ''}</div><div>${parseMentions(msg.text)}</div>`;
   return d;
 }
 
@@ -6525,7 +6538,9 @@ function renderGlobalChat() {
   if (fb) fb.innerHTML = '';
   if (pb) pb.innerHTML = '';
   
-  chatHistory.forEach(m => {
+  const filteredChat = chatHistory.filter(m => m.eventId === activeEventId || m.role === 'admin');
+  
+  filteredChat.forEach(m => {
     const el = buildMsgEl(m);
     if (fb) fb.appendChild(el.cloneNode(true));
     if (pb) pb.appendChild(el);
@@ -6609,7 +6624,7 @@ function updateSOSUI() {
 function addChatMsg(from,text,type='out',sos=false){
   const now=new Date();
   const time=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-  const msg={from,text,type,sos,time};
+  const msg={from,text,type,sos,time, timestamp: now.getTime(), role: 'monitor', eventId: activeEventId};
   chatHistory.push(msg);
   const el=buildMsgEl(msg);
   const fb=document.getElementById('float-chat-msgs');

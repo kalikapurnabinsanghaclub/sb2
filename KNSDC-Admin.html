@@ -2677,7 +2677,7 @@ function toggleChat() {
 
 function parseMentions(txt) {
     if (!txt) return '';
-    return txt.replace(/@(monitor|judge|admin|host)/gi, (m) => `<span class="at-m">${m}</span>`);
+    return txt.replace(/@(monitor|judge|admin|host)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
 }
 
 function insMention(m) {
@@ -2702,12 +2702,21 @@ function hydrateChat() {
       const n = JSON.parse(localStorage.getItem('kns_user')).name;
       if (n && n !== 'undefined' && n !== 'null') myName = n;
     } catch(e){}
-    const type = (m.from || '').startsWith('Admin') ? 'out' : 'in';
+    const type = (m.role === 'admin') ? 'out' : 'in';
     const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
     const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
+    const parts = dispFrom.split(' · ');
+    const rolePart = parts[0];
+    const namePart = parts.slice(1).join(' · ');
+    const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
+    
+    let inlineStyle = '';
+    if (m.sos) inlineStyle = 'color:var(--rose)';
+    if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+
     return `
-    <div class="cmsg ${type} ${m.sos ? 'sos' : ''}${isMentioned ? ' mentioned' : ''}">
-      <div class="cmeta">${dispFrom} · ${m.time}</div>
+    <div class="cmsg ${type} ${m.sos ? 'sos' : ''}" style="${inlineStyle}">
+      <div class="cmeta">${styledFrom} · ${m.time} ${m.eventId ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
       <div>${typeof parseMentions === 'function' ? parseMentions(m.text) : m.text}</div>
     </div>
   `;
@@ -2768,7 +2777,8 @@ function sendPageMsg() {
   if(!text) return;
   
   const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  const msg = { from: 'Admin · Staff', text, type: 'out', time, sos: false };
+  const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+  const msg = { from: 'Admin · Staff', text, type: 'out', time, sos: false, timestamp: Date.now(), role: 'admin', eventId };
   
   syncEngine.setData(s => {
     const chatMessages = [...(s.chatMessages || []), msg];
@@ -2786,7 +2796,8 @@ function sendMsg() {
   const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
   let myName = 'Admin';
   try { myName = JSON.parse(localStorage.getItem('kns_user')).name || 'Admin'; } catch(e){}
-  const msg = { from: `Admin · ${myName}`, text, type: 'out', time, sos: false };
+  const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+  const msg = { from: `Admin · ${myName}`, text, type: 'out', time, sos: false, timestamp: Date.now(), role: 'admin', eventId };
   
   syncEngine.setData(s => {
     const chatMessages = [...(s.chatMessages || []), msg];
@@ -2799,7 +2810,8 @@ function sendMsg() {
 function triggerSOS() {
   if(confirm("Trigger EMERGENCY SOS Broadcast to all staff?")) {
     const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-    const msg = { from: 'ADMIN · EMERGENCY', text: '🚨 SOS: Administrator signaling emergency at Control Center!', type: 'out', time, sos: true };
+    const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+    const msg = { from: 'ADMIN · EMERGENCY', text: '🚨 SOS: Administrator signaling emergency at Control Center!', type: 'out', time, sos: true, timestamp: Date.now(), role: 'admin', eventId };
     
     syncEngine.setData(s => {
       const chatMessages = [...(s.chatMessages || []), msg];

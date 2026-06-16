@@ -929,7 +929,7 @@ function toggleChat() {
 
 function hydrateChat(state) {
   const s = state || syncEngine.getData();
-  chatHistory = s.chatMessages || [];
+  chatHistory = (s.chatMessages || []).filter(m => m.eventId === s.activeEventId || m.role === 'admin');
   sosActive = s.sosActive || false;
   const container = document.getElementById('chat-msgs');
   if(!container) return;
@@ -939,15 +939,22 @@ function hydrateChat(state) {
       const n = JSON.parse(localStorage.getItem('kns_user')).name;
       if (n && n !== 'undefined' && n !== 'null') myName = n;
     } catch(e){}
-    const type = (m.from || '').startsWith('Host') ? 'msg-out' : 'msg-in';
+    const type = (m.role === 'host') ? 'msg-out' : 'msg-in';
     const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
+    
     let inlineStyle = '';
     if (m.sos) inlineStyle = 'color:var(--rose)';
     if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+    
     const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
+    const parts = dispFrom.split(' · ');
+    const rolePart = parts[0];
+    const namePart = parts.slice(1).join(' · ');
+    const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
+    
     return `
     <div class="msg-bubble ${type} ${m.sos ? 'sos-msg' : ''}" style="${inlineStyle}">
-      <div class="msg-meta"><span>${dispFrom}</span><span>${m.time}</span></div>
+      <div class="msg-meta"><span>${styledFrom}</span><span>${m.time} ${m.eventId && m.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</span></div>
       <div class="msg-text">${typeof parseMentions === 'function' ? parseMentions(m.text) : m.text}</div>
     </div>
   `;}).join('');
@@ -960,7 +967,7 @@ function hydrateChat(state) {
 
 function parseMentions(txt) {
   if (!txt) return '';
-  return txt.replace(/@(monitor|judge|admin|host)/gi, m => `<span style="color: #10b981; font-weight: 700; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 6px;">${m}</span>`);
+  return txt.replace(/@(monitor|judge|admin|host)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
 }
 
 function sendMsg() {
@@ -970,7 +977,8 @@ function sendMsg() {
   const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
   let myName = 'Host';
   try { myName = JSON.parse(localStorage.getItem('kns_user')).name || 'Host'; } catch(e){}
-  const msg = { from: `Host · ${myName}`, text, type: 'out', time, sos: false };
+  const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+  const msg = { from: `Host · ${myName}`, text, type: 'out', time, sos: false, timestamp: Date.now(), role: 'host', eventId };
   syncEngine.setData(s => ({ ...s, chatMessages: [...(s.chatMessages || []), msg] }));
   inp.value = '';
 }
@@ -978,7 +986,8 @@ function sendMsg() {
 function triggerSOS() {
   if(confirm("Trigger EMERGENCY SOS?")) {
     const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-    const msg = { from: 'HOST · EMERGENCY', text: '🚨 SOS at Host Desk!', type: 'out', time, sos: true };
+    const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+    const msg = { from: 'HOST · EMERGENCY', text: '🚨 SOS at Host Desk!', type: 'out', time, sos: true, timestamp: Date.now(), role: 'host', eventId };
     syncEngine.setData(s => ({ ...s, chatMessages: [...(s.chatMessages || []), msg], sosActive: true }));
     toast('🚨 SOS SENT!');
   }
