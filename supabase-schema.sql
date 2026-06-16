@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS public.judge_agreements (
   payment_received numeric,
   photo_url text,
   agreed_tc boolean,
+  signature text,
   created_at timestamptz DEFAULT now()
 );
 
