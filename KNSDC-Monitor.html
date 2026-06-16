@@ -3409,7 +3409,18 @@ function renderStageView(){
   if (scoreContainer) {
     if (onStage) {
       scoreContainer.style.display = 'block';
-      const activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0'));
+      let activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0'));
+      
+      // Only show judges that have a verified/confirmed agreement
+      const sState = syncEngine.getData() || {};
+      activeJudges = activeJudges.filter(j => {
+        const agr = (sState.judgeAgreements || []).find(a => 
+          (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+          (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+        );
+        return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+      });
+
       if (activeJudges.length === 0) {
         scoreContainer.innerHTML = '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px 0">No judges present for this event</div>';
       } else {
@@ -3539,7 +3550,18 @@ function renderAttendanceBreakdown(){
 
 function renderJudgeStatus(){
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
-  const activeJudges = judges.filter(j => String(j.eventId) === String(activeEventId) || String(j.eventId) === '0');
+  let activeJudges = judges.filter(j => String(j.eventId) === String(activeEventId) || String(j.eventId) === '0');
+  
+  // Only show judges that have a verified/confirmed agreement
+  const sState = syncEngine.getData() || {};
+  activeJudges = activeJudges.filter(j => {
+    const agr = (sState.judgeAgreements || []).find(a => 
+      (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+      (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+    );
+    return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+  });
+
   const present = activeJudges.filter(j=>j.present).length;
   document.getElementById('judge-present-count').textContent = `${present}/${activeJudges.length} Present`;
   document.getElementById('judge-status-list').innerHTML = activeJudges.map(j=>{
@@ -5001,8 +5023,17 @@ function openScoreModalFor(id){
         <div style="font-size:11px;color:var(--text-muted)">${p?p.id:''} · ${cat?cat.name:'—'} · Round: ${p?p.round.toUpperCase():''}</div></div>
     </div>`;
   let html = '';
-  judges.forEach(j=>{
-    if(!j.present) return;
+  const sState = syncEngine.getData() || {};
+  const activeJudges = judges.filter(j => {
+    if (!j.present) return false;
+    const agr = (sState.judgeAgreements || []).find(a => 
+      (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+      (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+    );
+    return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+  });
+
+  activeJudges.forEach(j=>{
     html += `<div style="margin-top:14px">
       <div style="font-size:11px;font-family:var(--fm);color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">⚖️ ${j.name}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">`;
@@ -5023,8 +5054,17 @@ function saveScores(){
   const p = participants.find(x=>x.id===scoringParticipantId);
   if(!p){ closeM('score-modal'); return; }
   p.present = true;
-  judges.forEach(j=>{
-    if(!j.present) return;
+  const sState = syncEngine.getData() || {};
+  const activeJudges = judges.filter(j => {
+    if (!j.present) return false;
+    const agr = (sState.judgeAgreements || []).find(a => 
+      (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+      (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+    );
+    return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+  });
+
+  activeJudges.forEach(j=>{
     if(!p.scores[j.id]) p.scores[j.id] = {};
     subjects.forEach(s=>{
       const inp = document.getElementById(`score_${j.id}_${s.id}`);
