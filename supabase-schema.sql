@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.judge_credentials (
   password_hash text,
   name text,
   event_id text,
+  agreement_id numeric,
   category text,
   color text
 );
@@ -160,13 +161,26 @@ CREATE TABLE IF NOT EXISTS public.venues (
 CREATE TABLE IF NOT EXISTS public.judge_agreements (
   id numeric PRIMARY KEY,
   name text,
-  email text,
   phone text,
-  sub_id text,
-  cat_id text,
-  payment text,
+  email text,
+  password text,
+  city text,
+  event_id text,
+  date text,
+  date_upto text,
+  time text,
+  venue_id numeric,
+  venue_name text,
+  spec text,
+  amount numeric,
+  advance numeric,
+  notes text,
   status text,
-  event_id text
+  submitted boolean,
+  payment_received numeric,
+  photo_url text,
+  agreed_tc boolean,
+  created_at timestamptz DEFAULT now()
 );
 
 -- Scoring Subjects
@@ -188,8 +202,19 @@ CREATE TABLE IF NOT EXISTS public.public_messages (
 );
 
 
--- 2. Enable Realtime on sync_state
-alter publication supabase_realtime add table sync_state;
+-- 2. Enable Realtime on sync_state (Using a safe DO block to prevent duplicate errors)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+      AND schemaname = 'public' 
+      AND tablename = 'sync_state'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.sync_state;
+  END IF;
+END $$;
 
 -- 3. Row Level Security (RLS) Setup
 -- Since the application operates largely as a client-side database through LocalSync,
