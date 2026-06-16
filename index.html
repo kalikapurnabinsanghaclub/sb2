@@ -2962,12 +2962,47 @@
         );
         const { data, error } = await client.from('events').select('*').order('start_date', { ascending: true });
         if (error || !data || data.length === 0) return;
+        
+        let catData = [];
+        let venData = [];
+        try {
+          const { data: cData } = await client.from('categories').select('*');
+          if (cData) catData = cData;
+        } catch(e) { console.error('Error loading categories directly:', e); }
+        
+        try {
+          const { data: vData } = await client.from('venues').select('*');
+          if (vData) venData = vData;
+        } catch(e) { console.error('Error loading venues directly:', e); }
+
         const today = new Date();
         const syncState = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
         const mapped = data.map(dbEv => {
           const stateSwitches = syncState.eventSwitches ? (syncState.eventSwitches[dbEv.id] || {}) : {};
           const evSwitches = { ...(dbEv.switch_states || { publicReg: false, stagePreview: false, resultPublic: false }), ...stateSwitches };
           
+          const eventCats = catData
+            .filter(c => String(c.event_id) === String(dbEv.id))
+            .map(c => ({
+              id: Number(c.id),
+              name: c.name,
+              color: c.color,
+              ageMin: Number(c.age_min),
+              ageMax: Number(c.age_max),
+              eventId: c.event_id
+            }));
+
+          const eventVens = venData
+            .filter(v => String(v.event_id) === String(dbEv.id))
+            .map(v => ({
+              id: Number(v.id),
+              name: v.name,
+              location: v.location,
+              eventId: v.event_id,
+              capacity: Number(v.capacity) || 0,
+              dates: Array.isArray(v.dates) ? v.dates : (v.dates ? [v.dates] : [])
+            }));
+
           return {
             id: dbEv.id,
             name: dbEv.name || 'Unknown Event',
@@ -2987,7 +3022,9 @@
             formFields: (syncState.eventFormFields && syncState.eventFormFields[dbEv.id] && syncState.eventFormFields[dbEv.id].length > 0) ? syncState.eventFormFields[dbEv.id] : (dbEv.form_fields || null),
             switchStates: evSwitches,
             icon: dbEv.type === 'Cultural' ? '\u{1F483}' : dbEv.type === 'Sports' ? '\u26BD' : '\uD83D\uDCC5',
-            col: dbEv.type === 'Cultural' ? '#7B2D8B' : dbEv.type === 'Sports' ? '#F59E0B' : '#FF6B35'
+            col: dbEv.type === 'Cultural' ? '#7B2D8B' : dbEv.type === 'Sports' ? '#F59E0B' : '#FF6B35',
+            categories: eventCats,
+            venues: eventVens
           };
         });
         const activeEvents = mapped.filter(ev => {
