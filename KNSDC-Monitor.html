@@ -1841,6 +1841,26 @@
               <div class="card-title" style="margin:0 0 4px">🧑‍⚖️ Verified &amp; Confirmed Judges</div>
               <div style="font-size:11px;color:var(--text-muted)">Showing all <strong>verified &amp; confirmed</strong> judges on the platform</div>
             </div>
+            <!-- Previous Score Viewer Toggle (In Black Outlined Box) -->
+            <div style="display: flex; align-items: center; gap: 8px; border: 2px solid #000; padding: 6px 12px; border-radius: 10px; background: rgba(255,255,255,0.9); box-shadow: var(--shadow-sm); margin-left: auto; margin-right: 16px;">
+              <span style="font-size: 11px; font-weight: 800; color: #000; text-transform: uppercase; letter-spacing: 0.5px;">👁️ Prev Score Viewer</span>
+              <div style="width: 45px; height: 18px; position: relative; margin-right: 5px;">
+                <div class="uv-ag-container" style="transform: scale(0.65); transform-origin: top left; position: absolute; top: 0; left: 0; font-size: 20px;">
+                  <input type="checkbox" class="uv-ag-input" id="assigned-prev-scores-toggle" onchange="togglePreviousScoresFromAssign(this)">
+                  <div class="uv-ag-handle-wrapper">
+                    <div class="uv-ag-handle">
+                      <div class="uv-ag-handle-knob"></div>
+                      <div class="uv-ag-bar-wrapper">
+                        <div class="uv-ag-bar"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="uv-ag-base">
+                    <div class="uv-ag-base-inside"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <button class="btn btn-ghost btn-sm" onclick="renderAssignedJudges()">↺ Refresh</button>
           </div>
           <div id="assigned-judges-list" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(400px, 1fr));gap:16px"></div>
@@ -2642,7 +2662,7 @@ let venues = [];
 let activeEventId = null;
 let currentOnStage = null;
 let stageQueue = [];
-let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, publicVoting: false, whatsapp: false };
+let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, publicVoting: false, whatsapp: false, prevScoresViewer: false };
 let nxtId = { reg: 1, cat: 1, venue: 1, subj: 1, agr: 1 };
 let formFields = [];
 let agreements = [
@@ -3676,6 +3696,18 @@ window.toggleJudgePresence = (identifier) => {
   toast('Judge presence status toggled!');
 };
 
+window.togglePreviousScoresFromAssign = (cb) => {
+  const state = syncEngine.getData() || {};
+  if (state.systemStatus === 'offline') {
+    cb.checked = false;
+    toast('⚠️ Please turn the system LIVE first before enabling switches!');
+    return;
+  }
+  switchStates.prevScoresViewer = cb.checked;
+  syncAll();
+  toast(`${cb.checked ? '✅ Enabled' : '🔒 Disabled'}: Previous Score Viewer`);
+};
+
 function toggleSwitch(sw, cb){
   const row = document.getElementById('sw-'+sw);
   if(!row) return;
@@ -3700,7 +3732,8 @@ function toggleSwitch(sw, cb){
     'promo-public':'promoPublic',
     'download-public':'downloadPublic',
     'public-voting':'publicVoting',
-    'live-stream':'liveStream'
+    'live-stream':'liveStream',
+    'prev-scores-viewer':'prevScoresViewer'
   };
   const stateKey = stateMap[sw] || sw;
 
@@ -6891,7 +6924,7 @@ async function renderChatOnlineList(){
 }
 
 function renderSwitches() {
-  const keys = ['publicReg', 'stagePreview', 'lockScore', 'editScore', 'resultPublic', 'promoPublic', 'downloadPublic', 'publicVoting', 'liveStream', 'whatsapp'];
+  const keys = ['publicReg', 'stagePreview', 'lockScore', 'editScore', 'resultPublic', 'promoPublic', 'downloadPublic', 'publicVoting', 'liveStream', 'whatsapp', 'prevScoresViewer'];
   keys.forEach(k => {
     const row = document.getElementById('sw-' + k.replace(/[A-Z]/g, m => '-' + m.toLowerCase()));
     if(row) {
@@ -6900,6 +6933,12 @@ function renderSwitches() {
       row.classList.toggle('on', !!switchStates[k]);
     }
   });
+  
+  // Update the toggle in the Judge Assign header
+  const assignToggle = document.getElementById('assigned-prev-scores-toggle');
+  if (assignToggle) {
+    assignToggle.checked = !!switchStates.prevScoresViewer;
+  }
 }
 
 function updateNbadges() {
