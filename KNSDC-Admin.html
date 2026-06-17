@@ -1171,11 +1171,12 @@
         <thead><tr>
           <th>Name</th>
           <th>Email</th>
+          <th>Assignment</th>
           <th>Role</th>
           <th>Created</th>
           <th>Actions</th>
         </tr></thead>
-        <tbody id="staff-tbody"><tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr></tbody>
+        <tbody id="staff-tbody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -2071,7 +2072,7 @@ window.renderStaffPage = async (state) => {
   if (!tbody) return;
   if (!window.syncEngine || !window.syncEngine.listStaffMembers) {
     if (tbody.innerHTML.includes('Loading...')) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr>';
     }
     return;
   }
@@ -2079,25 +2080,57 @@ window.renderStaffPage = async (state) => {
   try {
     const staffList = await window.syncEngine.listStaffMembers();
     if (!staffList || staffList.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No staff members assigned yet. Add one in the Events tab.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">No staff members assigned yet. Add one in the Events tab.</td></tr>';
       return;
     }
     
-    tbody.innerHTML = staffList.map(s => `
-      <tr>
-        <td style="font-weight:700">${s.name || 'Staff User'}</td>
-        <td>${s.email}</td>
-        <td><span class="badge" style="background:var(--blue);color:#fff">${s.role ? s.role.toUpperCase() : 'UNKNOWN'}</span></td>
-        <td>${s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'}</td>
-        <td>
-          <button class="btn btn-ghost btn-xs" onclick="openStaffPasswordModal('${s.email}')">🔑 Edit</button>
-          <button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="deleteStaff('${s.email}')">🗑️ Delete</button>
-        </td>
-      </tr>
-    `).join('');
+    const dbState = window.syncEngine.getData() || {};
+    const events = dbState.events || [];
+
+    tbody.innerHTML = staffList.map(s => {
+      let assignmentText = '—';
+      const emailLower = s.email ? s.email.toLowerCase() : '';
+      
+      if (s.role === 'host') {
+        const hostAssignment = (dbState.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === emailLower);
+        if (hostAssignment) {
+          const ev = events.find(e => String(e.id) === String(hostAssignment.eventId));
+          assignmentText = `🎤 ${ev ? ev.name : 'Event'} (${hostAssignment.venueName || 'Venue'})`;
+        } else {
+          const assignedEv = events.find(e => Array.isArray(e.staff) && e.staff.map(x => (x || '').toLowerCase()).includes(emailLower));
+          if (assignedEv) {
+            assignmentText = `🎤 ${assignedEv.name}`;
+          }
+        }
+      } else if (s.role === 'judge') {
+        const judgeAgreement = (dbState.judgeAgreements || dbState.agreements || []).find(a => a.email && a.email.toLowerCase() === emailLower);
+        if (judgeAgreement) {
+          const ev = events.find(e => String(e.id) === String(judgeAgreement.eventId));
+          assignmentText = `⚖️ ${ev ? ev.name : 'Event'} (${judgeAgreement.venueName || 'Venue'})`;
+        }
+      } else if (s.role === 'admin') {
+        assignmentText = '👑 Super Admin';
+      } else if (s.role === 'monitor') {
+        assignmentText = '🖥️ All Events';
+      }
+
+      return `
+        <tr>
+          <td style="font-weight:700">${s.name || 'Staff User'}</td>
+          <td>${s.email}</td>
+          <td><span style="font-size:11px; color:var(--text-muted); font-weight:600">${assignmentText}</span></td>
+          <td><span class="badge" style="background:var(--blue);color:#fff">${s.role ? s.role.toUpperCase() : 'UNKNOWN'}</span></td>
+          <td>${s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'}</td>
+          <td>
+            <button class="btn btn-ghost btn-xs" onclick="openStaffPasswordModal('${s.email}')">🔑 Edit</button>
+            <button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="deleteStaff('${s.email}')">🗑️ Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
   } catch(e) {
     console.error("Failed to load staff", e);
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Error loading staff list.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Error loading staff list.</td></tr>';
   }
 };
 
