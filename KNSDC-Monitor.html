@@ -6988,8 +6988,14 @@ window.saveHost = async function() {
   }
 };
 
-window.deleteHost = function(id) {
+window.deleteHost = async function(id) {
   if (!confirm('Delete this host?')) return;
+  const host = (hostAssignments || []).find(h => String(h.id) === String(id));
+  if (host && host.email) {
+    if (syncEngine.deleteStaffMember) {
+      await syncEngine.deleteStaffMember(host.email);
+    }
+  }
   hostAssignments = hostAssignments.filter(h => String(h.id) !== String(id));
   syncEngine.updateState({ hostAssignments });
   renderHostAssign();
@@ -7290,6 +7296,12 @@ async function saveAgreement(){
 
 async function deleteAgreement(id){
   if(!confirm('Delete this agreement?')) return;
+  const agr = (agreements || []).find(a => a.id === id);
+  if (agr && agr.email) {
+    if (syncEngine.deleteStaffMember) {
+      await syncEngine.deleteStaffMember(agr.email);
+    }
+  }
   const success = await syncEngine.deleteAgreement(id);
   if(!success){toast('❌ Error deleting agreement');return;}
   agreements=agreements.filter(a=>a.id!==id);
