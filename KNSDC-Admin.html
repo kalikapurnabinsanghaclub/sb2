@@ -2091,27 +2091,24 @@ window.renderStaffPage = async (state) => {
       let assignmentText = '—';
       const emailLower = s.email ? s.email.toLowerCase() : '';
       
-      if (s.role === 'host') {
-        const hostAssignment = (dbState.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === emailLower);
-        if (hostAssignment) {
-          const ev = events.find(e => String(e.id) === String(hostAssignment.eventId));
-          assignmentText = `🎤 ${ev ? ev.name : 'Event'} (${hostAssignment.venueName || 'Venue'})`;
-        } else {
-          const assignedEv = events.find(e => Array.isArray(e.staff) && e.staff.map(x => (x || '').toLowerCase()).includes(emailLower));
-          if (assignedEv) {
-            assignmentText = `🎤 ${assignedEv.name}`;
-          }
+      const hostAssignment = (dbState.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === emailLower);
+      const judgeAgreement = (dbState.judgeAgreements || dbState.agreements || []).find(a => a.email && a.email.toLowerCase() === emailLower);
+      const assignedEv = events.find(e => Array.isArray(e.staff) && e.staff.map(x => (x || '').toLowerCase()).includes(emailLower));
+
+      if (hostAssignment) {
+        const ev = events.find(e => String(e.id) === String(hostAssignment.eventId));
+        assignmentText = `🎤 ${ev ? ev.name : 'Event'} (${hostAssignment.venueName || 'Venue'})`;
+      } else if (judgeAgreement) {
+        const ev = events.find(e => String(e.id) === String(judgeAgreement.eventId));
+        assignmentText = `⚖️ ${ev ? ev.name : 'Event'} (${judgeAgreement.venueName || 'Venue'})`;
+      } else if (assignedEv) {
+        assignmentText = `🎪 ${assignedEv.name}`;
+      } else {
+        if (s.role === 'admin') {
+          assignmentText = '👑 Super Admin';
+        } else if (s.role === 'monitor') {
+          assignmentText = '🖥️ All Events';
         }
-      } else if (s.role === 'judge') {
-        const judgeAgreement = (dbState.judgeAgreements || dbState.agreements || []).find(a => a.email && a.email.toLowerCase() === emailLower);
-        if (judgeAgreement) {
-          const ev = events.find(e => String(e.id) === String(judgeAgreement.eventId));
-          assignmentText = `⚖️ ${ev ? ev.name : 'Event'} (${judgeAgreement.venueName || 'Venue'})`;
-        }
-      } else if (s.role === 'admin') {
-        assignmentText = '👑 Super Admin';
-      } else if (s.role === 'monitor') {
-        assignmentText = '🖥️ All Events';
       }
 
       return `
