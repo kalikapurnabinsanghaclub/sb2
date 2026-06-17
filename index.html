@@ -3341,59 +3341,85 @@
 
           // 4. Results & Promotion Logic
           const resultsTab = document.getElementById('resultsTab');
-          if (resultsTab) {
-            const showResults = activeEv.switchStates?.resultPublic !== false;
+          const promotionTab = document.getElementById('promotionTab');
+          if (resultsTab || promotionTab) {
+            const participants = state.participants || [];
+            // Filter by active event
+            const LIVE_PARTICIPANTS = participants.filter(p => String(p.eventId) === String(activeEventId));
             
-            if (showResults) {
-              const participants = state.participants || [];
-              // Filter by active event
-              const LIVE_PARTICIPANTS = participants.filter(p => String(p.eventId) === String(activeEventId));
-              
-              const rawPromoted = LIVE_PARTICIPANTS.filter(p => p.round !== 'audition');
-              
-              // Sort by score
-              const rawLiveResults = LIVE_PARTICIPANTS.map(p => {
-                let total = 0;
-                Object.values(p.scores || {}).forEach(jScores => {
-                  Object.values(jScores).forEach(val => total += (Number(val) || 0));
-                });
-                return { name: p.name, score: total, catId: p.catId, round: p.round || 'audition', id: p.id };
-              }).sort((a, b) => b.score - a.score);
+            // A. Compute Promoted
+            const rawPromoted = LIVE_PARTICIPANTS.filter(p => p.round !== 'audition');
+            const mappedPromoted = rawPromoted.map(p => ({
+              id: p.id,
+              name: p.name,
+              cat: activeEv.categories?.find(c => String(c.id) === String(p.catId))?.name || 'Participant',
+              round: p.round
+            }));
+            window.PROMOTED = mappedPromoted;
+            PROMOTED = mappedPromoted;
 
-              const mappedLiveResults = rawLiveResults.map((p, idx) => ({
-                rank: idx + 1,
-                name: p.name,
-                cat: activeEv.categories?.find(c => String(c.id) === String(p.catId))?.name || 'Participant',
-                score: p.score,
-                round: p.round || 'audition',
-                id: p.id
-              }));
-              window.LIVE_RESULTS = mappedLiveResults;
-              LIVE_RESULTS = mappedLiveResults;
-              
-              const mappedPromoted = rawPromoted.map(p => ({
-                id: p.id,
-                name: p.name,
-                cat: activeEv.categories?.find(c => String(c.id) === String(p.catId))?.name || 'Participant',
-                round: p.round
-              }));
-              window.PROMOTED = mappedPromoted;
-              PROMOTED = mappedPromoted;
+            // B. Compute Live Results
+            const rawLiveResults = LIVE_PARTICIPANTS.map(p => {
+              let total = 0;
+              Object.values(p.scores || {}).forEach(jScores => {
+                Object.values(jScores).forEach(val => total += (Number(val) || 0));
+              });
+              return { name: p.name, score: total, catId: p.catId, round: p.round || 'audition', id: p.id };
+            }).sort((a, b) => b.score - a.score);
 
-              // Stats
-              EVENT_STATS.total = LIVE_PARTICIPANTS.length;
-              EVENT_STATS.avg = (LIVE_RESULTS.reduce((a, b) => a + b.score, 0) / (LIVE_RESULTS.length || 1)).toFixed(1);
+            const mappedLiveResults = rawLiveResults.map((p, idx) => ({
+              rank: idx + 1,
+              name: p.name,
+              cat: activeEv.categories?.find(c => String(c.id) === String(p.catId))?.name || 'Participant',
+              score: p.score,
+              round: p.round || 'audition',
+              id: p.id
+            }));
+            window.LIVE_RESULTS = mappedLiveResults;
+            LIVE_RESULTS = mappedLiveResults;
 
-              const avgEl = document.getElementById('stat-avg-score');
-              if(avgEl) avgEl.textContent = EVENT_STATS.avg;
-              const totalEl = document.getElementById('stat-total-parts');
-              if(totalEl) totalEl.textContent = EVENT_STATS.total;
+            // C. Stats
+            EVENT_STATS.total = LIVE_PARTICIPANTS.length;
+            EVENT_STATS.avg = (LIVE_RESULTS.reduce((a, b) => a + b.score, 0) / (LIVE_RESULTS.length || 1)).toFixed(1);
 
-              renderResults();
-              renderPromotion();
-              resultsTab.classList.remove('hidden');
-            } else {
-              resultsTab.classList.add('hidden');
+            const avgEl = document.getElementById('stat-avg-score');
+            if (avgEl) avgEl.textContent = EVENT_STATS.avg;
+            const totalEl = document.getElementById('stat-total-parts');
+            if (totalEl) totalEl.textContent = EVENT_STATS.total;
+
+            // D. Render Views
+            if (typeof renderResults === 'function') renderResults();
+            if (typeof renderPromotion === 'function') renderPromotion();
+
+            // E. Show/Hide Tabs based on switch states & active button selection
+            const showResults = activeEv.switchStates?.resultPublic !== false;
+            const showPromo = activeEv.switchStates?.promoPublic === true;
+
+            const resBtn = document.getElementById("resultsTabBtn");
+            const proBtn = document.getElementById("promoTabBtn");
+
+            if (!showResults) {
+              if (resultsTab) resultsTab.classList.add('hidden');
+            }
+            if (!showPromo) {
+              if (promotionTab) promotionTab.classList.add('hidden');
+            }
+
+            if (showResults && showPromo) {
+              const resActive = resBtn && resBtn.classList.contains("on");
+              if (resActive) {
+                if (resultsTab) resultsTab.classList.remove("hidden");
+                if (promotionTab) promotionTab.classList.add("hidden");
+              } else {
+                if (resultsTab) resultsTab.classList.add("hidden");
+                if (promotionTab) promotionTab.classList.remove("hidden");
+              }
+            } else if (showResults) {
+              if (resultsTab) resultsTab.classList.remove("hidden");
+              if (promotionTab) promotionTab.classList.add("hidden");
+            } else if (showPromo) {
+              if (resultsTab) resultsTab.classList.add("hidden");
+              if (promotionTab) promotionTab.classList.remove("hidden");
             }
           }
         }
