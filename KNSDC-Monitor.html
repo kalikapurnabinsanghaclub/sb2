@@ -1923,7 +1923,7 @@
             </div>
           </div>
           <div class="fg"><label class="fl">Destination Link</label><input id="ad-link" type="url" placeholder="https://…"/></div>
-          <button class="btn btn-amber" style="border-radius:8px; width:100%; font-weight:800;" onclick="deploySponsor()">DEPLOY AD BANNER</button>
+          <button id="deploy-ad-btn" class="btn btn-amber" style="border-radius:8px; width:100%; font-weight:800;" onclick="deploySponsor()">DEPLOY AD BANNER</button>
         </div>
       </div>
     </div>
@@ -6457,6 +6457,8 @@ async function saveEventSettings() {
 // ══════════════════════════════════════════
 // ADVERTISEMENT ENGINE
 // ══════════════════════════════════════════
+let editingSponsorId = null;
+
 async function deploySponsor() {
   const name = document.getElementById('ad-partner').value.trim();
   const tagline = document.getElementById('ad-tagline').value.trim();
@@ -6479,7 +6481,7 @@ async function deploySponsor() {
   if (!logoData) return toast('Please provide a Logo URL or upload an image file!');
   
   const sponsor = {
-    id: 'sp_' + Date.now(),
+    id: editingSponsorId || ('sp_' + Date.now()),
     name, tagline, link, logo: logoData, addedAt: Date.now()
   };
   
@@ -6487,14 +6489,25 @@ async function deploySponsor() {
   if (!activeEv) return toast('No active event selected');
   
   activeEv.switchStates = activeEv.switchStates || {};
-  const currentSponsors = activeEv.switchStates.sponsors || [];
-  currentSponsors.push(sponsor);
+  let currentSponsors = activeEv.switchStates.sponsors || [];
+  if (editingSponsorId) {
+    const idx = currentSponsors.findIndex(s => s.id === editingSponsorId);
+    if (idx !== -1) {
+      currentSponsors[idx] = sponsor;
+    } else {
+      currentSponsors.push(sponsor);
+    }
+  } else {
+    currentSponsors.push(sponsor);
+  }
   activeEv.switchStates.sponsors = currentSponsors;
   
   if (window.syncEngine && window.syncEngine.updateEvent) {
     const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
     if (success) {
-      toast('✅ Sponsor deployed globally!');
+      toast(editingSponsorId ? '✅ Sponsor updated globally!' : '✅ Sponsor deployed globally!');
+      editingSponsorId = null;
+      document.getElementById('deploy-ad-btn').innerText = 'DEPLOY AD BANNER';
       document.getElementById('ad-partner').value = '';
       document.getElementById('ad-tagline').value = '';
       document.getElementById('ad-link').value = '';
@@ -6523,12 +6536,31 @@ function renderSponsors() {
         <div style="font-weight:800; font-size:14px;">${sp.name}</div>
         ${sp.tagline ? `<div style="font-size:11px; color:var(--text-muted);">${sp.tagline}</div>` : ''}
       </div>
+      <button class="btn btn-blue btn-xs" onclick="editSponsor('${sp.id}')" style="border-radius:6px; margin-right:5px;">Edit</button>
       <button class="btn btn-red btn-xs" onclick="deleteSponsor('${sp.id}')" style="border-radius:6px;">Delete</button>
     </div>
   `).join('');
 }
 
+
+function editSponsor(id) {
+  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  if (!activeEv || !activeEv.switchStates || !activeEv.switchStates.sponsors) return;
+  const sp = activeEv.switchStates.sponsors.find(s => s.id === id);
+  if (!sp) return;
+  
+  editingSponsorId = sp.id;
+  document.getElementById('ad-partner').value = sp.name || '';
+  document.getElementById('ad-tagline').value = sp.tagline || '';
+  document.getElementById('ad-link').value = sp.link || '';
+  document.getElementById('ad-logo-url').value = sp.logo && sp.logo.startsWith('http') ? sp.logo : '';
+  
+  document.getElementById('deploy-ad-btn').innerText = 'UPDATE AD BANNER';
+  document.getElementById('ad-partner').focus();
+}
+
 async function deleteSponsor(id) {
+
   if(!confirm('Delete this sponsor advertisement?')) return;
   const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
   if (!activeEv || !activeEv.switchStates || !activeEv.switchStates.sponsors) return;
