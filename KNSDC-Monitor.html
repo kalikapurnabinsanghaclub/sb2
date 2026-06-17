@@ -4687,6 +4687,9 @@ function addToUpcoming(id) {
   if (p) {
     p.stageStatus = 'queue';
     p.present = true;
+    if(window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, { stageStatus: 'queue', present: true }).catch(e=>console.error(e));
+    }
     syncAll();
     renderVenueParticipants();
     renderStageView();
@@ -4810,16 +4813,24 @@ function renderVenueParticipants(){
 
 function pushToStage(id){
   // Move previous on-stage to done
-  participants.forEach(p=>{ if(p.stageStatus==='on-stage') p.stageStatus='done'; });
+  participants.forEach(p=>{ 
+    if(p.stageStatus==='on-stage') {
+      p.stageStatus='done';
+      if(window.syncEngine && window.syncEngine.updateParticipant) {
+        window.syncEngine.updateParticipant(p.id, { stageStatus: 'done' }).catch(e=>console.error(e));
+      }
+    }
+  });
+  
   const p = participants.find(x=>x.id===id);
   if(p){ 
     p.stageStatus='on-stage'; 
     p.present = true;
-    currentOnStage=id; 
+    currentOnStage=id;
+    if(window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, { stageStatus: 'on-stage', present: true }).catch(e=>console.error(e));
+    }
   }
-  
-  // Broadcast full stage data to public view
-  // (Removed redundant broadcastStageToPublic() to prevent double-upserts)
   
   syncAll();
   renderVenueParticipants();
@@ -4842,10 +4853,13 @@ function pushNextToStage(){
 
 function markStageDone(){
   const p = participants.find(x=>x.id===currentOnStage);
-  if(p){ p.stageStatus='done'; currentOnStage=null; }
-  
-  // Broadcast full stage data to public view
-  // (Removed redundant broadcastStageToPublic() to prevent double-upserts)
+  if(p){ 
+    p.stageStatus='done'; 
+    currentOnStage=null;
+    if(window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, { stageStatus: 'done' }).catch(e=>console.error(e));
+    }
+  }
   
   syncAll();
   renderVenueParticipants();
@@ -4855,7 +4869,13 @@ function markStageDone(){
 
 function dropToQueue(){
   const p = participants.find(x=>x.id===currentOnStage);
-  if(p){ p.stageStatus='queue'; currentOnStage=null; }
+  if(p){ 
+    p.stageStatus='queue'; 
+    currentOnStage=null; 
+    if(window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, { stageStatus: 'queue' }).catch(e=>console.error(e));
+    }
+  }
   
   // (Removed redundant broadcastStageToPublic() to prevent double-upserts)
   syncAll();
