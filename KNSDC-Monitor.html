@@ -1612,7 +1612,12 @@
         <div class="stage-card">
           <div id="venue-onstage-name" style="font-family:var(--fh);font-size:22px;font-weight:800;text-transform:uppercase">—</div>
           <div id="venue-onstage-sub" style="font-size:12px;color:var(--text-dim);margin-top:4px"></div>
-          <div style="display:flex;gap:8px;margin-top:10px">
+          
+          <div id="venue-judge-scoring-status" style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(0,0,0,0.05); display:none;">
+            <!-- Judge Scoring Status will render here -->
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:12px">
             <button class="btn btn-success btn-sm" onclick="markStageDone()">✓ Complete</button>
           </div>
         </div>
@@ -4703,6 +4708,33 @@ function renderVenueParticipants(){
   if(document.getElementById('venue-onstage-name')) document.getElementById('venue-onstage-name').textContent = onStage?onStage.name:'— Empty Stage —';
   const cat = onStage?categories.find(c=>c.id===onStage.catId):null;
   if(document.getElementById('venue-onstage-sub')) document.getElementById('venue-onstage-sub').textContent = onStage?`${onStage.id} · ${cat?cat.name:'—'} · Age ${onStage.age}`:'';
+
+  // Judge Scoring Status UI
+  const scoringContainer = document.getElementById('venue-judge-scoring-status');
+  if (scoringContainer) {
+    let activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0'));
+    activeJudges = activeJudges.filter(j => {
+      const agreement = agreements.find(a => a.id === j.id);
+      return agreement && agreement.status === 'confirmed';
+    });
+
+    if (onStage && activeJudges.length > 0) {
+      const judgeStatuses = activeJudges.map(j => {
+        const pScores = onStage.scores?.[j.id] || {};
+        const pRoundScores = onStage.roundScores?.[onStage.round]?.[j.id] || {};
+        const hasScored = Object.keys(pScores).length > 0 || Object.keys(pRoundScores).length > 0;
+        return `<div style="display:flex; align-items:center; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                  <span style="font-weight:600; color:var(--text);">${j.name}</span>
+                  ${hasScored ? '<span style="color:var(--emerald); font-weight:800;">✓ Scored</span>' : '<span style="color:var(--amber); font-weight:800; animation:pulse 1.5s infinite;">⏳ Scoring...</span>'}
+                </div>`;
+      }).join('');
+      scoringContainer.innerHTML = `<div style="font-size:10px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">⚖️ JUDGE SCORING STATUS</div>${judgeStatuses}`;
+      scoringContainer.style.display = 'block';
+    } else {
+      scoringContainer.style.display = 'none';
+      scoringContainer.innerHTML = '';
+    }
+  }
 
   // Queue
   const queue = data.filter(p=>p.stageStatus==='queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
