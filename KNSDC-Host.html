@@ -843,6 +843,7 @@ let participants = [];
 let categories = [];
 let subjects = [];
 let judges = [];
+let judgeAgreements = [];
 let currentLeaderRound = 'audition';
 let chatHistory = [];
 let sosActive = false;
@@ -1108,6 +1109,7 @@ syncEngine.subscribe((state) => {
   categories = activeEv ? (activeEv.categories || []) : [];
   subjects = state.subjects || [];
   judges = state.judges || [];
+  judgeAgreements = state.judgeAgreements || state.agreements || [];
   chatHistory = state.chatMessages || [];
   sosActive = state.sosActive || false;
   hydrateChat(state);
@@ -1222,6 +1224,19 @@ function renderStage() {
               <div style="font-size:10px; font-weight:900; color:#0ea5e9; letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; display:inline-flex; align-items:center; gap:6px;"><span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#0ea5e9; animation: blink 1s infinite;"></span> LIVE ON STAGE</div>
               <div style="font-family:var(--fh);font-size:32px;font-weight:900;color:#0f172a; line-height:1.2; letter-spacing: -0.5px;">${onStage.name}</div>
               <div style="font-size:13px;color:var(--text-muted); font-weight:700; margin-top:4px; font-family: monospace;">ID: ${onStage.id}</div>
+              
+              <!-- Blue accented performer metas -->
+              <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; padding: 10px 14px; background: rgba(255,255,255,0.7); border-radius: 12px; border: 1px solid rgba(14,165,233,0.2); box-shadow: 0 2px 8px rgba(14,165,233,0.05);">
+                <div style="font-size: 13px; color: #334155; font-weight: 700;">
+                  <span style="color: #0ea5e9; font-weight: 800;">📍 Address:</span> ${onStage.formAnswers?.Address || onStage.formAnswers?.address || '—'}
+                </div>
+                <div style="font-size: 13px; color: #334155; font-weight: 700;">
+                  <span style="color: #0ea5e9; font-weight: 800;">🏷️ Category:</span> ${categories.find(c => c.id === onStage.catId)?.name || '—'}
+                </div>
+                <div style="font-size: 13px; color: #334155; font-weight: 700;">
+                  <span style="color: #0ea5e9; font-weight: 800;">🎂 Age:</span> ${onStage.age || onStage.formAnswers?.Age || onStage.formAnswers?.age || '—'}
+                </div>
+              </div>
             </div>
             <div style="display:flex;gap:14px">
               <button class="st-btn" onclick="dropToQueue('${onStage.id}')" style="background: linear-gradient(135deg, #eab308, #fde047); color:#422006; padding:14px 28px; border-radius:16px; border:none; cursor:pointer; font-weight:800; font-size:14px; box-shadow: 0 10px 25px rgba(234,179,8,0.35); transition: all 0.3s; display:flex; align-items:center; gap:8px;" onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 15px 35px rgba(234,179,8,0.45)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 10px 25px rgba(234,179,8,0.35)'">⬇ Drop to Queue</button>
@@ -1229,7 +1244,17 @@ function renderStage() {
             </div>
           </div>
           ${(() => {
-            let activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEvId) || String(j.eventId) === '0'));
+            let activeJudges = judges.filter(j => {
+              if (!j.present) return false;
+              const isEventMatch = String(j.eventId) === String(activeEvId) || String(j.eventId) === '0';
+              if (!isEventMatch) return false;
+              // Only show judges that have active, non-deleted agreements
+              const hasActiveAgreement = judgeAgreements.some(a => 
+                (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) ||
+                (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+              );
+              return hasActiveAgreement;
+            });
             if (activeJudges.length === 0) return '';
             
             const judgeStatuses = activeJudges.map(j => {
@@ -1242,8 +1267,8 @@ function renderStage() {
                       </div>`;
             }).join('');
             
-            return `<div style="margin-top:20px; padding-top:20px; border-top:1px solid rgba(14,165,233,0.2);">
-                      <div style="font-size:10px;font-weight:800;color:#0ea5e9;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">⚖️ JUDGE SCORING STATUS</div>
+            return `<div style="margin-top:24px; padding: 20px; background: linear-gradient(135deg, rgba(239, 68, 68, 0.02) 0%, rgba(248, 113, 113, 0.06) 100%); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: 20px; box-shadow: 0 8px 30px rgba(239, 68, 68, 0.05);">
+                      <div style="font-size:11px;font-weight:900;color:#ef4444;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px; display:inline-flex; align-items:center; gap:6px;">⚖️ JUDGE SCORING STATUS</div>
                       <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px;">${judgeStatuses}</div>
                     </div>`;
           })()}
