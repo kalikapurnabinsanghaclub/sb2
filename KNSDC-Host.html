@@ -535,6 +535,17 @@
     from { opacity: 0; transform: translateY(15px); }
     to { opacity: 1; transform: translateY(0); }
   }
+
+  /* Refresh Portal spin animation */
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .spinning {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+
 </style>
 
 </head>
@@ -596,6 +607,9 @@
       <div id="host-status-dot" class="live-dot"></div>
       <span id="host-status-text" style="font-size:11px;color:var(--text-dim);font-family:var(--fm)">LIVE</span>
       <span id="live-clock" style="font-size:13px;font-weight:600;color:var(--text-dim);font-family:monospace;margin-left:4px"></span>
+      <button class="btn btn-ghost btn-sm" style="border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:6px;font-weight:700;margin-left:10px;padding:4px 10px;font-size:11px" onclick="refreshPortal(this)">
+        <span class="refresh-icon">🔄</span> Refresh
+      </button>
     </div>
   </div>
 
@@ -1547,5 +1561,47 @@ window.renderLeaderboard = () => {
     </div>
   </div>
 </div>
+<script>
+
+window.refreshPortal = async function(btn) {
+  const icon = btn.querySelector('.refresh-icon');
+  if (icon) icon.classList.add('spinning');
+  btn.disabled = true;
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = `<span class="refresh-icon spinning">🔄</span> Connecting...`;
+  
+  let success = false;
+  if (window.syncEngine && typeof window.syncEngine.reconnect === 'function') {
+    success = await window.syncEngine.reconnect();
+  } else if (window.syncEngine && typeof window.syncEngine.loadEvents === 'function') {
+    await window.syncEngine.loadEvents();
+    success = true;
+  }
+  
+  if (icon) icon.classList.remove('spinning');
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
+  
+  if (success) {
+    if (typeof toast === 'function') {
+      toast('✅ Portal refreshed & reconnected to server!');
+    } else {
+      alert('Portal refreshed successfully!');
+    }
+    if (typeof hydrate === 'function') hydrate();
+    else if (typeof renderStaffPage === 'function') {
+      const state = window.syncEngine.getData() || {};
+      renderStaffPage(state);
+    }
+  } else {
+    if (typeof toast === 'function') {
+      toast('❌ Refresh failed. Check your internet connection.');
+    } else {
+      alert('Refresh failed. Check your connection.');
+    }
+  }
+};
+
+</script>
 </body>
 </html>

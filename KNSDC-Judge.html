@@ -568,6 +568,17 @@
   hr { border: none; border-top: 1px solid rgba(226, 232, 240, 0.8); margin: 24px 0; }
 
   #toast { position: fixed; bottom: 32px; right: 32px; background: rgba(255,255,255,0.9); backdrop-filter: blur(12px); border: 1px solid var(--amber); color: #0f172a; padding: 16px 28px; border-radius: 16px; font-size: 14px; z-index: 1002; display: none; box-shadow: 0 12px 36px var(--amber-glow); font-family: var(--fb); font-weight: 600; animation: slideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+  /* Refresh Portal spin animation */
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .spinning {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+
 </style>
 </head>
 <body>
@@ -618,6 +629,9 @@
     <div style="display:flex;align-items:center;gap:6px" id="judge-status-wrap">
       <div id="judge-status-dot" class="live-dot"></div>
       <span id="judge-status-text" class="live-txt">Live</span>
+      <button class="btn btn-ghost btn-sm" style="border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:6px;font-weight:700;margin-left:10px;padding:4px 10px;font-size:11px" onclick="refreshPortal(this)">
+        <span class="refresh-icon">🔄</span> Refresh
+      </button>
     </div>
   </div>
 
@@ -2600,6 +2614,48 @@ async function autoPromoteTopN() {
   
   toast(`🔺 Successfully auto-promoted ${toPromote.length} participants!`);
 }
+</script>
+<script>
+
+window.refreshPortal = async function(btn) {
+  const icon = btn.querySelector('.refresh-icon');
+  if (icon) icon.classList.add('spinning');
+  btn.disabled = true;
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = `<span class="refresh-icon spinning">🔄</span> Connecting...`;
+  
+  let success = false;
+  if (window.syncEngine && typeof window.syncEngine.reconnect === 'function') {
+    success = await window.syncEngine.reconnect();
+  } else if (window.syncEngine && typeof window.syncEngine.loadEvents === 'function') {
+    await window.syncEngine.loadEvents();
+    success = true;
+  }
+  
+  if (icon) icon.classList.remove('spinning');
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
+  
+  if (success) {
+    if (typeof toast === 'function') {
+      toast('✅ Portal refreshed & reconnected to server!');
+    } else {
+      alert('Portal refreshed successfully!');
+    }
+    if (typeof hydrate === 'function') hydrate();
+    else if (typeof renderStaffPage === 'function') {
+      const state = window.syncEngine.getData() || {};
+      renderStaffPage(state);
+    }
+  } else {
+    if (typeof toast === 'function') {
+      toast('❌ Refresh failed. Check your internet connection.');
+    } else {
+      alert('Refresh failed. Check your connection.');
+    }
+  }
+};
+
 </script>
 </body>
 </html>
