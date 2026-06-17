@@ -2927,6 +2927,16 @@ function renderLeaderboard() {
     const container = document.getElementById('leaderboard-content');
     if(!container) return;
 
+    const eventPresentJudges = judges.filter(j => 
+      j.present === true && 
+      (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0') && 
+      agreements.some(a => 
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      )
+    );
+    const presentJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
+
     // Showing participants in the selected round and active event.
     let filtered = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
     
@@ -3020,7 +3030,7 @@ function renderLeaderboard() {
                                 <td><span class="badge ${cat ? cat.color : 'b-gray'}">${cat ? cat.name : 'Unknown'}</span></td>
                                 <td style="text-align:right">
                                     <div class="judge-score-val" style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore}</div>
-                                    <div style="font-size:9px;color:var(--text-muted)">/ ${((judges.length > 0 ? judges.length : 1) * subjects.length * 10)} max</div>
+                                    <div style="font-size:9px;color:var(--text-muted)">/ ${(presentJudgesCount * subjects.length * 10)} max</div>
                                 </td>
                             </tr>
                         `;
@@ -3589,32 +3599,82 @@ function renderAttendanceBreakdown(){
 
 function renderJudgeStatus(){
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
-  let activeJudges = judges.filter(j => String(j.eventId) === String(activeEventId) || String(j.eventId) === '0');
-  
-  // Only show judges that have a verified/confirmed agreement
   const sState = syncEngine.getData() || {};
-  activeJudges = activeJudges.filter(j => {
-    const agr = (sState.judgeAgreements || []).find(a => 
-      (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-      (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+  const eventAgreements = (sState.judgeAgreements || sState.agreements || []).filter(a => 
+    String(a.eventId) === String(activeEventId) && 
+    (a.status === 'confirmed' || a.status === 'verified' || a.submitted === true)
+  );
+
+  // Now map these agreements to judge status objects
+  const allEventJudges = eventAgreements.map(a => {
+    // Find if there is a matching judge session in state.judges
+    const jSession = (judges || []).find(j => 
+      (j.email && a.email && String(j.email).toLowerCase() === String(a.email).toLowerCase()) || 
+      (j.name && a.name && String(j.name).toLowerCase() === String(a.name).toLowerCase())
     );
-    return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+    const isPresent = !!(jSession && jSession.present === true);
+    
+    // Check scores given under active event
+    const scoresGiven = data.filter(p => {
+      const jScores = (p.scores?.[a.id] || (jSession && p.scores?.[jSession.id])) || {};
+      return Object.keys(jScores).length > 0;
+    }).length;
+    
+    return {
+      name: a.name,
+      email: a.email,
+      role: 'Judge',
+      present: isPresent,
+      color: jSession?.color || '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'),
+      scoresGiven: scoresGiven
+    };
   });
 
-  const present = activeJudges.filter(j=>j.present).length;
-  document.getElementById('judge-present-count').textContent = `${present}/${activeJudges.length} Present`;
-  document.getElementById('judge-status-list').innerHTML = activeJudges.map(j=>{
-    const scoresGiven = data.filter(p=>(p.scores?.[j.id] && Object.keys(p.scores[j.id]).length > 0)).length;
+  const presentCount = allEventJudges.filter(j => j.present).length;
+  document.getElementById('judge-present-count').textContent = `${presentCount}/${allEventJudges.length} Present`;
+  document.getElementById('judge-status-list').innerHTML = allEventJudges.map(j => {
     return `<div class="judge-row">
       <div class="judge-avatar" style="background:${j.color}20;color:${j.color};border:1px solid ${j.color}40">${j.name[0]}</div>
       <div style="flex:1">
         <div style="font-weight:600;font-size:13px">${j.name}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${j.role} · ${scoresGiven} scored</div>
+        <div style="font-size:11px;color:var(--text-muted)">${j.role} · ${j.scoresGiven} scored</div>
       </div>
-      <span class="badge ${j.present?'b-green':'b-red'}">${j.present?'Present':'Absent'}</span>
+      <span class="badge ${j.present?'b-green':'b-red'}" style="cursor:pointer" onclick="toggleJudgePresence('${j.email || j.name}')">${j.present?'Present':'Absent'}</span>
     </div>`;
-  }).join('');
+  }).join('') || '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px 0">No judges assigned to this event</div>';
 }
+
+window.toggleJudgePresence = (identifier) => {
+  syncEngine.setData(s => {
+    const judgesList = [...(s.judges || [])];
+    let target = judgesList.find(j => 
+      (j.email && j.email.toLowerCase() === identifier.toLowerCase()) || 
+      (j.name && j.name.toLowerCase() === identifier.toLowerCase())
+    );
+    if (target) {
+      target.present = !target.present;
+    } else {
+      // Find agreement to populate
+      const agr = (s.judgeAgreements || s.agreements || []).find(a => 
+        (a.email && a.email.toLowerCase() === identifier.toLowerCase()) || 
+        (a.name && a.name.toLowerCase() === identifier.toLowerCase())
+      );
+      if (agr) {
+        judgesList.push({
+          id: judgesList.length ? Math.max(...judgesList.map(j => j.id)) + 1 : 1,
+          name: agr.name,
+          email: agr.email,
+          eventId: agr.eventId || '0',
+          role: 'Judge',
+          present: true,
+          color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
+        });
+      }
+    }
+    return { ...s, judges: judgesList };
+  });
+  toast('Judge presence status toggled!');
+};
 
 function toggleSwitch(sw, cb){
   const row = document.getElementById('sw-'+sw);
@@ -4740,10 +4800,16 @@ function renderVenueParticipants(){
   // Judge Scoring Status UI
   const scoringContainer = document.getElementById('venue-judge-scoring-status');
   if (scoringContainer) {
-    let activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0'));
-    activeJudges = activeJudges.filter(j => {
-      const agreement = agreements.find(a => a.id === j.id);
-      return agreement && agreement.status === 'confirmed';
+    let activeJudges = judges.filter(j => {
+      if (!j.present) return false;
+      const isEventMatch = String(j.eventId) === String(activeEventId) || String(j.eventId) === '0';
+      if (!isEventMatch) return false;
+      
+      const agreement = agreements.find(a => 
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      );
+      return agreement && (agreement.status === 'confirmed' || agreement.status === 'verified');
     });
 
     if (onStage && activeJudges.length > 0) {
@@ -5232,7 +5298,15 @@ function renderIndividualStats(){
         if (hasScore) judgesWhoScored.add(jId);
       });
     }
-    const baseJudgesCount = judges.length > 0 ? judges.length : (judgesWhoScored.size > 0 ? judgesWhoScored.size : 1);
+    const eventPresentJudges = judges.filter(j => 
+      j.present === true && 
+      (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0') && 
+      agreements.some(a => 
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      )
+    );
+    const baseJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
     const maxPossible = baseJudgesCount * subjects.length * 10;
     const pct = maxPossible>0?Math.round(total/maxPossible*100):0;
     return `<div class="card" style="margin-bottom:12px">
@@ -5741,7 +5815,15 @@ function renderPromoList(){
         if (hasScore) judgesWhoScored.add(jId);
       });
     }
-    const baseJudgesCount = judges.length > 0 ? judges.length : (judgesWhoScored.size > 0 ? judgesWhoScored.size : 1);
+    const eventPresentJudges = judges.filter(j => 
+      j.present === true && 
+      (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0') && 
+      agreements.some(a => 
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      )
+    );
+    const baseJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
     const maxPoss = baseJudgesCount * subjects.length * 10;
     const pct = maxPoss>0?Math.round(total/maxPoss*100):0;
     const checked = promoSelections.has(p.id);

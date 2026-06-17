@@ -579,6 +579,96 @@
     animation: spin 1s linear infinite;
   }
 
+  /* HOLD TO PRESENT KEY BUTTON */
+  .present-card {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+    margin-bottom: 20px;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .presence-indicator {
+    font-size: 13px;
+    font-weight: 800;
+    padding: 6px 16px;
+    border-radius: 99px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .presence-indicator.present {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+  }
+  .presence-indicator.absent {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+  }
+  .hold-present-btn {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #f59e0b 0%, #d97706 100%);
+    box-shadow: 0 10px 25px rgba(217, 119, 6, 0.3), inset 0 4px 6px rgba(255, 255, 255, 0.2), inset 0 -4px 6px rgba(0, 0, 0, 0.2);
+    border: 8px solid rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+    font-size: 14px;
+    transition: transform 0.1s, box-shadow 0.1s;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hold-present-btn:active {
+    transform: scale(0.96);
+    box-shadow: 0 4px 10px rgba(217, 119, 6, 0.2), inset 0 2px 4px rgba(255, 255, 255, 0.1), inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+  }
+  .hold-present-btn.present-state {
+    background: radial-gradient(circle, #10b981 0%, #059669 100%);
+    box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3), inset 0 4px 6px rgba(255, 255, 255, 0.2), inset 0 -4px 6px rgba(0, 0, 0, 0.2);
+  }
+  .hold-progress-svg {
+    position: absolute;
+    top: -12px;
+    left: -12px;
+    width: 148px;
+    height: 148px;
+    pointer-events: none;
+    transform: rotate(-90deg);
+  }
+  .hold-progress-svg circle {
+    fill: none;
+    stroke-width: 6px;
+    stroke-linecap: round;
+  }
+  .hold-progress-bg {
+    stroke: rgba(226, 232, 240, 0.4);
+  }
+  .hold-progress-bar {
+    stroke: #3b82f6;
+    stroke-dasharray: 446;
+    stroke-dashoffset: 446;
+    transition: stroke-dashoffset 0.1s linear;
+  }
+  .hold-progress-bar.pulsing {
+    stroke: #10b981;
+  }
+
 </style>
 </head>
 <body>
@@ -648,6 +738,32 @@
   <div id="judge-active-content">
 <!-- ══════════════ DASHBOARD ══════════════ -->
 <div class="pp active" id="pp-dashboard">
+
+  <!-- Presence Control Card -->
+  <div class="present-card" style="margin-bottom: 20px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:12px;">
+      <div style="text-align:left">
+        <h3 style="font-family:var(--fh); font-size:18px; font-weight:800; color:var(--text); margin:0">Venue Presence Key</h3>
+        <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0">Mark your presence for today's event scoring assignments</p>
+      </div>
+      <div id="presence-badge-wrap">
+        <span class="presence-indicator absent" id="presence-badge">⚪ Loading...</span>
+      </div>
+    </div>
+    <div style="position:relative; margin: 10px 0;">
+      <button class="hold-present-btn" id="hold-present-btn">
+        <svg class="hold-progress-svg">
+          <circle class="hold-progress-bg" cx="74" cy="74" r="71"></circle>
+          <circle class="hold-progress-bar" id="hold-progress-bar" cx="74" cy="74" r="71"></circle>
+        </svg>
+        <span style="font-size: 24px; margin-bottom: 4px;" id="hold-btn-icon">🔘</span>
+        <span id="hold-btn-text" style="font-size:11px; text-transform:uppercase; letter-spacing:1px;">Hold 5s</span>
+      </button>
+    </div>
+    <div style="font-size: 11px; color: var(--text-muted); font-weight: 500;" id="hold-helper-text">
+      Press and hold the button for 5 seconds to mark yourself Present
+    </div>
+  </div>
 
   <!-- JUDGE SUMMARY STATS -->
   <div class="g5" style="margin-bottom:16px">
@@ -1730,6 +1846,142 @@ function renderDashboard() {
       </div>
     </div>`;
   }).join('');
+
+  // Presence UI Updates
+  const state = window.syncEngine.getData() || {};
+  const currentSession = (state.judges || []).find(j => 
+    (j.email && JUDGE.email && String(j.email).toLowerCase() === String(JUDGE.email).toLowerCase()) ||
+    (j.name && JUDGE.name && String(j.name).toLowerCase() === String(JUDGE.name).toLowerCase())
+  );
+  
+  const isPresent = !!(currentSession && currentSession.present);
+  const badge = document.getElementById('presence-badge');
+  const hbtn = document.getElementById('hold-present-btn');
+  const btnIcon = document.getElementById('hold-btn-icon');
+  const btnText = document.getElementById('hold-btn-text');
+  const helperText = document.getElementById('hold-helper-text');
+
+  if (badge && hbtn) {
+    if (isPresent) {
+      badge.className = 'presence-indicator present';
+      badge.innerHTML = '🟢 Present';
+      hbtn.classList.add('present-state');
+      if (btnIcon) btnIcon.textContent = '✔️';
+      if (btnText) btnText.textContent = 'Present';
+      if (helperText) helperText.textContent = 'You are marked Present. Press & hold to toggle to Absent.';
+    } else {
+      badge.className = 'presence-indicator absent';
+      badge.innerHTML = '🔴 Absent';
+      hbtn.classList.remove('present-state');
+      if (btnIcon) btnIcon.textContent = '🔘';
+      if (btnText) btnText.textContent = 'Hold 5s';
+      if (helperText) helperText.textContent = 'Press and hold the button for 5 seconds to mark yourself Present';
+    }
+  }
+
+  setupHoldButton();
+}
+
+let holdTimer = null;
+let holdStartTime = null;
+const HOLD_DURATION = 5000; // 5 seconds
+
+function setupHoldButton() {
+  const btn = document.getElementById('hold-present-btn');
+  const bar = document.getElementById('hold-progress-bar');
+  if (!btn || !bar) return;
+
+  // Clone to prevent duplicate listeners
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+
+  const button = document.getElementById('hold-present-btn');
+  const progressBar = document.getElementById('hold-progress-bar');
+  let animationFrameId = null;
+
+  const startHold = (e) => {
+    e.preventDefault();
+    if (holdTimer) return;
+
+    holdStartTime = Date.now();
+    progressBar.classList.add('pulsing');
+    
+    const updateProgress = () => {
+      if (!holdStartTime) return;
+      const elapsed = Date.now() - holdStartTime;
+      const pct = Math.min(elapsed / HOLD_DURATION, 1);
+      const offset = 446 - (pct * 446);
+      progressBar.style.strokeDashoffset = offset;
+
+      if (pct < 1) {
+        animationFrameId = requestAnimationFrame(updateProgress);
+      } else {
+        completeHold();
+      }
+    };
+    
+    animationFrameId = requestAnimationFrame(updateProgress);
+
+    holdTimer = setTimeout(() => {
+      completeHold();
+    }, HOLD_DURATION);
+  };
+
+  const endHold = () => {
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    holdStartTime = null;
+    progressBar.style.strokeDashoffset = 446;
+    progressBar.classList.remove('pulsing');
+  };
+
+  const completeHold = () => {
+    endHold();
+    const state = window.syncEngine.getData() || {};
+    let judgesList = [...(state.judges || [])];
+    
+    let target = judgesList.find(j => 
+      (j.email && JUDGE.email && String(j.email).toLowerCase() === String(JUDGE.email).toLowerCase()) ||
+      (j.name && JUDGE.name && String(j.name).toLowerCase() === String(JUDGE.name).toLowerCase())
+    );
+
+    if (target) {
+      target.present = !target.present;
+      target.eventId = JUDGE.eventId || '0';
+    } else {
+      target = {
+        id: judgesList.length ? Math.max(...judgesList.map(j => j.id)) + 1 : 1,
+        name: JUDGE.name,
+        email: JUDGE.email,
+        eventId: JUDGE.eventId || '0',
+        role: 'Judge',
+        present: true,
+        color: JUDGE.color || '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
+      };
+      judgesList.push(target);
+    }
+    
+    window.syncEngine.updateState({ judges: judgesList });
+    
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 100]);
+    }
+    toast(target.present ? '🟢 Presence marked successfully!' : '🔴 Presence reset to Absent.');
+    renderDashboard();
+  };
+
+  button.addEventListener('mousedown', startHold);
+  button.addEventListener('mouseup', endHold);
+  button.addEventListener('mouseleave', endHold);
+  button.addEventListener('touchstart', startHold, { passive: false });
+  button.addEventListener('touchend', endHold);
+  button.addEventListener('touchcancel', endHold);
 }
 
 // ════════════════════════════════════════
