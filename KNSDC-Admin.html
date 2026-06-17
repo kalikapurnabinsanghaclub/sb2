@@ -2102,7 +2102,8 @@ window.renderStaffPage = async (state) => {
         const ev = events.find(e => String(e.id) === String(judgeAgreement.eventId));
         assignmentText = `⚖️ ${ev ? ev.name : 'Event'} (${judgeAgreement.venueName || 'Venue'})`;
       } else if (assignedEv) {
-        assignmentText = `🎪 ${assignedEv.name}`;
+        const emoji = s.role === 'monitor' ? '⚖️' : (s.role === 'host' ? '🎤' : (s.role === 'judge' ? '⚖️' : '🎪'));
+        assignmentText = `${emoji} ${assignedEv.name} (${assignedEv.venue || 'Venue'})`;
       } else {
         if (s.role === 'admin') {
           assignmentText = '👑 Super Admin';
@@ -2469,6 +2470,11 @@ window.saveEditedEvent = async () => {
       };
     });
 
+    const dbState = syncEngine.getData() || {};
+    const eventsList = dbState.events || [];
+    const originalEv = eventsList.find(e => String(e.id) === String(id));
+    const staff = originalEv ? (originalEv.staff || []) : [];
+
     const updatedEvent = {
         name, org, venue, startDate, startTime,
         endDate: endDate || null,
@@ -2477,7 +2483,8 @@ window.saveEditedEvent = async () => {
         capacity: parseInt(document.getElementById('edit-cev-capacity').value),
         banner: document.getElementById('edit-cev-banner').value,
         description: document.getElementById('edit-cev-desc').value,
-        roundSchedules
+        roundSchedules,
+        staff
     };
 
     // Save to Supabase
