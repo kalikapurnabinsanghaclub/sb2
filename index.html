@@ -1891,8 +1891,12 @@
       </div>
 
       <!-- Live Content Container -->
-      <div id="live-global-sponsor-banner" style="margin-bottom: 20px; min-height: 100px; display:flex; align-items:center; justify-content:center; transition: opacity 0.5s;"></div>
-      <div id="liveContent"></div>
+      <div id="live-card-outer" style="border-radius: 28px; overflow: hidden; background: #ffffff; border: 1px solid rgba(139, 92, 246, 0.12); box-shadow: 0 20px 60px rgba(139, 92, 246, 0.08), 0 4px 12px rgba(0,0,0,0.04); display: none;">
+        <div id="live-card-header"></div>
+        <div id="live-global-sponsor-banner" style="padding: 15px 40px;"></div>
+        <div id="live-card-body"></div>
+      </div>
+      <div id="liveContentFallback"></div>
     </div>
   </section>
 
@@ -4253,7 +4257,7 @@
         const getJudgeScores = (j) => {
           const agr = judgeAgreements.find(a => 
             (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-            (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+            (a.name && j.name && String(j.name).toLowerCase() === String(j.name).toLowerCase())
           );
           return (p.scores && p.scores[j.id]) || (agr && p.scores && p.scores[agr.id]) || null;
         };
@@ -4726,8 +4730,12 @@
       const sideDot = document.getElementById('side-dot-live');
       if (sideDot) sideDot.style.display = hasLiveStage ? 'block' : 'none';
 
+      const cardOuter = document.getElementById('live-card-outer');
+      const fallbackContainer = document.getElementById('liveContentFallback');
+
       if (isOffline) {
-        container.innerHTML = `
+        if (cardOuter) cardOuter.style.display = 'none';
+        fallbackContainer.innerHTML = `
           <div style="padding: 60px 20px; text-align: center; border-radius: 24px; border: 1px solid #e2e8f0; background: #ffffff; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
             <div style="font-size: 3.5rem; margin-bottom: 20px; filter: drop-shadow(0 0 10px rgba(148,163,184,0.2));">💤</div>
             <h3 style="color: #1E293B; font-family: 'Playfair Display', serif; font-size: 1.7rem; font-weight: 800; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">System Offline</h3>
@@ -4738,14 +4746,17 @@
       }
 
       if (liveEvent) {
+        if (fallbackContainer) fallbackContainer.innerHTML = '';
+        if (cardOuter) cardOuter.style.display = 'block';
         renderLiveUI(liveEvent);
       } else {
+        if (cardOuter) cardOuter.style.display = 'none';
         // Find nearest future event
         const futureEvents = EVENTS.filter(e => e.date > todayStr).sort((a, b) => a.date.localeCompare(b.date));
         if (futureEvents.length > 0) {
-          renderUpcomingLiveUI(futureEvents[0]);
+          renderUpcomingLiveUI(futureEvents[0]); // Ensure this renders to fallbackContainer or its own logic
         } else {
-          container.innerHTML = `
+          fallbackContainer.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; border-radius: 24px; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
               <div style="font-size: 3rem; margin-bottom: 20px;">🎬</div>
               <h3 style="color: #1E293B; font-family: 'Playfair Display', serif; font-size: 1.5rem; margin-bottom: 10px;">Stay Tuned!</h3>
@@ -4757,7 +4768,6 @@
     }
 
     function renderLiveUI(ev) {
-      const container = document.getElementById("liveContent");
       
       const state = syncEngine.getData();
       const participants = state.participants || [];
@@ -4772,8 +4782,9 @@
       
       // We will update these dynamically in hydrateLiveState if a specific round is detected
       
-      container.innerHTML = `
-        <div style="border-radius: 28px; overflow: hidden; background: #ffffff; border: 1px solid rgba(139, 92, 246, 0.12); box-shadow: 0 20px 60px rgba(139, 92, 246, 0.08), 0 4px 12px rgba(0,0,0,0.04);">
+      const headerContainer = document.getElementById("live-card-header");
+      if (headerContainer) {
+        headerContainer.innerHTML = `
           <div style="background: linear-gradient(135deg, #7C3AED, #6366F1, #4F46E5); padding: 35px 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; position: relative; overflow: hidden;">
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: rgba(255,255,255,0.15); border-radius: 50%; filter: blur(40px);"></div>
             <div style="position: relative; z-index: 1;">
@@ -4793,6 +4804,12 @@
               <button class="btn btn-p" style="background:#fff; color:#4F46E5; padding:15px 28px; border-radius:18px; font-weight:900; box-shadow: 0 10px 25px rgba(79,70,229,0.2); border: none; transition: all 0.3s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 14px 30px rgba(79,70,229,0.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 10px 25px rgba(79,70,229,0.2)'" onclick="openDonationForm()">💖 Support Event</button>
             </div>
           </div>
+        `;
+      }
+      
+      const bodyContainer = document.getElementById("live-card-body");
+      if (bodyContainer) {
+        bodyContainer.innerHTML = `
           <div style="padding: 40px;">
             <div style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 50%, #e0e7ff 100%); border-radius: 24px; padding: 50px 30px; text-align: center; margin-bottom: 40px; position: relative; overflow: hidden; border: 1px solid rgba(139, 92, 246, 0.15); box-shadow: 0 8px 32px rgba(139, 92, 246, 0.06);">
               <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at center, rgba(124,58,237,0.06) 0%, transparent 70%); pointer-events: none;"></div>
@@ -5038,7 +5055,8 @@
 
 
     function renderUpcomingLiveUI(ev) {
-      const container = document.getElementById("liveContent");
+      const container = document.getElementById("liveContentFallback");
+      if (!container) return;
       container.innerHTML = `
         <div style="border-radius: 24px; overflow: hidden; background: #ffffff; border: 1px solid rgba(139,92,246,0.12); box-shadow: 0 12px 40px rgba(139,92,246,0.08); padding: 40px; text-align: center;">
           <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(139,92,246,0.06); color: #7C3AED; padding: 6px 18px; border-radius: 30px; margin-bottom: 20px; font-size: 0.85rem; font-weight: 800; border: 1px solid rgba(139,92,246,0.15);">
