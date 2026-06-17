@@ -1888,7 +1888,14 @@
       </div>
 
       <!-- Live Content Container -->
-      <div id="liveContent"></div>
+      <!-- Live Content Layers -->
+      <div id="live-card-outer" style="border-radius: 28px; overflow: hidden; background: #ffffff; border: 1px solid rgba(139, 92, 246, 0.12); box-shadow: 0 20px 60px rgba(139, 92, 246, 0.08), 0 4px 12px rgba(0,0,0,0.04); display: none;">
+        <div id="live-card-header"></div>
+        <div id="live-card-body-top"></div>
+        <div id="live-sponsor-marquee" style="background: linear-gradient(90deg, #FF6B35, #7B2D8B, #00BFA5, #FF6B35); background-size: 300%; animation: gshift 8s ease infinite; padding: 13px 0; overflow: hidden; border-top: 1px solid rgba(255,255,255,0.2); border-bottom: 1px solid rgba(255,255,255,0.2);"></div>
+        <div id="live-card-body-bottom"></div>
+      </div>
+      <div id="liveContentFallback"></div>
     </div>
   </section>
 
@@ -4412,7 +4419,9 @@
         };
 
         if (container) {
-          container.innerHTML = `
+          outerCard.style.display = 'none';
+        fallbackContainer.style.display = 'block';
+        fallbackContainer.innerHTML = `
             <div style="display: flex; align-items: center; gap: 6px; background: rgba(255, 107, 53, 0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(255, 107, 53, 0.2);">
               <span style="font-size: 0.8rem; font-weight: 800; color: #FF6B35;">👋 ${userName}</span>
               <button class="btn btn-o" style="padding: 6px 14px; font-size: 0.75rem; border-radius: 15px;" onclick="window.location.href='${portalMap[role] || 'portal.html'}'">🚀 Portal</button>
@@ -4532,6 +4541,59 @@
       });
     }
 
+    
+    function renderLiveSponsorsMarquee() {
+      const marqueeContainer = document.getElementById('live-sponsor-marquee');
+      if (!marqueeContainer) return;
+
+      const state = syncEngine.getData();
+      let activeEvId = state.activeEventId;
+      if (!activeEvId) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const ev = EVENTS.find(e => e.date === todayStr) || EVENTS.find(e => e.date > todayStr);
+        if (ev) activeEvId = ev.id;
+      }
+
+      const ev = EVENTS.find(e => String(e.id) === String(activeEvId));
+      const sponsors = (ev && ev.switchStates && ev.switchStates.sponsors) ? ev.switchStates.sponsors : [];
+
+      if (sponsors.length === 0) {
+        marqueeContainer.style.display = 'none';
+        return;
+      }
+      
+      marqueeContainer.style.display = 'block';
+
+      if (marqueeContainer.dataset.initialized === String(activeEvId)) return;
+      marqueeContainer.dataset.initialized = String(activeEvId);
+      
+      // Use the same track style as the event marquee
+      marqueeContainer.innerHTML = `<div class="mar-track"></div>`;
+      const track = marqueeContainer.querySelector('.mar-track');
+      
+      // We need to duplicate sponsors to create an infinite scrolling effect
+      // If we have few sponsors, duplicate them multiple times to fill the screen
+      let displaySponsors = [...sponsors];
+      while (displaySponsors.length < 10) {
+        displaySponsors = [...displaySponsors, ...sponsors];
+      }
+      
+      displaySponsors.forEach((sp) => {
+        const span = document.createElement("span");
+        span.style.cssText = `display:inline-flex;align-items:center;gap:8px;color:#fff;font-weight:800;font-size:0.9rem;text-decoration:none;`;
+        if (sp.link) {
+          span.style.cursor = 'pointer';
+          span.onclick = () => window.open(sp.link, '_blank');
+        }
+        
+        let imgHtml = sp.logo ? `<img src="${sp.logo}" style="height:24px; width:auto; border-radius:4px; object-fit:contain; background:rgba(255,255,255,0.8); padding:2px;"/>` : '';
+        let taglineHtml = sp.tagline ? `<span style="opacity:0.8; font-weight:500; font-size:0.8rem;">(${sp.tagline})</span>` : '';
+        
+        span.innerHTML = `${imgHtml} ${sp.name} ${taglineHtml}<span style="opacity:0.4;margin:0 24px">◆</span>`;
+        track.appendChild(span);
+      });
+    }
+
     function renderEvents() {
       const grid = document.getElementById("eventsGrid");
       if (!grid) return;
@@ -4570,8 +4632,10 @@
     }
 
     function checkLiveStatus() {
-      const container = document.getElementById("liveContent");
-      if (!container) return;
+      const outerCard = document.getElementById("live-card-outer");
+      const fallbackContainer = document.getElementById("liveContentFallback");
+      if (!outerCard || !fallbackContainer) return;
+      let container = fallbackContainer; // fallback logic implicitly uses this
 
       const state = syncEngine.getData();
       const isOffline = state && state.systemStatus === 'offline';
@@ -4631,7 +4695,9 @@
       if (sideDot) sideDot.style.display = hasLiveStage ? 'block' : 'none';
 
       if (isOffline) {
-        container.innerHTML = `
+        outerCard.style.display = 'none';
+          fallbackContainer.style.display = 'block';
+          fallbackContainer.innerHTML = `
           <div style="padding: 60px 20px; text-align: center; border-radius: 24px; border: 1px solid #e2e8f0; background: #ffffff; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
             <div style="font-size: 3.5rem; margin-bottom: 20px; filter: drop-shadow(0 0 10px rgba(148,163,184,0.2));">💤</div>
             <h3 style="color: #1E293B; font-family: 'Playfair Display', serif; font-size: 1.7rem; font-weight: 800; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">System Offline</h3>
@@ -4643,11 +4709,13 @@
 
       if (liveEvent) {
         renderLiveUI(liveEvent);
+        renderLiveSponsorsMarquee();
       } else {
         // Find nearest future event
         const futureEvents = EVENTS.filter(e => e.date > todayStr).sort((a, b) => a.date.localeCompare(b.date));
         if (futureEvents.length > 0) {
           renderUpcomingLiveUI(futureEvents[0]);
+          renderLiveSponsorsMarquee();
         } else {
           container.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; border-radius: 24px; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
@@ -4661,7 +4729,14 @@
     }
 
     function renderLiveUI(ev) {
-      const container = document.getElementById("liveContent");
+      const outerCard = document.getElementById("live-card-outer");
+      const fallbackContainer = document.getElementById("liveContentFallback");
+      if (outerCard) outerCard.style.display = 'block';
+      if (fallbackContainer) fallbackContainer.style.display = 'none';
+      
+      const headerContainer = document.getElementById("live-card-header");
+      const bodyTopContainer = document.getElementById("live-card-body-top");
+      const bodyBottomContainer = document.getElementById("live-card-body-bottom");
       
       const state = syncEngine.getData();
       const participants = state.participants || [];
@@ -4676,8 +4751,7 @@
       
       // We will update these dynamically in hydrateLiveState if a specific round is detected
       
-      container.innerHTML = `
-        <div style="border-radius: 28px; overflow: hidden; background: #ffffff; border: 1px solid rgba(139, 92, 246, 0.12); box-shadow: 0 20px 60px rgba(139, 92, 246, 0.08), 0 4px 12px rgba(0,0,0,0.04);">
+      if (headerContainer) headerContainer.innerHTML = `
           <div style="background: linear-gradient(135deg, #7C3AED, #6366F1, #4F46E5); padding: 35px 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; position: relative; overflow: hidden;">
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: rgba(255,255,255,0.15); border-radius: 50%; filter: blur(40px);"></div>
             <div style="position: relative; z-index: 1;">
@@ -4690,8 +4764,9 @@
             <div style="display:flex; align-items:center; gap:16px; position: relative; z-index: 1;">
               <button class="btn btn-p" style="background:#fff; color:#4F46E5; padding:15px 28px; border-radius:18px; font-weight:900; box-shadow: 0 10px 25px rgba(79,70,229,0.2); border: none; transition: all 0.3s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 14px 30px rgba(79,70,229,0.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 10px 25px rgba(79,70,229,0.2)'" onclick="openDonationForm()">💖 Support Event</button>
             </div>
-          </div>
-          <div style="padding: 40px;">
+          </div>`;
+      if (bodyTopContainer) bodyTopContainer.innerHTML = `
+          <div style="padding: 40px 40px 10px 40px;">
             <div style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 50%, #e0e7ff 100%); border-radius: 24px; padding: 50px 30px; text-align: center; margin-bottom: 40px; position: relative; overflow: hidden; border: 1px solid rgba(139, 92, 246, 0.15); box-shadow: 0 8px 32px rgba(139, 92, 246, 0.06);">
               <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at center, rgba(124,58,237,0.06) 0%, transparent 70%); pointer-events: none;"></div>
               <div style="position: relative; z-index: 1;">
@@ -4844,6 +4919,12 @@
               })()}
             </div>
 
+            </div>
+      `;
+      if (bodyBottomContainer) bodyBottomContainer.innerHTML = `
+          <div style="padding: 10px 40px 40px 40px;">
+
+
             <!-- Participant Hub: Queue & Score Check -->
             <div class="participant-hub-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:25px; margin-bottom:40px;">
               <!-- Coming Next Queue - Hidden when empty (synced with Monitor UPCOMING) -->
@@ -4923,7 +5004,6 @@
               <div id="promotionList" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px;"></div>
             </div>
           </div>
-        </div>
       `;
       renderQueue();
       renderResults();
@@ -4931,7 +5011,11 @@
     }
 
     function renderUpcomingLiveUI(ev) {
-      const container = document.getElementById("liveContent");
+      const outerCard = document.getElementById("live-card-outer");
+      const fallbackContainer = document.getElementById("liveContentFallback");
+      if (outerCard) outerCard.style.display = 'none';
+      if (fallbackContainer) fallbackContainer.style.display = 'block';
+      const container = fallbackContainer;
       container.innerHTML = `
         <div style="border-radius: 24px; overflow: hidden; background: #ffffff; border: 1px solid rgba(139,92,246,0.12); box-shadow: 0 12px 40px rgba(139,92,246,0.08); padding: 40px; text-align: center;">
           <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(139,92,246,0.06); color: #7C3AED; padding: 6px 18px; border-radius: 30px; margin-bottom: 20px; font-size: 0.85rem; font-weight: 800; border: 1px solid rgba(139,92,246,0.15);">
