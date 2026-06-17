@@ -3358,6 +3358,9 @@
               </div>
               
               <div class="stage-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <!-- Insert Banner Here -->
+                <div id="live-sponsor-banner-modal-${ev.id}" style="grid-column: 1 / -1; min-height: 80px; display:flex; align-items:center; justify-content:center;"></div>
+
                 <!-- Stage Area with inline voting -->
                 <div style="background:linear-gradient(135deg, #f5f3ff, #ede9fe);border-radius:16px;padding:24px 20px;text-align:center;position:relative;overflow:hidden; border: 1px solid rgba(139,92,246,0.12); box-shadow: 0 4px 16px rgba(139,92,246,0.06);">
                   <div style="position:relative;z-index:1;">
@@ -4558,6 +4561,55 @@
         </a>
       `).join('');
     }
+    
+    window.sponsorAnimationTimers = window.sponsorAnimationTimers || {};
+    
+    function startSponsorAnimation(containerId, sponsors) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      
+      if (window.sponsorAnimationTimers[containerId]) {
+        clearTimeout(window.sponsorAnimationTimers[containerId]);
+      }
+      
+      let currentSponsorIndex = 0;
+      
+      function renderState(isLogo) {
+        if (!document.getElementById(containerId)) return; // Stop if container removed
+        
+        const sp = sponsors[currentSponsorIndex];
+        container.style.opacity = '0';
+        
+        setTimeout(() => {
+          if (isLogo) {
+            container.innerHTML = `
+              <div style="background: linear-gradient(90deg, #1e293b, #0f172a); border-radius: 20px; padding: 15px 30px; display: flex; align-items: center; justify-content: center; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 2px solid rgba(255,255,255,0.1);">
+                <img src="${sp.logo}" style="height: 60px; object-fit: contain; border-radius: 8px; filter: drop-shadow(0 0 10px rgba(255,255,255,0.2));" />
+                <span style="color:#fff; font-weight:900; font-size:1.5rem; margin-left:20px; letter-spacing:2px; font-family:'Playfair Display',serif;">${sp.name}</span>
+              </div>
+            `;
+          } else {
+            container.innerHTML = `
+              <div style="background: linear-gradient(135deg, #FFD23F, #FF6B35); border-radius: 20px; padding: 25px 30px; display: flex; align-items: center; justify-content: center; width: 100%; box-shadow: 0 10px 30px rgba(255,107,53,0.3); border: 2px solid rgba(255,255,255,0.4);">
+                <span style="color:#fff; font-weight:900; font-size:1.6rem; letter-spacing:1px; text-transform:uppercase; text-shadow:0 2px 4px rgba(0,0,0,0.2);">${sp.tagline || 'Proud Sponsor'}</span>
+              </div>
+            `;
+          }
+          
+          container.style.opacity = '1';
+          
+          if (isLogo) {
+            window.sponsorAnimationTimers[containerId] = setTimeout(() => renderState(false), 5000);
+          } else {
+            currentSponsorIndex = (currentSponsorIndex + 1) % sponsors.length;
+            window.sponsorAnimationTimers[containerId] = setTimeout(() => renderState(true), 4000);
+          }
+        }, 300); // 300ms fade transition
+      }
+      
+      container.style.transition = 'opacity 0.3s ease';
+      renderState(true);
+    }
 
     function renderEvents() {
       const grid = document.getElementById("eventsGrid");
@@ -4725,6 +4777,9 @@
             </div>
           </div>
           <div style="padding: 40px;">
+            <!-- Live Sponsor Flashing Banner -->
+            <div id="live-sponsor-banner-${ev.id}" style="margin-bottom: 20px; min-height: 100px; display:flex; align-items:center; justify-content:center;"></div>
+            
             <div style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 50%, #e0e7ff 100%); border-radius: 24px; padding: 50px 30px; text-align: center; margin-bottom: 40px; position: relative; overflow: hidden; border: 1px solid rgba(139, 92, 246, 0.15); box-shadow: 0 8px 32px rgba(139, 92, 246, 0.06);">
               <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at center, rgba(124,58,237,0.06) 0%, transparent 70%); pointer-events: none;"></div>
               <div style="position: relative; z-index: 1;">
@@ -4961,7 +5016,12 @@
       renderQueue();
       renderResults();
       renderPromotion();
+      
+      if(ev.switchStates && ev.switchStates.sponsors && ev.switchStates.sponsors.length > 0) {
+        startSponsorAnimation(`live-sponsor-banner-${ev.id}`, ev.switchStates.sponsors);
+      }
     }
+
 
     function renderUpcomingLiveUI(ev) {
       const container = document.getElementById("liveContent");
