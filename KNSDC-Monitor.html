@@ -1909,10 +1909,21 @@
           <div class="card-title" style="margin-bottom:14px">Active Sponsors</div>
           <div id="event-sponsor-list" style="display:flex;flex-direction:column;gap:10px"></div>
           <hr style="margin:20px 0"/>
-          <div class="card-title" style="margin-bottom:14px">Advertisement Engine</div>
-          <div class="fg"><label class="fl">Banner Image URL</label><input type="url" placeholder="https://…"/></div>
-          <div class="fg"><label class="fl">Destination Link</label><input type="url" placeholder="https://…"/></div>
-          <button class="btn btn-amber" style="border-radius:8px">DEPLOY AD BANNER</button>
+          <div class="card-title" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Advertisement Engine</span>
+            <span class="badge b-amber" style="font-size:10px;">GLOBAL</span>
+          </div>
+          <div class="fg"><label class="fl">Partner Name</label><input id="ad-partner" type="text" placeholder="e.g. Red Bull"/></div>
+          <div class="fg"><label class="fl">Tagline (Optional)</label><input id="ad-tagline" type="text" placeholder="e.g. Gives You Wings"/></div>
+          <div class="fg">
+            <label class="fl">Logo Upload (File or URL)</label>
+            <div style="display:flex; gap:10px;">
+              <input id="ad-logo-file" type="file" accept="image/*" style="flex:1; padding:8px; border:1px dashed var(--border); border-radius:8px;"/>
+              <input id="ad-logo-url" type="url" placeholder="Or paste image URL..." style="flex:1;"/>
+            </div>
+          </div>
+          <div class="fg"><label class="fl">Destination Link</label><input id="ad-link" type="url" placeholder="https://…"/></div>
+          <button class="btn btn-amber" style="border-radius:8px; width:100%; font-weight:800;" onclick="deploySponsor()">DEPLOY AD BANNER</button>
         </div>
       </div>
     </div>
@@ -6427,6 +6438,8 @@ function renderEventSettings() {
   if (nameInp) nameInp.value = activeEv.name || '';
   if (logoInp) logoInp.value = activeEv.banner || ''; // Using banner as logo for now
   if (descInp) descInp.value = activeEv.description || '';
+  
+  renderSponsors();
 }
 
 async function saveEventSettings() {
@@ -6440,6 +6453,95 @@ async function saveEventSettings() {
   if(!success) { toast('❌ Error saving event settings'); return; }
   toast('✅ Event settings saved!');
 }
+
+// ══════════════════════════════════════════
+// ADVERTISEMENT ENGINE
+// ══════════════════════════════════════════
+async function deploySponsor() {
+  const name = document.getElementById('ad-partner').value.trim();
+  const tagline = document.getElementById('ad-tagline').value.trim();
+  const link = document.getElementById('ad-link').value.trim();
+  const fileInput = document.getElementById('ad-logo-file');
+  const urlInput = document.getElementById('ad-logo-url').value.trim();
+  
+  if (!name) return toast('Partner Name is required!');
+  
+  let logoData = urlInput;
+  if (fileInput.files && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    logoData = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.readAsDataURL(file);
+    });
+  }
+  
+  if (!logoData) return toast('Please provide a Logo URL or upload an image file!');
+  
+  const sponsor = {
+    id: 'sp_' + Date.now(),
+    name, tagline, link, logo: logoData, addedAt: Date.now()
+  };
+  
+  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  if (!activeEv) return toast('No active event selected');
+  
+  activeEv.switchStates = activeEv.switchStates || {};
+  const currentSponsors = activeEv.switchStates.sponsors || [];
+  currentSponsors.push(sponsor);
+  activeEv.switchStates.sponsors = currentSponsors;
+  
+  if (window.syncEngine && window.syncEngine.updateEvent) {
+    const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
+    if (success) {
+      toast('✅ Sponsor deployed globally!');
+      document.getElementById('ad-partner').value = '';
+      document.getElementById('ad-tagline').value = '';
+      document.getElementById('ad-link').value = '';
+      document.getElementById('ad-logo-url').value = '';
+      fileInput.value = '';
+      renderSponsors();
+    } else {
+      toast('❌ Failed to save sponsor to database');
+    }
+  }
+}
+
+function renderSponsors() {
+  const listEl = document.getElementById('event-sponsor-list');
+  if(!listEl) return;
+  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  if(!activeEv || !activeEv.switchStates || !activeEv.switchStates.sponsors || activeEv.switchStates.sponsors.length === 0) {
+    listEl.innerHTML = '<div style="color:var(--text-muted); font-size:12px; font-style:italic;">No active sponsors deployed yet.</div>';
+    return;
+  }
+  
+  listEl.innerHTML = activeEv.switchStates.sponsors.map(sp => `
+    <div style="display:flex; align-items:center; gap:12px; background:rgba(255,255,255,0.8); border:1px solid var(--border); padding:10px; border-radius:12px;">
+      <img src="${sp.logo}" alt="Logo" style="width:40px; height:40px; object-fit:contain; border-radius:6px; background:#fff; border:1px solid rgba(0,0,0,0.1);"/>
+      <div style="flex:1;">
+        <div style="font-weight:800; font-size:14px;">${sp.name}</div>
+        ${sp.tagline ? `<div style="font-size:11px; color:var(--text-muted);">${sp.tagline}</div>` : ''}
+      </div>
+      <button class="btn btn-red btn-xs" onclick="deleteSponsor('${sp.id}')" style="border-radius:6px;">Delete</button>
+    </div>
+  `).join('');
+}
+
+async function deleteSponsor(id) {
+  if(!confirm('Delete this sponsor advertisement?')) return;
+  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  if (!activeEv || !activeEv.switchStates || !activeEv.switchStates.sponsors) return;
+  
+  activeEv.switchStates.sponsors = activeEv.switchStates.sponsors.filter(s => s.id !== id);
+  
+  if (window.syncEngine && window.syncEngine.updateEvent) {
+    await window.syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
+    toast('🗑️ Sponsor removed');
+    renderSponsors();
+  }
+}
+
 
 // ══════════════════════════════════════════
 // UTILITIES
