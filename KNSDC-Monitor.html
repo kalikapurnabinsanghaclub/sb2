@@ -6290,20 +6290,79 @@ function renderJudgeStats(){
     const agreements = syncEngine.getData()?.judgeAgreements || [];
     return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
   });
-  const jLabels = presentJudges.map(j=>j.name.split(' ')[0]);
-  const jAvgs = presentJudges.map(j=>{
-    const total = participants.reduce((acc,p)=>acc+subjects.reduce((s2,s)=>s2+(p.scores[j.id]?p.scores[j.id][s.id]||0:0),0),0);
-    const max = participants.length * subjects.length * 10;
-    return max>0?Math.round(total/max*1000)/10:0;
+  const chartDatasets = presentJudges.map((j, i) => {
+    const scoreCounts = new Array(10).fill(0);
+    participants.forEach(p => {
+      if (p.scores && p.scores[j.id]) {
+        Object.values(p.scores[j.id]).forEach(val => {
+          const num = Math.round(Number(val));
+          if (num >= 1 && num <= 10) {
+            scoreCounts[num - 1]++;
+          }
+        });
+      }
+    });
+
+    const judgeColors = ['109,40,217', '37,99,235', '5,150,105', '217,119,6'];
+    const colorStr = judgeColors[i % judgeColors.length];
+
+    return {
+      label: j.name.split(' ')[0],
+      data: scoreCounts,
+      backgroundColor: `rgba(${colorStr}, 0.65)`,
+      borderColor: `rgba(${colorStr}, 1)`,
+      borderWidth: 1.5,
+      borderRadius: 4,
+      barPercentage: 0.85,
+      categoryPercentage: 0.85
+    };
   });
+
   judgeChartInstance = new Chart(ctx, {
-    type:'radar',
-    data:{labels:subjects.map(s=>s.name),datasets:presentJudges.map((j,i)=>({
-      label:j.name.split(' ')[0],
-      data:subjects.map(s=>Math.round(participants.reduce((acc,p)=>acc+(p.scores[j.id]?p.scores[j.id][s.id]||0:0),0)/participants.length*10)/10),
-      fill:true,backgroundColor:`rgba(${['109,40,217','37,99,235','5,150,105','217,119,6'][i]},0.15)`,borderColor:`rgba(${['109,40,217','37,99,235','5,150,105','217,119,6'][i]},0.8)`,pointBackgroundColor:`rgba(${['109,40,217','37,99,235','5,150,105','217,119,6'][i]},1)`,borderWidth:2
-    }))},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8892a4',font:{size:11}}}},scales:{r:{ticks:{color:'#8892a4',backdropColor:'transparent'},grid:{color:'rgba(34,36,54,0.8)'},pointLabels:{color:'#8892a4'}}}}
+    type: 'bar',
+    data: {
+      labels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+      datasets: chartDatasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            color: '#8892a4',
+            font: { size: 10, family: 'var(--fb)', weight: 'bold' }
+          }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Score Given',
+            color: '#8892a4',
+            font: { size: 10, weight: 'bold' }
+          },
+          ticks: { color: '#8892a4' },
+          grid: { color: 'rgba(34,36,54,0.15)' }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Frequency (Count)',
+            color: '#8892a4',
+            font: { size: 10, weight: 'bold' }
+          },
+          ticks: { color: '#8892a4', stepSize: 1 },
+          grid: { color: 'rgba(34,36,54,0.15)' }
+        }
+      }
+    }
   });
 
   // Max & average
