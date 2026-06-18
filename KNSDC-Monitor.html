@@ -6058,11 +6058,113 @@ function renderRoundwiseStats(){
     ctx.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:12px">Chart library not loaded</div>';
     return;
   }
+
+  // Helper to convert hex to rgba
+  const helperHexToRgba = (hex, alpha) => {
+    if (!hex || hex[0] !== '#') return hex;
+    const cleanHex = hex.replace('#', '');
+    let r = 0, g = 0, b = 0;
+    if (cleanHex.length === 3) {
+      r = parseInt(cleanHex[0] + cleanHex[0], 16);
+      g = parseInt(cleanHex[1] + cleanHex[1], 16);
+      b = parseInt(cleanHex[2] + cleanHex[2], 16);
+    } else if (cleanHex.length === 6) {
+      r = parseInt(cleanHex.substring(0, 2), 16);
+      g = parseInt(cleanHex.substring(2, 4), 16);
+      b = parseInt(cleanHex.substring(4, 6), 16);
+    }
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  const activeEventCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+  const datasets = [];
+  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
+
+  activeEventCats.forEach((cat) => {
+    const catColor = cat.color || '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+    const promotedData = [];
+    const stoppedData = [];
+
+    rounds.forEach((round, rIdx) => {
+      // Find participants in this category for this event
+      const catParts = participants.filter(p => p.catId === cat.id && (String(p.eventId) === String(activeEventId) || !p.eventId));
+      
+      // Reached at least this round
+      const presentInRound = catParts.filter(p => {
+        const currentRIdx = roundsOrder.indexOf(p.round);
+        return currentRIdx >= rIdx;
+      });
+
+      // Promoted from this round (current round is strictly higher)
+      const promoted = presentInRound.filter(p => {
+        const currentRIdx = roundsOrder.indexOf(p.round);
+        return currentRIdx > rIdx;
+      });
+
+      // Stopped at this round (current round is exactly this round)
+      const stopped = presentInRound.filter(p => {
+        const currentRIdx = roundsOrder.indexOf(p.round);
+        return currentRIdx === rIdx;
+      });
+
+      promotedData.push(promoted.length);
+      stoppedData.push(stopped.length);
+    });
+
+    datasets.push({
+      label: `${cat.name} (Promoted)`,
+      data: promotedData,
+      backgroundColor: helperHexToRgba(catColor, 0.8),
+      borderColor: catColor,
+      borderWidth: 1,
+      borderRadius: 4,
+      stack: `cat_${cat.id}`
+    });
+
+    datasets.push({
+      label: `${cat.name} (Stopped Here)`,
+      data: stoppedData,
+      backgroundColor: helperHexToRgba(catColor, 0.3),
+      borderColor: catColor,
+      borderWidth: 1,
+      borderRadius: 4,
+      stack: `cat_${cat.id}`
+    });
+  });
+
   if(roundChartInstance) roundChartInstance.destroy();
   roundChartInstance = new Chart(ctx, {
     type:'bar',
-    data:{labels,datasets:[{label:'Participants',data:counts,backgroundColor:['rgba(217,119,6,0.7)','rgba(8,145,178,0.7)','rgba(124,58,237,0.7)','rgba(234,88,12,0.7)'],borderColor:['var(--amber2)','var(--cyan2)','var(--purple2)','var(--orange2)'],borderWidth:1,borderRadius:6}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8892a4'},grid:{color:'rgba(34,36,54,0.5)'}},y:{ticks:{color:'#8892a4',stepSize:1},grid:{color:'rgba(34,36,54,0.5)'}}}}
+    data:{labels, datasets},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{
+          display:true,
+          labels:{
+            color:'#8892a4',
+            font:{size:10, family:'var(--fb)', weight:'bold'}
+          }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false
+        }
+      },
+      scales:{
+        x:{
+          ticks:{color:'#8892a4'},
+          grid:{color:'rgba(34,36,54,0.15)'},
+          stacked: true
+        },
+        y:{
+          ticks:{color:'#8892a4',stepSize:1},
+          grid:{color:'rgba(34,36,54,0.15)'},
+          stacked: true
+        }
+      }
+    }
   });
 
   // Tables
