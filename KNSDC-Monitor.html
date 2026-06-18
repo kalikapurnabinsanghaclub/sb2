@@ -1948,6 +1948,31 @@
       </div>
     </div>
 
+    <!-- STAGE MESSAGE FLASHER PANEL -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:10px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px">📢 Stage Message Flasher</div>
+      
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:14px;">
+        <button class="btn btn-sm" style="background:linear-gradient(135deg, #10B981, #059669); color:#fff; border:none; text-align:left; padding:10px 12px; border-radius:10px; font-weight:800; font-size:11px;" onclick="selectPresetFlash('goodluck')">🍀 Good Luck</button>
+        <button class="btn btn-sm" style="background:linear-gradient(135deg, #8B5CF6, #7C3AED); color:#fff; border:none; text-align:left; padding:10px 12px; border-radius:10px; font-weight:800; font-size:11px;" onclick="selectPresetFlash('break')">☕ Take a Break</button>
+        <button class="btn btn-sm" style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#fff; border:none; text-align:left; padding:10px 12px; border-radius:10px; font-weight:800; font-size:11px;" onclick="selectPresetFlash('prize')">🏆 Prize Ceremony</button>
+        <button class="btn btn-sm" style="background:linear-gradient(135deg, #06B6D4, #0891B2); color:#fff; border:none; text-align:left; padding:10px 12px; border-radius:10px; font-weight:800; font-size:11px;" onclick="selectPresetFlash('congrats')">🎉 Congratulations</button>
+        <button class="btn btn-sm" style="background:linear-gradient(135deg, #6366F1, #4F46E5); color:#fff; border:none; text-align:left; padding:10px 12px; border-radius:10px; font-weight:800; font-size:11px;" onclick="selectPresetFlash('thanks')">🤝 Thanks for Connecting</button>
+        <button class="btn btn-sm" style="background:linear-gradient(135deg, #EC4899, #D946EF); color:#fff; border:none; text-align:left; padding:10px 12px; border-radius:10px; font-weight:800; font-size:11px;" onclick="selectPresetFlash('thankyou_emotion')">❤️ Thank You (Emotional)</button>
+      </div>
+
+      <div class="fg" style="margin-bottom:12px">
+        <label class="fl">Flash Message Text</label>
+        <textarea id="flash-msg-text" placeholder="Type custom message here..." style="width:100%; height:60px; background:var(--surface); border-radius:10px; border:1px solid var(--border); padding:8px; color:var(--text); outline:none; font-size:12px;" oninput="onFlashTextInput()"></textarea>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="triggerFlashMessage()">⚡ Flash to Stage</button>
+        <button class="btn btn-danger btn-sm" onclick="clearFlashMessage()">❌ Clear Message</button>
+        <div id="flash-status-pill" style="font-size:11px; padding:6px 12px; border-radius:30px; background:rgba(0,0,0,0.05); color:var(--text-muted); font-weight:700; display:none;">📢 Active on Stage</div>
+      </div>
+    </div>
+
     <div id="venue-categories-container"></div>
   </div>
 
@@ -2986,6 +3011,15 @@ let promoSelections = new Set();
 let currentRegTab2 = 'applied';
 let currentStatsTab = 'roundwise';
 let currentVenueMonitor = null;
+const presetTexts = {
+  goodluck: "Good Luck! 🍀",
+  break: "Time to take a break ☕",
+  prize: "Prize ceremony is running! 🏆",
+  congrats: "Congratulations to all of you! 🎉",
+  thanks: "Thanks for connecting with us! 🤝",
+  thankyou_emotion: "Best wishes from Kalikapur Nabin Sangha to all participants and their guardians for successfully completing our event! ❤️🙏"
+};
+let activeFlashType = null;
 let editingCatId = null;
 let editingVenueId = null;
 let editingSubjId = null;
@@ -5128,6 +5162,86 @@ function renderVenueMonitor(){
   const vdsel = document.getElementById('venue-date-sel');
   vdsel.innerHTML = '<option value="">All Dates</option>';
   renderVenueParticipants();
+  updateFlashStatusUI();
+}
+
+function updateFlashStatusUI() {
+  const s = syncEngine.getData();
+  const flash = s ? (s.flashMessage || {}) : {};
+  const txtArea = document.getElementById('flash-msg-text');
+  const pill = document.getElementById('flash-status-pill');
+  if (flash.active && flash.text) {
+    if (txtArea && document.activeElement !== txtArea) {
+      txtArea.value = flash.text || '';
+    }
+    if (pill) {
+      pill.style.display = 'inline-block';
+      pill.textContent = `📢 Active: "${flash.text.substring(0, 25)}${flash.text.length > 25 ? '...' : ''}"`;
+      pill.style.background = 'rgba(16, 185, 129, 0.15)';
+      pill.style.color = '#10B981';
+      pill.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+    }
+  } else {
+    if (txtArea && document.activeElement !== txtArea) {
+      txtArea.value = '';
+    }
+    if (pill) {
+      pill.style.display = 'none';
+    }
+  }
+}
+
+function selectPresetFlash(type) {
+  activeFlashType = type;
+  const txtArea = document.getElementById('flash-msg-text');
+  if (txtArea) {
+    txtArea.value = presetTexts[type] || '';
+  }
+  triggerFlashMessage();
+}
+
+function onFlashTextInput() {
+  activeFlashType = 'custom';
+}
+
+function triggerFlashMessage() {
+  const txtArea = document.getElementById('flash-msg-text');
+  if (!txtArea) return;
+  const text = txtArea.value.trim();
+  if (!text) {
+    toast('⚠️ Please type a message or select a preset first.');
+    return;
+  }
+  
+  syncEngine.setData(state => {
+    state.flashMessage = {
+      text: text,
+      type: activeFlashType || 'custom',
+      active: true,
+      timestamp: Date.now()
+    };
+    return state;
+  });
+  
+  toast('⚡ Message flashed to Stage & Judges!');
+  updateFlashStatusUI();
+}
+
+function clearFlashMessage() {
+  syncEngine.setData(state => {
+    state.flashMessage = {
+      text: '',
+      type: '',
+      active: false,
+      timestamp: Date.now()
+    };
+    return state;
+  });
+  const txtArea = document.getElementById('flash-msg-text');
+  if (txtArea) txtArea.value = '';
+  activeFlashType = null;
+  toast('❌ Flash message cleared!');
+  updateFlashStatusUI();
 }
 
 function selectVenueMonitor(id){
@@ -7865,6 +7979,7 @@ window.closeM = closeM;
 syncEngine.subscribe(s => {
   if (!s) return;
   hydrate();
+  if (typeof updateFlashStatusUI === 'function') updateFlashStatusUI();
   
   const activePage = document.querySelector('.pp.active');
   if (activePage) {
