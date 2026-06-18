@@ -1955,21 +1955,26 @@ function showJudgeProfileModal() {
 // Preload club logo as base64 for reports
 let LOGO_BASE64 = '';
 (function() {
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
+  var img = new Image();
   img.onload = function() {
-    const c = document.createElement('canvas');
-    c.width = img.width; c.height = img.height;
-    c.getContext('2d').drawImage(img, 0, 0);
-    LOGO_BASE64 = c.toDataURL('image/jpeg');
+    try {
+      var c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      LOGO_BASE64 = c.toDataURL('image/jpeg');
+    } catch(e) { console.warn('Logo preload failed:', e); }
   };
+  img.onerror = function() { console.warn('Logo not found'); };
   img.src = 'logo.jpg';
 })();
 
+// Safe HTML escape (avoids </ in script context)
 function escHtml(str) {
-  const s = String(str == null ? '' : str);
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  var s = String(str == null ? '' : str);
+  return s.replace(/\x26/g,'\x26amp;').replace(/\x3c/g,'\x26lt;').replace(/\x3e/g,'\x26gt;').replace(/"/g,'\x26quot;');
 }
+// Helper: closing tag builder (avoids </ breaking script parser)
+function ct(tag) { return '\x3c/' + tag + '\x3e'; }
 
 // ── Shared data collector (judge-only scores) ──
 function collectReportData() {
@@ -2031,7 +2036,8 @@ function collectReportData() {
 // PDF REPORT (jsPDF + autoTable)
 // ════════════════════════════
 function downloadEventReportPDF() {
-  const data = collectReportData();
+  try {
+  var data = collectReportData();
   if (data.rows.length === 0) { toast('⚠️ No scores found! Score participants first.'); return; }
 
   const judgeName = JUDGE.name || 'Judge';
@@ -2160,95 +2166,98 @@ function downloadEventReportPDF() {
   doc.save('Event_Report_' + safeName + '_' + dateStr + '.pdf');
   toast('✅ PDF Report downloaded!');
   document.getElementById('judge-profile-modal').style.display = 'none';
+  } catch(err) { console.error('PDF Error:', err); toast('❌ PDF generation failed: ' + err.message); }
 }
 
 // ════════════════════════════
 // EXCEL REPORT (HTML → .xls)
 // ════════════════════════════
 function downloadEventReportExcel() {
-  const data = collectReportData();
+  try {
+  var data = collectReportData();
   if (data.rows.length === 0) { toast('⚠️ No scores found! Score participants first.'); return; }
 
-  const judgeName = JUDGE.name || 'Judge';
-  const eventName = JUDGE.eventName || 'Event';
-  const reportDate = new Date().toLocaleDateString('en-IN', { year:'numeric', month:'long', day:'numeric' });
-  const maxTotal = SUBJECTS.reduce((a, s) => a + s.maxMarks, 0);
-  const colCount = 5 + SUBJECTS.length + 2;
+  var judgeName = JUDGE.name || 'Judge';
+  var eventName = JUDGE.eventName || 'Event';
+  var reportDate = new Date().toLocaleDateString('en-IN', { year:'numeric', month:'long', day:'numeric' });
+  var maxTotal = SUBJECTS.reduce(function(a,s){return a+s.maxMarks},0);
+  var colCount = 5 + SUBJECTS.length + 2;
+  var T = ct; // shorthand for closing tag builder
 
-  let h = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
-  h += '<head><meta charset="utf-8"><style>';
+  var h = '\x3chtml xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"\x3e';
+  h += '\x3chead\x3e\x3cmeta charset="utf-8"\x3e\x3cstyle\x3e';
   h += 'td,th{font-family:Calibri,Arial,sans-serif;font-size:11pt;padding:4px 8px;border:1px solid #e2e8f0;vertical-align:middle}';
   h += 'th{background:#1e3a5f;color:white;font-weight:bold;text-align:center}';
   h += '.hc{border:none;font-weight:bold;color:#1e3a5f}.il{border:none;font-size:9pt;color:#64748b;font-weight:bold}';
   h += '.iv{border:none;font-size:10pt;color:#0f172a}.st{background:#2563eb;color:white;font-size:11pt;font-weight:bold;padding:6px}';
   h += '.rh{background:#2563eb;color:white}.sh{background:#d97706;color:white}';
   h += '.ar{background:#f8fafc}.tc{font-weight:bold;color:#d97706;text-align:center}.cc{font-style:italic;color:#334155}';
-  h += '</style></head><body><table>';
+  h += T('style') + T('head') + '\x3cbody\x3e\x3ctable\x3e';
 
-  // ── Logo + Title ──
-  h += '<tr><td class="hc" rowspan="2" style="width:70px">';
-  if (LOGO_BASE64) h += '<img src="' + LOGO_BASE64 + '" width="60" height="60"/>';
+  // Logo + Title
+  h += '\x3ctr\x3e\x3ctd class="hc" rowspan="2" style="width:70px"\x3e';
+  if (LOGO_BASE64) h += '\x3cimg src="' + LOGO_BASE64 + '" width="60" height="60"/\x3e';
   else h += 'KNS';
-  h += '</td><td class="hc" colspan="' + (colCount-1) + '" style="font-size:18pt;color:#2563eb">KNSDC EVENT REPORT</td></tr>';
-  h += '<tr><td class="hc" colspan="' + (colCount-1) + '" style="font-size:9pt;color:#64748b;font-weight:normal">Kalikapur Nabin Sangha Development Club</td></tr>';
-  h += '<tr><td colspan="' + colCount + '" style="border:none;height:10px"></td></tr>';
+  h += T('td') + '\x3ctd class="hc" colspan="' + (colCount-1) + '" style="font-size:18pt;color:#2563eb"\x3eKNSDC EVENT REPORT' + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3ctd class="hc" colspan="' + (colCount-1) + '" style="font-size:9pt;color:#64748b;font-weight:normal"\x3eKalikapur Nabin Sangha Development Club' + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3ctd colspan="' + colCount + '" style="border:none;height:10px"\x3e' + T('td') + T('tr');
 
-  // ── Event & Judge Info ──
-  h += '<tr><td class="il">Event</td><td class="iv" colspan="2">' + escHtml(eventName) + '</td>';
-  h += '<td class="il">Judge</td><td class="iv" colspan="' + (colCount-4) + '">' + escHtml(judgeName) + '</td></tr>';
-  h += '<tr><td class="il">Venue</td><td class="iv" colspan="2">' + escHtml(JUDGE.venue||'-') + '</td>';
-  h += '<td class="il">Specialization</td><td class="iv" colspan="' + (colCount-4) + '">' + escHtml(JUDGE.spec||'-') + '</td></tr>';
-  h += '<tr><td class="il">Event Date</td><td class="iv" colspan="2">' + escHtml(JUDGE.date||'-') + '</td>';
-  h += '<td class="il">Report Date</td><td class="iv" colspan="' + (colCount-4) + '">' + escHtml(reportDate) + '</td></tr>';
-  h += '<tr><td class="il">Total Scored</td><td class="iv" colspan="' + (colCount-1) + '" style="color:#d97706;font-weight:bold">' + data.rows.length + ' participants</td></tr>';
-  h += '<tr><td colspan="' + colCount + '" style="border:none;height:14px"></td></tr>';
+  // Event & Judge Info
+  h += '\x3ctr\x3e\x3ctd class="il"\x3eEvent' + T('td') + '\x3ctd class="iv" colspan="2"\x3e' + escHtml(eventName) + T('td');
+  h += '\x3ctd class="il"\x3eJudge' + T('td') + '\x3ctd class="iv" colspan="' + (colCount-4) + '"\x3e' + escHtml(judgeName) + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3ctd class="il"\x3eVenue' + T('td') + '\x3ctd class="iv" colspan="2"\x3e' + escHtml(JUDGE.venue||'-') + T('td');
+  h += '\x3ctd class="il"\x3eSpecialization' + T('td') + '\x3ctd class="iv" colspan="' + (colCount-4) + '"\x3e' + escHtml(JUDGE.spec||'-') + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3ctd class="il"\x3eEvent Date' + T('td') + '\x3ctd class="iv" colspan="2"\x3e' + escHtml(JUDGE.date||'-') + T('td');
+  h += '\x3ctd class="il"\x3eReport Date' + T('td') + '\x3ctd class="iv" colspan="' + (colCount-4) + '"\x3e' + escHtml(reportDate) + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3ctd class="il"\x3eTotal Scored' + T('td') + '\x3ctd class="iv" colspan="' + (colCount-1) + '" style="color:#d97706;font-weight:bold"\x3e' + data.rows.length + ' participants' + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3ctd colspan="' + colCount + '" style="border:none;height:14px"\x3e' + T('td') + T('tr');
 
-  // ── Round-wise Summary ──
-  h += '<tr><td class="st" colspan="' + colCount + '">📋 ROUND-WISE SUMMARY</td></tr>';
-  h += '<tr><th class="rh">Round</th><th class="rh" colspan="' + (colCount-1) + '">Participants Scored</th></tr>';
-  ROUNDS.forEach(r => {
+  // Round-wise Summary
+  h += '\x3ctr\x3e\x3ctd class="st" colspan="' + colCount + '"\x3e\ud83d\udccb ROUND-WISE SUMMARY' + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3cth class="rh"\x3eRound' + T('th') + '\x3cth class="rh" colspan="' + (colCount-1) + '"\x3eParticipants Scored' + T('th') + T('tr');
+  ROUNDS.forEach(function(r) {
     if (data.roundSummary[r]) {
-      h += '<tr><td style="font-weight:bold">' + (r.charAt(0).toUpperCase()+r.slice(1)) + '</td><td colspan="' + (colCount-1) + '">' + data.roundSummary[r] + '</td></tr>';
+      h += '\x3ctr\x3e\x3ctd style="font-weight:bold"\x3e' + (r.charAt(0).toUpperCase()+r.slice(1)) + T('td') + '\x3ctd colspan="' + (colCount-1) + '"\x3e' + data.roundSummary[r] + T('td') + T('tr');
     }
   });
-  h += '<tr><td colspan="' + colCount + '" style="border:none;height:14px"></td></tr>';
+  h += '\x3ctr\x3e\x3ctd colspan="' + colCount + '" style="border:none;height:14px"\x3e' + T('td') + T('tr');
 
-  // ── Subject-wise Summary ──
-  h += '<tr><td class="st" colspan="' + colCount + '">📊 SUBJECT-WISE SUMMARY</td></tr>';
-  h += '<tr><th class="sh">Subject</th><th class="sh">Average</th><th class="sh">Highest Given</th><th class="sh" colspan="' + (colCount-3) + '">Max Possible</th></tr>';
-  data.subjectStats.forEach(s => {
-    h += '<tr><td style="font-weight:bold">' + escHtml(s.name) + '</td><td style="text-align:center">' + s.avg + '</td><td style="text-align:center">' + s.highest + '</td><td colspan="' + (colCount-3) + '" style="text-align:center">' + s.max + '</td></tr>';
+  // Subject-wise Summary
+  h += '\x3ctr\x3e\x3ctd class="st" colspan="' + colCount + '"\x3e\ud83d\udcca SUBJECT-WISE SUMMARY' + T('td') + T('tr');
+  h += '\x3ctr\x3e\x3cth class="sh"\x3eSubject' + T('th') + '\x3cth class="sh"\x3eAverage' + T('th') + '\x3cth class="sh"\x3eHighest Given' + T('th') + '\x3cth class="sh" colspan="' + (colCount-3) + '"\x3eMax Possible' + T('th') + T('tr');
+  data.subjectStats.forEach(function(s) {
+    h += '\x3ctr\x3e\x3ctd style="font-weight:bold"\x3e' + escHtml(s.name) + T('td') + '\x3ctd style="text-align:center"\x3e' + s.avg + T('td') + '\x3ctd style="text-align:center"\x3e' + s.highest + T('td') + '\x3ctd colspan="' + (colCount-3) + '" style="text-align:center"\x3e' + s.max + T('td') + T('tr');
   });
-  h += '<tr><td colspan="' + colCount + '" style="border:none;height:14px"></td></tr>';
+  h += '\x3ctr\x3e\x3ctd colspan="' + colCount + '" style="border:none;height:14px"\x3e' + T('td') + T('tr');
 
-  // ── Detailed Scores ──
-  h += '<tr><td class="st" colspan="' + colCount + '">📝 DETAILED SCORES</td></tr>';
-  h += '<tr>';
-  ['ID','Name','Age','Category','Round'].forEach(hd => h += '<th>' + hd + '</th>');
-  SUBJECTS.forEach(s => h += '<th>' + escHtml(s.name) + ' (/' + s.maxMarks + ')</th>');
-  h += '<th>Total (/' + maxTotal + ')</th><th>Comment</th></tr>';
+  // Detailed Scores
+  h += '\x3ctr\x3e\x3ctd class="st" colspan="' + colCount + '"\x3e\ud83d\udcdd DETAILED SCORES' + T('td') + T('tr');
+  h += '\x3ctr\x3e';
+  ['ID','Name','Age','Category','Round'].forEach(function(hd) { h += '\x3cth\x3e' + hd + T('th'); });
+  SUBJECTS.forEach(function(s) { h += '\x3cth\x3e' + escHtml(s.name) + ' (/' + s.maxMarks + ')' + T('th'); });
+  h += '\x3cth\x3eTotal (/' + maxTotal + ')' + T('th') + '\x3cth\x3eComment' + T('th') + T('tr');
 
-  data.rows.forEach((r, i) => {
-    const cls = i%2===1 ? ' class="ar"' : '';
-    h += '<tr' + cls + '>';
-    h += '<td>' + escHtml(r.id) + '</td>';
-    h += '<td style="font-weight:bold">' + escHtml(r.name) + '</td>';
-    h += '<td style="text-align:center">' + escHtml(r.age) + '</td>';
-    h += '<td>' + escHtml(r.category) + '</td>';
-    h += '<td>' + (r.round.charAt(0).toUpperCase()+r.round.slice(1)) + '</td>';
-    r.subjectVals.forEach(v => h += '<td style="text-align:center">' + v + '</td>');
-    h += '<td class="tc">' + r.total + '</td>';
-    h += '<td class="cc">' + escHtml(r.comment) + '</td>';
-    h += '</tr>';
+  data.rows.forEach(function(r, i) {
+    var cls = i%2===1 ? ' class="ar"' : '';
+    h += '\x3ctr' + cls + '\x3e';
+    h += '\x3ctd\x3e' + escHtml(r.id) + T('td');
+    h += '\x3ctd style="font-weight:bold"\x3e' + escHtml(r.name) + T('td');
+    h += '\x3ctd style="text-align:center"\x3e' + escHtml(r.age) + T('td');
+    h += '\x3ctd\x3e' + escHtml(r.category) + T('td');
+    h += '\x3ctd\x3e' + (r.round.charAt(0).toUpperCase()+r.round.slice(1)) + T('td');
+    r.subjectVals.forEach(function(v) { h += '\x3ctd style="text-align:center"\x3e' + v + T('td'); });
+    h += '\x3ctd class="tc"\x3e' + r.total + T('td');
+    h += '\x3ctd class="cc"\x3e' + escHtml(r.comment) + T('td');
+    h += T('tr');
   });
 
-  h += '</table></body></html>';
+  h += T('table') + T('body') + T('html');
 
-  const blob = new Blob(['\uFEFF' + h], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const safeName = judgeName.replace(/[^a-zA-Z0-9]/g, '_');
-  const dateStr = new Date().toISOString().split('T')[0];
+  var blob = new Blob(['\uFEFF' + h], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var safeName = judgeName.replace(/[^a-zA-Z0-9]/g, '_');
+  var dateStr = new Date().toISOString().split('T')[0];
   a.href = url;
   a.download = 'Event_Report_' + safeName + '_' + dateStr + '.xls';
   document.body.appendChild(a);
@@ -2257,6 +2266,7 @@ function downloadEventReportExcel() {
   URL.revokeObjectURL(url);
   toast('✅ Excel Report downloaded!');
   document.getElementById('judge-profile-modal').style.display = 'none';
+  } catch(err) { console.error('Excel Error:', err); toast('❌ Excel generation failed: ' + err.message); }
 }
 
 function renderDashboard() {
