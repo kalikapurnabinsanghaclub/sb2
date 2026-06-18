@@ -1340,8 +1340,13 @@
           <span style="color:var(--text-muted); font-weight:600">Verification Status</span><span id="pm-status">-</span>
         </div>
       </div>
+      <!-- Event Report Download Buttons -->
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-gold" style="flex:1;justify-content:center;gap:6px;font-weight:700;font-size:12px" onclick="downloadEventReportPDF()">📄 PDF Report</button>
+        <button class="btn btn-gold" style="flex:1;justify-content:center;gap:6px;font-weight:700;font-size:12px;background:linear-gradient(135deg,#059669,#10b981)" onclick="downloadEventReportExcel()">📊 Excel Report</button>
+      </div>
       <!-- Logout Button (For Mobile/All layout consistency) -->
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;color:var(--red2);border-color:rgba(239, 68, 68, 0.2);background:white;box-shadow:0 2px 4px rgba(239, 68, 68, 0.05);margin-top:16px" onclick="staffLogout()">🚪 Logout</button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;color:var(--red2);border-color:rgba(239, 68, 68, 0.2);background:white;box-shadow:0 2px 4px rgba(239, 68, 68, 0.05);margin-top:8px" onclick="staffLogout()">🚪 Logout</button>
     </div>
   </div>
 </div>
@@ -1388,6 +1393,8 @@
 <!-- TOAST -->
 <div id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="lib/supabase.js"></script>
 <script src="lib/localSync-v4.js?v=4"></script>
 <script src="lib/staffAudio.js"></script>
@@ -1564,6 +1571,8 @@ window.modalClampScore = modalClampScore;
 
 window.toggleFloatChat = toggleFloatChat;
 window.sendFloatMsg = sendFloatMsg;
+window.downloadEventReportPDF = downloadEventReportPDF;
+window.downloadEventReportExcel = downloadEventReportExcel;
 
 // ════════════════════════════════════════
 // NAVIGATION
@@ -1937,6 +1946,317 @@ function showJudgeProfileModal() {
   }
   
   document.getElementById('judge-profile-modal').style.display = 'flex';
+}
+
+// ════════════════════════════════════════
+// EVENT REPORT (PDF & Excel with Logo)
+// ════════════════════════════════════════
+
+// Preload club logo as base64 for reports
+let LOGO_BASE64 = '';
+(function() {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function() {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    LOGO_BASE64 = c.toDataURL('image/jpeg');
+  };
+  img.src = 'logo.jpg';
+})();
+
+function escHtml(str) {
+  const s = String(str == null ? '' : str);
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Shared data collector (judge-only scores) ──
+function collectReportData() {
+  const judgeId = JUDGE.id;
+  const rows = [];
+  const roundSummary = {};
+  const subjectTotals = {};
+  const subjectCounts = {};
+  SUBJECTS.forEach(s => { subjectTotals[s.id] = 0; subjectCounts[s.id] = 0; });
+
+  participants.forEach(p => {
+    const rs = p.roundScores || {};
+    ROUNDS.forEach(rnd => {
+      const roundData = rs[rnd] || {};
+      const myScores = roundData[judgeId];
+      if (!myScores || Object.keys(myScores).length === 0) return;
+      const cat = CATEGORIES.find(c => c.id === p.catId);
+      let rowTotal = 0;
+      const subjectVals = SUBJECTS.map(s => {
+        const v = Number(myScores[s.id]) || 0;
+        rowTotal += v;
+        subjectTotals[s.id] += v;
+        subjectCounts[s.id]++;
+        return v;
+      });
+      roundSummary[rnd] = (roundSummary[rnd] || 0) + 1;
+      rows.push({ id: p.id, name: p.name, age: p.age || '-', category: cat ? cat.name : '-', round: rnd, subjectVals, total: rowTotal, comment: p.comment || '' });
+    });
+    // Fallback if roundScores is empty but scores has data
+    if (Object.keys(rs).length === 0 && p.scores && p.scores[judgeId]) {
+      const myScores = p.scores[judgeId];
+      if (Object.keys(myScores).length === 0) return;
+      const cat = CATEGORIES.find(c => c.id === p.catId);
+      let rowTotal = 0;
+      const subjectVals = SUBJECTS.map(s => {
+        const v = Number(myScores[s.id]) || 0;
+        rowTotal += v;
+        subjectTotals[s.id] += v;
+        subjectCounts[s.id]++;
+        return v;
+      });
+      roundSummary[p.round || 'unknown'] = (roundSummary[p.round || 'unknown'] || 0) + 1;
+      rows.push({ id: p.id, name: p.name, age: p.age || '-', category: cat ? cat.name : '-', round: p.round || 'unknown', subjectVals, total: rowTotal, comment: p.comment || '' });
+    }
+  });
+
+  const subjectStats = SUBJECTS.map(s => {
+    const count = subjectCounts[s.id] || 0;
+    const avg = count > 0 ? (subjectTotals[s.id] / count).toFixed(1) : '0';
+    let highest = 0;
+    rows.forEach(r => { const idx = SUBJECTS.findIndex(x => x.id === s.id); if (idx >= 0 && r.subjectVals[idx] > highest) highest = r.subjectVals[idx]; });
+    return { name: s.name, avg, highest, max: s.maxMarks };
+  });
+
+  return { rows, roundSummary, subjectStats };
+}
+
+// ════════════════════════════
+// PDF REPORT (jsPDF + autoTable)
+// ════════════════════════════
+function downloadEventReportPDF() {
+  const data = collectReportData();
+  if (data.rows.length === 0) { toast('⚠️ No scores found! Score participants first.'); return; }
+
+  const judgeName = JUDGE.name || 'Judge';
+  const eventName = JUDGE.eventName || 'Event';
+  const reportDate = new Date().toLocaleDateString('en-IN', { year:'numeric', month:'long', day:'numeric' });
+  const reportTime = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  const maxTotal = SUBJECTS.reduce((a, s) => a + s.maxMarks, 0);
+
+  if (!window.jspdf) { toast('❌ PDF library not loaded. Check internet.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageW = doc.internal.pageSize.getWidth();
+  let y = 12;
+
+  // ── Logo ──
+  if (LOGO_BASE64) {
+    try { doc.addImage(LOGO_BASE64, 'JPEG', 14, y, 22, 22); } catch(e) {}
+  }
+
+  // ── Title ──
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(37, 99, 235);
+  doc.text('KNSDC EVENT REPORT', 42, y + 8);
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Kalikapur Nabin Sangha Development Club', 42, y + 14);
+  y += 28;
+
+  // ── Divider ──
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.5);
+  doc.line(14, y, pageW - 14, y);
+  y += 6;
+
+  // ── Event & Judge Info (2 columns) ──
+  const infoLeft = [['EVENT', eventName], ['VENUE', JUDGE.venue || '-'], ['EVENT DATE', JUDGE.date || '-']];
+  const infoRight = [['JUDGE', judgeName], ['SPECIALIZATION', JUDGE.spec || '-'], ['REPORT DATE', reportDate + ' · ' + reportTime]];
+  infoLeft.forEach((item, i) => {
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139); doc.setFontSize(7);
+    doc.text(item[0], 14, y + i*8);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(15,23,42); doc.setFontSize(10);
+    doc.text(String(item[1]), 14, y + i*8 + 4);
+  });
+  infoRight.forEach((item, i) => {
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139); doc.setFontSize(7);
+    doc.text(item[0], pageW/2 + 5, y + i*8);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(15,23,42); doc.setFontSize(10);
+    doc.text(String(item[1]), pageW/2 + 5, y + i*8 + 4);
+  });
+  y += 30;
+
+  // ── Total Scored Badge ──
+  doc.setFillColor(245, 158, 11);
+  doc.roundedRect(14, y, 55, 10, 2, 2, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(255,255,255);
+  doc.text('Total Scored: ' + data.rows.length, 18, y + 7);
+  y += 16;
+
+  // ── Round-wise Summary Table ──
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(37,99,235);
+  doc.text('Round-wise Summary', 14, y);
+  y += 2;
+  const roundRows = ROUNDS.filter(r => data.roundSummary[r]).map(r => [
+    r.charAt(0).toUpperCase() + r.slice(1), String(data.roundSummary[r])
+  ]);
+  if (roundRows.length > 0) {
+    doc.autoTable({
+      startY: y, head: [['Round', 'Participants Scored']], body: roundRows,
+      margin: { left: 14, right: 14 },
+      styles: { fontSize: 9, cellPadding: 3, lineColor: [226,232,240], lineWidth: 0.3 },
+      headStyles: { fillColor: [37,99,235], textColor: [255,255,255], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248,250,252] }, theme: 'grid',
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  }
+
+  // ── Subject-wise Summary Table ──
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(37,99,235);
+  doc.text('Subject-wise Summary', 14, y);
+  y += 2;
+  doc.autoTable({
+    startY: y, head: [['Subject', 'Average', 'Highest Given', 'Max Possible']],
+    body: data.subjectStats.map(s => [s.name, s.avg, String(s.highest), String(s.max)]),
+    margin: { left: 14, right: 14 },
+    styles: { fontSize: 9, cellPadding: 3, lineColor: [226,232,240], lineWidth: 0.3 },
+    headStyles: { fillColor: [217,119,6], textColor: [255,255,255], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [255,251,235] }, theme: 'grid',
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  // ── Detailed Scores Table ──
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(37,99,235);
+  doc.text('Detailed Scores', 14, y);
+  y += 2;
+  const detailHead = ['ID', 'Name', 'Age', 'Category', 'Round',
+    ...SUBJECTS.map(s => s.name + '\n(/' + s.maxMarks + ')'),
+    'Total\n(/' + maxTotal + ')', 'Comment'];
+  const detailBody = data.rows.map(r => [
+    r.id, r.name, String(r.age), r.category,
+    r.round.charAt(0).toUpperCase() + r.round.slice(1),
+    ...r.subjectVals.map(v => String(v)), String(r.total), r.comment
+  ]);
+  doc.autoTable({
+    startY: y, head: [detailHead], body: detailBody,
+    margin: { left: 14, right: 14 },
+    styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak', lineColor: [226,232,240], lineWidth: 0.2 },
+    headStyles: { fillColor: [15,23,42], textColor: [255,255,255], fontStyle: 'bold', fontSize: 7, halign: 'center' },
+    alternateRowStyles: { fillColor: [248,250,252] },
+    columnStyles: { [detailHead.length - 1]: { cellWidth: 28 } },
+    theme: 'grid',
+  });
+
+  // ── Footer on every page ──
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    const pgH = doc.internal.pageSize.getHeight();
+    doc.setFontSize(7); doc.setTextColor(148,163,184);
+    doc.text('KNSDC · ' + eventName + ' · Judge: ' + judgeName + ' · Page ' + i + '/' + totalPages, pageW/2, pgH - 8, { align: 'center' });
+  }
+
+  const safeName = judgeName.replace(/[^a-zA-Z0-9]/g, '_');
+  const dateStr = new Date().toISOString().split('T')[0];
+  doc.save('Event_Report_' + safeName + '_' + dateStr + '.pdf');
+  toast('✅ PDF Report downloaded!');
+  document.getElementById('judge-profile-modal').style.display = 'none';
+}
+
+// ════════════════════════════
+// EXCEL REPORT (HTML → .xls)
+// ════════════════════════════
+function downloadEventReportExcel() {
+  const data = collectReportData();
+  if (data.rows.length === 0) { toast('⚠️ No scores found! Score participants first.'); return; }
+
+  const judgeName = JUDGE.name || 'Judge';
+  const eventName = JUDGE.eventName || 'Event';
+  const reportDate = new Date().toLocaleDateString('en-IN', { year:'numeric', month:'long', day:'numeric' });
+  const maxTotal = SUBJECTS.reduce((a, s) => a + s.maxMarks, 0);
+  const colCount = 5 + SUBJECTS.length + 2;
+
+  let h = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+  h += '<head><meta charset="utf-8"><style>';
+  h += 'td,th{font-family:Calibri,Arial,sans-serif;font-size:11pt;padding:4px 8px;border:1px solid #e2e8f0;vertical-align:middle}';
+  h += 'th{background:#1e3a5f;color:white;font-weight:bold;text-align:center}';
+  h += '.hc{border:none;font-weight:bold;color:#1e3a5f}.il{border:none;font-size:9pt;color:#64748b;font-weight:bold}';
+  h += '.iv{border:none;font-size:10pt;color:#0f172a}.st{background:#2563eb;color:white;font-size:11pt;font-weight:bold;padding:6px}';
+  h += '.rh{background:#2563eb;color:white}.sh{background:#d97706;color:white}';
+  h += '.ar{background:#f8fafc}.tc{font-weight:bold;color:#d97706;text-align:center}.cc{font-style:italic;color:#334155}';
+  h += '</style></head><body><table>';
+
+  // ── Logo + Title ──
+  h += '<tr><td class="hc" rowspan="2" style="width:70px">';
+  if (LOGO_BASE64) h += '<img src="' + LOGO_BASE64 + '" width="60" height="60"/>';
+  else h += 'KNS';
+  h += '</td><td class="hc" colspan="' + (colCount-1) + '" style="font-size:18pt;color:#2563eb">KNSDC EVENT REPORT</td></tr>';
+  h += '<tr><td class="hc" colspan="' + (colCount-1) + '" style="font-size:9pt;color:#64748b;font-weight:normal">Kalikapur Nabin Sangha Development Club</td></tr>';
+  h += '<tr><td colspan="' + colCount + '" style="border:none;height:10px"></td></tr>';
+
+  // ── Event & Judge Info ──
+  h += '<tr><td class="il">Event</td><td class="iv" colspan="2">' + escHtml(eventName) + '</td>';
+  h += '<td class="il">Judge</td><td class="iv" colspan="' + (colCount-4) + '">' + escHtml(judgeName) + '</td></tr>';
+  h += '<tr><td class="il">Venue</td><td class="iv" colspan="2">' + escHtml(JUDGE.venue||'-') + '</td>';
+  h += '<td class="il">Specialization</td><td class="iv" colspan="' + (colCount-4) + '">' + escHtml(JUDGE.spec||'-') + '</td></tr>';
+  h += '<tr><td class="il">Event Date</td><td class="iv" colspan="2">' + escHtml(JUDGE.date||'-') + '</td>';
+  h += '<td class="il">Report Date</td><td class="iv" colspan="' + (colCount-4) + '">' + escHtml(reportDate) + '</td></tr>';
+  h += '<tr><td class="il">Total Scored</td><td class="iv" colspan="' + (colCount-1) + '" style="color:#d97706;font-weight:bold">' + data.rows.length + ' participants</td></tr>';
+  h += '<tr><td colspan="' + colCount + '" style="border:none;height:14px"></td></tr>';
+
+  // ── Round-wise Summary ──
+  h += '<tr><td class="st" colspan="' + colCount + '">📋 ROUND-WISE SUMMARY</td></tr>';
+  h += '<tr><th class="rh">Round</th><th class="rh" colspan="' + (colCount-1) + '">Participants Scored</th></tr>';
+  ROUNDS.forEach(r => {
+    if (data.roundSummary[r]) {
+      h += '<tr><td style="font-weight:bold">' + (r.charAt(0).toUpperCase()+r.slice(1)) + '</td><td colspan="' + (colCount-1) + '">' + data.roundSummary[r] + '</td></tr>';
+    }
+  });
+  h += '<tr><td colspan="' + colCount + '" style="border:none;height:14px"></td></tr>';
+
+  // ── Subject-wise Summary ──
+  h += '<tr><td class="st" colspan="' + colCount + '">📊 SUBJECT-WISE SUMMARY</td></tr>';
+  h += '<tr><th class="sh">Subject</th><th class="sh">Average</th><th class="sh">Highest Given</th><th class="sh" colspan="' + (colCount-3) + '">Max Possible</th></tr>';
+  data.subjectStats.forEach(s => {
+    h += '<tr><td style="font-weight:bold">' + escHtml(s.name) + '</td><td style="text-align:center">' + s.avg + '</td><td style="text-align:center">' + s.highest + '</td><td colspan="' + (colCount-3) + '" style="text-align:center">' + s.max + '</td></tr>';
+  });
+  h += '<tr><td colspan="' + colCount + '" style="border:none;height:14px"></td></tr>';
+
+  // ── Detailed Scores ──
+  h += '<tr><td class="st" colspan="' + colCount + '">📝 DETAILED SCORES</td></tr>';
+  h += '<tr>';
+  ['ID','Name','Age','Category','Round'].forEach(hd => h += '<th>' + hd + '</th>');
+  SUBJECTS.forEach(s => h += '<th>' + escHtml(s.name) + ' (/' + s.maxMarks + ')</th>');
+  h += '<th>Total (/' + maxTotal + ')</th><th>Comment</th></tr>';
+
+  data.rows.forEach((r, i) => {
+    const cls = i%2===1 ? ' class="ar"' : '';
+    h += '<tr' + cls + '>';
+    h += '<td>' + escHtml(r.id) + '</td>';
+    h += '<td style="font-weight:bold">' + escHtml(r.name) + '</td>';
+    h += '<td style="text-align:center">' + escHtml(r.age) + '</td>';
+    h += '<td>' + escHtml(r.category) + '</td>';
+    h += '<td>' + (r.round.charAt(0).toUpperCase()+r.round.slice(1)) + '</td>';
+    r.subjectVals.forEach(v => h += '<td style="text-align:center">' + v + '</td>');
+    h += '<td class="tc">' + r.total + '</td>';
+    h += '<td class="cc">' + escHtml(r.comment) + '</td>';
+    h += '</tr>';
+  });
+
+  h += '</table></body></html>';
+
+  const blob = new Blob(['\uFEFF' + h], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = judgeName.replace(/[^a-zA-Z0-9]/g, '_');
+  const dateStr = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = 'Event_Report_' + safeName + '_' + dateStr + '.xls';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('✅ Excel Report downloaded!');
+  document.getElementById('judge-profile-modal').style.display = 'none';
 }
 
 function renderDashboard() {
