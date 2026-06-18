@@ -5919,37 +5919,42 @@ function renderIndividualRadar(pid) {
 
 function renderComparativeStats() {
   const rounds = ['audition', 'qualified', 'semifinal', 'final'];
-  const colors = ['#f59e0b', '#0891b2', '#7c3aed', '#ea580c'];
+  const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  const subjectColors = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
   const datasets = [];
 
-  rounds.forEach((r, idx) => {
-    const roundParticipants = participants.filter(p => p.round === r && p.stageStatus === 'done');
-    if (roundParticipants.length === 0) return;
+  subjects.forEach((s, idx) => {
+    const data = rounds.map(r => {
+      const roundParticipants = participants.filter(p => p.round === r && p.stageStatus === 'done');
+      if (roundParticipants.length === 0) return null;
 
-    const data = subjects.map(s => {
       let total = 0;
       let count = 0;
       roundParticipants.forEach(p => {
         judges.filter(j => j.present).forEach(j => {
-          if (p.scores[j.id] && p.scores[j.id][s.id] !== undefined) {
+          if (p.scores && p.scores[j.id] && p.scores[j.id][s.id] !== undefined) {
             total += p.scores[j.id][s.id];
             count++;
           }
         });
       });
-      return count > 0 ? (total / count).toFixed(1) : 0;
+      return count > 0 ? Number((total / count).toFixed(1)) : null;
     });
 
+    const colorStr = subjectColors[idx % subjectColors.length];
+
     datasets.push({
-      label: r.charAt(0).toUpperCase() + r.slice(1),
+      label: s.name,
       data: data,
-      fill: true,
-      backgroundColor: colors[idx] + '22',
-      borderColor: colors[idx],
-      pointBackgroundColor: colors[idx],
+      fill: false,
+      borderColor: colorStr,
+      backgroundColor: colorStr,
+      pointBackgroundColor: colorStr,
       pointBorderColor: '#fff',
-      pointHoverBackgroundColor: '#fff',
-      pointHoverBorderColor: colors[idx]
+      pointRadius: 6,
+      pointHoverRadius: 8,
+      borderWidth: 3,
+      tension: 0.15
     });
   });
 
@@ -5960,37 +5965,50 @@ function renderComparativeStats() {
     ctx.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:12px">Chart library not loaded</div>';
     return;
   }
+  
   if (comparativeChartInstance) comparativeChartInstance.destroy();
   comparativeChartInstance = new Chart(ctx, {
-    type: 'radar',
+    type: 'line',
     data: {
-      labels: subjects.map(s => s.name),
+      labels: labels,
       datasets: datasets
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      spanGaps: true,
       plugins: {
-        legend: { position: 'top', labels: { color: '#8892a4', font: { size: 12, weight: '600' } } },
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: '#8892a4',
+            font: { size: 11, family: 'var(--fb)', weight: 'bold' }
+          }
+        },
         tooltip: {
+          mode: 'index',
+          intersect: false,
           backgroundColor: '#1e293b',
-          titleFont: { size: 14 },
-          bodyFont: { size: 13 },
-          padding: 12,
-          cornerRadius: 8,
+          titleFont: { size: 12, weight: 'bold' },
+          bodyFont: { size: 11 },
+          padding: 10,
+          cornerRadius: 6,
           callbacks: {
             label: (ctx) => ` ${ctx.dataset.label}: ${ctx.formattedValue} avg`
           }
         }
       },
       scales: {
-        r: {
-          angleLines: { color: 'rgba(255,255,255,0.05)' },
-          grid: { color: 'rgba(255,255,255,0.1)' },
-          pointLabels: { color: '#8892a4', font: { size: 11 } },
-          ticks: { backdropColor: 'transparent', color: '#64748b', stepSize: 2 },
+        x: {
+          ticks: { color: '#8892a4' },
+          grid: { color: 'rgba(34,36,54,0.15)' }
+        },
+        y: {
           min: 0,
-          max: 10
+          max: 10,
+          ticks: { color: '#8892a4', stepSize: 2 },
+          grid: { color: 'rgba(34,36,54,0.15)' }
         }
       }
     }
