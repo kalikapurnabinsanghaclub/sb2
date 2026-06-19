@@ -1317,20 +1317,26 @@
   </div>
 </div>
 
-<!-- CHANGE PASSWORD MODAL -->
-<div class="modal-overlay" id="chpw-staff-modal" style="display:none" onclick="closeOnBg(event,'chpw-staff-modal')">
+<!-- EDIT STAFF MODAL -->
+<div class="modal-overlay" id="edit-staff-modal" style="display:none" onclick="closeOnBg(event,'edit-staff-modal')">
   <div class="modal" style="max-width:400px" onclick="event.stopPropagation()">
     <div class="modal-head">
-      <div class="modal-title">🔑 Change Password</div>
-      <button class="btn btn-ghost btn-icon" onclick="closeM('chpw-staff-modal')">✕</button>
+      <div class="modal-title">👤 Edit Staff Profile</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeM('edit-staff-modal')">✕</button>
     </div>
     <div class="modal-body">
-      <input type="hidden" id="chpw-email"/>
-      <div class="fg"><label class="fl">New Password *</label><input type="password" id="chpw-pass" placeholder="Enter new password"/></div>
+      <input type="hidden" id="edit-staff-email"/>
+      <div class="fg"><label class="fl">Staff Name *</label><input type="text" id="edit-staff-name" placeholder="Full name"/></div>
+      <div class="fg"><label class="fl">Profile Image URL (Optional)</label><input type="text" id="edit-staff-image" placeholder="https://..."/></div>
+      <div class="fg" style="margin-top:20px; padding-top:15px; border-top:1px solid var(--border)">
+        <label class="fl">Set New Password</label>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Leave blank to keep the current password. (Current passwords cannot be viewed for security).</div>
+        <input type="password" id="edit-staff-pass" placeholder="Enter new password"/>
+      </div>
     </div>
     <div class="modal-foot">
-      <button class="btn btn-ghost" onclick="closeM('chpw-staff-modal')">Cancel</button>
-      <button class="btn btn-amber" onclick="saveStaffPassword()">💾 Save Password</button>
+      <button class="btn btn-ghost" onclick="closeM('edit-staff-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveStaffDetails()">💾 Save Changes</button>
     </div>
   </div>
 </div>
@@ -1602,23 +1608,7 @@
   </div>
 </div>
 
-<!-- CHANGE PASSWORD MODAL -->
-<div class="modal-overlay" id="chpw-staff-modal" style="display:none" onclick="closeOnBg(event,'chpw-staff-modal')">
-  <div class="modal" style="max-width:400px" onclick="event.stopPropagation()">
-    <div class="modal-head">
-      <div class="modal-title">🔑 Change Password</div>
-      <button class="btn btn-ghost btn-icon" onclick="closeM('chpw-staff-modal')">✕</button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="chpw-email"/>
-      <div class="fg"><label class="fl">New Password *</label><input type="password" id="chpw-pass" placeholder="Enter new password"/></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" onclick="closeM('chpw-staff-modal')">Cancel</button>
-      <button class="btn btn-amber" onclick="saveStaffPassword()">💾 Save Password</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- ADD REG MODAL (Unified Dynamic Version) -->
 <div class="modal-overlay" id="add-reg-modal" style="display:none" onclick="closeOnBg(event,'add-reg-modal')">
@@ -2218,15 +2208,35 @@ window.renderStaffPage = async (state) => {
         }
       }
 
+      let displayName = s.name || 'Staff User';
+      let avatarUrl = '';
+      if (displayName.includes('|IMAGE:')) {
+        const parts = displayName.split('|IMAGE:');
+        displayName = parts[0];
+        avatarUrl = parts[1];
+      }
+      
+      const avatarHtml = avatarUrl 
+        ? `<img src="${avatarUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--border)">`
+        : `<div style="width:32px;height:32px;border-radius:50%;background:var(--blue);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">${displayName.charAt(0).toUpperCase()}</div>`;
+
+      // Escape single quotes for the onClick handler
+      const rawNameSafe = (s.name || '').replace(/'/g, "\\'");
+
       return `
         <tr>
-          <td style="font-weight:700">${s.name || 'Staff User'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:12px">
+              ${avatarHtml}
+              <span style="font-weight:700">${displayName}</span>
+            </div>
+          </td>
           <td>${s.email}</td>
           <td><span style="font-size:11px; color:var(--text-muted); font-weight:600">${assignmentText}</span></td>
           <td><span class="badge" style="background:var(--blue);color:#fff">${s.role ? s.role.toUpperCase() : 'UNKNOWN'}</span></td>
           <td>${s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'}</td>
           <td>
-            <button class="btn btn-ghost btn-xs" onclick="openStaffPasswordModal('${s.email}')">🔑 Edit</button>
+            <button class="btn btn-ghost btn-xs" onclick="openEditStaffModal('${s.email}', '${rawNameSafe}')">✏️ Edit</button>
             <button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="deleteStaff('${s.email}')">🗑️ Delete</button>
           </td>
         </tr>
@@ -2277,26 +2287,49 @@ window.deleteStaff = async (email) => {
   }
 };
 
-window.openStaffPasswordModal = (email) => {
-  document.getElementById('chpw-email').value = email;
-  document.getElementById('chpw-pass').value = '';
-  openM('chpw-staff-modal');
+window.openEditStaffModal = (email, name) => {
+  document.getElementById('edit-staff-email').value = email;
+  
+  // Extract name and image from the encoded name field
+  let cleanName = name;
+  let imageUrl = '';
+  if (name && name.includes('|IMAGE:')) {
+    const parts = name.split('|IMAGE:');
+    cleanName = parts[0];
+    imageUrl = parts[1] || '';
+  }
+  
+  document.getElementById('edit-staff-name').value = cleanName || '';
+  document.getElementById('edit-staff-image').value = imageUrl;
+  document.getElementById('edit-staff-pass').value = '';
+  openM('edit-staff-modal');
 };
 
-window.saveStaffPassword = async () => {
-  const email = document.getElementById('chpw-email').value;
-  const newPass = document.getElementById('chpw-pass').value.trim();
-  if (!newPass) {
-    toast('Please enter a new password');
+window.saveStaffDetails = async () => {
+  const email = document.getElementById('edit-staff-email').value;
+  const rawName = document.getElementById('edit-staff-name').value.trim();
+  const imageUrl = document.getElementById('edit-staff-image').value.trim();
+  const newPass = document.getElementById('edit-staff-pass').value.trim();
+  
+  if (!rawName) {
+    toast('Name is required');
     return;
   }
   
-  const res = await window.syncEngine.updateStaffPassword(email, newPass);
+  let finalName = rawName;
+  if (imageUrl) {
+    finalName += '|IMAGE:' + imageUrl;
+  }
+  
+  const res = await window.syncEngine.updateStaffDetails(email, finalName, newPass);
   if (res.success) {
-    closeM('chpw-staff-modal');
-    toast('✅ Password updated!');
+    closeM('edit-staff-modal');
+    toast('✅ Staff details updated!');
+    if (window.renderStaffPage) {
+      window.renderStaffPage(); // Refresh table
+    }
   } else {
-    alert("Error updating password: " + res.error);
+    alert("Error updating details: " + res.error);
   }
 };
 
