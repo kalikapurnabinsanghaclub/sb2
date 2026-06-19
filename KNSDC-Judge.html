@@ -2023,7 +2023,8 @@ function collectReportData() {
           return v;
         });
         roundSummary[rnd] = (roundSummary[rnd] || 0) + 1;
-        rows.push({ id: p.id, name: p.name, age: p.age || '-', category: cat ? cat.name : '-', round: rnd, subjectVals, total: rowTotal, comment: p.comment || '' });
+        let roundCmt = (p.roundComments && p.roundComments[rnd] && p.roundComments[rnd][JUDGE.id]) || p.comment || '';
+        rows.push({ id: p.id, name: p.name, age: p.age || '-', category: cat ? cat.name : '-', round: rnd, subjectVals, total: rowTotal, comment: roundCmt });
       }
     });
 
@@ -2042,7 +2043,8 @@ function collectReportData() {
         });
         const rnd = p.round || 'Main';
         roundSummary[rnd] = (roundSummary[rnd] || 0) + 1;
-        rows.push({ id: p.id, name: p.name, age: p.age || '-', category: cat ? cat.name : '-', round: rnd, subjectVals, total: rowTotal, comment: p.comment || '' });
+        let roundCmt = (p.roundComments && p.roundComments[rnd] && p.roundComments[rnd][JUDGE.id]) || p.comment || '';
+        rows.push({ id: p.id, name: p.name, age: p.age || '-', category: cat ? cat.name : '-', round: rnd, subjectVals, total: rowTotal, comment: roundCmt });
       }
     }
   });
@@ -2673,7 +2675,8 @@ function loadScorePanel(id) {
   }).join('');
 
   document.getElementById('comment-wrap').style.display = 'block';
-  document.getElementById('judge-comment').value = p.comment || '';
+  let existingComment = (p.roundComments && p.roundComments[p.round] && p.roundComments[p.round][JUDGE.id]) || p.comment || '';
+  document.getElementById('judge-comment').value = existingComment;
   document.getElementById('judge-comment').disabled = !canEdit;
   
   const saveWrap = document.getElementById('save-score-wrap');
@@ -2766,7 +2769,10 @@ async function saveScores() {
     p.scores[JUDGE.id][s.id] = val;
     p.roundScores[p.round][JUDGE.id][s.id] = val;
   });
-  p.comment = document.getElementById('judge-comment').value;
+  if(!p.roundComments) p.roundComments = {};
+  if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
+  p.roundComments[p.round][JUDGE.id] = document.getElementById('judge-comment').value;
+  p.comment = document.getElementById('judge-comment').value; // Keep global for backward compat
 
   toast('Saving score...');
   const success = await syncEngine.updateParticipant(p.id, p);
@@ -2828,7 +2834,8 @@ function openEditModal(id) {
     </div>`;
   }).join('');
   
-  document.getElementById('modal-judge-comment').value = p.comment || '';
+  let existingCmt = (p.roundComments && p.roundComments[p.round] && p.roundComments[p.round][JUDGE.id]) || p.comment || '';
+  document.getElementById('modal-judge-comment').value = existingCmt;
   document.getElementById('score-modal-overlay').style.display = 'flex';
 }
 
@@ -2892,7 +2899,10 @@ async function saveModalScores() {
     p.scores[JUDGE.id][s.id] = val;
     p.roundScores[p.round][JUDGE.id][s.id] = val;
   });
-  p.comment = document.getElementById('modal-judge-comment').value;
+  if(!p.roundComments) p.roundComments = {};
+  if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
+  p.roundComments[p.round][JUDGE.id] = document.getElementById('modal-judge-comment').value;
+  p.comment = document.getElementById('modal-judge-comment').value; // Keep global for backward compat
 
   p.isEdited = p.isEdited || {};
   p.isEdited[JUDGE.id] = true;
@@ -2948,8 +2958,9 @@ function renderParticipantsTable() {
     }
     
     let commentHtml = '';
-    if (hasScored && p.comment) {
-      commentHtml = `<div style="font-size:10px;color:var(--text);font-style:italic;margin-top:4px;padding-left:2px;border-left:2px solid var(--gold2)">💬 ${p.comment}</div>`;
+    let rc = (p.roundComments && p.roundComments[p.round] && p.roundComments[p.round][JUDGE.id]) || p.comment || '';
+    if (hasScored && rc) {
+      commentHtml = `<div style="font-size:10px;color:var(--text);font-style:italic;margin-top:4px;padding-left:2px;border-left:2px solid var(--gold2)">💬 ${rc}</div>`;
     }
     
     const editedBadge = isEdited ? `<span class="badge b-cyan" style="font-size:8px;margin-left:4px;padding:2px 4px">EDITED</span>` : '';
