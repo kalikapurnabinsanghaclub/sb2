@@ -1326,8 +1326,15 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="edit-staff-email"/>
+      <input type="hidden" id="edit-staff-current-image"/>
       <div class="fg"><label class="fl">Staff Name *</label><input type="text" id="edit-staff-name" placeholder="Full name"/></div>
-      <div class="fg"><label class="fl">Profile Image URL (Optional)</label><input type="text" id="edit-staff-image" placeholder="https://..."/></div>
+      <div class="fg">
+        <label class="fl">Profile Image (Optional)</label>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+          <img id="edit-staff-img-preview" src="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;display:none;border:1px solid var(--border)">
+          <input type="file" id="edit-staff-image-file" accept="image/*" style="font-size:12px"/>
+        </div>
+      </div>
       <div class="fg" style="margin-top:20px; padding-top:15px; border-top:1px solid var(--border)">
         <label class="fl">Set New Password</label>
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Leave blank to keep the current password. (Current passwords cannot be viewed for security).</div>
@@ -2290,7 +2297,6 @@ window.deleteStaff = async (email) => {
 window.openEditStaffModal = (email, name) => {
   document.getElementById('edit-staff-email').value = email;
   
-  // Extract name and image from the encoded name field
   let cleanName = name;
   let imageUrl = '';
   if (name && name.includes('|IMAGE:')) {
@@ -2300,7 +2306,17 @@ window.openEditStaffModal = (email, name) => {
   }
   
   document.getElementById('edit-staff-name').value = cleanName || '';
-  document.getElementById('edit-staff-image').value = imageUrl;
+  document.getElementById('edit-staff-current-image').value = imageUrl;
+  document.getElementById('edit-staff-image-file').value = '';
+  
+  const imgPreview = document.getElementById('edit-staff-img-preview');
+  if (imageUrl) {
+    imgPreview.src = imageUrl;
+    imgPreview.style.display = 'block';
+  } else {
+    imgPreview.style.display = 'none';
+  }
+  
   document.getElementById('edit-staff-pass').value = '';
   openM('edit-staff-modal');
 };
@@ -2308,13 +2324,33 @@ window.openEditStaffModal = (email, name) => {
 window.saveStaffDetails = async () => {
   const email = document.getElementById('edit-staff-email').value;
   const rawName = document.getElementById('edit-staff-name').value.trim();
-  const imageUrl = document.getElementById('edit-staff-image').value.trim();
+  let imageUrl = document.getElementById('edit-staff-current-image').value;
   const newPass = document.getElementById('edit-staff-pass').value.trim();
+  const fileInput = document.getElementById('edit-staff-image-file');
+  const btn = document.querySelector('#edit-staff-modal .btn-amber');
   
   if (!rawName) {
     toast('Name is required');
     return;
   }
+  
+  const origBtnHtml = btn.innerHTML;
+  btn.disabled = true;
+  
+  if (fileInput.files && fileInput.files[0]) {
+    btn.innerHTML = 'Uploading image...';
+    const uploadedUrl = await window.syncEngine.uploadFile(fileInput.files[0]);
+    if (uploadedUrl) {
+      imageUrl = uploadedUrl;
+    } else {
+      alert('Failed to upload image. Please try again.');
+      btn.innerHTML = origBtnHtml;
+      btn.disabled = false;
+      return;
+    }
+  }
+  
+  btn.innerHTML = 'Saving...';
   
   let finalName = rawName;
   if (imageUrl) {
@@ -2322,6 +2358,10 @@ window.saveStaffDetails = async () => {
   }
   
   const res = await window.syncEngine.updateStaffDetails(email, finalName, newPass);
+  
+  btn.innerHTML = origBtnHtml;
+  btn.disabled = false;
+  
   if (res.success) {
     closeM('edit-staff-modal');
     toast('✅ Staff details updated!');
