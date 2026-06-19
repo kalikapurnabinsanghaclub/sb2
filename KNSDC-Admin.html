@@ -2232,9 +2232,19 @@ window.renderAdminParticipants = (state) => {
   const regs = state.publicRegistrations || [];
   
   const q = (document.getElementById('admin-p-search')?.value || '').toLowerCase();
+  const eventFilter = document.getElementById('admin-p-event-filter')?.value || '';
   
-  const filteredParts = parts.filter(p => !q || (p.name||'').toLowerCase().includes(q) || String(p.id||'').toLowerCase().includes(q) || (p.phone||'').toLowerCase().includes(q));
-  const filteredRegs = regs.filter(r => !q || (r.name||'').toLowerCase().includes(q) || (r.phone||'').toLowerCase().includes(q) || (r.email||'').toLowerCase().includes(q));
+  const filteredParts = parts.filter(p => {
+    if (q && !(p.name||'').toLowerCase().includes(q) && !String(p.id||'').toLowerCase().includes(q) && !(p.phone||'').toLowerCase().includes(q)) return false;
+    if (eventFilter && String(p.eventId) !== eventFilter) return false;
+    return true;
+  });
+  
+  const filteredRegs = regs.filter(r => {
+    if (q && !(r.name||'').toLowerCase().includes(q) && !(r.phone||'').toLowerCase().includes(q) && !(r.email||'').toLowerCase().includes(q)) return false;
+    if (eventFilter && String(r.eventId) !== eventFilter) return false;
+    return true;
+  });
 
   if (filteredParts.length === 0 && filteredRegs.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No registrations found.</td></tr>';
@@ -2278,7 +2288,17 @@ window.renderPublicRegs = (state) => {
 };
 
 window.populateDropdowns = (state) => {
-  // Stub for dropdown populations
+  const filter = document.getElementById('admin-p-event-filter');
+  if (filter) {
+    const events = state.events || [];
+    const currentVal = filter.value;
+    let html = '<option value="">All Events</option>';
+    html += events.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+    filter.innerHTML = html;
+    if (currentVal && events.find(e => String(e.id) === currentVal)) {
+      filter.value = currentVal;
+    }
+  }
 };
 
 window.openCreateEventModal = () => {
@@ -2667,7 +2687,7 @@ syncEngine.subscribe((newState) => {
     state = newState;
     
     // Update registration badges
-    const totalRegs = (newState.publicRegistrations || []).length;
+    const totalRegs = (newState.publicRegistrations || []).length + (newState.participants || []).length;
     const regBadge = document.getElementById('nb-public-reg');
     const mobileRegBadge = document.getElementById('mobile-reg-badge');
     if (regBadge) regBadge.textContent = totalRegs;
@@ -3120,6 +3140,11 @@ window.nav = function(pageId, el) {
   const mobileChatBadge = document.getElementById('mobile-chat-badge');
   if (mobileChatBadge && pageId === 'chat') {
     mobileChatBadge.style.display = 'none';
+  }
+
+  const topInfo = document.getElementById('topbar-event-info');
+  if (topInfo) {
+    topInfo.style.display = (pageId === 'chat') ? 'flex' : 'none';
   }
 
   if (typeof window.refreshUI === 'function') window.refreshUI(pageId);
