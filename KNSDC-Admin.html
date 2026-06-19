@@ -1087,15 +1087,29 @@
 
     <!-- OVERVIEW -->
     <div id="st-overview">
-      <div style="margin-bottom:14px" id="stats-overview-cards">
+      <div style="margin-bottom:14px; display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px" id="stats-overview-cards">
         <div class="stat orange">
           <div class="stat-num" id="stat-top-event" style="font-size:22px; line-height:1.3; word-break:break-word; font-weight:800">—</div>
           <div class="stat-lbl">Most Popular Event</div>
         </div>
+        <div class="stat blue">
+          <div class="stat-num" id="stat-total-reg" style="font-size:22px; line-height:1.3; font-weight:800">0</div>
+          <div class="stat-lbl">Total Registrations</div>
+        </div>
+        <div class="stat green">
+          <div class="stat-num" id="stat-total-present" style="font-size:22px; line-height:1.3; font-weight:800">0</div>
+          <div class="stat-lbl">Total Present</div>
+        </div>
       </div>
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-title" style="margin-bottom:14px">Participation Frequency (By Event)</div>
-        <div class="chart-wrap"><canvas id="event-freq-chart"></canvas></div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; margin-bottom:20px;">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">Registration Distribution (By Event)</div>
+          <div class="chart-wrap" style="position:relative; height:250px; width:100%;"><canvas id="event-freq-chart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">Attendance & Completion (By Event)</div>
+          <div class="chart-wrap" style="position:relative; height:250px; width:100%;"><canvas id="event-present-chart"></canvas></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2002,6 +2016,7 @@ window.refreshUI = (pageId) => {
   if ((!pageId || pageId === 'staff') && window.renderStaffPage) window.renderStaffPage(state);
   if ((!pageId || pageId === 'participants') && window.renderAdminParticipants) window.renderAdminParticipants(state);
   if ((!pageId || pageId === 'feedback') && window.renderFeedback) window.renderFeedback(state);
+  if ((!pageId || pageId === 'statistics') && window.renderStatistics) window.renderStatistics(state);
 };
 
 window.renderDashboard = (state) => {
@@ -3324,6 +3339,138 @@ function openAdminProfileModal() {
   if (modal) modal.style.display = 'flex';
 }
 window.openAdminProfileModal = openAdminProfileModal;
+
+let chartRegFreq = null;
+let chartPresentFreq = null;
+
+window.renderStatistics = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  if (!state) return;
+  
+  const events = state.events || [];
+  const participants = state.participants || [];
+  
+  // Total Registrations
+  const totalRegEl = document.getElementById('stat-total-reg');
+  if (totalRegEl) totalRegEl.textContent = participants.length;
+  
+  // Total Present
+  const totalPresent = participants.filter(p => p.present).length;
+  const totalPresentEl = document.getElementById('stat-total-present');
+  if (totalPresentEl) totalPresentEl.textContent = totalPresent;
+  
+  // Aggregate Event Stats
+  const eventStats = {};
+  events.forEach(e => {
+    eventStats[e.id] = { name: e.name, registered: 0, present: 0, completed: 0 };
+  });
+  
+  participants.forEach(p => {
+    if (!eventStats[p.eventId]) {
+      eventStats[p.eventId] = { name: 'Unknown Event', registered: 0, present: 0, completed: 0 };
+    }
+    eventStats[p.eventId].registered++;
+    if (p.present) eventStats[p.eventId].present++;
+    if (p.stageStatus === 'finished') eventStats[p.eventId].completed++;
+  });
+  
+  // Most Popular Event
+  let topEventName = '—';
+  let maxReg = -1;
+  for (const eid in eventStats) {
+    if (eventStats[eid].registered > maxReg) {
+      maxReg = eventStats[eid].registered;
+      topEventName = eventStats[eid].name;
+    }
+  }
+  const topEventEl = document.getElementById('stat-top-event');
+  if (topEventEl) topEventEl.textContent = maxReg > 0 ? topEventName : '—';
+  
+  // Chart Data preparation
+  const labels = [];
+  const dataReg = [];
+  const dataPresent = [];
+  const dataCompleted = [];
+  
+  for (const eid in eventStats) {
+    if (eventStats[eid].registered > 0 || events.length <= 10) {
+      labels.push(eventStats[eid].name);
+      dataReg.push(eventStats[eid].registered);
+      dataPresent.push(eventStats[eid].present);
+      dataCompleted.push(eventStats[eid].completed);
+    }
+  }
+  
+  // Render Chart: Registration Distribution
+  const ctxReg = document.getElementById('event-freq-chart');
+  if (ctxReg) {
+    if (chartRegFreq) chartRegFreq.destroy();
+    chartRegFreq = new Chart(ctxReg, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Registrations',
+          data: dataReg,
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+  
+  // Render Chart: Attendance & Completion
+  const ctxPresent = document.getElementById('event-present-chart');
+  if (ctxPresent) {
+    if (chartPresentFreq) chartPresentFreq.destroy();
+    chartPresentFreq = new Chart(ctxPresent, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Present',
+            data: dataPresent,
+            backgroundColor: 'rgba(16, 185, 129, 0.7)',
+            borderColor: 'rgba(16, 185, 129, 1)',
+            borderWidth: 1,
+            borderRadius: 4
+          },
+          {
+            label: 'Completed',
+            data: dataCompleted,
+            backgroundColor: 'rgba(139, 92, 246, 0.7)',
+            borderColor: 'rgba(139, 92, 246, 1)',
+            borderWidth: 1,
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: true, position: 'bottom' }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+};
 </script>
 <!-- MOBILE BOTTOM NAVIGATION -->
 <div class="bottom-nav">
