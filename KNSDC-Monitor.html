@@ -7399,65 +7399,84 @@ async function saveCertificateSignatures() {
 // ══════════════════════════════════════════
 let editingSponsorId = null;
 let editingSponsorOriginalLogo = null;
+let isDeployingSponsor = false;
 
 async function deploySponsor() {
-  const name = document.getElementById('ad-partner').value.trim();
-  const tagline = document.getElementById('ad-tagline').value.trim();
-  const link = document.getElementById('ad-link').value.trim();
-  const fileInput = document.getElementById('ad-logo-file');
-  const urlInput = document.getElementById('ad-logo-url').value.trim();
+  if (isDeployingSponsor) return;
   
+  const name = document.getElementById('ad-partner').value.trim();
+  const btn = document.getElementById('deploy-ad-btn');
   if (!name) return toast('Partner Name is required!');
   
-  let logoData = urlInput;
-  if (fileInput.files && fileInput.files[0]) {
-    const file = fileInput.files[0];
-    toast('Uploading logo to Storage...');
-    logoData = await syncEngine.uploadFile(file, `events/${activeEventId}/sponsors/`);
+  isDeployingSponsor = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'DEPLOYING...';
   }
   
-  if (!logoData && editingSponsorOriginalLogo) {
-    logoData = editingSponsorOriginalLogo;
-  }
-  if (!logoData) return toast('Please provide a Logo URL or upload an image file!');
-  
-  const sponsor = {
-    id: editingSponsorId || ('sp_' + Date.now()),
-    name, tagline, link, logo: logoData, addedAt: Date.now()
-  };
-  
-  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
-  if (!activeEv) return toast('No active event selected');
-  
-  activeEv.switchStates = activeEv.switchStates || {};
-  let currentSponsors = activeEv.switchStates.sponsors || [];
-  if (editingSponsorId) {
-    const idx = currentSponsors.findIndex(s => s.id === editingSponsorId);
-    if (idx !== -1) {
-      currentSponsors[idx] = sponsor;
+  try {
+    const tagline = document.getElementById('ad-tagline').value.trim();
+    const link = document.getElementById('ad-link').value.trim();
+    const fileInput = document.getElementById('ad-logo-file');
+    const urlInput = document.getElementById('ad-logo-url').value.trim();
+    
+    let logoData = urlInput;
+    if (fileInput.files && fileInput.files[0]) {
+      const file = fileInput.files[0];
+      toast('Uploading logo to Storage...');
+      logoData = await syncEngine.uploadFile(file, `events/${activeEventId}/sponsors/`);
+    }
+    
+    if (!logoData && editingSponsorOriginalLogo) {
+      logoData = editingSponsorOriginalLogo;
+    }
+    if (!logoData) return toast('Please provide a Logo URL or upload an image file!');
+    
+    const sponsor = {
+      id: editingSponsorId || ('sp_' + Date.now()),
+      name, tagline, link, logo: logoData, addedAt: Date.now()
+    };
+    
+    const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+    if (!activeEv) return toast('No active event selected');
+    
+    activeEv.switchStates = activeEv.switchStates || {};
+    let currentSponsors = activeEv.switchStates.sponsors || [];
+    if (editingSponsorId) {
+      const idx = currentSponsors.findIndex(s => s.id === editingSponsorId);
+      if (idx !== -1) {
+        currentSponsors[idx] = sponsor;
+      } else {
+        currentSponsors.push(sponsor);
+      }
     } else {
       currentSponsors.push(sponsor);
     }
-  } else {
-    currentSponsors.push(sponsor);
-  }
-  activeEv.switchStates.sponsors = currentSponsors;
-  
-  if (window.syncEngine && window.syncEngine.updateEvent) {
-    const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
-    if (success) {
-      toast(editingSponsorId ? '✅ Sponsor updated globally!' : '✅ Sponsor deployed globally!');
-      editingSponsorId = null;
-      editingSponsorOriginalLogo = null;
-      document.getElementById('deploy-ad-btn').innerText = 'DEPLOY AD BANNER';
-      document.getElementById('ad-partner').value = '';
-      document.getElementById('ad-tagline').value = '';
-      document.getElementById('ad-link').value = '';
-      document.getElementById('ad-logo-url').value = '';
-      fileInput.value = '';
-      renderSponsors();
-    } else {
-      toast('❌ Failed to save sponsor to database');
+    activeEv.switchStates.sponsors = currentSponsors;
+    
+    if (window.syncEngine && window.syncEngine.updateEvent) {
+      const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
+      if (success) {
+        toast(editingSponsorId ? '✅ Sponsor updated globally!' : '✅ Sponsor deployed globally!');
+        editingSponsorId = null;
+        editingSponsorOriginalLogo = null;
+        document.getElementById('deploy-ad-btn').innerText = 'DEPLOY AD BANNER';
+        document.getElementById('ad-partner').value = '';
+        document.getElementById('ad-tagline').value = '';
+        document.getElementById('ad-link').value = '';
+        document.getElementById('ad-logo-url').value = '';
+        fileInput.value = '';
+        renderSponsors();
+      } else {
+        toast('❌ Failed to save sponsor to database');
+      }
+    }
+  } finally {
+    isDeployingSponsor = false;
+    const b = document.getElementById('deploy-ad-btn');
+    if (b) {
+      b.disabled = false;
+      b.innerText = 'DEPLOY AD BANNER';
     }
   }
 }
