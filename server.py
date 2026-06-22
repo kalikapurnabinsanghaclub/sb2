@@ -1,7 +1,7 @@
 import json
 import asyncio
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -20,6 +20,14 @@ DATA_FILE = "data/sync_state.json"
 
 # Ensure data directory exists
 os.makedirs("data", exist_ok=True)
+
+# API Key Security Setup
+API_KEY = os.environ.get("KNSDC_API_KEY", "knsdc-secure-key-2026")
+
+async def verify_api_key(x_api_key: str = Header(...)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    return x_api_key
 
 # --- PROPER MAPPING (Models) ---
 
@@ -164,11 +172,11 @@ def save_state(state: dict):
 
 # --- ENDPOINTS ---
 
-@app.get("/state")
+@app.get("/state", dependencies=[Depends(verify_api_key)])
 async def get_state():
     return load_state()
 
-@app.post("/state")
+@app.post("/state", dependencies=[Depends(verify_api_key)])
 async def update_state(state: dict):
     try:
         save_state(state)
@@ -179,6 +187,12 @@ async def update_state(state: dict):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    # Security: check token from query param (websockets cannot easily send headers)
+    api_key = websocket.query_params.get("token")
+    if api_key != API_KEY:
+        await websocket.close(code=1008, reason="Invalid API Key")
+        return
+        
     await manager.shadow_connect(websocket)
     try:
         # Send initial state on connection
