@@ -3323,24 +3323,7 @@ function addMsg(from, text, type='out', sos=false) {
   chatMessages.push(msgObj);
   syncEngine.updateState({ chatMessages });
 
-  if(currentPage!=='chat') {
-    chatBadgeCount++;
-    const badge = document.getElementById('chat-badge');
-    if(badge) {
-      badge.style.display='inline-flex';
-      badge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
-    }
-    const mobBadge = document.getElementById('mobile-chat-badge');
-    if(mobBadge) {
-      mobBadge.style.display='inline-flex';
-      mobBadge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
-    }
-  }
-  
-  if(!floatChatOpen) {
-    const dot = document.getElementById('float-unread-dot');
-    if(dot) dot.style.display = 'block';
-  }
+
 }
 
 
@@ -3619,10 +3602,39 @@ syncEngine.subscribe((state) => {
     const fmc = document.getElementById('float-chat-msgs');
     if(fmc) { fmc.innerHTML = msgHtml; fmc.scrollTop = fmc.scrollHeight; }
 
-    // Play chime for new incoming messages
+    // Play chime and check mentions for new incoming messages
     if(chatMessages.length > 0) {
       const last = chatMessages[chatMessages.length-1];
-      if(!last.from.includes(JUDGE.name) && window.staffAudio) staffAudio.playChime();
+      window.lastProcessedChatTimestamp = window.lastProcessedChatTimestamp || 0;
+      
+      if (last.timestamp && last.timestamp > window.lastProcessedChatTimestamp) {
+        window.lastProcessedChatTimestamp = last.timestamp;
+        
+        if(!last.from.includes(JUDGE.name)) {
+          if(window.staffAudio) staffAudio.playChime();
+          
+          // Check for mentions
+          if (last.text && /@(judge|all)/i.test(last.text)) {
+            if(!floatChatOpen) {
+              const dot = document.getElementById('float-unread-dot');
+              if(dot) dot.style.display = 'block';
+            }
+            if(currentPage !== 'chat') {
+              chatBadgeCount++;
+              const badge = document.getElementById('chat-badge');
+              if(badge) {
+                badge.style.display='inline-flex';
+                badge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
+              }
+              const mobBadge = document.getElementById('mobile-chat-badge');
+              if(mobBadge) {
+                mobBadge.style.display='inline-flex';
+                mobBadge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
+              }
+            }
+          }
+        }
+      }
     }
   }
 
