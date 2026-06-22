@@ -2227,6 +2227,7 @@
       <div class="tab active" onclick="settingsTab('subjects',this)">⚪ Judge Subjects</div>
       <div class="tab" onclick="settingsTab('event',this)">Event & Sponsor</div>
       <div class="tab" onclick="settingsTab('payment',this)">Payment / QR</div>
+      <div class="tab" onclick="settingsTab('certificate',this)">Certificate Setup</div>
       <div class="tab" onclick="settingsTab('security',this)" style="color:var(--text-muted)">📌</div>
     </div>
 
@@ -2367,6 +2368,35 @@
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="st-certificate" style="display:none">
+      <div class="g2">
+        <div class="card glass-card">
+          <div class="card-title" style="margin-bottom:14px">Certificate Signatures</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:20px;">Upload transparent PNG signatures to be rendered on the digital certificates.</div>
+          
+          <div class="fg">
+            <label class="fl">Secretary Signature</label>
+            <input id="cert-sig-sec" type="file" accept="image/*" style="width:100%; padding:8px; border:1px dashed var(--border); border-radius:8px;" onchange="previewSignature(this, 'preview-sig-sec')" />
+            <img id="preview-sig-sec" style="margin-top:10px; max-height:60px; object-fit:contain; display:none;" />
+          </div>
+
+          <div class="fg">
+            <label class="fl">Judge Signature</label>
+            <input id="cert-sig-judge" type="file" accept="image/*" style="width:100%; padding:8px; border:1px dashed var(--border); border-radius:8px;" onchange="previewSignature(this, 'preview-sig-judge')" />
+            <img id="preview-sig-judge" style="margin-top:10px; max-height:60px; object-fit:contain; display:none;" />
+          </div>
+
+          <div class="fg">
+            <label class="fl">President Signature</label>
+            <input id="cert-sig-pres" type="file" accept="image/*" style="width:100%; padding:8px; border:1px dashed var(--border); border-radius:8px;" onchange="previewSignature(this, 'preview-sig-pres')" />
+            <img id="preview-sig-pres" style="margin-top:10px; max-height:60px; object-fit:contain; display:none;" />
+          </div>
+
+          <button class="btn btn-amber btn-lg" style="width:100%;border-radius:12px;font-weight:800;margin-top:10px;" onclick="saveCertificateSignatures()">SAVE SIGNATURES</button>
         </div>
       </div>
     </div>
@@ -6890,12 +6920,36 @@ function exportStatistics() {
 function settingsTab(tab, el){
   document.querySelectorAll('#pp-settings .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  ['subjects','event','payment','security'].forEach(t=>{
-    document.getElementById('st-'+t).style.display=t===tab?'block':'none';
+  ['subjects','event','payment','security','certificate'].forEach(t=>{
+    const el = document.getElementById('st-'+t);
+    if(el) el.style.display = t===tab?'block':'none';
   });
   if(tab==='subjects') renderSubjects();
   if(tab==='event') renderEventSettings();
+  if(tab==='certificate') renderCertificateSettings();
   if(tab==='security') syncScoreVisUI();
+}
+
+function renderCertificateSettings() {
+  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  if (!activeEv || !activeEv.switchStates || !activeEv.switchStates.certificateSetup) return;
+  const setup = activeEv.switchStates.certificateSetup;
+  
+  if (setup.secretary) {
+    const img = document.getElementById('preview-sig-sec');
+    img.src = setup.secretary;
+    img.style.display = 'block';
+  }
+  if (setup.judge) {
+    const img = document.getElementById('preview-sig-judge');
+    img.src = setup.judge;
+    img.style.display = 'block';
+  }
+  if (setup.president) {
+    const img = document.getElementById('preview-sig-pres');
+    img.src = setup.president;
+    img.style.display = 'block';
+  }
 }
 
 // ══════════════════════════════════════════
@@ -7289,6 +7343,58 @@ async function saveEventSettings() {
   const success = await syncEngine.updateEvent(activeEventId, { name, banner, description });
   if(!success) { toast('❌ Error saving event settings'); return; }
   toast('✅ Event settings saved!');
+}
+
+function previewSignature(input, previewId) {
+  const img = document.getElementById(previewId);
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; img.style.display = 'block'; };
+    reader.readAsDataURL(input.files[0]);
+  } else {
+    img.style.display = 'none';
+  }
+}
+
+async function saveCertificateSignatures() {
+  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  if (!activeEv) return toast('No active event selected');
+
+  toast('Processing signatures...');
+  
+  const getBase64 = (inputId, previewId) => {
+    return new Promise((resolve) => {
+      const input = document.getElementById(inputId);
+      const preview = document.getElementById(previewId);
+      if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(input.files[0]);
+      } else {
+        // If no new file, keep existing if it's rendered in preview
+        if (preview.src && preview.src.startsWith('data:')) {
+          resolve(preview.src);
+        } else {
+          resolve(null);
+        }
+      }
+    });
+  };
+
+  const sec = await getBase64('cert-sig-sec', 'preview-sig-sec');
+  const judge = await getBase64('cert-sig-judge', 'preview-sig-judge');
+  const pres = await getBase64('cert-sig-pres', 'preview-sig-pres');
+
+  activeEv.switchStates = activeEv.switchStates || {};
+  activeEv.switchStates.certificateSetup = {
+    secretary: sec || (activeEv.switchStates.certificateSetup && activeEv.switchStates.certificateSetup.secretary) || null,
+    judge: judge || (activeEv.switchStates.certificateSetup && activeEv.switchStates.certificateSetup.judge) || null,
+    president: pres || (activeEv.switchStates.certificateSetup && activeEv.switchStates.certificateSetup.president) || null
+  };
+
+  const success = await syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
+  if (!success) { toast('❌ Error saving signatures'); return; }
+  toast('✅ Signatures saved successfully!');
 }
 
 // ══════════════════════════════════════════
