@@ -3858,11 +3858,17 @@ function nav(page, el) {
     if (page === 'chat') renderChatOnlineList();
     if (page === 'judgeassign') renderAgreements();
     if (page === 'settings') {
-      const tabEl = document.querySelector('#pp-settings .tab:first-child');
-      if (tabEl) settingsTab('subjects', tabEl);
-      else {
-        renderSubjects();
-        renderEventSettings();
+      const activeTabEl = document.querySelector('#pp-settings .tab.active');
+      if (activeTabEl) {
+        const tabName = activeTabEl.getAttribute('onclick').match(/'([^']+)'/)[1];
+        settingsTab(tabName, activeTabEl);
+      } else {
+        const tabEl = document.querySelector('#pp-settings .tab:first-child');
+        if (tabEl) settingsTab('subjects', tabEl);
+        else {
+          renderSubjects();
+          renderEventSettings();
+        }
       }
     }
   } catch (e) {
@@ -6963,24 +6969,20 @@ function settingsTab(tab, el){
 }
 
 function renderCertificateSettings() {
-  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
-  if (!activeEv || !activeEv.switchStates || !activeEv.switchStates.certificateSetup) return;
-  const setup = activeEv.switchStates.certificateSetup;
+  const setup = switchStates.certificateSetup;
+  if (!setup) return;
   
   if (setup.secretary) {
     const img = document.getElementById('preview-sig-sec');
-    img.src = setup.secretary;
-    img.style.display = 'block';
+    if(img) { img.src = setup.secretary; img.style.display = 'block'; }
   }
   if (setup.judge) {
     const img = document.getElementById('preview-sig-judge');
-    img.src = setup.judge;
-    img.style.display = 'block';
+    if(img) { img.src = setup.judge; img.style.display = 'block'; }
   }
   if (setup.president) {
     const img = document.getElementById('preview-sig-pres');
-    img.src = setup.president;
-    img.style.display = 'block';
+    if(img) { img.src = setup.president; img.style.display = 'block'; }
   }
 }
 
@@ -7406,20 +7408,16 @@ function previewSignature(input, previewId) {
 }
 
 async function saveCertificateSignatures() {
-  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
-  if (!activeEv) return toast('No active event selected');
-
   toast('Processing signatures...');
   
   const getUrl = async (inputId, previewId) => {
     const input = document.getElementById(inputId);
     const preview = document.getElementById(previewId);
-    if (input.files && input.files[0]) {
+    if (input && input.files && input.files[0]) {
       const url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`);
       return url;
     } else {
-      // If no new file, keep existing if it's rendered in preview
-      if (preview.src && (preview.src.startsWith('http') || preview.src.startsWith('data:'))) {
+      if (preview && preview.src && (preview.src.startsWith('http') || preview.src.startsWith('data:'))) {
         return preview.src;
       } else {
         return null;
@@ -7431,15 +7429,23 @@ async function saveCertificateSignatures() {
   const judge = await getUrl('cert-sig-judge', 'preview-sig-judge');
   const pres = await getUrl('cert-sig-pres', 'preview-sig-pres');
 
-  activeEv.switchStates = activeEv.switchStates || {};
-  activeEv.switchStates.certificateSetup = {
-    secretary: sec || (activeEv.switchStates.certificateSetup && activeEv.switchStates.certificateSetup.secretary) || null,
-    judge: judge || (activeEv.switchStates.certificateSetup && activeEv.switchStates.certificateSetup.judge) || null,
-    president: pres || (activeEv.switchStates.certificateSetup && activeEv.switchStates.certificateSetup.president) || null
+  switchStates.certificateSetup = {
+    secretary: sec || (switchStates.certificateSetup && switchStates.certificateSetup.secretary) || null,
+    judge: judge || (switchStates.certificateSetup && switchStates.certificateSetup.judge) || null,
+    president: pres || (switchStates.certificateSetup && switchStates.certificateSetup.president) || null
   };
 
-  const success = await syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
-  if (!success) { toast('❌ Error saving signatures'); return; }
+  if (window.syncEngine) {
+    window.syncEngine.setData(state => {
+      if (!state.eventSwitches) state.eventSwitches = {};
+      state.eventSwitches[activeEventId] = { ...switchStates };
+      return state;
+    });
+    if (window.syncEngine.updateEvent) {
+      const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
+      if (!success) { toast('❌ Error saving signatures'); return; }
+    }
+  }
   toast('✅ Signatures saved successfully!');
 }
 
@@ -7491,11 +7497,7 @@ async function deploySponsor() {
       name, tagline, link, logo: logoData, addedAt: Date.now()
     };
     
-    const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
-    if (!activeEv) return toast('No active event selected');
-    
-    activeEv.switchStates = activeEv.switchStates || {};
-    let currentSponsors = activeEv.switchStates.sponsors || [];
+    let currentSponsors = switchStates.sponsors || [];
     if (editingSponsorId) {
       const idx = currentSponsors.findIndex(s => s.id === editingSponsorId);
       if (idx !== -1) {
@@ -7506,10 +7508,17 @@ async function deploySponsor() {
     } else {
       currentSponsors.push(sponsor);
     }
-    activeEv.switchStates.sponsors = currentSponsors;
+    switchStates.sponsors = currentSponsors;
     
+    if (window.syncEngine) {
+      window.syncEngine.setData(state => {
+        if (!state.eventSwitches) state.eventSwitches = {};
+        state.eventSwitches[activeEventId] = { ...switchStates };
+        return state;
+      });
+    }
     if (window.syncEngine && window.syncEngine.updateEvent) {
-      const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
+      const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
       if (success) {
         toast(editingSponsorId ? '✅ Sponsor updated globally!' : '✅ Sponsor deployed globally!');
         editingSponsorId = null;
@@ -7541,13 +7550,13 @@ async function deploySponsor() {
 function renderSponsors() {
   const listEl = document.getElementById('event-sponsor-list');
   if(!listEl) return;
-  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
-  if(!activeEv || !activeEv.switchStates || !activeEv.switchStates.sponsors || activeEv.switchStates.sponsors.length === 0) {
+  const sponsors = switchStates.sponsors || [];
+  if(sponsors.length === 0) {
     listEl.innerHTML = '<div style="color:var(--text-muted); font-size:12px; font-style:italic;">No active sponsors deployed yet.</div>';
     return;
   }
   
-  listEl.innerHTML = activeEv.switchStates.sponsors.map(sp => `
+  listEl.innerHTML = sponsors.map(sp => `
     <div style="display:flex; align-items:center; gap:12px; background:rgba(255,255,255,0.8); border:1px solid var(--border); padding:10px; border-radius:12px;">
       <img src="${sp.logo}" alt="Logo" style="width:40px; height:40px; object-fit:contain; border-radius:6px; background:#fff; border:1px solid rgba(0,0,0,0.1);"/>
       <div style="flex:1;">
@@ -7562,9 +7571,8 @@ function renderSponsors() {
 
 
 function editSponsor(id) {
-  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
-  if (!activeEv || !activeEv.switchStates || !activeEv.switchStates.sponsors) return;
-  const sp = activeEv.switchStates.sponsors.find(s => s.id === id);
+  const sponsors = switchStates.sponsors || [];
+  const sp = sponsors.find(s => s.id === id);
   if (!sp) return;
   
   editingSponsorId = sp.id;
@@ -7581,18 +7589,25 @@ function editSponsor(id) {
 async function deleteSponsor(id) {
 
   if(!confirm('Delete this sponsor advertisement?')) return;
-  const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
-  if (!activeEv || !activeEv.switchStates || !activeEv.switchStates.sponsors) return;
   
-  const idx = activeEv.switchStates.sponsors.findIndex(s => s.id === id);
+  let currentSponsors = switchStates.sponsors || [];
+  const idx = currentSponsors.findIndex(s => s.id === id);
   if (idx !== -1) {
-    activeEv.switchStates.sponsors.splice(idx, 1);
+    currentSponsors.splice(idx, 1);
+    switchStates.sponsors = currentSponsors;
   }
   
-  if (window.syncEngine && window.syncEngine.updateEvent) {
-    await window.syncEngine.updateEvent(activeEventId, { switchStates: activeEv.switchStates });
-    toast('🗑️ Sponsor removed');
-    renderSponsors();
+  if (window.syncEngine) {
+    window.syncEngine.setData(state => {
+      if (!state.eventSwitches) state.eventSwitches = {};
+      state.eventSwitches[activeEventId] = { ...switchStates };
+      return state;
+    });
+    if (window.syncEngine.updateEvent) {
+      await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
+      toast('🗑️ Sponsor removed');
+      renderSponsors();
+    }
   }
 }
 
