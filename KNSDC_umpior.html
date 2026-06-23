@@ -6,6 +6,8 @@
 <title>KNSDC Umpire Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<script src="lib/supabase.js"></script>
+<script src="lib/sportsSync.js"></script>
 <style>
 :root{
   --bg:#060a0f;--bg2:#0b1017;--bg3:#10181f;--bg4:#172230;
@@ -493,6 +495,24 @@ input:focus, select:focus {
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:30px;width:100%;max-width:400px;text-align:center;">
+    <div style="font-family:'Barlow Condensed';font-size:24px;font-weight:800;color:var(--g);margin-bottom:20px;">KNSDC UMPIRE PORTAL</div>
+    <div style="margin-bottom:15px;text-align:left;">
+      <label style="display:block;font-size:12px;color:var(--t3);margin-bottom:5px;font-weight:700;">UMPIRE EMAIL</label>
+      <input type="email" id="umpire-email" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:#fff;padding:10px;border-radius:6px;outline:none;" placeholder="ump@knsdc.in">
+    </div>
+    <div style="margin-bottom:25px;text-align:left;">
+      <label style="display:block;font-size:12px;color:var(--t3);margin-bottom:5px;font-weight:700;">PASSWORD</label>
+      <input type="password" id="umpire-password" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:#fff;padding:10px;border-radius:6px;outline:none;" placeholder="Enter password">
+    </div>
+    <button onclick="handleLogin()" style="width:100%;background:var(--g);color:#000;border:none;padding:12px;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">SECURE LOGIN</button>
+    <div id="login-err" style="color:var(--r);font-size:12px;margin-top:10px;display:none;"></div>
+  </div>
+</div>
+
 
 <!-- HEADER -->
 <div class="hdr">
@@ -1786,6 +1806,149 @@ function renderMonChart(){
       }
     }
   });
+}
+
+// --- Supabase Integration & Login ---
+let currentUser = null;
+
+async function handleLogin() {
+  const email = document.getElementById('umpire-email').value.trim();
+  const pass = document.getElementById('umpire-password').value;
+  const errEl = document.getElementById('login-err');
+  
+  if(!email || !pass) {
+    errEl.textContent = 'Please enter email and password';
+    errEl.style.display = 'block';
+    return;
+  }
+  
+  errEl.style.display = 'none';
+  const btn = document.querySelector('#login-screen button');
+  btn.textContent = 'Authenticating...';
+  
+  const res = await window.sportsEngine.login(email, pass);
+  if(res.success) {
+    currentUser = res.user;
+    document.getElementById('login-screen').style.display = 'none';
+    toast('Logged in successfully!');
+    // Load assigned matches
+    loadAssignedMatches();
+  } else {
+    errEl.textContent = res.error || 'Login failed';
+    errEl.style.display = 'block';
+    btn.textContent = 'SECURE LOGIN';
+  }
+}
+
+async function loadAssignedMatches() {
+  const matches = await window.sportsEngine.getAssignedMatches(currentUser.email);
+  if(matches.length === 0) {
+    document.getElementById('tml').innerHTML = '<div class="empty"><p>No matches assigned to you today.</p></div>';
+    return;
+  }
+  
+  // For simplicity in this UI, we just auto-select the first assigned match 
+  // and load it into the local state so the Umpire can start scoring.
+  const ev = matches[0];
+  
+  // Check if a match is already initialized in the backend for this event
+  const activeMatch = await window.sportsEngine.getActiveMatch(ev.id);
+  
+  if (activeMatch && activeMatch.match) {
+    // Resume match
+    toast('Resuming Active Match: ' + ev.name);
+    // TODO: Map activeMatch.match and activeMatch.currentInning to local `match` and `innings` array
+    // Since the original UI expects local state arrays, we will do a basic mapping
+    tossW = activeMatch.match.toss_winner;
+    tossD = activeMatch.match.toss_decision;
+    match = { 
+      team1: activeMatch.match.team1_name, 
+      team2: activeMatch.match.team2_name,
+      id: activeMatch.match.id,
+      event_id: activeMatch.match.event_id,
+      inning_id: activeMatch.currentInning ? activeMatch.currentInning.id : null
+    };
+    
+    // Setup dummy inning for now, in a real scenario we'd fetch all balls
+    if(activeMatch.currentInning) {
+      innings[0] = {
+        bat: activeMatch.currentInning.batting_team,
+        bwl: activeMatch.currentInning.bowling_team,
+        r: activeMatch.currentInning.total_runs,
+        w: activeMatch.currentInning.total_wickets,
+        overs: activeMatch.currentInning.overs_bowled,
+        ex: activeMatch.currentInning.extras,
+        balls: [], oLog: [], bLog: [], partnerships: [], fw: [],
+        striker: null, nonstriker: null, bowler: null
+      };
+      aIdx = 0;
+    }
+    go('live');
+  } else {
+    // Setup new match locally
+    toast('Loaded Assignment: ' + ev.name);
+    // Usually we'd show a "Start Match" UI here, but we will mock it into the existing Setup UI
+    document.getElementById('tn').value = ev.name;
+    // ... we can just let the Umpire use the local Teams and Match setup tabs to finalize toss ...
+  }
+}
+
+// Override the original `startMatch` to save to Supabase
+const originalStartMatch = startMatch;
+startMatch = async function() {
+  if(!tossW || !tossD) return toast('Select toss outcome','a');
+  
+  const ev_id = (currentUser && currentUser.event_id) ? currentUser.event_id : Date.now(); 
+  // Wait, local state might not have an event id. We will use a dummy one if null.
+  
+  const res = await window.sportsEngine.initCricketMatch(
+    ev_id, 
+    document.getElementById('t1s').value, 
+    document.getElementById('t2s').value, 
+    tossW, 
+    tossD, 
+    getTourOvers(), 
+    currentUser ? currentUser.email : 'ump@knsdc.in'
+  );
+  
+  if(res && res.match) {
+    // Store backend IDs in local state
+    match = { ...match, backend_id: res.match.id, inning_id: res.currentInning.id };
+  }
+  
+  originalStartMatch();
+}
+
+// Override `addBall` to push to Supabase
+const originalAddBall = addBall;
+addBall = async function(runs, isBnd=false, isSix=false, isW=false, wType=null, exT=null, exR=0) {
+  if(!match || aIdx>1) return;
+  
+  const backendInningId = match.inning_id;
+  
+  // Call original logic to update local arrays
+  originalAddBall(runs, isBnd, isSix, isW, wType, exT, exR);
+  
+  // Push ball to backend
+  if(backendInningId) {
+    const curInning = inn();
+    await window.sportsEngine.pushBall(backendInningId, {
+      over_number: Math.floor(curInning.overs),
+      ball_number: Math.round((curInning.overs % 1) * 10),
+      runs,
+      is_boundary: isBnd,
+      is_six: isSix,
+      is_wicket: isW,
+      wicket_type: wType,
+      is_wide: exT === 'wd',
+      is_no_ball: exT === 'nb',
+      is_leg_bye: exT === 'lb',
+      is_bye: exT === 'b'
+    });
+    
+    // Update inning total
+    await window.sportsEngine.updateInningScore(backendInningId, curInning.r, curInning.w, curInning.overs, curInning.ex);
+  }
 }
 
 // remove unused AI functions stubs
