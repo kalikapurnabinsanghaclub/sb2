@@ -6,7 +6,7 @@ CREATE INDEX IF NOT EXISTS idx_staff_email ON public.staff_credentials (email);
 CREATE INDEX IF NOT EXISTS idx_judge_email ON public.judge_credentials (email);
 
 -- Indexes for frequently joined/filtered tables
-CREATE INDEX IF NOT EXISTS idx_judge_agreements_email ON public.judge_agreements (judge_email);
+CREATE INDEX IF NOT EXISTS idx_judge_agreements_email ON public.judge_agreements (email);
 CREATE INDEX IF NOT EXISTS idx_judge_agreements_event ON public.judge_agreements (event_id);
 CREATE INDEX IF NOT EXISTS idx_public_registrations_event ON public.public_registrations (event_id);
 CREATE INDEX IF NOT EXISTS idx_events_status ON public.events (status);
