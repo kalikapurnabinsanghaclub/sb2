@@ -1307,8 +1307,8 @@ function sortQueue(queueArray) {
     }
     
     // 2. Category order based on index in categories
-    const catIdxA = categories.findIndex(c => c.id === a.catId);
-    const catIdxB = categories.findIndex(c => c.id === b.catId);
+    const catIdxA = categories.findIndex(c => c.id == a.catId);
+    const catIdxB = categories.findIndex(c => c.id == b.catId);
     const idxA = catIdxA !== -1 ? catIdxA : Infinity;
     const idxB = catIdxB !== -1 ? catIdxB : Infinity;
     if (idxA !== idxB) {
@@ -1432,38 +1432,45 @@ function renderStage() {
 }
 
 window.moveQueueItem = (id, direction) => {
-  syncEngine.setData(s => {
-    const parts = [...(s.participants || [])];
-    const queueIndices = [];
-    parts.forEach((p, idx) => {
-      if (p.stageStatus === 'queue') {
-        queueIndices.push(idx);
-      }
-    });
-
-    const currentQueueIdx = queueIndices.findIndex(idx => parts[idx].id === id);
-    if (currentQueueIdx === -1) return s;
-
-    let targetQueueIdx = -1;
-    if (direction === 'up' && currentQueueIdx > 0) {
-      targetQueueIdx = currentQueueIdx - 1;
-    } else if (direction === 'down' && currentQueueIdx < queueIndices.length - 1) {
-      targetQueueIdx = currentQueueIdx + 1;
-    }
-
-    if (targetQueueIdx !== -1) {
-      const originalIdx = queueIndices[currentQueueIdx];
-      const destIdx = queueIndices[targetQueueIdx];
-      
-      const temp = parts[originalIdx];
-      parts[originalIdx] = parts[destIdx];
-      parts[destIdx] = temp;
-      
-      toast(`Moved performer ${direction}`);
-    }
-
-    return { ...s, participants: parts };
-  });
+  const dirNum = direction === 'up' || direction === -1 ? -1 : 1;
+  const s = syncEngine.getData() || {};
+  const activeEvId = s.activeEventId;
+  
+  let queueParts = participants.filter(p => 
+    p.stageStatus === 'queue' && 
+    (!activeEvId || String(p.eventId) === String(activeEvId)) &&
+    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId))
+  );
+  queueParts = sortQueue(queueParts);
+  
+  const currentIdx = queueParts.findIndex(p => p.id === id);
+  if (currentIdx === -1) return;
+  
+  const targetIdx = currentIdx + dirNum;
+  if (targetIdx < 0 || targetIdx >= queueParts.length) return;
+  
+  const currentP = queueParts[currentIdx];
+  const targetP = queueParts[targetIdx];
+  
+  // Ensure both have order values, defaulting to index if not set
+  if (currentP.queueOrder === undefined || currentP.queueOrder === null) currentP.queueOrder = currentIdx;
+  if (targetP.queueOrder === undefined || targetP.queueOrder === null) targetP.queueOrder = targetIdx;
+  
+  const temp = currentP.queueOrder;
+  currentP.queueOrder = targetP.queueOrder;
+  targetP.queueOrder = temp;
+  
+  if (window.syncEngine && window.syncEngine.updateParticipant) {
+    Promise.all([
+      window.syncEngine.updateParticipant(currentP.id, { queueOrder: currentP.queueOrder }),
+      window.syncEngine.updateParticipant(targetP.id, { queueOrder: targetP.queueOrder })
+    ]).then(() => {
+      toast(`Moved performer ${direction === 'up' || direction === -1 ? 'Up' : 'Down'}`);
+    }).catch(e => console.error(e));
+  } else {
+    toast(`Moved performer ${direction === 'up' || direction === -1 ? 'Up' : 'Down'}`);
+    syncAll();
+  }
 };
 
 window.pushToQueueFromList = (id) => {
