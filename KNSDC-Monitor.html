@@ -1924,10 +1924,13 @@
       </div>
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:10px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase">QUEUE</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="font-size:10px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase">QUEUE</div>
+            <button class="btn btn-red btn-xs" onclick="resetQueueOrder()" style="padding:2px 8px;font-size:10px;border-radius:6px;background:rgba(220,38,38,0.1);color:var(--red);border:1px solid rgba(220,38,38,0.2)">🔄 Reset</button>
+          </div>
           <button class="btn btn-amber btn-sm" onclick="pushNextToStage()">⬆ Push Next</button>
         </div>
-        <div id="venue-queue"></div>
+        <div id="venue-queue" style="max-height:300px; overflow-y:auto; border-radius:8px; padding-right:4px;"></div>
         <hr/>
         <div style="display:flex;gap:8px;margin-top:10px">
           <button class="btn btn-ghost btn-sm" onclick="openAddToUpcomingModal()">＋ Add Upcoming Participant</button>
@@ -3181,7 +3184,7 @@ function hydrate() {
   if (assignedNameEl) assignedNameEl.textContent = activeEv ? activeEv.name : 'No Event Assigned';
   
   participants = (s.participants || []).map(p => {
-    if (p && p.present === undefined) p.present = true;
+    if (p && p.present === undefined) p.present = false;
     return p;
   });
   judges = s.judges || [];
@@ -3237,7 +3240,8 @@ function hydrate() {
     ];
   }
 
-  stageQueue = participants.filter(p => p.stageStatus === 'queue' && String(p.eventId) === String(activeEventId)).map(p => p.id);
+  const queueParts = participants.filter(p => p.stageStatus === 'queue' && String(p.eventId) === String(activeEventId));
+  stageQueue = sortQueue(queueParts).map(p => p.id);
 
   renderGlobalEventSelector();
   renderChatOnlineList();
@@ -4462,7 +4466,11 @@ function saveEditReg(){
   
   // Save Dynamic custom fields
   const ev = EVENTS.find(e => String(e.id) === String(p.eventId));
-  const fFields = ev && ev.formFields ? ev.formFields : [];
+  let fFields = ev && ev.formFields ? ev.formFields : [];
+  if (typeof fFields === 'string') {
+    try { fFields = JSON.parse(fFields); } catch(e) { fFields = []; }
+  }
+  if (!Array.isArray(fFields)) fFields = [];
   if (!p.formAnswers) p.formAnswers = {};
   
   fFields.forEach((f, i) => {
@@ -4637,7 +4645,13 @@ function openAddRegModal(){
   // But we'll follow the user request: "form create for selected event only"
   // So we generate based on activeEv.formFields
   
-  (activeEv.formFields || []).forEach((f, i) => {
+  let activeFields = activeEv.formFields || [];
+  if (typeof activeFields === 'string') {
+    try { activeFields = JSON.parse(activeFields); } catch(e) { activeFields = []; }
+  }
+  if (!Array.isArray(activeFields)) activeFields = [];
+
+  activeFields.forEach((f, i) => {
     const id = `ar-field-${i}`;
     let inputHtml = '';
     
@@ -4778,7 +4792,11 @@ async function saveNewRegAsync() {
   let date = new Date().toISOString().split('T')[0];
 
   // Validate and collect
-  const fields = activeEv.formFields || [];
+  let fields = activeEv.formFields || [];
+  if (typeof fields === 'string') {
+    try { fields = JSON.parse(fields); } catch(e) { fields = []; }
+  }
+  if (!Array.isArray(fields)) fields = [];
   for (let i = 0; i < fields.length; i++) {
     const f = fields[i];
     const id = `ar-field-${i}`;
@@ -5350,14 +5368,104 @@ function addToUpcoming(id) {
   if (p) {
     p.stageStatus = 'queue';
     p.present = true;
+    if (!p.presentMarkedAt) {
+      p.presentMarkedAt = Date.now();
+    }
     if(window.syncEngine && window.syncEngine.updateParticipant) {
-      window.syncEngine.updateParticipant(p.id, { stageStatus: 'queue', present: true }).catch(e=>console.error(e));
+      window.syncEngine.updateParticipant(p.id, { 
+        stageStatus: 'queue', 
+        present: true,
+        presentMarkedAt: p.presentMarkedAt
+      }).catch(e=>console.error(e));
     }
     syncAll();
     renderVenueParticipants();
     renderStageView();
     toast(`➕ ${p.name} added to upcoming queue!`);
   }
+}
+
+function sortQueue(queueArray) {
+  return [...queueArray].sort((a, b) => {
+    // 1. Manual order override
+    const orderA = a.queueOrder !== undefined && a.queueOrder !== null ? a.queueOrder : Infinity;
+    const orderB = b.queueOrder !== undefined && b.queueOrder !== null ? b.queueOrder : Infinity;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    
+    // 2. Category order based on index in categories
+    const catIdxA = categories.findIndex(c => c.id === a.catId);
+    const catIdxB = categories.findIndex(c => c.id === b.catId);
+    const idxA = catIdxA !== -1 ? catIdxA : Infinity;
+    const idxB = catIdxB !== -1 ? catIdxB : Infinity;
+    if (idxA !== idxB) {
+      return idxA - idxB;
+    }
+    
+    // 3. presentMarkedAt timestamp order
+    const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+    const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+    return timeA - timeB;
+  });
+}
+
+function moveQueueItem(id, direction) {
+  let queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  queueParts = sortQueue(queueParts);
+  
+  const idx = queueParts.findIndex(p => String(p.id) === String(id));
+  if (idx === -1) return;
+  
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= queueParts.length) return;
+  
+  // Assign explicit queueOrder to preserve manual rearrangement
+  queueParts.forEach((p, index) => {
+    p.queueOrder = index;
+  });
+  
+  // Swap queueOrder values
+  const temp = queueParts[idx].queueOrder;
+  queueParts[idx].queueOrder = queueParts[targetIdx].queueOrder;
+  queueParts[targetIdx].queueOrder = temp;
+  
+  if (window.syncEngine && window.syncEngine.updateParticipant) {
+    Promise.all([
+      window.syncEngine.updateParticipant(queueParts[idx].id, { queueOrder: queueParts[idx].queueOrder }),
+      window.syncEngine.updateParticipant(queueParts[targetIdx].id, { queueOrder: queueParts[targetIdx].queueOrder })
+    ]).then(() => {
+      syncAll();
+      renderVenueParticipants();
+      renderStageView();
+      toast('Queue order updated!');
+    }).catch(err => console.error('Error swapping queue order:', err));
+  } else {
+    syncAll();
+    renderVenueParticipants();
+    renderStageView();
+  }
+}
+
+function resetQueueOrder() {
+  if (!confirm('Are you sure you want to reset the queue order? This will sort participants category-wise and then by the time they were marked present.')) {
+    return;
+  }
+  const queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const promises = queueParts.map(p => {
+    p.queueOrder = null;
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      return window.syncEngine.updateParticipant(p.id, { queueOrder: null });
+    }
+    return Promise.resolve();
+  });
+  
+  Promise.all(promises).then(() => {
+    syncAll();
+    renderVenueParticipants();
+    renderStageView();
+    toast('Queue order reset to default!');
+  }).catch(err => console.error('Error resetting queue order:', err));
 }
 
 function renderVenueParticipants(){
@@ -5409,15 +5517,20 @@ function renderVenueParticipants(){
   }
 
   // Queue
-  const queue = data.filter(p=>p.stageStatus==='queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  let queue = data.filter(p=>p.stageStatus==='queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  queue = sortQueue(queue);
   const presentCount = data.filter(p=>(p.present && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
   if(document.getElementById('venue-present-count')) document.getElementById('venue-present-count').textContent = `${presentCount} Present`;
-  document.getElementById('venue-queue').innerHTML = queue.length ? queue.slice(0,4).map((p,i)=>{
+  document.getElementById('venue-queue').innerHTML = queue.length ? queue.map((p,i)=>{
     const c=categories.find(x=>x.id===p.catId);
-    return `<div class="participant-row">
+    return `<div class="participant-row" style="display:flex; align-items:center; gap:10px;">
       <div class="p-num" style="background:rgba(217,119,6,0.15);color:var(--amber2)">${i+1}</div>
       <div style="flex:1"><div style="font-weight:600">${p.name}</div><div style="font-size:11px;color:var(--text-muted)">${p.id} · ${c?c.name:'—'}</div></div>
-      <button class="btn btn-amber btn-xs" onclick="pushToStage('${p.id}')">▶ Push</button>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <button class="btn btn-ghost btn-xs" onclick="moveQueueItem('${p.id}', -1)" ${i === 0 ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Move Up">▲</button>
+        <button class="btn btn-ghost btn-xs" onclick="moveQueueItem('${p.id}', 1)" ${i === queue.length - 1 ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Move Down">▼</button>
+        <button class="btn btn-amber btn-xs" onclick="pushToStage('${p.id}')">▶ Push</button>
+      </div>
     </div>`;
   }).join('') : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">Queue is empty</div>';
 
@@ -5445,6 +5558,12 @@ function renderVenueParticipants(){
   });
 
   container.innerHTML = Object.values(catMap).map(group => {
+    group.participants.sort((a, b) => {
+      const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+      const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+      return timeA - timeB;
+    });
+
     const rows = group.participants.map((p, idx) => {
       return `<tr>
         <td style="font-weight:700;color:var(--text-muted)">${idx + 1}</td>
@@ -5616,8 +5735,22 @@ function markPresent(id){
   const p = participants.find(x=>x.id===id);
   if(p){ 
     p.present=!p.present; 
+    if (p.present) {
+      p.presentMarkedAt = Date.now();
+    } else {
+      p.presentMarkedAt = null;
+      p.queueOrder = null;
+      if (p.stageStatus === 'queue' || p.stageStatus === 'on-stage') {
+        p.stageStatus = 'waiting';
+      }
+    }
     if(window.syncEngine && window.syncEngine.updateParticipant) {
-      window.syncEngine.updateParticipant(p.id, { present: p.present }).catch(e=>console.error(e));
+      window.syncEngine.updateParticipant(p.id, { 
+        present: p.present,
+        presentMarkedAt: p.presentMarkedAt,
+        queueOrder: p.queueOrder,
+        stageStatus: p.stageStatus
+      }).catch(e=>console.error(e));
     }
     syncAll(); 
     renderVenueParticipants(); 
@@ -5729,6 +5862,16 @@ function saveAddToUpcoming() {
   if (p) {
     p.stageStatus = 'queue';
     p.present = true; // Automatically mark present when adding to upcoming queue
+    if (!p.presentMarkedAt) {
+      p.presentMarkedAt = Date.now();
+    }
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, { 
+        stageStatus: 'queue', 
+        present: true,
+        presentMarkedAt: p.presentMarkedAt
+      }).catch(e=>console.error(e));
+    }
     syncAll();
     renderVenueParticipants();
     renderStageView(); // Sync Dashboard
