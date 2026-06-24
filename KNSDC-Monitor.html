@@ -1810,7 +1810,7 @@
       </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Address</th><th>Category</th><th>Age</th><th>Venue</th><th>Present</th><th>Actions</th></tr></thead>
+          <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Address</th><th>Category</th><th>Age</th><th>Venue</th><th>Audition</th><th>Qualified</th><th>Semifinal</th><th>Final</th><th>Actions</th></tr></thead>
           <tbody id="applied-tbody"></tbody>
         </table>
       </div>
@@ -4341,7 +4341,10 @@ function renderApplied(search='',catFilter='',venueFilter=''){
       <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
       <td>${ageGrp}</td>
       <td style="font-size:12px">${ven?ven.name:'—'}</td>
-      <td><span class="badge ${getRoundPresent(p, p.round)?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}')">${getRoundPresent(p, p.round)?'✓ '+( p.round||'audition').charAt(0).toUpperCase()+(p.round||'audition').slice(1):'✗ No'}</span></td>
+      <td><span class="badge ${getRoundPresent(p, 'audition')?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', 'audition')">${getRoundPresent(p, 'audition')?'✓ Yes':'✗ No'}</span></td>
+      <td><span class="badge ${getRoundPresent(p, 'qualified')?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', 'qualified')">${getRoundPresent(p, 'qualified')?'✓ Yes':'✗ No'}</span></td>
+      <td><span class="badge ${getRoundPresent(p, 'semifinal')?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', 'semifinal')">${getRoundPresent(p, 'semifinal')?'✓ Yes':'✗ No'}</span></td>
+      <td><span class="badge ${getRoundPresent(p, 'final')?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', 'final')">${getRoundPresent(p, 'final')?'✓ Yes':'✗ No'}</span></td>
       <td style="display:flex;gap:5px">
         <button class="btn btn-ghost btn-xs" onclick="openEditReg('${p.id}')">✏️</button>
         <button class="btn btn-danger btn-xs" onclick="deleteReg('${p.id}')">🗑</button>
@@ -4350,7 +4353,7 @@ function renderApplied(search='',catFilter='',venueFilter=''){
         </button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:30px">No registrations found</td></tr>`;
+  }).join('') || `<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:30px">No registrations found</td></tr>`;
 }
 
 function viewFormAnswers(id) {
@@ -4949,7 +4952,7 @@ function downloadRegs(format = 'excel') {
   });
   const dynamicCols = Array.from(formLabels);
   
-  const headers = ['ID', 'Name', 'Phone', 'Age', 'Category', 'Venue', 'Round', 'Present', ...dynamicCols];
+  const headers = ['ID', 'Name', 'Phone', 'Age', 'Category', 'Venue', 'Round', 'Audition Pres', 'Qualified Pres', 'Semifinal Pres', 'Final Pres', ...dynamicCols];
   const rows = [headers];
 
   eventParticipants.forEach(p => {
@@ -4959,7 +4962,11 @@ function downloadRegs(format = 'excel') {
     const standardData = [
       p.id, p.name, p.phone, p.age,
       cat ? cat.name : '', ven ? ven.name : '',
-      p.round, p.present ? 'Yes' : 'No'
+      p.round,
+      getRoundPresent(p, 'audition') ? 'Yes' : 'No',
+      getRoundPresent(p, 'qualified') ? 'Yes' : 'No',
+      getRoundPresent(p, 'semifinal') ? 'Yes' : 'No',
+      getRoundPresent(p, 'final') ? 'Yes' : 'No'
     ];
     
     const dynamicData = dynamicCols.map(label => {
@@ -5790,10 +5797,10 @@ async function autoPromoteTopN() {
   toast(`🔺 Successfully auto-promoted ${toPromote.length} participants!`);
 }
 
-function markPresent(id){
+function markPresent(id, roundOverride){
   const p = participants.find(x=>x.id===id);
   if(p){ 
-    const round = p.round || 'audition';
+    const round = roundOverride || p.round || 'audition';
     const wasPresent = getRoundPresent(p, round);
     setRoundPresent(p, round, !wasPresent);
     if (!getRoundPresent(p, round)) {
