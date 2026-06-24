@@ -3183,7 +3183,14 @@ function hydrate() {
   const assignedNameEl = document.getElementById('assigned-event-name');
   if (assignedNameEl) assignedNameEl.textContent = activeEv ? activeEv.name : 'No Event Assigned';
   
-  participants = (s.participants || []).map(p => {
+  const seenIds = new Set();
+  participants = (s.participants || []).filter(p => {
+    if (!p || !p.id) return false;
+    const idStr = String(p.id);
+    if (seenIds.has(idStr)) return false;
+    seenIds.add(idStr);
+    return true;
+  }).map(p => {
     if (p && p.present === undefined) p.present = false;
     return p;
   });
@@ -4866,9 +4873,6 @@ async function saveNewRegAsync() {
     toast('❌ Error saving registration to database');
     return;
   }
-  
-  // Also push to local array for immediate render
-  participants.push(newP);
   
   renderApplied();
   updateNbadges();
