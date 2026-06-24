@@ -3121,6 +3121,50 @@ const chatContacts = [
   {name:'Judge · Prof. Rajan',role:'judge',color:'#059669',online:false},
 ];
 
+// ══════════════════════════════════════════
+// ROUND-WISE PRESENCE HELPERS
+// ══════════════════════════════════════════
+function ensureRoundPresence(p) {
+  if (!p) return;
+  const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+  if (!p.roundPresence || typeof p.roundPresence !== 'object') {
+    // Migrate: seed from existing flat present/presentMarkedAt for the participant's current round
+    p.roundPresence = {};
+    rounds.forEach(r => {
+      if (r === (p.round || 'audition')) {
+        p.roundPresence[r] = { present: !!p.present, markedAt: p.presentMarkedAt || null };
+      } else {
+        p.roundPresence[r] = { present: false, markedAt: null };
+      }
+    });
+  }
+  // Ensure all 4 round keys exist
+  rounds.forEach(r => {
+    if (!p.roundPresence[r]) p.roundPresence[r] = { present: false, markedAt: null };
+  });
+}
+
+function getRoundPresent(p, round) {
+  ensureRoundPresence(p);
+  const r = round || p.round || 'audition';
+  return p.roundPresence[r] && p.roundPresence[r].present;
+}
+
+function getRoundMarkedAt(p, round) {
+  ensureRoundPresence(p);
+  const r = round || p.round || 'audition';
+  return (p.roundPresence[r] && p.roundPresence[r].markedAt) || null;
+}
+
+function setRoundPresent(p, round, isPresent) {
+  ensureRoundPresence(p);
+  const r = round || p.round || 'audition';
+  p.roundPresence[r] = { present: !!isPresent, markedAt: isPresent ? Date.now() : null };
+  // Sync flat fields for backward compat (reflect current round's state)
+  p.present = !!p.roundPresence[p.round || 'audition']?.present;
+  p.presentMarkedAt = p.roundPresence[p.round || 'audition']?.markedAt || null;
+}
+
 function hydrate() {
   const s = syncEngine.getData();
   if (!s) return;
@@ -3192,6 +3236,7 @@ function hydrate() {
     return true;
   }).map(p => {
     if (p && p.present === undefined) p.present = false;
+    ensureRoundPresence(p);
     return p;
   });
   judges = s.judges || [];
@@ -3666,7 +3711,8 @@ function handlePublicReg(data) {
     present: false, // DO NOT mark as present for public registrations
     round: 'audition',
     stageStatus: 'waiting',
-    scores: {}
+    scores: {},
+    roundPresence: { audition: { present: false, markedAt: null }, qualified: { present: false, markedAt: null }, semifinal: { present: false, markedAt: null }, final: { present: false, markedAt: null } }
   });
   
   syncAll(); // Persist changes
@@ -3871,7 +3917,7 @@ function renderDashboard(){
 function renderDashStats(){
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
   const total = data.length;
-  const present = data.filter(p=>p.present).length;
+  const present = data.filter(p=>getRoundPresent(p, p.round)).length;
   const sState = syncEngine.getData() || {};
   let activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0'));
   activeJudges = activeJudges.filter(j => {
@@ -3917,12 +3963,14 @@ function renderRoundPipeline(){
   const labels = ["Audition","Qualified","Semifinal","Final"];
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
   const counts = rounds.map(r => data.filter(p=>p.round===r).length);
+  const presentCounts = rounds.map(r => data.filter(p=>p.round===r && getRoundPresent(p, r)).length);
   const activeRound = "audition";
   document.getElementById('round-pipeline').innerHTML = rounds.map((r,i)=>`
     <div class="rp-step">
       <div class="rp-box ${r===activeRound?'active':counts[i]>0?'done':''}">
         <div class="rp-num" style="color:${r===activeRound?'var(--amber2)':counts[i]>0?'var(--green2)':'var(--text-muted)'}">${counts[i]}</div>
         <div class="rp-lbl">${labels[i]}</div>
+        <div style="font-size:9px;color:var(--green2);font-weight:700;margin-top:2px">${presentCounts[i]} present</div>
       </div>
     </div>`).join('');
 }
@@ -4044,7 +4092,7 @@ function renderAttendanceBreakdown(){
       const pDateOnly = pd.includes('T') ? pd.split('T')[0] : pd;
       return pDateOnly === d;
     });
-    const present = dp.filter(p=>p.present).length;
+    const present = dp.filter(p=>getRoundPresent(p, p.round)).length;
     const pct = dp.length>0 ? Math.round(present/dp.length*100) : 0;
     
     let label = d;
@@ -4070,13 +4118,13 @@ function renderAttendanceBreakdown(){
   if (evCats.length > 0) {
     categoryBreakdown = '<hr/><div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">';
     evCats.forEach(cat => {
-      const pCount = data.filter(p => p.catId === cat.id && p.present).length;
+      const pCount = data.filter(p => p.catId === cat.id && getRoundPresent(p, p.round)).length;
       categoryBreakdown += `<div class="stat ${cat.color || 'blue'}" style="flex:1;min-width:120px;padding:12px"><div class="stat-num" style="font-size:22px">${pCount}</div><div class="stat-lbl">${cat.name}</div></div>`;
     });
     categoryBreakdown += '</div>';
   } else {
-    const b13 = data.filter(p=>p.age<13&&p.present).length;
-    const a13 = data.filter(p=>p.age>=13&&p.present).length;
+    const b13 = data.filter(p=>p.age<13&&getRoundPresent(p, p.round)).length;
+    const a13 = data.filter(p=>p.age>=13&&getRoundPresent(p, p.round)).length;
     categoryBreakdown = `<hr/><div style="display:flex;gap:10px;margin-top:10px">
       <div class="stat blue" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${b13}</div><div class="stat-lbl">Below 13 present</div></div>
       <div class="stat purple" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${a13}</div><div class="stat-lbl">Above 13 present</div></div>
@@ -4293,7 +4341,7 @@ function renderApplied(search='',catFilter='',venueFilter=''){
       <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
       <td>${ageGrp}</td>
       <td style="font-size:12px">${ven?ven.name:'—'}</td>
-      <td><span class="badge ${p.present?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}')">${p.present?'✓ Yes':'✗ No'}</span></td>
+      <td><span class="badge ${getRoundPresent(p, p.round)?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}')">${getRoundPresent(p, p.round)?'✓ '+( p.round||'audition').charAt(0).toUpperCase()+(p.round||'audition').slice(1):'✗ No'}</span></td>
       <td style="display:flex;gap:5px">
         <button class="btn btn-ghost btn-xs" onclick="openEditReg('${p.id}')">✏️</button>
         <button class="btn btn-danger btn-xs" onclick="deleteReg('${p.id}')">🗑</button>
@@ -4865,6 +4913,7 @@ async function saveNewRegAsync() {
     stageStatus: 'waiting',
     scores: {},
     roundScores: {},
+    roundPresence: { audition: { present: false, markedAt: null }, qualified: { present: false, markedAt: null }, semifinal: { present: false, markedAt: null }, final: { present: false, markedAt: null } },
     regDate: new Date().toISOString()
   };
 
@@ -5371,15 +5420,16 @@ function addToUpcoming(id) {
   const p = participants.find(x => x.id === id);
   if (p) {
     p.stageStatus = 'queue';
-    p.present = true;
-    if (!p.presentMarkedAt) {
-      p.presentMarkedAt = Date.now();
+    const round = p.round || 'audition';
+    if (!getRoundPresent(p, round)) {
+      setRoundPresent(p, round, true);
     }
     if(window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, { 
         stageStatus: 'queue', 
-        present: true,
-        presentMarkedAt: p.presentMarkedAt
+        present: p.present,
+        presentMarkedAt: p.presentMarkedAt,
+        roundPresence: p.roundPresence
       }).catch(e=>console.error(e));
     }
     syncAll();
@@ -5524,7 +5574,7 @@ function renderVenueParticipants(){
   // Queue
   let queue = data.filter(p=>p.stageStatus==='queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
   queue = sortQueue(queue);
-  const presentCount = data.filter(p=>(p.present && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
+  const presentCount = data.filter(p=>(getRoundPresent(p, round) && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
   if(document.getElementById('venue-present-count')) document.getElementById('venue-present-count').textContent = `${presentCount} Present`;
   document.getElementById('venue-queue').innerHTML = queue.length ? queue.map((p,i)=>{
     const c=categories.find(x=>x.id===p.catId);
@@ -5539,9 +5589,8 @@ function renderVenueParticipants(){
     </div>`;
   }).join('') : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">Queue is empty</div>';
 
-  // Present participants only — filtered by selected round, venue, and date
-  // eslint-disable-next-line eqeqeq
-  const presentOnly = data.filter(p => p.present == true);
+  // Present participants only — filtered by selected round's roundPresence
+  const presentOnly = data.filter(p => getRoundPresent(p, round));
 
   const container = document.getElementById('venue-categories-container');
   if (!container) return;
@@ -5564,8 +5613,8 @@ function renderVenueParticipants(){
 
   container.innerHTML = Object.values(catMap).map(group => {
     group.participants.sort((a, b) => {
-      const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
-      const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+      const timeA = getRoundMarkedAt(a, round) || (a.regDate ? Date.parse(a.regDate) : 0);
+      const timeB = getRoundMarkedAt(b, round) || (b.regDate ? Date.parse(b.regDate) : 0);
       return timeA - timeB;
     });
 
@@ -5618,10 +5667,11 @@ function pushToStage(id){
   const p = participants.find(x=>x.id===id);
   if(p){ 
     p.stageStatus='on-stage'; 
-    p.present = true;
+    const round = p.round || 'audition';
+    setRoundPresent(p, round, true);
     currentOnStage=id;
     if(window.syncEngine && window.syncEngine.updateParticipant) {
-      window.syncEngine.updateParticipant(p.id, { stageStatus: 'on-stage', present: true }).catch(e=>console.error(e));
+      window.syncEngine.updateParticipant(p.id, { stageStatus: 'on-stage', present: p.present, presentMarkedAt: p.presentMarkedAt, roundPresence: p.roundPresence }).catch(e=>console.error(e));
     }
   }
   
@@ -5724,6 +5774,8 @@ async function autoPromoteTopN() {
     p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
     p.round = toRound;
     p.stageStatus = 'waiting';
+    // Reset presence for new round — they must be marked present again
+    setRoundPresent(p, toRound, false);
     
     // Auto-sync to Supabase database
     if (window.syncEngine && window.syncEngine.supabase) {
@@ -5739,11 +5791,10 @@ async function autoPromoteTopN() {
 function markPresent(id){
   const p = participants.find(x=>x.id===id);
   if(p){ 
-    p.present=!p.present; 
-    if (p.present) {
-      p.presentMarkedAt = Date.now();
-    } else {
-      p.presentMarkedAt = null;
+    const round = p.round || 'audition';
+    const wasPresent = getRoundPresent(p, round);
+    setRoundPresent(p, round, !wasPresent);
+    if (!getRoundPresent(p, round)) {
       p.queueOrder = null;
       if (p.stageStatus === 'queue' || p.stageStatus === 'on-stage') {
         p.stageStatus = 'waiting';
@@ -5754,13 +5805,14 @@ function markPresent(id){
         present: p.present,
         presentMarkedAt: p.presentMarkedAt,
         queueOrder: p.queueOrder,
-        stageStatus: p.stageStatus
+        stageStatus: p.stageStatus,
+        roundPresence: p.roundPresence
       }).catch(e=>console.error(e));
     }
     syncAll(); 
     renderVenueParticipants(); 
     if(document.getElementById('pp-registration').classList.contains('active')) renderApplied();
-    toast(p.present?'Marked Present':'Marked Absent'); 
+    toast(getRoundPresent(p, round) ? `Marked Present (${round})` : `Marked Absent (${round})`); 
   }
 }
 
@@ -5782,9 +5834,15 @@ function toggleAllAttendance(status) {
   }
   
   dataToMark.forEach(p => {
-    p.present = status;
+    setRoundPresent(p, round, status);
+    if (!status) {
+      p.queueOrder = null;
+      if (p.stageStatus === 'queue' || p.stageStatus === 'on-stage') {
+        p.stageStatus = 'waiting';
+      }
+    }
     if(window.syncEngine && window.syncEngine.updateParticipant) {
-      window.syncEngine.updateParticipant(p.id, { present: status }).catch(e=>console.error(e));
+      window.syncEngine.updateParticipant(p.id, { present: p.present, presentMarkedAt: p.presentMarkedAt, roundPresence: p.roundPresence, queueOrder: p.queueOrder, stageStatus: p.stageStatus }).catch(e=>console.error(e));
     }
   });
   
@@ -5792,7 +5850,7 @@ function toggleAllAttendance(status) {
   renderVenueParticipants();
   if (document.getElementById('pp-registration').classList.contains('active')) renderApplied();
   
-  toast(`✓ Marked all ${dataToMark.length} participants ${status ? 'Present' : 'Absent'}!`);
+  toast(`✓ Marked all ${dataToMark.length} participants ${status ? 'Present' : 'Absent'} for ${round}!`);
 }
 
 function markAllPresent() {
@@ -5828,7 +5886,11 @@ function openAddToQueueModal(){
   if(!waiting.length){ toast('No waiting participants!'); return; }
   // Just add first one to queue for demo
   waiting[0].stageStatus = 'queue';
-  waiting[0].present = true;
+  setRoundPresent(waiting[0], round, true);
+  if(window.syncEngine && window.syncEngine.updateParticipant) {
+    window.syncEngine.updateParticipant(waiting[0].id, { stageStatus: 'queue', present: waiting[0].present, presentMarkedAt: waiting[0].presentMarkedAt, roundPresence: waiting[0].roundPresence }).catch(e=>console.error(e));
+  }
+  syncAll();
   renderVenueParticipants();
   toast(`${waiting[0].name} added to queue!`);
 }
@@ -5866,15 +5928,14 @@ function saveAddToUpcoming() {
   const p = participants.find(x => x.id === id);
   if (p) {
     p.stageStatus = 'queue';
-    p.present = true; // Automatically mark present when adding to upcoming queue
-    if (!p.presentMarkedAt) {
-      p.presentMarkedAt = Date.now();
-    }
+    const round = p.round || 'audition';
+    setRoundPresent(p, round, true); // Automatically mark present for current round when adding to queue
     if (window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, { 
         stageStatus: 'queue', 
-        present: true,
-        presentMarkedAt: p.presentMarkedAt
+        present: p.present,
+        presentMarkedAt: p.presentMarkedAt,
+        roundPresence: p.roundPresence
       }).catch(e=>console.error(e));
     }
     syncAll();

@@ -694,6 +694,15 @@
 
     <div id="host-active-content">
     <div id="sec-dashboard" class="section active">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+        <label style="font-size:12px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Round:</label>
+        <select id="host-round-sel" onchange="hostChangeRound(this.value)" style="padding:8px 14px; border-radius:10px; border:1.5px solid var(--border); font-size:13px; font-weight:700; background:var(--surface); color:var(--text); outline:none; cursor:pointer;">
+          <option value="audition">Audition</option>
+          <option value="qualified">Qualified</option>
+          <option value="semifinal">Semifinal</option>
+          <option value="final">Final</option>
+        </select>
+      </div>
       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px">
         <div class="stat-card">
           <div><div class="stat-label">Total Participants</div><div class="stat-val" id="stat-total">0</div></div>
@@ -987,6 +996,48 @@ setTimeout(updateSidebarUserInfo, 500);
 let hostAssignedEventId = null;
 let hostAssignedVenueId = null;
 let hostAssignedVenueName = null;
+let hostSelectedRound = 'audition';
+
+// ══════════════════════════════════════════
+// ROUND-WISE PRESENCE HELPERS (Host)
+// ══════════════════════════════════════════
+function ensureRoundPresence(p) {
+  if (!p) return;
+  const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+  if (!p.roundPresence || typeof p.roundPresence !== 'object') {
+    p.roundPresence = {};
+    rounds.forEach(r => {
+      if (r === (p.round || 'audition')) {
+        p.roundPresence[r] = { present: !!p.present, markedAt: p.presentMarkedAt || null };
+      } else {
+        p.roundPresence[r] = { present: false, markedAt: null };
+      }
+    });
+  }
+  rounds.forEach(r => {
+    if (!p.roundPresence[r]) p.roundPresence[r] = { present: false, markedAt: null };
+  });
+}
+
+function getRoundPresent(p, round) {
+  ensureRoundPresence(p);
+  const r = round || p.round || 'audition';
+  return p.roundPresence[r] && p.roundPresence[r].present;
+}
+
+function setRoundPresent(p, round, isPresent) {
+  ensureRoundPresence(p);
+  const r = round || p.round || 'audition';
+  p.roundPresence[r] = { present: !!isPresent, markedAt: isPresent ? Date.now() : null };
+  p.present = !!p.roundPresence[p.round || 'audition']?.present;
+  p.presentMarkedAt = p.roundPresence[p.round || 'audition']?.markedAt || null;
+}
+
+window.hostChangeRound = function(val) {
+  hostSelectedRound = val || 'audition';
+  renderDashboard();
+  renderStage();
+};
 
 
 window.showTab = function(tab, el) {
@@ -1161,6 +1212,7 @@ syncEngine.subscribe((state) => {
     return true;
   }).map(p => {
     if (p && p.present === undefined) p.present = false;
+    ensureRoundPresence(p);
     return p;
   });
   
@@ -1240,9 +1292,11 @@ setTimeout(() => {
 function renderDashboard() {
   const data = syncEngine.getData();
   const activeEvId = data.activeEventId;
+  const round = hostSelectedRound || 'audition';
   const filtered = participants.filter(p => 
     (!activeEvId || String(p.eventId) === String(activeEvId)) &&
-    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId))
+    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
+    p.round === round
   );
   
   const total = filtered.length;
@@ -1325,9 +1379,11 @@ function sortQueue(queueArray) {
 function renderStage() {
   const data = syncEngine.getData();
   const activeEvId = data.activeEventId;
+  const round = hostSelectedRound || 'audition';
   const filtered = participants.filter(p => 
     (!activeEvId || String(p.eventId) === String(activeEvId)) &&
-    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId))
+    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
+    p.round === round
   );
   
   const onStage = filtered.find(p => p.stageStatus === 'on-stage');
@@ -1439,7 +1495,8 @@ window.moveQueueItem = (id, direction) => {
   let queueParts = participants.filter(p => 
     p.stageStatus === 'queue' && 
     (!activeEvId || String(p.eventId) === String(activeEvId)) &&
-    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId))
+    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
+    p.round === (hostSelectedRound || 'audition')
   );
   queueParts = sortQueue(queueParts);
   
@@ -1479,6 +1536,8 @@ window.pushToQueueFromList = (id) => {
     const p = parts.find(x => x.id === id);
     if (p) {
       p.stageStatus = 'queue';
+      const round = p.round || 'audition';
+      setRoundPresent(p, round, true);
       toast(`Added ${p.name} to the Queue!`);
     }
     return { ...s, participants: parts };
