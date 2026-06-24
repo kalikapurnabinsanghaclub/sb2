@@ -5452,14 +5452,15 @@ function moveQueueItem(id, direction) {
 }
 
 function resetQueueOrder() {
-  if (!confirm('Are you sure you want to reset the queue order? This will sort participants category-wise and then by the time they were marked present.')) {
+  if (!confirm('Are you sure you want to clear all upcoming performers from the queue? This will return them to the waiting list.')) {
     return;
   }
   const queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
   const promises = queueParts.map(p => {
+    p.stageStatus = 'waiting';
     p.queueOrder = null;
     if (window.syncEngine && window.syncEngine.updateParticipant) {
-      return window.syncEngine.updateParticipant(p.id, { queueOrder: null });
+      return window.syncEngine.updateParticipant(p.id, { stageStatus: 'waiting', queueOrder: null });
     }
     return Promise.resolve();
   });
@@ -5468,8 +5469,8 @@ function resetQueueOrder() {
     syncAll();
     renderVenueParticipants();
     renderStageView();
-    toast('Queue order reset to default!');
-  }).catch(err => console.error('Error resetting queue order:', err));
+    toast('🧹 Upcoming queue cleared and returned to waiting!');
+  }).catch(err => console.error('Error clearing queue:', err));
 }
 
 function renderVenueParticipants(){
