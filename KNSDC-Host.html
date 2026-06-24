@@ -1297,6 +1297,31 @@ function renderDashboard() {
   `;
 }
 
+function sortQueue(queueArray) {
+  return [...queueArray].sort((a, b) => {
+    // 1. Manual order override
+    const orderA = a.queueOrder !== undefined && a.queueOrder !== null ? a.queueOrder : Infinity;
+    const orderB = b.queueOrder !== undefined && b.queueOrder !== null ? b.queueOrder : Infinity;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    
+    // 2. Category order based on index in categories
+    const catIdxA = categories.findIndex(c => c.id === a.catId);
+    const catIdxB = categories.findIndex(c => c.id === b.catId);
+    const idxA = catIdxA !== -1 ? catIdxA : Infinity;
+    const idxB = catIdxB !== -1 ? catIdxB : Infinity;
+    if (idxA !== idxB) {
+      return idxA - idxB;
+    }
+    
+    // 3. presentMarkedAt timestamp order
+    const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+    const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+    return timeA - timeB;
+  });
+}
+
 function renderStage() {
   const data = syncEngine.getData();
   const activeEvId = data.activeEventId;
@@ -1306,7 +1331,7 @@ function renderStage() {
   );
   
   const onStage = filtered.find(p => p.stageStatus === 'on-stage');
-  const upcoming = filtered.filter(p => p.stageStatus === 'queue');
+  const upcoming = sortQueue(filtered.filter(p => p.stageStatus === 'queue'));
 
   const area = document.getElementById('on-stage-area');
   if(area) {

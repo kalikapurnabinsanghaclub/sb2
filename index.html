@@ -3344,6 +3344,32 @@
     fetchEventsDirectly();
     // ─────────────────────────────────────────────────────────────────────
 
+    function sortQueue(queueArray, cats) {
+      const categoriesList = cats || [];
+      return [...queueArray].sort((a, b) => {
+        // 1. Manual order override
+        const orderA = a.queueOrder !== undefined && a.queueOrder !== null ? a.queueOrder : Infinity;
+        const orderB = b.queueOrder !== undefined && b.queueOrder !== null ? b.queueOrder : Infinity;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        
+        // 2. Category order based on index in categories
+        const catIdxA = categoriesList.findIndex(c => c.id == a.catId);
+        const catIdxB = categoriesList.findIndex(c => c.id == b.catId);
+        const idxA = catIdxA !== -1 ? catIdxA : Infinity;
+        const idxB = catIdxB !== -1 ? catIdxB : Infinity;
+        if (idxA !== idxB) {
+          return idxA - idxB;
+        }
+        
+        // 3. presentMarkedAt timestamp order
+        const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+        const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+        return timeA - timeB;
+      });
+    }
+
     function setupSync() {
       syncEngine.subscribe((state) => {
         // Clean up participants state to default undefined present to true
@@ -3721,7 +3747,7 @@
           visibleCount++;
           const eventCats = ev.categories || categories;
           const onStage = participants.find(p => p.eventId == eid && p.stageStatus === 'on-stage');
-          const queue = participants.filter(p => p.eventId == eid && p.stageStatus === 'queue');
+          const queue = sortQueue(participants.filter(p => p.eventId == eid && p.stageStatus === 'queue'), eventCats);
 
           let publicVoteAvg = '—';
           let publicVoteCount = 0;
@@ -5912,7 +5938,6 @@
       `;
     }
 
-    // ════════════ QUEUE ════════════
     function renderQueue() {
       const queueList = document.getElementById("queueList");
       const queueSection = document.getElementById("queueSection");
@@ -5927,7 +5952,7 @@
       const categories = ev ? (ev.categories || []) : [];
 
       // Find participants in queue for the active event
-      const liveQueue = participants.filter(p => p.eventId == activeEventId && p.stageStatus === 'queue');
+      const liveQueue = sortQueue(participants.filter(p => p.eventId == activeEventId && p.stageStatus === 'queue'), categories);
 
       if (liveQueue.length > 0) {
         // Show queue section when there are queued performers
