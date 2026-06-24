@@ -39,6 +39,9 @@ class SwitchStates(BaseModel):
     resultPublic: bool = False
     promoPublic: bool = False
     downloadPublic: bool = False
+    publicVoting: bool = False
+    whatsapp: bool = False
+    prevScoresViewer: bool = False
 
 class Category(BaseModel):
     id: int
@@ -53,14 +56,24 @@ class Participant(BaseModel):
     name: str
     phone: str
     age: int
-    catId: int
-    venueId: int
-    date: str
+    catId: Optional[int] = None
+    venueId: Optional[int] = None
+    date: Optional[str] = ""
     present: bool = False
     round: str = "audition"
     stageStatus: str = "waiting"
-    scores: Dict[str, Dict[str, float]] = {}
+    scores: Dict[str, Dict[str, Any]] = {}
     eventId: Optional[Any] = None
+    gender: Optional[str] = ""
+    email: Optional[str] = ""
+    formAnswers: Optional[Dict[str, Any]] = {}
+    presentMarkedAt: Optional[int] = None
+    queueOrder: Optional[int] = None
+    roundScores: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = {}
+    roundPresence: Optional[Dict[str, Dict[str, Any]]] = {}
+    regDate: Optional[str] = ""
+    paymentStatus: Optional[str] = "pending"
+    paymentReceived: Optional[int] = 0
 
 class Subject(BaseModel):
     id: int
@@ -101,6 +114,9 @@ class JudgeAgreement(BaseModel):
     paymentReceived: int = 0
     photoUrl: str = ""
     agreedTc: bool = False
+    email: Optional[str] = ""
+    password: Optional[str] = ""
+    dateUpto: Optional[str] = ""
 
 class Event(BaseModel):
     id: Any
@@ -110,6 +126,11 @@ class Event(BaseModel):
     time: str = ""
     organizer: str = "Kalikapur Nabin Sangha"
     tagline: str = ""
+    switchStates: Optional[SwitchStates] = None
+    subjects: Optional[List[Subject]] = []
+    categories: Optional[List[Category]] = []
+    venues: Optional[List[Venue]] = []
+    formFields: Optional[List[Dict[str, Any]]] = []
 
 class GlobalState(BaseModel):
     activeEventId: Any = "ev-2026-05-09"
@@ -126,6 +147,11 @@ class GlobalState(BaseModel):
     events: List[Event] = []
     switchStates: SwitchStates = SwitchStates()
     nxtId: Dict[str, int] = {"reg": 1, "cat": 1, "venue": 1, "subj": 1, "agr": 1}
+    publicVotes: Optional[Dict[str, Any]] = {}
+    chatMessages: Optional[List[Dict[str, Any]]] = []
+    hostAssignments: Optional[List[Dict[str, Any]]] = []
+    sosActive: Optional[bool] = False
+    sosHistory: Optional[List[Dict[str, Any]]] = []
 
 # --- STATE MANAGEMENT ---
 
