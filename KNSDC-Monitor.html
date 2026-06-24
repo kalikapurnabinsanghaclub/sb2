@@ -3976,7 +3976,16 @@ function renderRoundPipeline(){
 }
 
 function renderStageView(){
-  const onStage = participants.find(p=>p.id===currentOnStage && String(p.eventId) === String(activeEventId));
+  const roundSel = document.getElementById('venue-round-sel');
+  const round = roundSel ? roundSel.value : 'audition';
+  const venId = currentVenueMonitor;
+
+  let data = participants.filter(p => (String(p.eventId) === String(activeEventId) || !p.eventId));
+  if (venId) data = data.filter(p => p.venueId === venId);
+  data = data.filter(p => p.round === round);
+  data = data.filter(p => getRoundPresent(p, round));
+
+  const onStage = data.find(p => p.stageStatus === 'on-stage');
   if(onStage){
     document.getElementById('on-stage-name').textContent = onStage.name;
     const cat = categories.find(c=>c.id===onStage.catId);
@@ -4062,7 +4071,8 @@ function renderStageView(){
     }
   }
 
-  const upcoming = participants.filter(p => p.stageStatus === 'queue' && String(p.eventId) === String(activeEventId));
+  let upcoming = data.filter(p => p.stageStatus === 'queue');
+  upcoming = sortQueue(upcoming);
   document.getElementById('upcoming-list').innerHTML = upcoming.map((p, i) => {
     const cat = categories.find(c => c.id === p.catId);
     return `<div class="upcoming-card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
@@ -5325,9 +5335,15 @@ function renderVenueMonitor(){
   const vsel = document.getElementById('venue-select');
   if (!vsel) return;
   const filteredVenues = venues.filter(v => String(v.eventId) === String(activeEventId) || !v.eventId);
-  vsel.innerHTML = '<option value="">— Select Venue —</option>' + filteredVenues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+  vsel.innerHTML = '<option value="">— Select Venue —</option>' + filteredVenues.map(v=>`<option value="${v.id}" ${currentVenueMonitor === v.id ? 'selected' : ''}>${v.name}</option>`).join('');
   const vdsel = document.getElementById('venue-date-sel');
   vdsel.innerHTML = '<option value="">All Dates</option>';
+  if (currentVenueMonitor) {
+    const ven = venues.find(v=>v.id===currentVenueMonitor);
+    if(ven && vdsel){
+      vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+    }
+  }
   renderVenueParticipants();
   updateFlashStatusUI();
 }
@@ -5416,12 +5432,16 @@ function selectVenueMonitor(id){
   const ven = venues.find(v=>v.id===currentVenueMonitor);
   if(ven){
     const vdsel = document.getElementById('venue-date-sel');
-    vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+    if (vdsel) vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
   }
   renderVenueParticipants();
+  renderStageView();
 }
 
-function refreshVenueView(){ renderVenueParticipants(); }
+function refreshVenueView(){ 
+  renderVenueParticipants(); 
+  renderStageView();
+}
 
 function addToUpcoming(id) {
   const p = participants.find(x => x.id === id);
@@ -5472,7 +5492,12 @@ function sortQueue(queueArray) {
 }
 
 function moveQueueItem(id, direction) {
-  let queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const roundSel = document.getElementById('venue-round-sel');
+  const round = roundSel ? roundSel.value : 'audition';
+  const venId = currentVenueMonitor;
+  
+  let queueParts = participants.filter(p => p.stageStatus === 'queue' && p.round === round && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  if (venId) queueParts = queueParts.filter(p => p.venueId === venId);
   queueParts = sortQueue(queueParts);
   
   const idx = queueParts.findIndex(p => String(p.id) === String(id));
@@ -5512,7 +5537,12 @@ function resetQueueOrder() {
   if (!confirm('Are you sure you want to clear all upcoming performers from the queue? This will return them to the waiting list.')) {
     return;
   }
-  const queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const roundSel = document.getElementById('venue-round-sel');
+  const round = roundSel ? roundSel.value : 'audition';
+  const venId = currentVenueMonitor;
+  
+  let queueParts = participants.filter(p => p.stageStatus === 'queue' && p.round === round && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  if (venId) queueParts = queueParts.filter(p => p.venueId === venId);
   const promises = queueParts.map(p => {
     p.stageStatus = 'waiting';
     p.queueOrder = null;
@@ -5694,11 +5724,9 @@ function pushNextToStage(){
   const venId = currentVenueMonitor;
   const roundSel = document.getElementById('venue-round-sel');
   const round = roundSel ? roundSel.value : 'audition';
-  let data = participants.filter(p=>p.stageStatus==='queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if(document.getElementById('pp-venue').classList.contains('active')){
-    data = data.filter(p=>p.round===round);
-    if(venId) data = data.filter(p=>p.venueId===venId);
-  }
+  let data = participants.filter(p=>p.stageStatus==='queue' && p.round===round && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  if(venId) data = data.filter(p=>p.venueId===venId);
+  data = sortQueue(data);
   if(data.length){ pushToStage(data[0].id); }
   else { toast('No one in queue for this event!'); }
 }
