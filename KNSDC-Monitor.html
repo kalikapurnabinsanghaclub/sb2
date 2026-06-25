@@ -5925,6 +5925,33 @@ let onstageElapsedOffset = 0;
 let currentOnStageId = null;
 let onstageDuration = 180; // default in seconds
 
+function broadcastTimerState() {
+  const typeSel = document.getElementById('onstage-timer-type-select');
+  const selectedType = typeSel ? typeSel.value : 'countdown';
+  
+  let started = false;
+  if (currentOnStageId) {
+    started = localStorage.getItem(`onstage_started_${currentOnStageId}`) === 'true';
+  }
+
+  if (window.syncEngine && window.syncEngine.setData) {
+    window.syncEngine.setData(state => {
+      return {
+        ...state,
+        onstageTimer: currentOnStageId ? {
+          started: started,
+          startTime: onstageStartTime,
+          pausedTime: onstagePausedTime,
+          elapsedOffset: onstageElapsedOffset,
+          duration: onstageDuration,
+          timerType: selectedType,
+          participantId: currentOnStageId
+        } : null
+      };
+    });
+  }
+}
+
 function startOnStageTimers(p) {
   const timerWrap = document.getElementById('onstage-timers-wrap');
   const timerControls = document.getElementById('onstage-timers-controls');
@@ -6083,6 +6110,9 @@ function startOnStageTimers(p) {
   if (startedState && !onstagePausedTime) {
     onstageTimerInterval = setInterval(updateTimers, 1000);
   }
+
+  // Broadcast state
+  broadcastTimerState();
 }
 
 function stopOnStageTimers() {
@@ -6106,6 +6136,9 @@ function stopOnStageTimers() {
   const timerControls = document.getElementById('onstage-timers-controls');
   if (timerWrap) timerWrap.style.display = 'none';
   if (timerControls) timerControls.style.display = 'none';
+
+  // Broadcast state (clears active timer globally)
+  broadcastTimerState();
 }
 
 function handleTimerMainAction() {
@@ -6261,6 +6294,9 @@ function changeOnStageTimerType() {
     if (stopwatchBox) stopwatchBox.style.display = 'flex';
     if (durationWrap) durationWrap.style.display = 'none';
   }
+  
+  // Broadcast state change immediately
+  broadcastTimerState();
 }
 
 function renderVenueParticipants(){
