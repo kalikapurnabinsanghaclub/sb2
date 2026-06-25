@@ -1929,21 +1929,29 @@
           </div>
 
           <div id="onstage-timers-controls" style="display:none;margin-top:10px;justify-content:space-between;align-items:center;gap:12px;background:rgba(0,0,0,0.02);padding:8px 12px;border-radius:10px;border:1px dashed var(--border2);align-self:stretch;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="font-size:11px;font-weight:700;color:var(--text-muted);">Duration:</span>
-              <select id="onstage-duration-select" onchange="changeOnStageDuration()" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--card-bg);color:var(--text-main);font-weight:600;outline:none;cursor:pointer;">
-                <option value="60">1 Min</option>
-                <option value="120">2 Mins</option>
-                <option value="180" selected>3 Mins</option>
-                <option value="240">4 Mins</option>
-                <option value="300">5 Mins</option>
-                <option value="360">6 Mins</option>
-                <option value="custom">Custom...</option>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:11px;font-weight:700;color:var(--text-muted);">Mode:</span>
+              <select id="onstage-timer-type-select" onchange="changeOnStageTimerType()" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--card-bg);color:var(--text-main);font-weight:600;outline:none;cursor:pointer;">
+                <option value="countdown" selected>Countdown</option>
+                <option value="stopwatch">Stopwatch</option>
               </select>
-              <input type="number" id="onstage-duration-custom" placeholder="Secs" oninput="changeOnStageDurationCustom()" style="display:none;width:60px;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--card-bg);color:var(--text-main);font-weight:600;outline:none;" min="1" />
+              
+              <div id="onstage-duration-wrap" style="display:inline-flex;align-items:center;gap:6px;">
+                <span style="font-size:11px;font-weight:700;color:var(--text-muted);margin-left:4px;">Duration:</span>
+                <select id="onstage-duration-select" onchange="changeOnStageDuration()" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--card-bg);color:var(--text-main);font-weight:600;outline:none;cursor:pointer;">
+                  <option value="60">1 Min</option>
+                  <option value="120">2 Mins</option>
+                  <option value="180" selected>3 Mins</option>
+                  <option value="240">4 Mins</option>
+                  <option value="300">5 Mins</option>
+                  <option value="360">6 Mins</option>
+                  <option value="custom">Custom...</option>
+                </select>
+                <input type="number" id="onstage-duration-custom" placeholder="Secs" oninput="changeOnStageDurationCustom()" style="display:none;width:60px;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--card-bg);color:var(--text-main);font-weight:600;outline:none;" min="1" />
+              </div>
             </div>
             <div style="display:flex;gap:6px;">
-              <button id="onstage-btn-playpause" class="btn btn-xs" onclick="toggleOnStagePlayPause()" style="font-size:10px;padding:3px 8px;border-radius:6px;background:var(--blue2);color:white;font-weight:700;border:none;cursor:pointer;">⏸ Pause</button>
+              <button id="onstage-btn-playpause" class="btn btn-xs" onclick="handleTimerMainAction()" style="font-size:10px;padding:3px 10px;border-radius:6px;background:#22c55e;color:white;font-weight:700;border:none;cursor:pointer;">▶ Start</button>
               <button class="btn btn-xs" onclick="resetOnStageTimers()" style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(100,116,139,0.1);color:var(--text-main);font-weight:700;border:1px solid var(--border2);cursor:pointer;">🔄 Reset</button>
             </div>
           </div>
@@ -5937,6 +5945,13 @@ function startOnStageTimers(p) {
       onstageTimerInterval = null;
     }
     
+    // Load default timer type preference
+    let savedType = localStorage.getItem('onstage_default_timer_type') || 'countdown';
+    const typeSel = document.getElementById('onstage-timer-type-select');
+    if (typeSel) {
+      typeSel.value = savedType;
+    }
+    
     // Load default duration preference
     let savedDefaultDur = localStorage.getItem('onstage_default_duration') || '180';
     if (durationSel) {
@@ -5961,34 +5976,61 @@ function startOnStageTimers(p) {
       localStorage.setItem(`onstage_duration_${p.id}`, onstageDuration);
     }
     
-    // Load start timestamp, paused state, and offset
-    let storedStart = localStorage.getItem(`onstage_start_${p.id}`);
-    let storedPaused = localStorage.getItem(`onstage_paused_at_${p.id}`);
-    let storedOffset = localStorage.getItem(`onstage_elapsed_offset_${p.id}`);
-    
-    onstageElapsedOffset = storedOffset ? parseInt(storedOffset) : 0;
-    
-    if (storedPaused) {
-      onstagePausedTime = parseInt(storedPaused);
-      onstageStartTime = storedStart ? parseInt(storedStart) : Date.now();
-    } else if (storedStart) {
-      onstageStartTime = parseInt(storedStart);
+    // Check if started manually
+    let storedStarted = localStorage.getItem(`onstage_started_${p.id}`);
+    if (!storedStarted || storedStarted === 'false') {
+      localStorage.setItem(`onstage_started_${p.id}`, 'false');
+      onstageStartTime = null;
       onstagePausedTime = null;
+      onstageElapsedOffset = 0;
     } else {
-      onstageStartTime = Date.now();
-      onstagePausedTime = null;
-      localStorage.setItem(`onstage_start_${p.id}`, onstageStartTime);
+      // Load start timestamp, paused state, and offset
+      let storedStart = localStorage.getItem(`onstage_start_${p.id}`);
+      let storedPaused = localStorage.getItem(`onstage_paused_at_${p.id}`);
+      let storedOffset = localStorage.getItem(`onstage_elapsed_offset_${p.id}`);
+      
+      onstageElapsedOffset = storedOffset ? parseInt(storedOffset) : 0;
+      
+      if (storedPaused) {
+        onstagePausedTime = parseInt(storedPaused);
+        onstageStartTime = storedStart ? parseInt(storedStart) : Date.now();
+      } else if (storedStart) {
+        onstageStartTime = parseInt(storedStart);
+        onstagePausedTime = null;
+      } else {
+        onstageStartTime = Date.now();
+        onstagePausedTime = null;
+        localStorage.setItem(`onstage_start_${p.id}`, onstageStartTime);
+      }
     }
   }
   
+  // Apply timer type visibility immediately
+  changeOnStageTimerType();
+  
+  // Setup button text and background color based on state
   const playPauseBtn = document.getElementById('onstage-btn-playpause');
+  let started = localStorage.getItem(`onstage_started_${p.id}`) === 'true';
   if (playPauseBtn) {
-    playPauseBtn.textContent = onstagePausedTime ? '▶ Resume' : '⏸ Pause';
+    if (!started) {
+      playPauseBtn.textContent = '▶ Start';
+      playPauseBtn.style.backgroundColor = '#22c55e'; // green start button
+    } else {
+      if (onstagePausedTime) {
+        playPauseBtn.textContent = '▶ Resume';
+        playPauseBtn.style.backgroundColor = '#22c55e'; // green resume button
+      } else {
+        playPauseBtn.textContent = '⏸ Pause';
+        playPauseBtn.style.backgroundColor = '#3b82f6'; // blue pause button
+      }
+    }
   }
   
   const updateTimers = () => {
     let elapsedSecs = onstageElapsedOffset;
-    if (!onstagePausedTime) {
+    let startedState = localStorage.getItem(`onstage_started_${currentOnStageId}`) === 'true';
+    
+    if (startedState && !onstagePausedTime && onstageStartTime) {
       const elapsedMs = Date.now() - onstageStartTime;
       elapsedSecs = Math.floor(elapsedMs / 1000) + onstageElapsedOffset;
     }
@@ -6037,7 +6079,8 @@ function startOnStageTimers(p) {
   }
   
   updateTimers();
-  if (!onstagePausedTime) {
+  let startedState = localStorage.getItem(`onstage_started_${p.id}`) === 'true';
+  if (startedState && !onstagePausedTime) {
     onstageTimerInterval = setInterval(updateTimers, 1000);
   }
 }
@@ -6052,6 +6095,7 @@ function stopOnStageTimers() {
     localStorage.removeItem(`onstage_paused_at_${currentOnStageId}`);
     localStorage.removeItem(`onstage_elapsed_offset_${currentOnStageId}`);
     localStorage.removeItem(`onstage_duration_${currentOnStageId}`);
+    localStorage.removeItem(`onstage_started_${currentOnStageId}`);
   }
   currentOnStageId = null;
   onstageStartTime = null;
@@ -6062,6 +6106,34 @@ function stopOnStageTimers() {
   const timerControls = document.getElementById('onstage-timers-controls');
   if (timerWrap) timerWrap.style.display = 'none';
   if (timerControls) timerControls.style.display = 'none';
+}
+
+function handleTimerMainAction() {
+  if (!currentOnStageId) return;
+  
+  let started = localStorage.getItem(`onstage_started_${currentOnStageId}`) === 'true';
+  if (!started) {
+    // Start the timer for the first time
+    localStorage.setItem(`onstage_started_${currentOnStageId}`, 'true');
+    onstageStartTime = Date.now();
+    localStorage.setItem(`onstage_start_${currentOnStageId}`, onstageStartTime);
+    onstagePausedTime = null;
+    onstageElapsedOffset = 0;
+    
+    const playPauseBtn = document.getElementById('onstage-btn-playpause');
+    if (playPauseBtn) {
+      playPauseBtn.textContent = '⏸ Pause';
+      playPauseBtn.style.backgroundColor = '#3b82f6'; // blue pause button
+    }
+    
+    const p = participants.find(x => x.id === currentOnStageId);
+    if (p) {
+      startOnStageTimers(p);
+    }
+  } else {
+    // Toggle pause/play
+    toggleOnStagePlayPause();
+  }
 }
 
 function toggleOnStagePlayPause() {
@@ -6075,7 +6147,10 @@ function toggleOnStagePlayPause() {
     localStorage.setItem(`onstage_start_${currentOnStageId}`, onstageStartTime);
     localStorage.removeItem(`onstage_paused_at_${currentOnStageId}`);
     onstagePausedTime = null;
-    if (playPauseBtn) playPauseBtn.textContent = '⏸ Pause';
+    if (playPauseBtn) {
+      playPauseBtn.textContent = '⏸ Pause';
+      playPauseBtn.style.backgroundColor = '#3b82f6';
+    }
   } else {
     // Pause
     onstagePausedTime = Date.now();
@@ -6083,7 +6158,10 @@ function toggleOnStagePlayPause() {
     onstageElapsedOffset += Math.floor(elapsedMs / 1000);
     localStorage.setItem(`onstage_paused_at_${currentOnStageId}`, onstagePausedTime);
     localStorage.setItem(`onstage_elapsed_offset_${currentOnStageId}`, onstageElapsedOffset);
-    if (playPauseBtn) playPauseBtn.textContent = '▶ Resume';
+    if (playPauseBtn) {
+      playPauseBtn.textContent = '▶ Resume';
+      playPauseBtn.style.backgroundColor = '#22c55e';
+    }
   }
   
   const p = participants.find(x => x.id === currentOnStageId);
@@ -6095,16 +6173,20 @@ function toggleOnStagePlayPause() {
 function resetOnStageTimers() {
   if (!currentOnStageId) return;
   
-  onstageStartTime = Date.now();
+  onstageStartTime = null;
   onstagePausedTime = null;
   onstageElapsedOffset = 0;
   
-  localStorage.setItem(`onstage_start_${currentOnStageId}`, onstageStartTime);
+  localStorage.setItem(`onstage_started_${currentOnStageId}`, 'false');
+  localStorage.removeItem(`onstage_start_${currentOnStageId}`);
   localStorage.removeItem(`onstage_paused_at_${currentOnStageId}`);
   localStorage.setItem(`onstage_elapsed_offset_${currentOnStageId}`, 0);
   
   const playPauseBtn = document.getElementById('onstage-btn-playpause');
-  if (playPauseBtn) playPauseBtn.textContent = '⏸ Pause';
+  if (playPauseBtn) {
+    playPauseBtn.textContent = '▶ Start';
+    playPauseBtn.style.backgroundColor = '#22c55e';
+  }
   
   const p = participants.find(x => x.id === currentOnStageId);
   if (p) {
@@ -6156,6 +6238,28 @@ function changeOnStageDurationCustom() {
   const p = participants.find(x => x.id === currentOnStageId);
   if (p) {
     startOnStageTimers(p);
+  }
+}
+
+function changeOnStageTimerType() {
+  const typeSel = document.getElementById('onstage-timer-type-select');
+  if (!typeSel) return;
+  
+  const selectedType = typeSel.value; // 'countdown' or 'stopwatch'
+  localStorage.setItem('onstage_default_timer_type', selectedType);
+  
+  const stopwatchBox = document.getElementById('onstage-stopwatch-box');
+  const countdownBox = document.getElementById('onstage-countdown-box');
+  const durationWrap = document.getElementById('onstage-duration-wrap');
+  
+  if (selectedType === 'countdown') {
+    if (countdownBox) countdownBox.style.display = 'flex';
+    if (stopwatchBox) stopwatchBox.style.display = 'none';
+    if (durationWrap) durationWrap.style.display = 'inline-flex';
+  } else {
+    if (countdownBox) countdownBox.style.display = 'none';
+    if (stopwatchBox) stopwatchBox.style.display = 'flex';
+    if (durationWrap) durationWrap.style.display = 'none';
   }
 }
 
