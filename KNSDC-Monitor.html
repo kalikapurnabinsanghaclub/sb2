@@ -1540,6 +1540,9 @@
 
 <!-- MAIN -->
 <div class="main">
+  <div style="background:#ef4444; color:white; padding:12px; font-size:18px; text-align:center; font-weight:bold; z-index:99999;" id="debug-banner">
+    🔴 ACTIVE WORKSPACE FILE (c:/Users/sourav pc/Desktop/kalikapur/KNSDC-Monitor.html) 🔴
+  </div>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:10px">
       <img src="logo.jpg" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--blue2)" alt="Logo"/>
@@ -1917,6 +1920,17 @@
             <!-- Judge Scoring Status will render here -->
           </div>
 
+          <div style="display:flex;gap:12px;margin-top:14px;display:none;" id="onstage-timers-wrap">
+            <div id="onstage-stopwatch-box" style="flex:1;background:rgba(239, 68, 68, 0.08);color:#ef4444;border:2px solid #ef4444;padding:10px;border-radius:12px;text-align:center;font-weight:700;display:flex;flex-direction:column;gap:2px;">
+              <span id="onstage-stopwatch-label" style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:rgba(239, 68, 68, 0.8)">Stopwatch</span>
+              <span id="onstage-stopwatch" style="font-family:var(--fm);font-size:20px;font-weight:800;">00:00</span>
+            </div>
+            <div id="onstage-countdown-box" style="flex:1;background:rgba(34, 197, 94, 0.08);color:#22c55e;border:2px solid #22c55e;padding:10px;border-radius:12px;text-align:center;font-weight:700;display:flex;flex-direction:column;gap:2px;transition:all 0.3s ease;">
+              <span id="onstage-countdown-label" style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:rgba(34, 197, 94, 0.8)">Countdown</span>
+              <span id="onstage-countdown" style="font-family:var(--fm);font-size:20px;font-weight:800;">03:00</span>
+            </div>
+          </div>
+
           <div style="display:flex;gap:8px;margin-top:12px">
             <button class="btn btn-success btn-sm" onclick="markStageDone()">✓ Complete</button>
           </div>
@@ -2014,6 +2028,8 @@
                 <option value="">All Categories</option>
              </select>
              <button class="btn btn-ghost btn-sm" onclick="renderLeaderboard()">↺ Refresh</button>
+             <button class="btn btn-ghost btn-sm" onclick="downloadRankingsPDF()" style="color:var(--text);border:1px solid var(--border);display:flex;align-items:center;gap:4px">📄 PDF</button>
+             <button class="btn btn-ghost btn-sm" onclick="downloadRankingsJPG()" style="color:var(--text);border:1px solid var(--border);display:flex;align-items:center;gap:4px">🖼️ JPG</button>
           </div>
        </div>
        <div class="tabs">
@@ -3567,6 +3583,323 @@ function renderLeaderboard() {
       html = `<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">No participants found for ${currentLeaderRound} in this venue.</div>`;
     }
     container.innerHTML = html;
+}
+
+// Helper to convert logo to base64 for PDF
+function getLogoBase64() {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = 'logo.jpg';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg'));
+      } catch (e) {
+        console.warn("getLogoBase64: Error converting image to base64", e);
+        resolve(null);
+      }
+    };
+    img.onerror = () => {
+      resolve(null);
+    };
+  });
+}
+
+// Live Rankings PDF Download with page-breaks per category
+async function downloadRankingsPDF() {
+  if (!window.jspdf || !window.jspdf.jsPDF) { 
+    toast('PDF library not loaded yet.'); 
+    return; 
+  }
+
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const eventName = activeEv.name || 'Live Event Rankings';
+  const organizer = activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha';
+  const evDate = activeEv.date || new Date().toISOString().split('T')[0];
+  const vObj = venues.find(v => String(v.id) === String(currentVenueMonitor));
+  const venueName = vObj ? vObj.name : (activeEv.venue || 'All Venues');
+
+  const catSelect = document.getElementById('leaderboard-cat-filter');
+  const activeCatId = catSelect ? catSelect.value : "";
+  const activeCats = activeCatId 
+    ? categories.filter(c => String(c.id) === String(activeCatId))
+    : categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+
+  let baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const scoredList = baseParticipants.map(p => {
+      if (!p.roundScores) p.roundScores = {};
+      if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
+      p.scores = p.roundScores[p.round];
+
+      let total = 0;
+      Object.values(p.scores || {}).forEach(jScores => {
+          Object.values(jScores).forEach(val => total += (Number(val) || 0));
+      });
+      return { ...p, totalScore: total };
+  });
+
+  const validCategories = [];
+  activeCats.forEach(cat => {
+    const catScored = scoredList.filter(p => String(p.catId) === String(cat.id))
+                                .sort((a, b) => b.totalScore - a.totalScore);
+    if (catScored.length > 0) {
+      validCategories.push({ cat, catScored });
+    }
+  });
+
+  if (validCategories.length === 0) {
+    toast('No rankings found to download.');
+    return;
+  }
+
+  toast('Generating rankings PDF...');
+  const logoBase64 = await getLogoBase64();
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+
+  const drawHeader = (doc, catName) => {
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, 210, 42, 'F');
+    
+    if (logoBase64) {
+      try {
+        doc.addImage(logoBase64, 'JPEG', 14, 10, 22, 22);
+      } catch (err) {
+        doc.setFillColor(37, 99, 235);
+        doc.circle(25, 21, 10, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(11);
+        doc.text('KNS', 20.5, 22.5);
+      }
+    } else {
+      doc.setFillColor(37, 99, 235);
+      doc.circle(25, 21, 10, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.text('KNS', 20.5, 22.5);
+    }
+    
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(eventName.toUpperCase(), 42, 16);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(9.5);
+    doc.text(`Organized by: ${organizer}`, 42, 22);
+    doc.text(`Venue: ${venueName}  |  Date: ${evDate}`, 42, 27);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(217, 119, 6);
+    doc.setFontSize(11);
+    doc.text(`ROUND: ${currentLeaderRound.toUpperCase()}`, 196, 16, { align: 'right' });
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(37, 99, 235);
+    doc.text(`CAT: ${catName.toUpperCase()}`, 196, 22, { align: 'right' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(8.5);
+    doc.text(`Live Event Rankings`, 196, 27, { align: 'right' });
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(14, 38, 196, 38);
+  };
+
+  validCategories.forEach((vc, idx) => {
+    if (idx > 0) {
+      doc.addPage();
+    }
+
+    drawHeader(doc, vc.cat.name);
+
+    const head = [['Rank', 'Participant ID', 'Participant Name', 'Category', 'Score']];
+    const body = vc.catScored.map((p, rankIdx) => {
+      return [
+        rankIdx + 1,
+        p.id,
+        p.name,
+        vc.cat.name,
+        `${p.totalScore} pts`
+      ];
+    });
+
+    doc.autoTable({
+      head: head,
+      body: body,
+      startY: 46,
+      theme: 'grid',
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+      styles: { fontSize: 9.5, cellPadding: 4, font: 'helvetica' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: {
+        0: { cellWidth: 15, halign: 'center' },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 75, fontStyle: 'bold' },
+        3: { cellWidth: 45 },
+        4: { cellWidth: 26, halign: 'right', fontStyle: 'bold' }
+      },
+      didDrawPage: function (data) {
+        const str = 'Page ' + doc.internal.getNumberOfPages();
+        doc.setFontSize(8.5);
+        doc.setTextColor(150);
+        doc.text(str, data.settings.margin.left, doc.internal.pageSize.height - 10);
+      }
+    });
+  });
+
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8.5);
+    doc.setTextColor(150);
+    doc.text(' of ' + pageCount, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10, { align: 'right' });
+  }
+
+  doc.save(`Rankings_${currentLeaderRound}_${new Date().getTime()}.pdf`);
+  toast('✅ Downloaded PDF!');
+}
+
+// Live Rankings JPG Download (individual file download per category)
+async function downloadRankingsJPG() {
+  if (typeof html2canvas === 'undefined') { 
+    toast('JPG library not loaded yet.'); 
+    return; 
+  }
+
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const eventName = activeEv.name || 'Live Event Rankings';
+  const organizer = activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha';
+  const evDate = activeEv.date || new Date().toISOString().split('T')[0];
+  const vObj = venues.find(v => String(v.id) === String(currentVenueMonitor));
+  const venueName = vObj ? vObj.name : (activeEv.venue || 'All Venues');
+
+  const catSelect = document.getElementById('leaderboard-cat-filter');
+  const activeCatId = catSelect ? catSelect.value : "";
+  const activeCats = activeCatId 
+    ? categories.filter(c => String(c.id) === String(activeCatId))
+    : categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+
+  let baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const scoredList = baseParticipants.map(p => {
+      if (!p.roundScores) p.roundScores = {};
+      if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
+      p.scores = p.roundScores[p.round];
+
+      let total = 0;
+      Object.values(p.scores || {}).forEach(jScores => {
+          Object.values(jScores).forEach(val => total += (Number(val) || 0));
+      });
+      return { ...p, totalScore: total };
+  });
+
+  const validCategories = [];
+  activeCats.forEach(cat => {
+    const catScored = scoredList.filter(p => String(p.catId) === String(cat.id))
+                                .sort((a, b) => b.totalScore - a.totalScore);
+    if (catScored.length > 0) {
+      validCategories.push({ cat, catScored });
+    }
+  });
+
+  if (validCategories.length === 0) {
+    toast('No rankings found to download.');
+    return;
+  }
+
+  toast('Generating rankings JPG...');
+
+  for (let i = 0; i < validCategories.length; i++) {
+    const { cat, catScored } = validCategories[i];
+
+    const div = document.createElement('div');
+    div.style.cssText = 'position:absolute; left:-9999px; top:-9999px; width:800px; background:#ffffff; padding:40px; font-family:sans-serif; color:#0f172a; border-radius:0;';
+
+    const rowsHtml = catScored.map((p, idx) => {
+      const isTop3 = idx < 3;
+      const rankColor = isTop3 ? ['#d97706', '#2563eb', '#0891b2'][idx] : '#64748b';
+      const rankBg = isTop3 ? ['#fef3c7', '#dbeafe', '#ecfeff'][idx] : '#f1f5f9';
+      
+      return `
+        <tr style="background:${idx % 2 === 0 ? '#fff' : '#f8fafc'}">
+          <td style="padding:12px 10px; border-bottom:1px solid #e2e8f0; text-align:center;">
+            <div style="display:inline-block; width:28px; height:28px; border-radius:50%; background:${rankBg}; color:${rankColor}; line-height:28px; font-weight:800; font-size:13px;">
+              ${idx + 1}
+            </div>
+          </td>
+          <td style="padding:12px 10px; border-bottom:1px solid #e2e8f0; font-weight:600; color:#475569;">${p.id}</td>
+          <td style="padding:12px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a; font-size:15px;">${p.name}</td>
+          <td style="padding:12px 10px; border-bottom:1px solid #e2e8f0; color:#64748b;">${cat.name}</td>
+          <td style="padding:12px 10px; border-bottom:1px solid #e2e8f0; text-align:right; font-weight:800; font-size:16px; color:${isTop3 ? '#d97706' : '#2563eb'}">${p.totalScore} pts</td>
+        </tr>
+      `;
+    }).join('');
+
+    div.innerHTML = `
+      <div style="background:#f8fafc; padding:24px; border-radius:12px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; border:1px solid #e2e8f0;">
+        <div style="display:flex; gap:16px; align-items:center;">
+          <img src="logo.jpg" style="width:54px; height:54px; border-radius:50%; object-fit:cover; border:2px solid #2563eb;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div style="width:54px; height:54px; border-radius:50%; background:#2563eb; color:#fff; display:none; align-items:center; justify-content:center; font-weight:bold; font-size:18px;">KNS</div>
+          <div>
+            <div style="font-size:22px; font-weight:800; color:#0f172a; text-transform:uppercase">${eventName}</div>
+            <div style="font-size:13px; color:#64748b; margin-top:4px; font-weight:500;">Organized by: ${organizer}</div>
+            <div style="font-size:12px; color:#64748b; margin-top:2px;">Venue: ${venueName}  |  Date: ${evDate}</div>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:16px; font-weight:800; color:#d97706; text-transform:uppercase; letter-spacing:0.5px">Live Event Rankings</div>
+          <div style="font-size:13px; color:#2563eb; font-weight:700; margin-top:4px; text-transform:uppercase;">ROUND: ${currentLeaderRound}</div>
+          <div style="font-size:12px; color:#64748b; margin-top:2px; font-weight:600; text-transform:uppercase;">CATEGORY: ${cat.name}</div>
+        </div>
+      </div>
+      <table style="width:100%; border-collapse:collapse; text-align:left; font-size:14px;">
+        <thead>
+          <tr style="background:#2563eb; color:#fff;">
+            <th style="padding:12px 10px; font-weight:700; border-top-left-radius:8px; width:70px; text-align:center;">Rank</th>
+            <th style="padding:12px 10px; font-weight:700; width:130px;">Participant ID</th>
+            <th style="padding:12px 10px; font-weight:700;">Participant Name</th>
+            <th style="padding:12px 10px; font-weight:700; width:180px;">Category</th>
+            <th style="padding:12px 10px; font-weight:700; border-top-right-radius:8px; text-align:right; width:120px;">Total Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+      <div style="margin-top:24px; text-align:center; font-size:11px; color:#94a3b8; font-weight:500; letter-spacing:0.5px;">
+        Generated securely from KNSDC Monitor Portal
+      </div>
+    `;
+
+    document.body.appendChild(div);
+    
+    await new Promise(r => setTimeout(r, 100));
+
+    await new Promise((resolve) => {
+      html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `Rankings_${currentLeaderRound}_${cat.name.replace(/\s+/g, '_')}_${new Date().getTime()}.jpg`;
+        link.href = canvas.toDataURL('image/jpeg', 0.95);
+        link.click();
+        document.body.removeChild(div);
+        resolve();
+      });
+    });
+  }
+
+  toast('✅ Downloaded JPG!');
 }
 
 function refreshUI() {
@@ -5560,6 +5893,101 @@ function resetQueueOrder() {
   }).catch(err => console.error('Error clearing queue:', err));
 }
 
+let onstageTimerInterval = null;
+let onstageStartTime = null;
+let currentOnStageId = null;
+const COUNTDOWN_DEFAULT_SECS = 180; // 3 minutes
+
+function startOnStageTimers(p) {
+  if (currentOnStageId === p.id && onstageTimerInterval) {
+    return;
+  }
+  currentOnStageId = p.id;
+  
+  const timerWrap = document.getElementById('onstage-timers-wrap');
+  if (!timerWrap) return;
+  timerWrap.style.display = 'flex';
+  
+  const stopwatchEl = document.getElementById('onstage-stopwatch');
+  const countdownEl = document.getElementById('onstage-countdown');
+  
+  if (onstageTimerInterval) {
+    clearInterval(onstageTimerInterval);
+  }
+  
+  let storedStart = localStorage.getItem(`onstage_start_${p.id}`);
+  if (storedStart) {
+    onstageStartTime = parseInt(storedStart);
+  } else {
+    onstageStartTime = Date.now();
+    localStorage.setItem(`onstage_start_${p.id}`, onstageStartTime);
+  }
+  
+  const updateTimers = () => {
+    const elapsedMs = Date.now() - onstageStartTime;
+    const elapsedSecs = Math.floor(elapsedMs / 1000);
+    
+    // Stopwatch (Count up)
+    const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
+    const swSec = String(elapsedSecs % 60).padStart(2, '0');
+    if (stopwatchEl) stopwatchEl.textContent = `${swMin}:${swSec}`;
+    
+    // Countdown (Count down from 3 mins)
+    const remainingSecs = Math.max(0, COUNTDOWN_DEFAULT_SECS - elapsedSecs);
+    const cdMin = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
+    const cdSec = String(remainingSecs % 60).padStart(2, '0');
+    
+    const cdBox = document.getElementById('onstage-countdown-box');
+    const cdLabel = document.getElementById('onstage-countdown-label');
+    
+    if (countdownEl) {
+      countdownEl.textContent = `${cdMin}:${cdSec}`;
+      if (remainingSecs === 0) {
+        if (cdBox) {
+          cdBox.style.borderColor = '#ef4444';
+          cdBox.style.backgroundColor = 'rgba(239, 68, 68, 0.12)';
+          cdBox.style.color = '#ef4444';
+          cdBox.style.animation = 'sosPulse 1.5s infinite';
+        }
+        if (cdLabel) {
+          cdLabel.style.color = '#ef4444';
+        }
+        countdownEl.style.color = '#ef4444';
+        countdownEl.style.fontWeight = '900';
+      } else {
+        if (cdBox) {
+          cdBox.style.borderColor = '#22c55e';
+          cdBox.style.backgroundColor = 'rgba(34, 197, 94, 0.08)';
+          cdBox.style.color = '#22c55e';
+          cdBox.style.animation = 'none';
+        }
+        if (cdLabel) {
+          cdLabel.style.color = 'rgba(34, 197, 94, 0.8)';
+        }
+        countdownEl.style.color = '#22c55e';
+        countdownEl.style.fontWeight = '800';
+      }
+    }
+  };
+  
+  updateTimers();
+  onstageTimerInterval = setInterval(updateTimers, 1000);
+}
+
+function stopOnStageTimers() {
+  if (onstageTimerInterval) {
+    clearInterval(onstageTimerInterval);
+    onstageTimerInterval = null;
+  }
+  if (currentOnStageId) {
+    localStorage.removeItem(`onstage_start_${currentOnStageId}`);
+  }
+  currentOnStageId = null;
+  onstageStartTime = null;
+  const timerWrap = document.getElementById('onstage-timers-wrap');
+  if (timerWrap) timerWrap.style.display = 'none';
+}
+
 function renderVenueParticipants(){
   const venId = currentVenueMonitor;
   const round = document.getElementById('venue-round-sel').value;
@@ -5576,6 +6004,12 @@ function renderVenueParticipants(){
   if(document.getElementById('venue-onstage-name')) document.getElementById('venue-onstage-name').textContent = onStage?onStage.name:'— Empty Stage —';
   const cat = onStage?categories.find(c=>c.id===onStage.catId):null;
   if(document.getElementById('venue-onstage-sub')) document.getElementById('venue-onstage-sub').textContent = onStage?`${onStage.id} · ${cat?cat.name:'—'} · Age ${onStage.age}`:'';
+
+  if (onStage) {
+    startOnStageTimers(onStage);
+  } else {
+    stopOnStageTimers();
+  }
 
   // Judge Scoring Status UI
   const scoringContainer = document.getElementById('venue-judge-scoring-status');
