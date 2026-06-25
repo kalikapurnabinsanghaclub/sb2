@@ -1069,14 +1069,7 @@
 
 <!-- MAIN -->
 <div class="main">
-  <!-- FLOATING ON-STAGE TIMER FOR JUDGES -->
-  <div id="judge-floating-timer" class="card" style="display:none;position:fixed;top:76px;right:16px;z-index:9999;border:2px solid #22c55e;padding:10px 16px;border-radius:12px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);display:flex;align-items:center;gap:12px;font-family:system-ui, -apple-system, sans-serif;transition:all 0.3s ease;background:var(--card-bg);margin-bottom:0;">
-    <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;" id="judge-timer-dot"></div>
-    <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">
-      <span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:700;color:var(--text-muted);" id="judge-timer-label">Countdown</span>
-      <span style="font-size:18px;font-weight:800;font-family:var(--fm);color:#22c55e;line-height:1;" id="judge-timer-val">03:00</span>
-    </div>
-  </div>
+
 
   <div class="topbar">
     <div class="topbar-title" id="page-title">Dashboard</div>
@@ -1301,10 +1294,16 @@
 
       <!-- ON STAGE CARD -->
       <div class="on-stage-card" id="on-stage-wrap">
-        <!-- Header with pulsing active dot -->
-        <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#2563eb;font-family:var(--fh);font-weight:900;letter-spacing:2px;margin-bottom:12px;text-transform:uppercase">
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563eb;box-shadow:0 0 8px #2563eb;animation:pulseActiveStage 1.5s infinite"></span>
-          Currently On Stage
+        <!-- Header with pulsing active dot and stopwatch -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#2563eb;font-family:var(--fh);font-weight:900;letter-spacing:2px;text-transform:uppercase">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563eb;box-shadow:0 0 8px #2563eb;animation:pulseActiveStage 1.5s infinite"></span>
+            Currently On Stage
+          </div>
+          <div id="judge-stage-stopwatch" style="display:none;align-items:center;gap:6px;border:2px solid #ef4444;background:rgba(239,68,68,0.05);padding:4px 8px;border-radius:8px;color:#ef4444;font-family:var(--fm);font-size:14px;font-weight:800;box-shadow:0 2px 8px rgba(239,68,68,0.1)">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px #ef4444;" id="judge-stopwatch-dot"></span>
+            <span id="judge-stopwatch-val">00:00</span>
+          </div>
         </div>
         
         <!-- Performer Identity Info -->
@@ -2795,6 +2794,8 @@ function renderOnStage() {
     document.getElementById('stage-addr').textContent = '—';
     document.getElementById('stage-round-badge').textContent = '—';
     document.getElementById('prev-scores-wrap').style.display = 'none';
+    const stopwatchWrap = document.getElementById('judge-stage-stopwatch');
+    if (stopwatchWrap) stopwatchWrap.style.display = 'none';
     return;
   }
   const cat = CATEGORIES.find(c=>c.id===p.catId);
@@ -3470,11 +3471,11 @@ let judgeTimerInterval = null;
 let judgeTimerState = null;
 
 function handleJudgeTimerSync(timer) {
-  const floatTimerWrap = document.getElementById('judge-floating-timer');
-  if (!floatTimerWrap) return;
+  const stopwatchWrap = document.getElementById('judge-stage-stopwatch');
+  if (!stopwatchWrap) return;
 
-  if (!timer || !timer.participantId) {
-    floatTimerWrap.style.display = 'none';
+  if (!timer || !timer.participantId || !currentOnStage || String(timer.participantId) !== String(currentOnStage)) {
+    stopwatchWrap.style.display = 'none';
     if (judgeTimerInterval) {
       clearInterval(judgeTimerInterval);
       judgeTimerInterval = null;
@@ -3503,37 +3504,13 @@ function handleJudgeTimerSync(timer) {
     judgeTimerInterval = null;
   }
 
-  floatTimerWrap.style.display = 'flex';
+  stopwatchWrap.style.display = 'flex';
 
-  const timerLabel = document.getElementById('judge-timer-label');
-  const timerVal = document.getElementById('judge-timer-val');
-  const timerDot = document.getElementById('judge-timer-dot');
+  const stopwatchVal = document.getElementById('judge-stopwatch-val');
+  const stopwatchDot = document.getElementById('judge-stopwatch-dot');
 
-  // Set style based on type
-  if (timer.timerType === 'countdown') {
-    if (timerLabel) timerLabel.textContent = 'Countdown';
-    floatTimerWrap.style.borderColor = '#22c55e';
-    if (timerVal) {
-      timerVal.style.color = '#22c55e';
-      timerVal.style.fontWeight = '800';
-    }
-    if (timerLabel) timerLabel.style.color = 'var(--text-muted)';
-    if (timerDot) {
-      timerDot.style.backgroundColor = '#22c55e';
-      timerDot.style.animation = timer.started && !timer.pausedTime ? 'blink 1.5s infinite' : 'none';
-    }
-  } else {
-    if (timerLabel) timerLabel.textContent = 'Stopwatch';
-    floatTimerWrap.style.borderColor = '#ef4444';
-    if (timerVal) {
-      timerVal.style.color = '#ef4444';
-      timerVal.style.fontWeight = '800';
-    }
-    if (timerLabel) timerLabel.style.color = 'var(--text-muted)';
-    if (timerDot) {
-      timerDot.style.backgroundColor = '#ef4444';
-      timerDot.style.animation = timer.started && !timer.pausedTime ? 'blink 1.5s infinite' : 'none';
-    }
+  if (stopwatchDot) {
+    stopwatchDot.style.animation = timer.started && !timer.pausedTime ? 'blink 1.5s infinite' : 'none';
   }
 
   const updateJudgeTimer = () => {
@@ -3543,31 +3520,9 @@ function handleJudgeTimerSync(timer) {
       elapsedSecs = Math.floor(elapsedMs / 1000) + (timer.elapsedOffset || 0);
     }
 
-    if (timer.timerType === 'countdown') {
-      const remainingSecs = Math.max(0, (timer.duration || 180) - elapsedSecs);
-      const cdMin = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
-      const cdSec = String(remainingSecs % 60).padStart(2, '0');
-      if (timerVal) timerVal.textContent = `${cdMin}:${cdSec}`;
-
-      if (remainingSecs === 0) {
-        floatTimerWrap.style.borderColor = '#ef4444';
-        floatTimerWrap.style.animation = 'sosPulse 1.5s infinite';
-        if (timerVal) {
-          timerVal.style.color = '#ef4444';
-          timerVal.style.fontWeight = '900';
-        }
-        if (timerLabel) timerLabel.style.color = '#ef4444';
-        if (timerDot) timerDot.style.backgroundColor = '#ef4444';
-      } else {
-        floatTimerWrap.style.animation = 'none';
-      }
-    } else {
-      // Stopwatch
-      const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
-      const swSec = String(elapsedSecs % 60).padStart(2, '0');
-      if (timerVal) timerVal.textContent = `${swMin}:${swSec}`;
-      floatTimerWrap.style.animation = 'none';
-    }
+    const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
+    const swSec = String(elapsedSecs % 60).padStart(2, '0');
+    if (stopwatchVal) stopwatchVal.textContent = `${swMin}:${swSec}`;
   };
 
   updateJudgeTimer();
