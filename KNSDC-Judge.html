@@ -1158,10 +1158,10 @@
       </div>
       <div>
         <h3 style="font-family:var(--fh); font-size:16px; font-weight:800; color:var(--text); margin:0; letter-spacing: 0.5px;">Event Score Report</h3>
-        <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0; font-weight: 500;">Download your consolidated judging records</p>
+        <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0; font-weight: 500;" id="report-description">Download your consolidated judging records</p>
       </div>
     </div>
-    <div style="display:flex; gap: 12px; flex-wrap: wrap; flex: 1; justify-content: flex-end;">
+    <div style="display:flex; gap: 12px; flex-wrap: wrap; flex: 1; justify-content: flex-end;" id="report-buttons-container">
       <button class="btn btn-ghost" style="flex: 1; min-width: 120px; max-width: 200px; justify-content:center; gap:8px; font-weight:700; font-size:13px; padding:12px 16px; border: 1px solid rgba(37,99,235,0.2); color: var(--blue2); background: var(--surface2); border-radius: 12px; box-shadow: 0 2px 8px rgba(37,99,235,0.05); transition: all 0.2s;" onclick="downloadEventReportPDF()" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(37,99,235,0.1)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(37,99,235,0.05)'">
         <span style="font-size:16px">📄</span> PDF Export
       </button>
@@ -2675,6 +2675,34 @@ function renderDashboard() {
     }
   }
 
+  // Event Report Card Visibility Sync
+  const myJudgeEntry = (state.judges || []).find(j => j.id === JUDGE.id);
+  const isSubmitted = (myJudgeEntry && myJudgeEntry.scoresSubmitted) || 
+                      localStorage.getItem('knsdc_scores_submitted_' + JUDGE.id) === 'true';
+  const descEl = document.getElementById('report-description');
+  const btnContainer = document.getElementById('report-buttons-container');
+  
+  if (descEl && btnContainer) {
+    if (isSubmitted) {
+      descEl.textContent = "Download your consolidated judging records";
+      btnContainer.innerHTML = `
+        <button class="btn btn-ghost" style="flex: 1; min-width: 120px; max-width: 200px; justify-content:center; gap:8px; font-weight:700; font-size:13px; padding:12px 16px; border: 1px solid rgba(37,99,235,0.2); color: var(--blue2); background: var(--surface2); border-radius: 12px; box-shadow: 0 2px 8px rgba(37,99,235,0.05); transition: all 0.2s;" onclick="downloadEventReportPDF()" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(37,99,235,0.1)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(37,99,235,0.05)'">
+          <span style="font-size:16px">📄</span> PDF Export
+        </button>
+        <button class="btn btn-ghost" style="flex: 1; min-width: 120px; max-width: 200px; justify-content:center; gap:8px; font-weight:700; font-size:13px; padding:12px 16px; border: 1px solid rgba(16,185,129,0.2); color: var(--green2); background: var(--surface2); border-radius: 12px; box-shadow: 0 2px 8px rgba(16,185,129,0.05); transition: all 0.2s;" onclick="downloadEventReportExcel()" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(16,185,129,0.1)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(16,185,129,0.05)'">
+          <span style="font-size:16px">📊</span> Excel Data
+        </button>
+      `;
+    } else {
+      descEl.textContent = "Please submit your final scores to unlock downloads.";
+      btnContainer.innerHTML = `
+        <button class="btn btn-gold" style="flex: 1; min-width: 160px; max-width: 250px; justify-content:center; gap:8px; font-weight:800; font-size:13px; padding:12px 16px; border: none; color: #854d0e; background: linear-gradient(135deg, #fef08a, #facc15); border-radius: 12px; box-shadow: 0 4px 12px rgba(250,204,21,0.2); transition: all 0.2s;" onclick="submitFinalScores()" id="final-submit-btn" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(250,204,21,0.35)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(250,204,21,0.2)'">
+          <span style="font-size:16px">💾</span> Final Submit Scores
+        </button>
+      `;
+    }
+  }
+
   setupHoldButton();
 }
 
@@ -3055,6 +3083,39 @@ function clearScorePanel() {
   document.getElementById('save-score-wrap').style.display = 'none';
   document.getElementById('score-total-preview').style.display = 'none';
 }
+
+async function submitFinalScores() {
+  if (confirm("Are you sure you want to make a final submission of all your scores? After submission, you will be able to download the consolidated score reports.")) {
+    toast("Finalizing and syncing scores...");
+    
+    if (window.syncEngine) {
+      syncEngine.setData(state => {
+        const jList = [...(state.judges || [])];
+        const idx = jList.findIndex(j => j.id === JUDGE.id);
+        if (idx !== -1) {
+          jList[idx] = { ...jList[idx], scoresSubmitted: true };
+        }
+        return { ...state, judges: jList };
+      });
+      
+      const success = await syncEngine.forceSaveStateToSupabase();
+      if (success) {
+        localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
+        toast("✅ Final scores submitted & synced to server!");
+        renderDashboard();
+      } else {
+        toast("⚠️ Sync error, but scores saved locally. Retrying in background.");
+        localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
+        renderDashboard();
+      }
+    } else {
+      localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
+      toast("⚠️ Offline: scores stored locally.");
+      renderDashboard();
+    }
+  }
+}
+window.submitFinalScores = submitFinalScores;
 
 // ════════════════════════════════════════
 // MODAL SCORING LOGIC
