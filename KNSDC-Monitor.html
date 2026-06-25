@@ -1489,10 +1489,65 @@
     100% { transform: rotate(360deg); }
   }
 
+  /* Stop Dancing Overlay & Animation Styles */
+  @keyframes monitorFlash {
+    0% {
+      border-color: #ef4444;
+      box-shadow: inset 0 0 50px rgba(239, 68, 68, 0.5), 0 0 30px rgba(239, 68, 68, 0.4);
+    }
+    100% {
+      border-color: #facc15;
+      box-shadow: inset 0 0 100px rgba(250, 204, 21, 0.8), 0 0 60px rgba(250, 204, 21, 0.7);
+    }
+  }
+
+  .stop-dance-close-btn {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: #facc15;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+    transition: all 0.2s ease;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+    z-index: 10;
+  }
+  .stop-dance-close-btn:hover {
+    color: #ef4444;
+    transform: scale(1.15);
+  }
+
 </style>
 
 </head>
 <body>
+<!-- STOP DANCING VIDEO BROADCAST OVERLAY -->
+<div id="stop-dance-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.92); z-index:99999; align-items:center; justify-content:center; flex-direction:column;">
+  <!-- Flashing Warning Border -->
+  <div id="stop-dance-flasher" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; border: 24px solid #ef4444; box-sizing: border-box; animation: monitorFlash 0.5s infinite alternate;"></div>
+  
+  <!-- Video and Warning Panel Container -->
+  <div style="position:relative; width:90%; max-width:850px; background:#000; border: 8px solid #facc15; border-radius:24px; overflow:hidden; box-shadow:0 0 50px rgba(239,68,68,0.8), 0 0 100px rgba(250,204,21,0.5); display:flex; flex-direction:column; align-items:center;">
+    
+    <!-- Early Close Button -->
+    <button class="stop-dance-close-btn" onclick="dismissStopDanceEarly()" title="Close Warning early">✖</button>
+
+    <!-- Warning Header -->
+    <div style="width:100%; background:linear-gradient(90deg, #facc15 0%, #000 50%, #facc15 100%); padding:14px; text-align:center; color:#fff; font-family:var(--fh); font-size:26px; font-weight:900; letter-spacing:4px; text-shadow:2px 2px 4px #000; border-bottom:8px solid #facc15;">
+      ⚠️ STOP DANCING ⚠️
+    </div>
+    
+    <!-- Video Player -->
+    <div style="width:100%; background:#000; display:flex; align-items:center; justify-content:center;">
+      <video id="stop-dance-video" src="stop%20dance.mp4" style="width:100%; display:block;" muted playsinline loop></video>
+    </div>
+  </div>
+</div>
+
 <!-- SIDEBAR -->
 <nav class="sidebar">
   <div class="logo" style="display:none;align-items:center;gap:10px;">
@@ -9425,6 +9480,65 @@ function submitJudgeForm(){
 // ══════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+// STOP DANCING REALTIME LISTENER
+// ══════════════════════════════════════════
+let lastStopDanceTrigger = null;
+window.stopDanceTimeout = null;
+
+function dismissStopDanceEarly() {
+  const overlay = document.getElementById('stop-dance-overlay');
+  const video = document.getElementById('stop-dance-video');
+  if (overlay) overlay.style.display = 'none';
+  if (video) {
+    video.pause();
+    video.currentTime = 0;
+  }
+  if (window.stopDanceTimeout) {
+    clearTimeout(window.stopDanceTimeout);
+    window.stopDanceTimeout = null;
+  }
+}
+window.dismissStopDanceEarly = dismissStopDanceEarly;
+
+syncEngine.subscribe(state => {
+  if (!state || !state.stopDanceActive || !state.stopDanceActive.active) return;
+  
+  const triggerTime = state.stopDanceActive.triggeredAt;
+  if (triggerTime && triggerTime !== lastStopDanceTrigger) {
+    lastStopDanceTrigger = triggerTime;
+    
+    const overlay = document.getElementById('stop-dance-overlay');
+    const video = document.getElementById('stop-dance-video');
+    if (overlay && video) {
+      overlay.style.display = 'flex';
+      
+      // Setup video playback
+      video.currentTime = 0;
+      video.muted = false;
+      
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.warn('Unmuted autoplay blocked, falling back to muted:', err);
+          video.muted = true;
+          video.play().catch(e => console.error('Video play failure:', e));
+        });
+      }
+      
+      // Clear any previous active timeout
+      if (window.stopDanceTimeout) {
+        clearTimeout(window.stopDanceTimeout);
+      }
+      
+      // Dismiss automatically after 10 seconds
+      window.stopDanceTimeout = setTimeout(() => {
+        dismissStopDanceEarly();
+      }, 10000);
+    }
+  }
+});
+
 window.toast = toast;
 window.openM = openM;
 window.closeM = closeM;
