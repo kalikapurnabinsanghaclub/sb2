@@ -2677,14 +2677,28 @@ function renderDashboard() {
 
   // Event Report Card Visibility Sync
   const myJudgeEntry = (state.judges || []).find(j => j.id === JUDGE.id);
-  const isSubmitted = (myJudgeEntry && myJudgeEntry.scoresSubmitted) || 
-                      localStorage.getItem('knsdc_scores_submitted_' + JUDGE.id) === 'true';
+  const submittedAtVal = (myJudgeEntry && myJudgeEntry.scoresSubmittedAt) || 
+                         localStorage.getItem('knsdc_scores_submitted_at_' + JUDGE.id);
+  
+  let isSubmitted = false;
+  let remainingTimeStr = '';
+  if (submittedAtVal) {
+    const elapsed = Date.now() - Number(submittedAtVal);
+    const fiveMinutesMs = 5 * 60 * 1000;
+    if (elapsed < fiveMinutesMs) {
+      isSubmitted = true;
+      const remainingMs = fiveMinutesMs - elapsed;
+      const mins = Math.floor(remainingMs / 60000);
+      const secs = Math.floor((remainingMs % 60000) / 1000);
+      remainingTimeStr = ` (Expires in ${mins}:${secs < 10 ? '0' : ''}${secs})`;
+    }
+  }
   const descEl = document.getElementById('report-description');
   const btnContainer = document.getElementById('report-buttons-container');
   
   if (descEl && btnContainer) {
     if (isSubmitted) {
-      descEl.textContent = "Download your consolidated judging records";
+      descEl.textContent = `Download your consolidated judging records${remainingTimeStr}`;
       btnContainer.innerHTML = `
         <button class="btn btn-ghost" style="flex: 1; min-width: 120px; max-width: 200px; justify-content:center; gap:8px; font-weight:700; font-size:13px; padding:12px 16px; border: 1px solid rgba(37,99,235,0.2); color: var(--blue2); background: var(--surface2); border-radius: 12px; box-shadow: 0 2px 8px rgba(37,99,235,0.05); transition: all 0.2s;" onclick="downloadEventReportPDF()" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(37,99,235,0.1)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(37,99,235,0.05)'">
           <span style="font-size:16px">📄</span> PDF Export
@@ -3088,12 +3102,13 @@ async function submitFinalScores() {
   if (confirm("Are you sure you want to make a final submission of all your scores? After submission, you will be able to download the consolidated score reports.")) {
     toast("Finalizing and syncing scores...");
     
+    const now = Date.now();
     if (window.syncEngine) {
       syncEngine.setData(state => {
         const jList = [...(state.judges || [])];
         const idx = jList.findIndex(j => j.id === JUDGE.id);
         if (idx !== -1) {
-          jList[idx] = { ...jList[idx], scoresSubmitted: true };
+          jList[idx] = { ...jList[idx], scoresSubmitted: true, scoresSubmittedAt: now };
         }
         return { ...state, judges: jList };
       });
@@ -3101,15 +3116,18 @@ async function submitFinalScores() {
       const success = await syncEngine.forceSaveStateToSupabase();
       if (success) {
         localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
+        localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
         toast("✅ Final scores submitted & synced to server!");
         renderDashboard();
       } else {
         toast("⚠️ Sync error, but scores saved locally. Retrying in background.");
         localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
+        localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
         renderDashboard();
       }
     } else {
       localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
+      localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
       toast("⚠️ Offline: scores stored locally.");
       renderDashboard();
     }
@@ -4031,6 +4049,37 @@ document.addEventListener('keydown', (e) => {
     if (navigator.clipboard) navigator.clipboard.writeText('');
   }
 });
+
+// ════════════════════════════════════════
+// SCORE SUBMISSION EXPIRY TICKER
+// ════════════════════════════════════════
+setInterval(() => {
+  const descEl = document.getElementById('report-description');
+  if (!descEl) return;
+  
+  const state = (window.syncEngine && window.syncEngine.getData()) || {};
+  const myJudgeEntry = (state.judges || []).find(j => j.id === JUDGE.id);
+  const submittedAtVal = (myJudgeEntry && myJudgeEntry.scoresSubmittedAt) || 
+                         localStorage.getItem('knsdc_scores_submitted_at_' + JUDGE.id);
+  
+  if (submittedAtVal) {
+    const elapsed = Date.now() - Number(submittedAtVal);
+    const fiveMinutesMs = 5 * 60 * 1000;
+    
+    if (elapsed < fiveMinutesMs) {
+      const remainingMs = fiveMinutesMs - elapsed;
+      const mins = Math.floor(remainingMs / 60000);
+      const secs = Math.floor((remainingMs % 60000) / 1000);
+      const remainingTimeStr = ` (Expires in ${mins}:${secs < 10 ? '0' : ''}${secs})`;
+      descEl.textContent = `Download your consolidated judging records${remainingTimeStr}`;
+    } else {
+      // It has expired. If the UI still shows "Download", trigger a re-render to switch back to "Final Submit Scores"
+      if (descEl.textContent.includes("Download")) {
+        renderDashboard();
+      }
+    }
+  }
+}, 1000);
 
 </script>
 </body>
