@@ -2251,7 +2251,7 @@ function collectReportData() {
       const myScores = roundData[judgeId];
       if (myScores && Object.keys(myScores).length > 0) {
         foundInRounds = true;
-        const cat = CATEGORIES.find(c => c.id === p.catId);
+        const cat = CATEGORIES.find(c => String(c.id) === String(p.catId));
         let rowTotal = 0;
         const subjectVals = SUBJECTS.map(s => {
           const v = Number(myScores[s.id]) || 0;
@@ -2270,7 +2270,7 @@ function collectReportData() {
     if (!foundInRounds && p.scores && p.scores[judgeId]) {
       const myScores = p.scores[judgeId];
       if (Object.keys(myScores).length > 0) {
-        const cat = CATEGORIES.find(c => c.id === p.catId);
+        const cat = CATEGORIES.find(c => String(c.id) === String(p.catId));
         let rowTotal = 0;
         const subjectVals = SUBJECTS.map(s => {
           const v = Number(myScores[s.id]) || 0;
@@ -2591,8 +2591,8 @@ function renderDashboard() {
   const catGrid = document.getElementById('cat-breakdown');
   let totalParts = 0;
   catGrid.innerHTML = CATEGORIES.map(c => {
-    const count = participants.filter(p=>p.catId===c.id).length;
-    const scored = participants.filter(p=>p.catId===c.id && p.scores[judgeId] && Object.keys(p.scores[judgeId]).length > 0).length;
+    const count = participants.filter(p=>String(p.catId)===String(c.id)).length;
+    const scored = participants.filter(p=>String(p.catId)===String(c.id) && p.scores[judgeId] && Object.keys(p.scores[judgeId]).length > 0).length;
     totalParts += count;
     const pct = count>0?Math.round(scored/count*100):0;
     return `<div class="cat-stat-block">
@@ -2798,7 +2798,7 @@ function renderOnStage() {
     if (stopwatchWrap) stopwatchWrap.style.display = 'none';
     return;
   }
-  const cat = CATEGORIES.find(c=>c.id===p.catId);
+  const cat = CATEGORIES.find(c=>String(c.id)===String(p.catId));
   document.getElementById('stage-name').textContent = p.name;
   document.getElementById('stage-id').textContent = p.id;
   document.getElementById('stage-avatar').textContent = p.name ? p.name[0].toUpperCase() : '—';
@@ -2868,7 +2868,7 @@ function loadScorePanel(id) {
   if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
   p.scores = p.roundScores[p.round];
 
-  const cat = CATEGORIES.find(c=>c.id===p.catId);
+  const cat = CATEGORIES.find(c=>String(c.id)===String(p.catId));
   const myScores = p.scores[JUDGE.id] || {};
 
   document.getElementById('score-participant-badge').textContent = `${p.name} · ${p.id}`;
@@ -3188,7 +3188,7 @@ function renderParticipantsTable() {
     if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
     p.scores = p.roundScores[p.round];
 
-    const cat = CATEGORIES.find(c=>c.id===p.catId);
+    const cat = CATEGORIES.find(c=>String(c.id)===String(p.catId));
     const myScores = p.scores[JUDGE.id]||{};
     const total = SUBJECTS.reduce((a,s)=>a+(myScores[s.id]||0),0);
     const hasScored = Object.keys(myScores).length > 0;
@@ -3264,7 +3264,7 @@ function searchParticipant(query) {
     if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
     p.scores = p.roundScores[p.round];
 
-    const cat = CATEGORIES.find(c=>c.id===p.catId);
+    const cat = CATEGORIES.find(c=>String(c.id)===String(p.catId));
     const myScores = p.scores[JUDGE.id]||{};
     const total = SUBJECTS.reduce((a,s)=>a+(myScores[s.id]||0),0);
     const hasScored = Object.keys(myScores).length > 0;
@@ -3611,7 +3611,7 @@ syncEngine.subscribe((state) => {
   const activeEvId = JUDGE.eventId || state.activeEventId;
   if (state.participants && activeEvId) {
     const seenIds = new Set();
-    participants = state.participants.filter(p => p.eventId && String(p.eventId) === String(activeEvId)).filter(p => {
+    participants = state.participants.filter(p => !p.eventId || String(p.eventId) === String(activeEvId)).filter(p => {
       if (!p || !p.id) return false;
       const idStr = String(p.id);
       if (seenIds.has(idStr)) return false;
@@ -3747,7 +3747,15 @@ syncEngine.subscribe((state) => {
   }
   if (currentPage === 'scoring') {
     renderOnStage();
-    if (scoringParticipantId) loadScorePanel(scoringParticipantId);
+    const activeEl = document.activeElement;
+    const isEditing = activeEl && (
+      activeEl.classList.contains('score-num-input') || 
+      activeEl.classList.contains('score-slider') || 
+      activeEl.id === 'judge-comment'
+    );
+    if (!isEditing && scoringParticipantId) {
+      loadScorePanel(scoringParticipantId);
+    }
   }
   if (currentPage === 'chat') {
     renderOnlineList();

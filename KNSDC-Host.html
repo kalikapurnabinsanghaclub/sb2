@@ -1261,8 +1261,18 @@ syncEngine.subscribe((state) => {
   chatHistory = state.chatMessages || [];
   sosActive = state.sosActive || false;
   hydrateChat(state);
-  renderDashboard();
-  renderStage();
+
+  // Dynamically auto-update the active section/tab without manual refresh
+  const activeSec = document.querySelector('.section.active');
+  if (activeSec) {
+    const sectionId = activeSec.id.replace('sec-', '');
+    if (sectionId === 'dashboard') renderDashboard();
+    if (sectionId === 'stage') renderStage();
+    if (sectionId === 'leaderboard') renderLeaderboard();
+  } else {
+    renderDashboard();
+    renderStage();
+  }
 });
 
 window.staffLogout = () => {
@@ -1294,7 +1304,7 @@ function renderDashboard() {
   const activeEvId = data.activeEventId;
   const round = hostSelectedRound || 'audition';
   const filtered = participants.filter(p => 
-    (!activeEvId || String(p.eventId) === String(activeEvId)) &&
+    (!activeEvId || !p.eventId || String(p.eventId) === String(activeEvId)) &&
     (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
     p.round === round
   );
@@ -1381,7 +1391,7 @@ function renderStage() {
   const activeEvId = data.activeEventId;
   const round = hostSelectedRound || 'audition';
   const filtered = participants.filter(p => 
-    (!activeEvId || String(p.eventId) === String(activeEvId)) &&
+    (!activeEvId || !p.eventId || String(p.eventId) === String(activeEvId)) &&
     (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
     p.round === round
   );
@@ -1408,7 +1418,7 @@ function renderStage() {
                   <span style="color: #0ea5e9; font-weight: 800;">📍 Address:</span> ${onStage.formAnswers?.Address || onStage.formAnswers?.address || '—'}
                 </div>
                 <div style="font-size: 13px; color: var(--text); font-weight: 700;">
-                  <span style="color: #0ea5e9; font-weight: 800;">🏷️ Category:</span> ${categories.find(c => c.id === onStage.catId)?.name || '—'}
+                  <span style="color: #0ea5e9; font-weight: 800;">🏷️ Category:</span> ${categories.find(c => String(c.id) === String(onStage.catId))?.name || '—'}
                 </div>
                 <div style="font-size: 13px; color: var(--text); font-weight: 700;">
                   <span style="color: #0ea5e9; font-weight: 800;">🎂 Age:</span> ${onStage.age || onStage.formAnswers?.Age || onStage.formAnswers?.age || '—'}
@@ -1469,7 +1479,7 @@ function renderStage() {
             <div style="display:flex; flex-wrap:wrap; gap:8px 16px; font-size:11px; color:var(--text-muted); font-weight:600; margin-top:6px;">
               <span><strong>ID:</strong> ${p.id}</span>
               <span style="color:var(--red2)"><strong>📍 Address:</strong> ${p.formAnswers?.Address || p.formAnswers?.address || '—'}</span>
-              <span style="color:var(--green2)"><strong>🏷️ Category:</strong> ${categories.find(c => c.id === p.catId)?.name || '—'}</span>
+              <span style="color:var(--green2)"><strong>🏷️ Category:</strong> ${categories.find(c => String(c.id) === String(p.catId))?.name || '—'}</span>
               <span style="color:#0ea5e9;"><strong>🔄 Round:</strong> ${(p.round || 'audition').toUpperCase()}</span>
             </div>
           </div>
@@ -1732,7 +1742,7 @@ window.renderLeaderboard = () => {
                 </thead>
                 <tbody>
                     ${scoredList.map((p, i) => {
-                        const cat = categories.find(c => c.id === p.catId);
+                        const cat = categories.find(c => String(c.id) === String(p.catId));
                         const isTop3 = i < 3;
                         return `
                             <tr class="${isTop3 ? 'top-row' : ''}">

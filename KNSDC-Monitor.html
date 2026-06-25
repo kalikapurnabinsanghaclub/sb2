@@ -3970,7 +3970,7 @@ function broadcastStageToPublic() {
   if (!activeEv) return;
 
   const onStage = participants.find(p => p.id === currentOnStage);
-  const cat = onStage ? (activeEv.categories || []).find(c => c.id === onStage.catId) : null;
+  const cat = onStage ? (activeEv.categories || []).find(c => String(c.id) === String(onStage.catId)) : null;
   const queue = stageQueue.filter(id => id !== currentOnStage).slice(0, 4).map(id => {
     const p = participants.find(x => x.id === id);
     return p ? { name: p.name, id: p.id } : null;
@@ -4034,7 +4034,7 @@ function broadcastResultsToPublic() {
   const leaderboard = [...participants]
     .filter(p => String(p.eventId) === String(activeEventId))
     .map(p => {
-      const cat = evCats.find(c => c.id === p.catId);
+      const cat = evCats.find(c => String(c.id) === String(p.catId));
       const total = presentJudges.reduce((acc, j) =>
         acc + evSubjects.reduce((s2, s) => s2 + (p.scores[j.id] ? p.scores[j.id][s.id] || 0 : 0), 0), 0);
       return { name: p.name, id: p.id, category: cat ? cat.name : '—', round: p.round, total, maxPossible };
@@ -4294,7 +4294,7 @@ function renderDashStats(){
   
   if (evCats.length > 0) {
     evCats.forEach((cat, index) => {
-      const catCount = data.filter(p => p.catId === cat.id).length;
+      const catCount = data.filter(p => String(p.catId) === String(cat.id)).length;
       const colorCls = cat.color || colors[index % colors.length];
       categoryCards += `<div class="stat ${colorCls}" style="flex: 1; min-width: 160px;"><div class="stat-icon">⭐</div><div class="stat-num">${catCount}</div><div class="stat-lbl">${cat.name}</div><div class="stat-sub">Category</div></div>`;
     });
@@ -4339,14 +4339,14 @@ function renderStageView(){
   const venId = currentVenueMonitor;
 
   let data = participants.filter(p => (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if (venId) data = data.filter(p => p.venueId === venId);
+  if (venId) data = data.filter(p => String(p.venueId) === String(venId));
   data = data.filter(p => p.round === round);
   data = data.filter(p => getRoundPresent(p, round));
 
   const onStage = data.find(p => p.stageStatus === 'on-stage');
   if(onStage){
     document.getElementById('on-stage-name').textContent = onStage.name;
-    const cat = categories.find(c=>c.id===onStage.catId);
+    const cat = categories.find(c=>String(c.id)===String(onStage.catId));
     document.getElementById('on-stage-sub').textContent = `ID: ${onStage.id} · ${cat?cat.name:'—'} · Age: ${onStage.age}`;
     document.getElementById('on-stage-badges').innerHTML =
       `<span class="badge b-amber">${onStage.round.toUpperCase()}</span>
@@ -4432,7 +4432,7 @@ function renderStageView(){
   let upcoming = data.filter(p => p.stageStatus === 'queue');
   upcoming = sortQueue(upcoming);
   document.getElementById('upcoming-list').innerHTML = upcoming.map((p, i) => {
-    const cat = categories.find(c => c.id === p.catId);
+    const cat = categories.find(c => String(c.id) === String(p.catId));
     return `<div class="upcoming-card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
       <div class="upcoming-num">${i + 1}</div>
       <div style="flex:1">
@@ -4486,7 +4486,7 @@ function renderAttendanceBreakdown(){
   if (evCats.length > 0) {
     categoryBreakdown = '<hr/><div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">';
     evCats.forEach(cat => {
-      const pCount = data.filter(p => p.catId === cat.id && getRoundPresent(p, p.round)).length;
+      const pCount = data.filter(p => String(p.catId) === String(cat.id) && getRoundPresent(p, p.round)).length;
       categoryBreakdown += `<div class="stat ${cat.color || 'blue'}" style="flex:1;min-width:120px;padding:12px"><div class="stat-num" style="font-size:22px">${pCount}</div><div class="stat-lbl">${cat.name}</div></div>`;
     });
     categoryBreakdown += '</div>';
@@ -4657,19 +4657,45 @@ function regTab(tab, el){
   if(tab==='venues') renderVenueDates();
 }
 
-function renderApplied(search='',catFilter='',venueFilter=''){
+function renderApplied(){
+  const search = regSearchFilter;
+  const catFilter = regCatFilter;
+  const venueFilter = regVenueFilter;
+
   const csel = document.getElementById('cat-filter-sel');
-  if(csel) csel.innerHTML = '<option value="">All Categories</option>' + categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(csel) {
+    csel.innerHTML = '<option value="">All Categories</option>' + categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    csel.value = catFilter;
+  }
   const vsel = document.getElementById('venue-filter-sel');
-  if(vsel) vsel.innerHTML = '<option value="">All Venues</option>' + venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+  if(vsel) {
+    vsel.innerHTML = '<option value="">All Venues</option>' + venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+    vsel.value = venueFilter;
+  }
   const sel1 = document.getElementById('ar-cat');
-  if(sel1) sel1.innerHTML = categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(sel1) {
+    const val = sel1.value;
+    sel1.innerHTML = categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    if (val && categories.some(c => String(c.id) === String(val))) sel1.value = val;
+  }
   const sel2 = document.getElementById('ar-venue');
-  if(sel2) sel2.innerHTML = venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+  if(sel2) {
+    const val = sel2.value;
+    sel2.innerHTML = venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+    if (val && venues.some(v => String(v.id) === String(val))) sel2.value = val;
+  }
   const sel3 = document.getElementById('er-cat');
-  if(sel3) sel3.innerHTML = categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(sel3) {
+    const val = sel3.value;
+    sel3.innerHTML = categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    if (val && categories.some(c => String(c.id) === String(val))) sel3.value = val;
+  }
   const sel4 = document.getElementById('er-venue');
-  if(sel4) sel4.innerHTML = venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+  if(sel4) {
+    const val = sel4.value;
+    sel4.innerHTML = venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+    if (val && venues.some(v => String(v.id) === String(val))) sel4.value = val;
+  }
 
   let data = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId); // Migration fallback
   
@@ -4682,8 +4708,8 @@ function renderApplied(search='',catFilter='',venueFilter=''){
     );
   }
   
-  if(catFilter) data = data.filter(p=>p.catId===parseInt(catFilter));
-  if(venueFilter) data = data.filter(p=>p.venueId===parseInt(venueFilter));
+  if(catFilter) data = data.filter(p=>String(p.catId)===String(catFilter));
+  if(venueFilter) data = data.filter(p=>String(p.venueId)===String(venueFilter));
 
   const countEl = document.getElementById('reg-count');
   if(countEl) countEl.textContent = data.length;
@@ -4691,8 +4717,8 @@ function renderApplied(search='',catFilter='',venueFilter=''){
   const tbody = document.getElementById('applied-tbody');
   if (!tbody) return;
   tbody.innerHTML = data.map(p=>{
-    const cat = categories.find(c=>c.id===p.catId);
-    const ven = venues.find(v=>v.id===p.venueId);
+    const cat = categories.find(c=>String(c.id)===String(p.catId));
+    const ven = venues.find(v=>String(v.id)===String(p.venueId));
     const ageGrp = p.age ? `<span style="font-family:var(--fm); font-weight:700">${p.age}</span>` : '<span style="color:var(--text-muted); font-size:11px; font-weight:700">N/A</span>';
     
     // Check if participant has custom form answers
@@ -4767,9 +4793,13 @@ function viewFormAnswers(id) {
   }
 }
 
-function filterApplied(v){ renderApplied(v); }
-function filterAppliedCat(v){ renderApplied('',v); }
-function filterAppliedVenue(v){ renderApplied('','',v); }
+let regSearchFilter = '';
+let regCatFilter = '';
+let regVenueFilter = '';
+
+function filterApplied(v){ regSearchFilter = v; renderApplied(); }
+function filterAppliedCat(v){ regCatFilter = v; renderApplied(); }
+function filterAppliedVenue(v){ regVenueFilter = v; renderApplied(); }
 
 function roundBadge(r){ return{audition:'b-amber',qualified:'b-cyan',semifinal:'b-purple',final:'b-orange'}[r]||'b-gray'; }
 
@@ -4945,7 +4975,7 @@ function sendWhatsAppReg(id) {
   const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
   const eventName = activeEv?.name || 'Our Event';
   const organizerName = 'KNSDC';
-  const ven = venues.find(v => v.id === p.venueId);
+  const ven = venues.find(v => String(v.id) === String(p.venueId));
   const venueName = ven?.name || 'Venue TBA';
   const eventDate = activeEv?.date || activeEv?.startDate || 'Date TBA';
 
@@ -4994,7 +5024,7 @@ function openBulkWhatsApp() {
   list.forEach((p, i) => {
     const phone = (p.phone || '').replace(/\D/g, '');
     const intlPhone = phone.length === 10 ? '91' + phone : phone;
-    const ven = venues.find(v => v.id === p.venueId);
+    const ven = venues.find(v => String(v.id) === String(p.venueId));
     const venueName = ven?.name || 'Venue TBA';
     const msg = encodeURIComponent(
 `Hi ${p.name},
@@ -5324,8 +5354,8 @@ function downloadRegs(format = 'excel') {
   const rows = [headers];
 
   eventParticipants.forEach(p => {
-    const cat = categories.find(c => c.id === p.catId);
-    const ven = venues.find(v => v.id === p.venueId);
+    const cat = categories.find(c => String(c.id) === String(p.catId));
+    const ven = venues.find(v => String(v.id) === String(p.venueId));
     
     const standardData = [
       p.id, p.name, p.phone, p.age,
@@ -5608,7 +5638,7 @@ async function deleteCat(id) {
 function renderVenueDates(){
   const filteredVenues = venues.filter(v => String(v.eventId) === String(activeEventId) || !v.eventId);
   document.getElementById('venue-date-list').innerHTML = filteredVenues.map(v=>{
-    const regs = participants.filter(p=>(p.venueId===v.id && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
+    const regs = participants.filter(p=>(String(p.venueId)===String(v.id) && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <strong style="font-size:14px;font-family:var(--fh);text-transform:uppercase;letter-spacing:0.3px">🏛 ${v.name}</strong>
@@ -5625,7 +5655,7 @@ function renderVenueDates(){
 
   let statsHtml = '';
   filteredVenues.forEach(v=>{
-    const vr = participants.filter(p=>(p.venueId===v.id && (String(p.eventId) === String(activeEventId) || !p.eventId)));
+    const vr = participants.filter(p=>(String(p.venueId)===String(v.id) && (String(p.eventId) === String(activeEventId) || !p.eventId)));
     const present = vr.filter(p=>p.present).length;
     statsHtml += `<div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
@@ -5648,7 +5678,7 @@ function renderVenueDates(){
 function openVenueModal(id=null){
   editingVenueId=id;
   document.getElementById('vm-title').textContent=id?'Edit Venue':'Add Venue';
-  if(id){const v=venues.find(x=>x.id===id);
+  if(id){const v=venues.find(x=>String(x.id)===String(id));
     document.getElementById('vm-name').value=v.name;
     document.getElementById('vm-loc').value=v.location;
     document.getElementById('vm-cap').value=v.capacity;
@@ -5665,13 +5695,13 @@ async function saveVenue() {
   if(editingVenueId){
     const success = await syncEngine.updateVenue(editingVenueId, obj);
     if (!success) { toast('❌ Error saving venue'); return; }
-    const existing = venues.find(v=>v.id===editingVenueId);
+    const existing = venues.find(v=>String(v.id)===String(editingVenueId));
     if(existing) Object.assign(existing, obj);
   } else {
     obj.id=Date.now();
     const success = await syncEngine.createVenue(obj);
     if (!success) { toast('❌ Error creating venue'); return; }
-    if(!venues.find(v=>v.id===obj.id)) venues.push(obj);
+    if(!venues.find(v=>String(v.id)===String(obj.id))) venues.push(obj);
   }
   syncAll();
   closeM('venue-modal');renderVenueDates();toast('Venue saved!');
@@ -5693,13 +5723,17 @@ function renderVenueMonitor(){
   const vsel = document.getElementById('venue-select');
   if (!vsel) return;
   const filteredVenues = venues.filter(v => String(v.eventId) === String(activeEventId) || !v.eventId);
-  vsel.innerHTML = '<option value="">— Select Venue —</option>' + filteredVenues.map(v=>`<option value="${v.id}" ${currentVenueMonitor === v.id ? 'selected' : ''}>${v.name}</option>`).join('');
+  vsel.innerHTML = '<option value="">— Select Venue —</option>' + filteredVenues.map(v=>`<option value="${v.id}" ${String(currentVenueMonitor) === String(v.id) ? 'selected' : ''}>${v.name}</option>`).join('');
   const vdsel = document.getElementById('venue-date-sel');
-  vdsel.innerHTML = '<option value="">All Dates</option>';
-  if (currentVenueMonitor) {
-    const ven = venues.find(v=>v.id===currentVenueMonitor);
-    if(ven && vdsel){
-      vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+  if (vdsel) {
+    const prevDate = vdsel.value;
+    vdsel.innerHTML = '<option value="">All Dates</option>';
+    if (currentVenueMonitor) {
+      const ven = venues.find(v=>String(v.id)===String(currentVenueMonitor));
+      if(ven){
+        vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+        vdsel.value = prevDate;
+      }
     }
   }
   renderVenueParticipants();
@@ -5787,7 +5821,7 @@ function clearFlashMessage() {
 
 function selectVenueMonitor(id){
   currentVenueMonitor = id ? parseInt(id) : null;
-  const ven = venues.find(v=>v.id===currentVenueMonitor);
+  const ven = venues.find(v=>String(v.id)===String(currentVenueMonitor));
   if(ven){
     const vdsel = document.getElementById('venue-date-sel');
     if (vdsel) vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
@@ -5855,7 +5889,7 @@ function moveQueueItem(id, direction) {
   const venId = currentVenueMonitor;
   
   let queueParts = participants.filter(p => p.stageStatus === 'queue' && p.round === round && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if (venId) queueParts = queueParts.filter(p => p.venueId === venId);
+  if (venId) queueParts = queueParts.filter(p => String(p.venueId) === String(venId));
   queueParts = sortQueue(queueParts);
   
   const idx = queueParts.findIndex(p => String(p.id) === String(id));
@@ -5900,7 +5934,7 @@ function resetQueueOrder() {
   const venId = currentVenueMonitor;
   
   let queueParts = participants.filter(p => p.stageStatus === 'queue' && p.round === round && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if (venId) queueParts = queueParts.filter(p => p.venueId === venId);
+  if (venId) queueParts = queueParts.filter(p => String(p.venueId) === String(venId));
   const promises = queueParts.map(p => {
     p.stageStatus = 'waiting';
     p.queueOrder = null;
@@ -6110,9 +6144,6 @@ function startOnStageTimers(p) {
   if (startedState && !onstagePausedTime) {
     onstageTimerInterval = setInterval(updateTimers, 1000);
   }
-
-  // Broadcast state
-  broadcastTimerState();
 }
 
 function stopOnStageTimers() {
@@ -6136,9 +6167,6 @@ function stopOnStageTimers() {
   const timerControls = document.getElementById('onstage-timers-controls');
   if (timerWrap) timerWrap.style.display = 'none';
   if (timerControls) timerControls.style.display = 'none';
-
-  // Broadcast state (clears active timer globally)
-  broadcastTimerState();
 }
 
 function handleTimerMainAction() {
@@ -6163,6 +6191,7 @@ function handleTimerMainAction() {
     if (p) {
       startOnStageTimers(p);
     }
+    broadcastTimerState();
   } else {
     // Toggle pause/play
     toggleOnStagePlayPause();
@@ -6201,6 +6230,7 @@ function toggleOnStagePlayPause() {
   if (p) {
     startOnStageTimers(p);
   }
+  broadcastTimerState();
 }
 
 function resetOnStageTimers() {
@@ -6225,6 +6255,7 @@ function resetOnStageTimers() {
   if (p) {
     startOnStageTimers(p);
   }
+  broadcastTimerState();
 }
 
 function changeOnStageDuration() {
@@ -6255,6 +6286,7 @@ function changeOnStageDuration() {
   if (p) {
     startOnStageTimers(p);
   }
+  broadcastTimerState();
 }
 
 function changeOnStageDurationCustom() {
@@ -6272,6 +6304,7 @@ function changeOnStageDurationCustom() {
   if (p) {
     startOnStageTimers(p);
   }
+  broadcastTimerState();
 }
 
 function changeOnStageTimerType() {
@@ -6305,7 +6338,7 @@ function renderVenueParticipants(){
   const dateSel = document.getElementById('venue-date-sel');
   const selectedDate = dateSel ? dateSel.value : '';
   let data = participants.filter(p=>p.round===round && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if(venId) data = data.filter(p=>p.venueId===venId);
+  if(venId) data = data.filter(p=>String(p.venueId)===String(venId));
   if(selectedDate) data = data.filter(p=>p.date===selectedDate);
   // Only show round-wise present participants
   data = data.filter(p => getRoundPresent(p, round));
@@ -6313,7 +6346,7 @@ function renderVenueParticipants(){
   // On stage
   const onStage = data.find(p=>p.stageStatus==='on-stage');
   if(document.getElementById('venue-onstage-name')) document.getElementById('venue-onstage-name').textContent = onStage?onStage.name:'— Empty Stage —';
-  const cat = onStage?categories.find(c=>c.id===onStage.catId):null;
+  const cat = onStage?categories.find(c=>String(c.id)===String(onStage.catId)):null;
   if(document.getElementById('venue-onstage-sub')) document.getElementById('venue-onstage-sub').textContent = onStage?`${onStage.id} · ${cat?cat.name:'—'} · Age ${onStage.age}`:'';
 
   if (onStage) {
@@ -6361,7 +6394,7 @@ function renderVenueParticipants(){
   const presentCount = data.filter(p=>(getRoundPresent(p, round) && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
   if(document.getElementById('venue-present-count')) document.getElementById('venue-present-count').textContent = `${presentCount} Present`;
   document.getElementById('venue-queue').innerHTML = queue.length ? queue.map((p,i)=>{
-    const c=categories.find(x=>x.id===p.catId);
+    const c=categories.find(x=>String(x.id)===String(p.catId));
     return `<div class="participant-row" style="display:flex; align-items:center; gap:10px;">
       <div class="p-num" style="background:rgba(217,119,6,0.15);color:var(--amber2)">${i+1}</div>
       <div style="flex:1"><div style="font-weight:600">${p.name}</div><div style="font-size:11px;color:var(--text-muted)">${p.id} · ${c?c.name:'—'}</div></div>
@@ -6387,7 +6420,7 @@ function renderVenueParticipants(){
   // Group by category
   const catMap = {};
   presentOnly.forEach(p => {
-    const c = categories.find(x => x.id === p.catId);
+    const c = categories.find(x => String(x.id) === String(p.catId));
     const catKey = c ? c.id : '__no_cat__';
     const catLabel = c ? c.name : 'No Category';
     const catColor = c ? c.color : 'b-gray';
@@ -6470,7 +6503,7 @@ function pushNextToStage(){
   const roundSel = document.getElementById('venue-round-sel');
   const round = roundSel ? roundSel.value : 'audition';
   let data = participants.filter(p=>p.stageStatus==='queue' && p.round===round && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if(venId) data = data.filter(p=>p.venueId===venId);
+  if(venId) data = data.filter(p=>String(p.venueId)===String(venId));
   data = sortQueue(data);
   if(data.length){ pushToStage(data[0].id); }
   else { toast('No one in queue for this event!'); }
@@ -6607,7 +6640,7 @@ function toggleAllAttendance(status) {
   let dataToMark = participants.filter(p => (String(p.eventId) === String(activeEventId) || !p.eventId));
   if (document.getElementById('pp-venue').classList.contains('active')) {
     dataToMark = dataToMark.filter(p => p.round === round);
-    if (venId) dataToMark = dataToMark.filter(p => p.venueId === venId);
+    if (venId) dataToMark = dataToMark.filter(p => String(p.venueId) === String(venId));
   }
   
   if (dataToMark.length === 0) {
@@ -6664,7 +6697,7 @@ function openAddToQueueModal(){
   const venId = currentVenueMonitor;
   const round = document.getElementById('venue-round-sel')?document.getElementById('venue-round-sel').value:'audition';
   let waiting = participants.filter(p=>p.stageStatus==='waiting'&&p.round===round);
-  if(venId) waiting = waiting.filter(p=>p.venueId===venId);
+  if(venId) waiting = waiting.filter(p=>String(p.venueId)===String(venId));
   if(!waiting.length){ toast('No waiting participants!'); return; }
   // Just add first one to queue for demo
   waiting[0].stageStatus = 'queue';
@@ -6683,7 +6716,7 @@ function openAddToUpcomingModal() {
   
   // Filter participants in 'waiting' state, for active event, matching the venue and round
   let waiting = participants.filter(p => p.stageStatus === 'waiting' && p.round === round && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if (venId) waiting = waiting.filter(p => p.venueId === venId);
+  if (venId) waiting = waiting.filter(p => String(p.venueId) === String(venId));
   
   const sel = document.getElementById('aup-participant-sel');
   if (!sel) return;
@@ -6692,7 +6725,7 @@ function openAddToUpcomingModal() {
     sel.innerHTML = '<option value="">— No waiting participants —</option>';
   } else {
     sel.innerHTML = '<option value="">— Select a Participant —</option>' + waiting.map(p => {
-      const cat = categories.find(c => c.id === p.catId);
+      const cat = categories.find(c => String(c.id) === String(p.catId));
       return `<option value="${p.id}">[${p.id}] ${p.name} (${cat ? cat.name : 'No Category'})</option>`;
     }).join('');
   }
@@ -6741,7 +6774,7 @@ function openScoreModal(){
 function openScoreModalFor(id){
   scoringParticipantId = id;
   const p = participants.find(x=>x.id===id);
-  const cat = p?categories.find(c=>c.id===p.catId):null;
+  const cat = p?categories.find(c=>String(c.id)===String(p.catId)):null;
   document.getElementById('score-modal-participant').innerHTML = `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;gap:10px;align-items:center">
       <div style="width:40px;height:40px;border-radius:50%;background:rgba(217,119,6,0.2);border:1px solid var(--amber2);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:18px;font-weight:700;color:var(--amber2)">${p?p.name[0]:'?'}</div>
@@ -6852,7 +6885,7 @@ function renderIndividualStats(){
     return sb-sa;
   });
   document.getElementById('individual-stats-content').innerHTML = data.map((p,rank)=>{
-    const cat = categories.find(c=>c.id===p.catId);
+    const cat = categories.find(c=>String(c.id)===String(p.catId));
     let total = 0;
     let judgesWhoScored = new Set();
     if (p.scores) {
@@ -7186,7 +7219,7 @@ function renderRoundwiseStats(){
 
     rounds.forEach((round, rIdx) => {
       // Find participants in this category for this event
-      const catParts = participants.filter(p => p.catId === cat.id && (String(p.eventId) === String(activeEventId) || !p.eventId));
+      const catParts = participants.filter(p => String(p.catId) === String(cat.id) && (String(p.eventId) === String(activeEventId) || !p.eventId));
       
       // Reached at least this round
       const presentInRound = catParts.filter(p => {
@@ -7325,7 +7358,7 @@ function renderRoundwiseStats(){
       <div class="card-header" style="margin-bottom: 12px;"><div class="card-title" style="margin-bottom: 0;">${labels[i]} (${data.length})</div><span class="badge ${roundBadge(r)}">${r.toUpperCase()}</span></div>
       <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Name</th><th>Category</th><th style="text-align:center">Audition (J | P)</th><th style="text-align:center">Qualified (J | P)</th><th style="text-align:center">Semifinal (J | P)</th><th style="text-align:center">Final (J | P)</th><th style="text-align:center">Status</th><th style="text-align:center;color:var(--purple)">🌟 Total Rating</th></tr></thead>
       <tbody>${data.map((p,idx)=>{
-        const cat=categories.find(c=>c.id===p.catId);
+        const cat=categories.find(c=>String(c.id)===String(p.catId));
         
         // Calculate OVERALL rating across all rounds
         let overallVotes = [];
@@ -7516,8 +7549,8 @@ function renderPromoList(){
 
   const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   let data = eventParticipants.filter(p=>p.round===fromRound&&p.stageStatus==='done');
-  if(catFilter) data = data.filter(p=>p.catId===parseInt(catFilter));
-  if(venueFilter) data = data.filter(p=>p.venueId===parseInt(venueFilter));
+  if(catFilter) data = data.filter(p=>String(p.catId)===String(catFilter));
+  if(venueFilter) data = data.filter(p=>String(p.venueId)===String(venueFilter));
   data.forEach(p => {
     if (!p.roundScores) p.roundScores = {};
     if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
@@ -7557,7 +7590,7 @@ function renderPromoList(){
     </div>`;
 
   document.getElementById('promo-list').innerHTML = data.map((p,rank)=>{
-    const cat = categories.find(c=>c.id===p.catId);
+    const cat = categories.find(c=>String(c.id)===String(p.catId));
     let total = 0;
     let judgesWhoScored = new Set();
     if (p.scores) {
@@ -7706,8 +7739,8 @@ function downloadPromoPDF(){
     data = participants.filter(p => promoSelections.has(p.id));
   } else {
     data = participants.filter(p => p.round === toRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
-    if(catFilter) data = data.filter(p => p.catId === parseInt(catFilter));
-    if(venueFilter) data = data.filter(p => p.venueId === parseInt(venueFilter));
+    if(catFilter) data = data.filter(p => String(p.catId) === String(catFilter));
+    if(venueFilter) data = data.filter(p => String(p.venueId) === String(venueFilter));
   }
   
   if (data.length === 0) {
@@ -7757,7 +7790,7 @@ function downloadPromoPDF(){
   // Table Data
   const head = [['#', 'Participant Name', 'Category', 'Age']];
   const body = data.map((p, idx) => {
-    const cat = categories.find(c => c.id === p.catId);
+    const cat = categories.find(c => String(c.id) === String(p.catId));
     return [idx + 1, p.name, cat ? cat.name : '-', p.age || '-'];
   });
   
@@ -7822,8 +7855,8 @@ function downloadPromoJPG(){
     data = participants.filter(p => promoSelections.has(p.id));
   } else {
     data = participants.filter(p => p.round === toRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
-    if(catFilter) data = data.filter(p => p.catId === parseInt(catFilter));
-    if(venueFilter) data = data.filter(p => p.venueId === parseInt(venueFilter));
+    if(catFilter) data = data.filter(p => String(p.catId) === String(catFilter));
+    if(venueFilter) data = data.filter(p => String(p.venueId) === String(venueFilter));
   }
   
   if (data.length === 0) { toast('No participants found to download.'); return; }
@@ -7832,7 +7865,7 @@ function downloadPromoJPG(){
   div.style.cssText = 'position:absolute; left:-9999px; top:-9999px; width:800px; background:#ffffff; padding:40px; font-family:sans-serif; color:#0f172a; border-radius:0;';
   
   let rowsHtml = data.map((p, idx) => {
-    const cat = categories.find(c => c.id === p.catId);
+    const cat = categories.find(c => String(c.id) === String(p.catId));
     return `<tr style="background:${idx%2===0?'#fff':'#f8fafc'}"><td style="padding:10px;border-bottom:1px solid #e2e8f0">${idx+1}</td><td style="padding:10px;border-bottom:1px solid #e2e8f0;font-weight:600">${p.name}</td><td style="padding:10px;border-bottom:1px solid #e2e8f0">${cat?cat.name:'-'}</td><td style="padding:10px;border-bottom:1px solid #e2e8f0">${p.age||'-'}</td></tr>`;
   }).join('');
 
@@ -9341,7 +9374,7 @@ function matchJudgeAgreement(presetId=null){
   
   const renderMatch = (match) => {
     const ev=EVENTS.find(e=>e.id===match.eventId);
-    const ven=venues.find(v=>v.id===match.venueId);
+    const ven=venues.find(v=>String(v.id)===String(match.venueId));
     const remaining=match.amount-match.advance;
     return `<div style="background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.3);border-radius:12px;padding:16px">
       <div style="font-size:10px;color:var(--amber2);font-family:var(--fm);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:800">✅ Agreement Synced</div>
