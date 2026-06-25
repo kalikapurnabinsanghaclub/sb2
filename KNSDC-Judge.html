@@ -3466,6 +3466,116 @@ if (typeof syncEngine.loadEvents === 'function') {
   syncEngine.loadEvents().then(() => initIdentity());
 }
 
+let judgeTimerInterval = null;
+let judgeTimerState = null;
+
+function handleJudgeTimerSync(timer) {
+  const floatTimerWrap = document.getElementById('judge-floating-timer');
+  if (!floatTimerWrap) return;
+
+  if (!timer || !timer.participantId) {
+    floatTimerWrap.style.display = 'none';
+    if (judgeTimerInterval) {
+      clearInterval(judgeTimerInterval);
+      judgeTimerInterval = null;
+    }
+    judgeTimerState = null;
+    return;
+  }
+
+  const isSame = judgeTimerState &&
+                 judgeTimerState.participantId === timer.participantId &&
+                 judgeTimerState.started === timer.started &&
+                 judgeTimerState.pausedTime === timer.pausedTime &&
+                 judgeTimerState.startTime === timer.startTime &&
+                 judgeTimerState.elapsedOffset === timer.elapsedOffset &&
+                 judgeTimerState.duration === timer.duration &&
+                 judgeTimerState.timerType === timer.timerType;
+
+  if (isSame && judgeTimerInterval) {
+    return;
+  }
+
+  judgeTimerState = { ...timer };
+
+  if (judgeTimerInterval) {
+    clearInterval(judgeTimerInterval);
+    judgeTimerInterval = null;
+  }
+
+  floatTimerWrap.style.display = 'flex';
+
+  const timerLabel = document.getElementById('judge-timer-label');
+  const timerVal = document.getElementById('judge-timer-val');
+  const timerDot = document.getElementById('judge-timer-dot');
+
+  // Set style based on type
+  if (timer.timerType === 'countdown') {
+    if (timerLabel) timerLabel.textContent = 'Countdown';
+    floatTimerWrap.style.borderColor = '#22c55e';
+    if (timerVal) {
+      timerVal.style.color = '#22c55e';
+      timerVal.style.fontWeight = '800';
+    }
+    if (timerLabel) timerLabel.style.color = 'var(--text-muted)';
+    if (timerDot) {
+      timerDot.style.backgroundColor = '#22c55e';
+      timerDot.style.animation = timer.started && !timer.pausedTime ? 'blink 1.5s infinite' : 'none';
+    }
+  } else {
+    if (timerLabel) timerLabel.textContent = 'Stopwatch';
+    floatTimerWrap.style.borderColor = '#ef4444';
+    if (timerVal) {
+      timerVal.style.color = '#ef4444';
+      timerVal.style.fontWeight = '800';
+    }
+    if (timerLabel) timerLabel.style.color = 'var(--text-muted)';
+    if (timerDot) {
+      timerDot.style.backgroundColor = '#ef4444';
+      timerDot.style.animation = timer.started && !timer.pausedTime ? 'blink 1.5s infinite' : 'none';
+    }
+  }
+
+  const updateJudgeTimer = () => {
+    let elapsedSecs = timer.elapsedOffset || 0;
+    if (timer.started && !timer.pausedTime && timer.startTime) {
+      const elapsedMs = Date.now() - timer.startTime;
+      elapsedSecs = Math.floor(elapsedMs / 1000) + (timer.elapsedOffset || 0);
+    }
+
+    if (timer.timerType === 'countdown') {
+      const remainingSecs = Math.max(0, (timer.duration || 180) - elapsedSecs);
+      const cdMin = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
+      const cdSec = String(remainingSecs % 60).padStart(2, '0');
+      if (timerVal) timerVal.textContent = `${cdMin}:${cdSec}`;
+
+      if (remainingSecs === 0) {
+        floatTimerWrap.style.borderColor = '#ef4444';
+        floatTimerWrap.style.animation = 'sosPulse 1.5s infinite';
+        if (timerVal) {
+          timerVal.style.color = '#ef4444';
+          timerVal.style.fontWeight = '900';
+        }
+        if (timerLabel) timerLabel.style.color = '#ef4444';
+        if (timerDot) timerDot.style.backgroundColor = '#ef4444';
+      } else {
+        floatTimerWrap.style.animation = 'none';
+      }
+    } else {
+      // Stopwatch
+      const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
+      const swSec = String(elapsedSecs % 60).padStart(2, '0');
+      if (timerVal) timerVal.textContent = `${swMin}:${swSec}`;
+      floatTimerWrap.style.animation = 'none';
+    }
+  };
+
+  updateJudgeTimer();
+  if (timer.started && !timer.pausedTime) {
+    judgeTimerInterval = setInterval(updateJudgeTimer, 1000);
+  }
+}
+
 // Subscribe to state updates
 syncEngine.subscribe((state) => {
   if (!state) return;
@@ -3692,115 +3802,7 @@ syncEngine.subscribe((state) => {
   handleJudgeTimerSync(state.onstageTimer);
 });
 
-let judgeTimerInterval = null;
-let judgeTimerState = null;
 
-function handleJudgeTimerSync(timer) {
-  const floatTimerWrap = document.getElementById('judge-floating-timer');
-  if (!floatTimerWrap) return;
-
-  if (!timer || !timer.participantId) {
-    floatTimerWrap.style.display = 'none';
-    if (judgeTimerInterval) {
-      clearInterval(judgeTimerInterval);
-      judgeTimerInterval = null;
-    }
-    judgeTimerState = null;
-    return;
-  }
-
-  const isSame = judgeTimerState &&
-                 judgeTimerState.participantId === timer.participantId &&
-                 judgeTimerState.started === timer.started &&
-                 judgeTimerState.pausedTime === timer.pausedTime &&
-                 judgeTimerState.startTime === timer.startTime &&
-                 judgeTimerState.elapsedOffset === timer.elapsedOffset &&
-                 judgeTimerState.duration === timer.duration &&
-                 judgeTimerState.timerType === timer.timerType;
-
-  if (isSame && judgeTimerInterval) {
-    return;
-  }
-
-  judgeTimerState = { ...timer };
-
-  if (judgeTimerInterval) {
-    clearInterval(judgeTimerInterval);
-    judgeTimerInterval = null;
-  }
-
-  floatTimerWrap.style.display = 'flex';
-
-  const timerLabel = document.getElementById('judge-timer-label');
-  const timerVal = document.getElementById('judge-timer-val');
-  const timerDot = document.getElementById('judge-timer-dot');
-
-  // Set style based on type
-  if (timer.timerType === 'countdown') {
-    if (timerLabel) timerLabel.textContent = 'Countdown';
-    floatTimerWrap.style.borderColor = '#22c55e';
-    if (timerVal) {
-      timerVal.style.color = '#22c55e';
-      timerVal.style.fontWeight = '800';
-    }
-    if (timerLabel) timerLabel.style.color = 'var(--text-muted)';
-    if (timerDot) {
-      timerDot.style.backgroundColor = '#22c55e';
-      timerDot.style.animation = timer.started && !timer.pausedTime ? 'blink 1.5s infinite' : 'none';
-    }
-  } else {
-    if (timerLabel) timerLabel.textContent = 'Stopwatch';
-    floatTimerWrap.style.borderColor = '#ef4444';
-    if (timerVal) {
-      timerVal.style.color = '#ef4444';
-      timerVal.style.fontWeight = '800';
-    }
-    if (timerLabel) timerLabel.style.color = 'var(--text-muted)';
-    if (timerDot) {
-      timerDot.style.backgroundColor = '#ef4444';
-      timerDot.style.animation = timer.started && !timer.pausedTime ? 'blink 1.5s infinite' : 'none';
-    }
-  }
-
-  const updateJudgeTimer = () => {
-    let elapsedSecs = timer.elapsedOffset || 0;
-    if (timer.started && !timer.pausedTime && timer.startTime) {
-      const elapsedMs = Date.now() - timer.startTime;
-      elapsedSecs = Math.floor(elapsedMs / 1000) + (timer.elapsedOffset || 0);
-    }
-
-    if (timer.timerType === 'countdown') {
-      const remainingSecs = Math.max(0, (timer.duration || 180) - elapsedSecs);
-      const cdMin = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
-      const cdSec = String(remainingSecs % 60).padStart(2, '0');
-      if (timerVal) timerVal.textContent = `${cdMin}:${cdSec}`;
-
-      if (remainingSecs === 0) {
-        floatTimerWrap.style.borderColor = '#ef4444';
-        floatTimerWrap.style.animation = 'sosPulse 1.5s infinite';
-        if (timerVal) {
-          timerVal.style.color = '#ef4444';
-          timerVal.style.fontWeight = '900';
-        }
-        if (timerLabel) timerLabel.style.color = '#ef4444';
-        if (timerDot) timerDot.style.backgroundColor = '#ef4444';
-      } else {
-        floatTimerWrap.style.animation = 'none';
-      }
-    } else {
-      // Stopwatch
-      const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
-      const swSec = String(elapsedSecs % 60).padStart(2, '0');
-      if (timerVal) timerVal.textContent = `${swMin}:${swSec}`;
-      floatTimerWrap.style.animation = 'none';
-    }
-  };
-
-  updateJudgeTimer();
-  if (timer.started && !timer.pausedTime) {
-    judgeTimerInterval = setInterval(updateJudgeTimer, 1000);
-  }
-}
 
 
 
