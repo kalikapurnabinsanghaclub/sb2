@@ -1928,6 +1928,26 @@
             </div>
           </div>
 
+          <div id="onstage-timers-controls" style="display:none;margin-top:10px;justify-content:space-between;align-items:center;gap:12px;background:rgba(0,0,0,0.02);padding:8px 12px;border-radius:10px;border:1px dashed var(--border2);align-self:stretch;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:11px;font-weight:700;color:var(--text-muted);">Duration:</span>
+              <select id="onstage-duration-select" onchange="changeOnStageDuration()" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--card-bg);color:var(--text-main);font-weight:600;outline:none;cursor:pointer;">
+                <option value="60">1 Min</option>
+                <option value="120">2 Mins</option>
+                <option value="180" selected>3 Mins</option>
+                <option value="240">4 Mins</option>
+                <option value="300">5 Mins</option>
+                <option value="360">6 Mins</option>
+                <option value="custom">Custom...</option>
+              </select>
+              <input type="number" id="onstage-duration-custom" placeholder="Secs" oninput="changeOnStageDurationCustom()" style="display:none;width:60px;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--card-bg);color:var(--text-main);font-weight:600;outline:none;" min="1" />
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button id="onstage-btn-playpause" class="btn btn-xs" onclick="toggleOnStagePlayPause()" style="font-size:10px;padding:3px 8px;border-radius:6px;background:var(--blue2);color:white;font-weight:700;border:none;cursor:pointer;">⏸ Pause</button>
+              <button class="btn btn-xs" onclick="resetOnStageTimers()" style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(100,116,139,0.1);color:var(--text-main);font-weight:700;border:1px solid var(--border2);cursor:pointer;">🔄 Reset</button>
+            </div>
+          </div>
+
           <div style="display:flex;gap:8px;margin-top:12px">
             <button class="btn btn-success btn-sm" onclick="markStageDone()">✓ Complete</button>
           </div>
@@ -5892,45 +5912,94 @@ function resetQueueOrder() {
 
 let onstageTimerInterval = null;
 let onstageStartTime = null;
+let onstagePausedTime = null;
+let onstageElapsedOffset = 0;
 let currentOnStageId = null;
-const COUNTDOWN_DEFAULT_SECS = 180; // 3 minutes
+let onstageDuration = 180; // default in seconds
 
 function startOnStageTimers(p) {
-  if (currentOnStageId === p.id && onstageTimerInterval) {
-    return;
-  }
-  currentOnStageId = p.id;
-  
   const timerWrap = document.getElementById('onstage-timers-wrap');
+  const timerControls = document.getElementById('onstage-timers-controls');
   if (!timerWrap) return;
+  
   timerWrap.style.display = 'flex';
+  if (timerControls) timerControls.style.display = 'flex';
   
   const stopwatchEl = document.getElementById('onstage-stopwatch');
   const countdownEl = document.getElementById('onstage-countdown');
+  const durationSel = document.getElementById('onstage-duration-select');
+  const durationCustom = document.getElementById('onstage-duration-custom');
   
-  if (onstageTimerInterval) {
-    clearInterval(onstageTimerInterval);
+  if (currentOnStageId !== p.id) {
+    currentOnStageId = p.id;
+    if (onstageTimerInterval) {
+      clearInterval(onstageTimerInterval);
+      onstageTimerInterval = null;
+    }
+    
+    // Load default duration preference
+    let savedDefaultDur = localStorage.getItem('onstage_default_duration') || '180';
+    if (durationSel) {
+      if (['60', '120', '180', '240', '300', '360'].includes(savedDefaultDur)) {
+        durationSel.value = savedDefaultDur;
+        if (durationCustom) durationCustom.style.display = 'none';
+      } else {
+        durationSel.value = 'custom';
+        if (durationCustom) {
+          durationCustom.style.display = 'inline-block';
+          durationCustom.value = savedDefaultDur;
+        }
+      }
+    }
+    
+    // Load specific participant duration or fallback to default
+    let pDur = localStorage.getItem(`onstage_duration_${p.id}`);
+    if (pDur) {
+      onstageDuration = parseInt(pDur);
+    } else {
+      onstageDuration = parseInt(savedDefaultDur);
+      localStorage.setItem(`onstage_duration_${p.id}`, onstageDuration);
+    }
+    
+    // Load start timestamp, paused state, and offset
+    let storedStart = localStorage.getItem(`onstage_start_${p.id}`);
+    let storedPaused = localStorage.getItem(`onstage_paused_at_${p.id}`);
+    let storedOffset = localStorage.getItem(`onstage_elapsed_offset_${p.id}`);
+    
+    onstageElapsedOffset = storedOffset ? parseInt(storedOffset) : 0;
+    
+    if (storedPaused) {
+      onstagePausedTime = parseInt(storedPaused);
+      onstageStartTime = storedStart ? parseInt(storedStart) : Date.now();
+    } else if (storedStart) {
+      onstageStartTime = parseInt(storedStart);
+      onstagePausedTime = null;
+    } else {
+      onstageStartTime = Date.now();
+      onstagePausedTime = null;
+      localStorage.setItem(`onstage_start_${p.id}`, onstageStartTime);
+    }
   }
   
-  let storedStart = localStorage.getItem(`onstage_start_${p.id}`);
-  if (storedStart) {
-    onstageStartTime = parseInt(storedStart);
-  } else {
-    onstageStartTime = Date.now();
-    localStorage.setItem(`onstage_start_${p.id}`, onstageStartTime);
+  const playPauseBtn = document.getElementById('onstage-btn-playpause');
+  if (playPauseBtn) {
+    playPauseBtn.textContent = onstagePausedTime ? '▶ Resume' : '⏸ Pause';
   }
   
   const updateTimers = () => {
-    const elapsedMs = Date.now() - onstageStartTime;
-    const elapsedSecs = Math.floor(elapsedMs / 1000);
+    let elapsedSecs = onstageElapsedOffset;
+    if (!onstagePausedTime) {
+      const elapsedMs = Date.now() - onstageStartTime;
+      elapsedSecs = Math.floor(elapsedMs / 1000) + onstageElapsedOffset;
+    }
     
     // Stopwatch (Count up)
     const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
     const swSec = String(elapsedSecs % 60).padStart(2, '0');
     if (stopwatchEl) stopwatchEl.textContent = `${swMin}:${swSec}`;
     
-    // Countdown (Count down from 3 mins)
-    const remainingSecs = Math.max(0, COUNTDOWN_DEFAULT_SECS - elapsedSecs);
+    // Countdown (Count down from onstageDuration)
+    const remainingSecs = Math.max(0, onstageDuration - elapsedSecs);
     const cdMin = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
     const cdSec = String(remainingSecs % 60).padStart(2, '0');
     
@@ -5946,9 +6015,7 @@ function startOnStageTimers(p) {
           cdBox.style.color = '#ef4444';
           cdBox.style.animation = 'sosPulse 1.5s infinite';
         }
-        if (cdLabel) {
-          cdLabel.style.color = '#ef4444';
-        }
+        if (cdLabel) cdLabel.style.color = '#ef4444';
         countdownEl.style.color = '#ef4444';
         countdownEl.style.fontWeight = '900';
       } else {
@@ -5958,17 +6025,21 @@ function startOnStageTimers(p) {
           cdBox.style.color = '#22c55e';
           cdBox.style.animation = 'none';
         }
-        if (cdLabel) {
-          cdLabel.style.color = 'rgba(34, 197, 94, 0.8)';
-        }
+        if (cdLabel) cdLabel.style.color = 'rgba(34, 197, 94, 0.8)';
         countdownEl.style.color = '#22c55e';
         countdownEl.style.fontWeight = '800';
       }
     }
   };
   
+  if (onstageTimerInterval) {
+    clearInterval(onstageTimerInterval);
+  }
+  
   updateTimers();
-  onstageTimerInterval = setInterval(updateTimers, 1000);
+  if (!onstagePausedTime) {
+    onstageTimerInterval = setInterval(updateTimers, 1000);
+  }
 }
 
 function stopOnStageTimers() {
@@ -5978,11 +6049,114 @@ function stopOnStageTimers() {
   }
   if (currentOnStageId) {
     localStorage.removeItem(`onstage_start_${currentOnStageId}`);
+    localStorage.removeItem(`onstage_paused_at_${currentOnStageId}`);
+    localStorage.removeItem(`onstage_elapsed_offset_${currentOnStageId}`);
+    localStorage.removeItem(`onstage_duration_${currentOnStageId}`);
   }
   currentOnStageId = null;
   onstageStartTime = null;
+  onstagePausedTime = null;
+  onstageElapsedOffset = 0;
+  
   const timerWrap = document.getElementById('onstage-timers-wrap');
+  const timerControls = document.getElementById('onstage-timers-controls');
   if (timerWrap) timerWrap.style.display = 'none';
+  if (timerControls) timerControls.style.display = 'none';
+}
+
+function toggleOnStagePlayPause() {
+  if (!currentOnStageId) return;
+  
+  const playPauseBtn = document.getElementById('onstage-btn-playpause');
+  
+  if (onstagePausedTime) {
+    // Resume
+    onstageStartTime = Date.now();
+    localStorage.setItem(`onstage_start_${currentOnStageId}`, onstageStartTime);
+    localStorage.removeItem(`onstage_paused_at_${currentOnStageId}`);
+    onstagePausedTime = null;
+    if (playPauseBtn) playPauseBtn.textContent = '⏸ Pause';
+  } else {
+    // Pause
+    onstagePausedTime = Date.now();
+    const elapsedMs = onstagePausedTime - onstageStartTime;
+    onstageElapsedOffset += Math.floor(elapsedMs / 1000);
+    localStorage.setItem(`onstage_paused_at_${currentOnStageId}`, onstagePausedTime);
+    localStorage.setItem(`onstage_elapsed_offset_${currentOnStageId}`, onstageElapsedOffset);
+    if (playPauseBtn) playPauseBtn.textContent = '▶ Resume';
+  }
+  
+  const p = participants.find(x => x.id === currentOnStageId);
+  if (p) {
+    startOnStageTimers(p);
+  }
+}
+
+function resetOnStageTimers() {
+  if (!currentOnStageId) return;
+  
+  onstageStartTime = Date.now();
+  onstagePausedTime = null;
+  onstageElapsedOffset = 0;
+  
+  localStorage.setItem(`onstage_start_${currentOnStageId}`, onstageStartTime);
+  localStorage.removeItem(`onstage_paused_at_${currentOnStageId}`);
+  localStorage.setItem(`onstage_elapsed_offset_${currentOnStageId}`, 0);
+  
+  const playPauseBtn = document.getElementById('onstage-btn-playpause');
+  if (playPauseBtn) playPauseBtn.textContent = '⏸ Pause';
+  
+  const p = participants.find(x => x.id === currentOnStageId);
+  if (p) {
+    startOnStageTimers(p);
+  }
+}
+
+function changeOnStageDuration() {
+  const durationSel = document.getElementById('onstage-duration-select');
+  const durationCustom = document.getElementById('onstage-duration-custom');
+  if (!durationSel) return;
+  
+  let newDurVal = durationSel.value;
+  if (newDurVal === 'custom') {
+    if (durationCustom) {
+      durationCustom.style.display = 'inline-block';
+      durationCustom.focus();
+      if (durationCustom.value) {
+        onstageDuration = parseInt(durationCustom.value) || 180;
+      }
+    }
+  } else {
+    if (durationCustom) durationCustom.style.display = 'none';
+    onstageDuration = parseInt(newDurVal);
+  }
+  
+  localStorage.setItem('onstage_default_duration', onstageDuration);
+  if (currentOnStageId) {
+    localStorage.setItem(`onstage_duration_${currentOnStageId}`, onstageDuration);
+  }
+  
+  const p = participants.find(x => x.id === currentOnStageId);
+  if (p) {
+    startOnStageTimers(p);
+  }
+}
+
+function changeOnStageDurationCustom() {
+  const durationCustom = document.getElementById('onstage-duration-custom');
+  if (!durationCustom || !durationCustom.value) return;
+  
+  onstageDuration = parseInt(durationCustom.value) || 180;
+  
+  localStorage.setItem('onstage_default_duration', onstageDuration);
+  if (currentOnStageId) {
+    localStorage.setItem(`onstage_duration_${currentOnStageId}`, onstageDuration);
+  }
+  
+  const p = participants.find(x => x.id === currentOnStageId);
+  if (p) {
+    startOnStageTimers(p);
+  }
 }
 
 function renderVenueParticipants(){
