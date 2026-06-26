@@ -1301,7 +1301,10 @@
   <div id="scoring-absent-lock" style="display:none; text-align:center; padding:120px 20px;">
     <div style="font-size:64px; margin-bottom:24px;">🛑</div>
     <div style="font-family:var(--fh); font-size:26px; font-weight:900; color:var(--text); margin-bottom:12px;">Scoring is Locked</div>
-    <p style="color:var(--text-muted); font-size:15px; max-width:400px; margin:0 auto; line-height:1.6;">You are currently marked as <strong>Absent</strong>. Please contact the Monitor or Host to check-in and unlock your scoring panel.</p>
+    <p style="color:var(--text-muted); font-size:15px; max-width:400px; margin:0 auto; line-height:1.6; margin-bottom: 24px;">You are currently marked as <strong>Absent</strong>. Please go to your Dashboard and check-in to unlock your scoring panel.</p>
+    <button class="btn btn-blue" style="padding: 12px 24px; font-size: 16px; font-weight: 800; border-radius: 12px; box-shadow: 0 4px 12px rgba(37,99,235,0.2);" onclick="showPage('dashboard')">
+      Go to Dashboard to Unlock
+    </button>
   </div>
 
   <!-- ACTUAL SCORING CONTENT -->
@@ -2907,9 +2910,20 @@ function setupHoldButton() {
       (j.name && JUDGE.name && String(j.name).toLowerCase() === String(JUDGE.name).toLowerCase())
     );
 
+    const nowStr = new Date().toISOString();
+
     if (target) {
       target.present = !target.present;
       target.eventId = JUDGE.eventId || '0';
+      target.attendanceLog = target.attendanceLog || [];
+      if (target.present) {
+        target.attendanceLog.push({ checkIn: nowStr, checkOut: null });
+        toast('🔓 You are now Present. Scoring Section Unlocked!', '#10b981');
+      } else {
+        const lastLog = target.attendanceLog[target.attendanceLog.length - 1];
+        if (lastLog && !lastLog.checkOut) lastLog.checkOut = nowStr;
+        toast('🔒 You are now Absent. Scoring Section Locked.', '#f59e0b');
+      }
     } else {
       target = {
         id: judgesList.length ? Math.max(...judgesList.map(j => j.id)) + 1 : 1,
@@ -2918,6 +2932,7 @@ function setupHoldButton() {
         eventId: JUDGE.eventId || '0',
         role: 'Judge',
         present: true,
+        attendanceLog: [{ checkIn: nowStr, checkOut: null }],
         color: JUDGE.color || '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
       };
       judgesList.push(target);
