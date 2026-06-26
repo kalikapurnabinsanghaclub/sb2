@@ -1301,7 +1301,7 @@
   <div id="scoring-absent-lock" style="display:none; text-align:center; padding:120px 20px;">
     <div style="font-size:64px; margin-bottom:24px;">🛑</div>
     <div style="font-family:var(--fh); font-size:26px; font-weight:900; color:var(--text); margin-bottom:12px;">Scoring is Locked</div>
-    <p style="color:var(--text-muted); font-size:15px; max-width:400px; margin:0 auto; line-height:1.6; margin-bottom: 24px;">You are currently marked as <strong>Absent</strong>. Please go to your Dashboard and check-in to unlock your scoring panel.</p>
+    <p id="scoring-lock-msg" style="color:var(--text-muted); font-size:15px; max-width:400px; margin:0 auto; line-height:1.6; margin-bottom: 24px;">You are currently marked as <strong>Absent</strong>. Please go to your Dashboard and check-in to unlock your scoring panel.</p>
     <button class="btn btn-blue" style="padding: 12px 24px; font-size: 16px; font-weight: 800; border-radius: 12px; box-shadow: 0 4px 12px rgba(37,99,235,0.2);" onclick="showPage('dashboard')">
       Go to Dashboard to Unlock
     </button>
@@ -1968,6 +1968,8 @@ function initIdentity() {
         );
         if (existingJudge) {
           JUDGE.id = existingJudge.id;
+          JUDGE.present = existingJudge.present;
+          JUDGE.isUnlocked = existingJudge.isUnlocked;
         }
 
         JUDGE.spec     = matchedAgr.spec     || JUDGE.spec;
@@ -3439,9 +3441,27 @@ async function saveModalScores() {
 
 function renderParticipantsTable() {
   const isPresent = JUDGE.present === true;
-  document.getElementById('scoring-absent-lock').style.display = isPresent ? 'none' : 'block';
-  document.getElementById('scoring-content-wrap').style.display = isPresent ? 'block' : 'none';
-  if (!isPresent) return;
+  const isUnlocked = JUDGE.isUnlocked === true;
+  
+  if (!isPresent || !isUnlocked) {
+    document.getElementById('scoring-absent-lock').style.display = 'block';
+    document.getElementById('scoring-content-wrap').style.display = 'none';
+    
+    const lockMsg = document.getElementById('scoring-lock-msg');
+    if (lockMsg) {
+      if (!isPresent && !isUnlocked) {
+        lockMsg.innerHTML = 'You are currently marked as <strong>Absent</strong> and your session is <strong>Locked</strong>.<br>1. Go to your Dashboard and check-in.<br>2. Ask the Monitor to unlock your session.';
+      } else if (!isPresent) {
+        lockMsg.innerHTML = 'You are currently marked as <strong>Absent</strong>.<br>Please go to your Dashboard and check-in to unlock your scoring panel.';
+      } else if (!isUnlocked) {
+        lockMsg.innerHTML = 'You are marked as Present, but your session is <strong>Locked</strong> by the Monitor.<br>Please ask the Monitor to unlock your session.';
+      }
+    }
+    return;
+  }
+
+  document.getElementById('scoring-absent-lock').style.display = 'none';
+  document.getElementById('scoring-content-wrap').style.display = 'block';
 
   const rf = document.getElementById('round-filter').value;
   let data = rf==='all' ? participants : participants.filter(p=>p.round===rf);
