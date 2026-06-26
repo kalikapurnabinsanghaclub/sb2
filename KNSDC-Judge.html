@@ -3130,13 +3130,30 @@ async function submitFinalScores() {
     
     const now = Date.now();
     if (window.syncEngine) {
-      syncEngine.setData(state => {
-        const jList = [...(state.judges || [])];
+      // 1. Force push all locally scored participants to public_registrations
+      const state = syncEngine.getData();
+      const participants = state.participants || [];
+      const scoredParts = participants.filter(p => p.scores && p.scores[JUDGE.id] && Object.keys(p.scores[JUDGE.id]).length > 0);
+      
+      let pushCount = 0;
+      for (const p of scoredParts) {
+        const ok = await syncEngine.updateParticipant(p.id, p);
+        if (ok) pushCount++;
+      }
+      
+      console.log(`[Judge] Final Submit: Pushed ${pushCount}/${scoredParts.length} scored participants.`);
+      if (scoredParts.length > 0 && pushCount < scoredParts.length) {
+        toast(`⚠️ Warning: Some scores failed to push. Retrying in background.`);
+      }
+
+      // 2. Mark judge as submitted in sync_state
+      syncEngine.setData(s => {
+        const jList = [...(s.judges || [])];
         const idx = jList.findIndex(j => j.id === JUDGE.id);
         if (idx !== -1) {
           jList[idx] = { ...jList[idx], scoresSubmitted: true, scoresSubmittedAt: now };
         }
-        return { ...state, judges: jList };
+        return { ...s, judges: jList };
       });
       
       const success = await syncEngine.forceSaveStateToSupabase();
