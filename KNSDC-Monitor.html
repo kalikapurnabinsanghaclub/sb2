@@ -9222,6 +9222,31 @@ function renderAssignedJudges() {
       ? '<img src="' + a.photoUrl + '" alt="' + a.name + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:3px solid ' + ac + '60;box-shadow:0 4px 12px rgba(0,0,0,0.12);flex-shrink:0">'
       : '<div style="width:52px;height:52px;border-radius:50%;background:' + ac + '20;color:' + ac + ';display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;border:2px solid ' + ac + '50;flex-shrink:0">' + initial + '</div>';
 
+    const jSession = (sData.judges || []).find(function(j) {
+      return (j.email && a.email && String(j.email).toLowerCase() === String(a.email).toLowerCase()) || 
+             (j.name && a.name && String(j.name).toLowerCase() === String(a.name).toLowerCase());
+    });
+    const isPresent = jSession && jSession.present === true;
+    const attLogs = jSession && jSession.attendanceLog ? jSession.attendanceLog : [];
+
+    const presentBadge = isPresent 
+      ? '<div class="badge b-green" style="margin-bottom:6px;cursor:pointer" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\')"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT</div>'
+      : '<div class="badge b-red" style="margin-bottom:6px;cursor:pointer" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\')">ABSENT</div>';
+
+    let attHtml = '';
+    if (attLogs.length > 0) {
+      attHtml = '<div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:10px;">' +
+        '<div style="font-size:10px;font-weight:800;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase">Attendance Log</div>' +
+        '<div style="max-height:80px;overflow-y:auto;font-size:11px;color:var(--text);display:flex;flex-direction:column;gap:4px;">' +
+        attLogs.map(function(l) {
+          var dIn = new Date(l.checkIn);
+          var dateStr = dIn.toLocaleDateString('en-IN', {month:'short', day:'numeric'});
+          var tIn = dIn.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+          var tOut = l.checkOut ? new Date(l.checkOut).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}) : 'Active';
+          return '<div style="display:flex;justify-content:space-between;background:var(--surface2);padding:4px 8px;border-radius:6px;border:1px solid var(--border);"><span>📅 ' + dateStr + '</span><span style="font-family:var(--fm);font-weight:600;">🕒 ' + tIn + ' - ' + tOut + '</span></div>';
+        }).join('') + '</div></div>';
+    }
+
     html +=
       '<div class="card glass-card card-hover judge-assign-card confirmed" style="padding:0;overflow:hidden">' +
       '<div style="height:3px;background:linear-gradient(90deg,' + ac + ',' + ac + '80)"></div>' +
@@ -9239,7 +9264,7 @@ function renderAssignedJudges() {
       '<div style="font-size:11px;color:#64748b">&#x1F4DE; ' + (a.phone || '&mdash;') + (a.city ? ' &middot; ' + a.city : '') + '</div>' +
       '</div>' +
       '<div style="text-align:right;flex-shrink:0">' +
-      '<div class="badge b-green" style="margin-bottom:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT</div>' +
+      presentBadge +
       '<div class="judge-score-val" style="font-size:10px;color:#64748b;font-family:var(--fm)">' + (scoresGiven > 0 ? '&#x2696;&#xFE0F; ' + scoresGiven + ' scored' : 'No scores yet') + '</div>' +
       '</div>' +
       '</div>' +
@@ -9256,6 +9281,8 @@ function renderAssignedJudges() {
       '<div style="display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:6px;font-family:var(--fm)"><span>PAYMENT &middot; &#x20B9;' + ((a.paymentReceived||a.advance||0)).toLocaleString() + ' of &#x20B9;' + (a.amount||0).toLocaleString() + '</span><span style="font-weight:700;color:' + (payPct>=100?'#059669':'#d97706') + '">' + payPct + '%</span></div>' +
       '<div class="payment-progress"><div class="payment-fill" style="width:' + Math.min(payPct,100) + '%;background:' + (payPct>=100?'linear-gradient(90deg,#059669,#10b981)':'linear-gradient(90deg,#d97706,#f59e0b)') + '"></div></div>' +
       '</div>' +
+      
+      attHtml +
 
       // Credentials
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.12);border-radius:10px">' +
