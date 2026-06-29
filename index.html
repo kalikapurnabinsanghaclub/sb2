@@ -2621,6 +2621,14 @@
           <div id="epv-judges" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:20px;">
           </div>
         </div>
+
+        <div id="epv-public-rating-container" style="display:none; margin-bottom: 40px;">
+          <h3 style="font-size:1.5rem; font-weight:800; color:#1e293b; margin-bottom:16px; padding-bottom:8px; border-bottom:2px solid #f1f5f9; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.8rem;">🌟</span> Public Favorites
+          </h3>
+          <div id="epv-public-rating" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:20px;">
+          </div>
+        </div>
       </div>
 
       <!-- Right Column: Sidebar / Action -->
@@ -7334,6 +7342,79 @@
         judgesCont.style.display = 'block';
       } else {
         judgesCont.style.display = 'none';
+      }
+      
+      // Public Favorites Logic
+      const allParts = state.participants || [];
+      const evParts = allParts.filter(p => String(p.eventId) === String(ev.id));
+      const pubVotes = state.publicVotes || {};
+      
+      const favoritesData = [];
+      
+      evParts.forEach(p => {
+        // Collect all votes for this participant across all rounds
+        let allVotes = [];
+        ['audition', 'qualified', 'semifinal', 'final'].forEach(round => {
+          const key = p.id + '_' + round;
+          if (pubVotes[key]) allVotes = allVotes.concat(pubVotes[key]);
+        });
+        
+        if (allVotes.length > 0) {
+          // Calculate unique "Likes" (unique phone numbers)
+          const uniquePhones = new Set();
+          let totalScore = 0;
+          allVotes.forEach(v => {
+            if (v.phone) uniquePhones.add(v.phone);
+            totalScore += (v.score || 0);
+          });
+          
+          const likes = uniquePhones.size;
+          const avgScore = (totalScore / allVotes.length).toFixed(1);
+          
+          favoritesData.push({
+            p: p,
+            likes: likes,
+            avg: avgScore
+          });
+        }
+      });
+      
+      const pubCont = document.getElementById('epv-public-rating-container');
+      const pubBody = document.getElementById('epv-public-rating');
+      
+      if (favoritesData.length > 0) {
+        // Sort by likes descending, then average descending
+        favoritesData.sort((a, b) => b.likes - a.likes || b.avg - a.avg);
+        
+        let pHtml = '';
+        favoritesData.forEach(fav => {
+          const pName = fav.p.name || 'Participant';
+          const pCat = ev.categories?.find(c => c.id == fav.p.catId)?.name || 'General';
+          
+          pHtml += `
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; display:flex; align-items:center; gap:16px; box-shadow:0 4px 12px rgba(0,0,0,0.03); position:relative; overflow:hidden;">
+              <div style="width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);">
+                ${fav.p.id ? fav.p.id.slice(-2).toUpperCase() : '🌟'}
+              </div>
+              <div style="flex:1; overflow:hidden;">
+                <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pName}</div>
+                <div style="font-size:0.8rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pCat}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
+                  <span style="font-size:1.3rem;">❤️</span>
+                  <span style="font-size:1.5rem; font-weight:900; color:#059669;">${fav.likes}</span>
+                </div>
+                <div style="font-size:0.8rem; color:#f59e0b; font-weight:800; margin-top:4px;">⭐ ${fav.avg} AVG</div>
+              </div>
+            </div>
+          `;
+        });
+        
+        pubBody.innerHTML = pHtml;
+        pubCont.style.display = 'block';
+      } else {
+        pubCont.style.display = 'none';
       }
       
       const isRegOpen = (ev.switchStates && ev.switchStates.publicReg !== undefined) ? ev.switchStates.publicReg : isRegistrationOpen;
