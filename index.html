@@ -2882,6 +2882,41 @@
     </div>
   </div>
 
+  <!-- ════════════════ FAVORITE VOTE MODAL ════════════════ -->
+  <div id="favoriteVoteModal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.8); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(8px);">
+    <div style="background:#fff; width:100%; max-width:400px; border-radius:24px; overflow:hidden; box-shadow:0 25px 50px rgba(0,0,0,0.25); position:relative; animation:slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+      <div style="background:linear-gradient(135deg, #10b981, #059669); padding:24px; text-align:center; color:#fff; position:relative;">
+        <button onclick="document.getElementById('favoriteVoteModal').classList.add('hidden')" style="position:absolute; top:16px; right:16px; background:rgba(255,255,255,0.2); border:none; width:32px; height:32px; border-radius:50%; color:#fff; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">✕</button>
+        <div style="font-size:3rem; margin-bottom:8px;">❤️</div>
+        <h3 style="margin:0; font-family:'Cinzel Decorative', cursive; font-size:1.5rem; letter-spacing:1px;">Support Performer</h3>
+        <p style="margin:6px 0 0; font-size:0.9rem; opacity:0.9;">Drop a like to show your appreciation!</p>
+      </div>
+      <div style="padding:24px;">
+        <input type="hidden" id="fav-vote-evid" />
+        <input type="hidden" id="fav-vote-pid" />
+        
+        <div style="margin-bottom:16px;">
+          <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Your Full Name</label>
+          <div style="position:relative;">
+            <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); color:#94a3b8;">👤</span>
+            <input type="text" id="fav-vote-name" placeholder="John Doe" style="width:100%; padding:12px 12px 12px 38px; border:2px solid #e2e8f0; border-radius:12px; font-size:1rem; color:#1e293b; font-family:'Nunito', sans-serif; outline:none; transition:all 0.2s;" onfocus="this.style.borderColor='#10b981'" onblur="this.style.borderColor='#e2e8f0'" />
+          </div>
+        </div>
+        
+        <div style="margin-bottom:24px;">
+          <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Phone Number</label>
+          <div style="position:relative;">
+            <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); color:#94a3b8;">📱</span>
+            <input type="tel" id="fav-vote-phone" placeholder="10-digit mobile number" maxlength="15" style="width:100%; padding:12px 12px 12px 38px; border:2px solid #e2e8f0; border-radius:12px; font-size:1rem; color:#1e293b; font-family:'Nunito', sans-serif; outline:none; transition:all 0.2s;" onfocus="this.style.borderColor='#10b981'" onblur="this.style.borderColor='#e2e8f0'" />
+          </div>
+        </div>
+        
+        <button onclick="submitFavoriteVote()" style="width:100%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:16px; border-radius:12px; font-weight:800; font-size:1.1rem; cursor:pointer; box-shadow:0 8px 20px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 25px rgba(16,185,129,0.35)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 20px rgba(16,185,129,0.25)'">Submit Like ❤️</button>
+        <div id="fav-vote-msg" style="text-align:center; font-size:0.85rem; font-weight:700; color:#ef4444; margin-top:12px; min-height:18px;"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ════════════════ AUTH MODAL ════════════════ -->
   <div id="authModal" class="modal-bg hidden" onclick="if(event.target===event.currentTarget) hideAuth()">
     <div class="fwrap">
@@ -3226,6 +3261,90 @@
         btn.textContent = '✅ Rating Submitted!';
       }
     }
+    
+    // Support Vote (Anytime Favorite)
+    function showFavoriteVoteModal(eventId, participantId) {
+      document.getElementById('fav-vote-evid').value = eventId;
+      document.getElementById('fav-vote-pid').value = participantId;
+      document.getElementById('fav-vote-msg').textContent = '';
+      document.getElementById('fav-vote-msg').style.color = '#ef4444';
+      document.getElementById('fav-vote-name').value = '';
+      document.getElementById('fav-vote-phone').value = '';
+      
+      const btn = document.getElementById('fav-vote-submit');
+      btn.disabled = false;
+      btn.textContent = 'Submit Like ❤️';
+      btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+      
+      document.getElementById('favoriteVoteModal').classList.remove('hidden');
+    }
+    window.showFavoriteVoteModal = showFavoriteVoteModal;
+    
+    function submitFavoriteVote() {
+      const eventId = document.getElementById('fav-vote-evid').value;
+      const participantId = document.getElementById('fav-vote-pid').value;
+      const msgEl = document.getElementById('fav-vote-msg');
+      const nameEl = document.getElementById('fav-vote-name');
+      const phoneEl = document.getElementById('fav-vote-phone');
+      const btn = document.getElementById('fav-vote-submit');
+      
+      const voterName = nameEl.value.trim();
+      const phone = phoneEl.value.trim();
+      const lsKey = `knsdc_fav_${participantId}`;
+
+      if (!voterName || voterName.length < 2) {
+        msgEl.textContent = '⚠️ Please enter your full name.';
+        nameEl.focus();
+        return;
+      }
+
+      if (!phone || phone.length < 7) {
+        msgEl.textContent = '⚠️ Please enter a valid phone number.';
+        phoneEl.focus();
+        return;
+      }
+
+      if (localStorage.getItem(lsKey)) {
+        msgEl.style.color = '#b45309';
+        msgEl.textContent = '⚡ You have already supported this performer!';
+        return;
+      }
+
+      syncEngine.setData(s => {
+        const updated = { ...s };
+        if (!updated.publicVotes) updated.publicVotes = {};
+        // We save favorite votes as round="favorite" with a score of 10 to boost average if wanted, or just 0
+        const voteKey = participantId + '_favorite';
+        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+        
+        updated.publicVotes[voteKey].push({
+          score: 10,
+          phone: phone,
+          name: voterName,
+          timestamp: new Date().toISOString()
+        });
+        
+        return updated;
+      });
+
+      localStorage.setItem(lsKey, 'true');
+      
+      msgEl.style.color = '#059669';
+      msgEl.innerHTML = `✅ Thank you for supporting! 🙏`;
+      nameEl.disabled = true;
+      phoneEl.disabled = true;
+      
+      btn.disabled = true;
+      btn.textContent = '✅ Supported!';
+      btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+      btn.style.color = '#059669';
+      
+      setTimeout(() => {
+        document.getElementById('favoriteVoteModal').classList.add('hidden');
+        showEventDetail(eventId); // Refresh the view to show updated likes
+      }, 1500);
+    }
+    window.submitFavoriteVote = submitFavoriteVote;
 
     // Standalone version for the white-background rating section
     function submitPublicVoteStandalone(eventId, participantId, round) {
@@ -7354,7 +7473,7 @@
       evParts.forEach(p => {
         // Collect all votes for this participant across all rounds
         let allVotes = [];
-        ['audition', 'qualified', 'semifinal', 'final'].forEach(round => {
+        ['audition', 'qualified', 'semifinal', 'final', 'favorite'].forEach(round => {
           const key = p.id + '_' + round;
           if (pubVotes[key]) allVotes = allVotes.concat(pubVotes[key]);
         });
@@ -7363,13 +7482,17 @@
           // Calculate unique "Likes" (unique phone numbers)
           const uniquePhones = new Set();
           let totalScore = 0;
+          let ratingCount = 0;
           allVotes.forEach(v => {
             if (v.phone) uniquePhones.add(v.phone);
-            totalScore += (v.score || 0);
+            if (v.score !== undefined && v.score <= 10) {
+              totalScore += v.score;
+              ratingCount++;
+            }
           });
           
           const likes = uniquePhones.size;
-          const avgScore = (totalScore / allVotes.length).toFixed(1);
+          const avgScore = ratingCount > 0 ? (totalScore / ratingCount).toFixed(1) : '0.0';
           
           favoritesData.push({
             p: p,
@@ -7406,6 +7529,7 @@
                   <span style="font-size:1.5rem; font-weight:900; color:#059669;">${fav.likes}</span>
                 </div>
                 <div style="font-size:0.8rem; color:#f59e0b; font-weight:800; margin-top:4px;">⭐ ${fav.avg} AVG</div>
+                <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="margin-top:10px; background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-weight:800; font-size:0.75rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote</button>
               </div>
             </div>
           `;
