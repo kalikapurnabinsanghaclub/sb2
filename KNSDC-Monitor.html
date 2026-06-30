@@ -8827,7 +8827,7 @@ function insPageMention(m){
 
 function parseMentions(txt){
   if (!txt) return '';
-  return txt.replace(/@(monitor|judge|admin|host)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
+  return txt.replace(/@(monitor|judge|admin|host|organizer|help)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
 }
 
 function getMyName() {
@@ -8885,15 +8885,37 @@ function renderGlobalChat() {
       if (!last.from.includes('Monitor')) {
         if (window.staffAudio) staffAudio.playChime();
         
-        if (last.text && /@(monitor|all)/i.test(last.text)) {
+        if (last.text && /@(monitor|organizer|help|all)/i.test(last.text)) {
+          // Auto-open floating chatbox so monitor can respond immediately
+          if (!chatOpen) {
+            chatOpen = true;
+            const fp = document.getElementById('float-chat-panel');
+            if (fp) fp.classList.remove('hidden');
+            const dot = document.getElementById('chat-unread-dot');
+            if (dot) dot.style.display = 'none';
+            const mobileChatBadge = document.getElementById('mobile-chat-badge');
+            if (mobileChatBadge) mobileChatBadge.style.display = 'none';
+            setTimeout(() => {
+              const fmc = document.getElementById('float-chat-msgs');
+              if (fmc) fmc.scrollTop = fmc.scrollHeight;
+              const finp = document.getElementById('float-chat-inp');
+              if (finp) finp.focus();
+            }, 200);
+          }
+
+          // Vibrate device (mobile/tablet) to alert the monitor
+          if (navigator.vibrate) {
+            try { navigator.vibrate([200, 100, 200, 100, 300]); } catch(e) {}
+          }
+
+          // Update badges if not on chat page
           const activePage = document.querySelector('.pp.active');
           const pageId = activePage ? activePage.id.replace('pp-', '') : '';
-          
           if (pageId !== 'chat') {
             const dot = document.getElementById('chat-unread-dot');
             const mobileChatBadge = document.getElementById('mobile-chat-badge');
-            if(dot) dot.style.display = 'block';
-            if(mobileChatBadge) mobileChatBadge.style.display = 'block';
+            if (dot) dot.style.display = 'block';
+            if (mobileChatBadge) mobileChatBadge.style.display = 'block';
           }
         }
       }
