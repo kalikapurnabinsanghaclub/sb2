@@ -1682,7 +1682,7 @@
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/jspdf.plugin.autotable.min.js"></script>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=4"></script>
+<script src="lib/localSync-v4.js?v=6"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
 const syncEngine = new (window.LocalSync || LocalSync)();
@@ -3822,9 +3822,42 @@ function handleJudgeTimerSync(timer) {
       elapsedSecs = Math.floor(elapsedMs / 1000) + (timer.elapsedOffset || 0);
     }
 
-    const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
-    const swSec = String(elapsedSecs % 60).padStart(2, '0');
-    if (stopwatchVal) stopwatchVal.textContent = `${swMin}:${swSec}`;
+    let isCountdown = (timer.timerType === 'countdown' || timer.mode === 'countdown');
+    
+    if (isCountdown) {
+      const remainingSecs = Math.max(0, (timer.duration || timer.durationSecs || 180) - elapsedSecs);
+      const cdMin = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
+      const cdSec = String(remainingSecs % 60).padStart(2, '0');
+      if (stopwatchVal) stopwatchVal.textContent = `⏳ ${cdMin}:${cdSec}`;
+      
+      if (stopwatchWrap) {
+        if (remainingSecs === 0) {
+          stopwatchWrap.style.borderColor = '#ef4444';
+          stopwatchWrap.style.background = 'rgba(239,68,68,0.05)';
+          stopwatchWrap.style.color = '#ef4444';
+          if(stopwatchDot) stopwatchDot.style.background = '#ef4444';
+          if(stopwatchDot) stopwatchDot.style.boxShadow = '0 0 6px #ef4444';
+        } else {
+          stopwatchWrap.style.borderColor = '#22c55e';
+          stopwatchWrap.style.background = 'rgba(34,197,94,0.08)';
+          stopwatchWrap.style.color = '#22c55e';
+          if(stopwatchDot) stopwatchDot.style.background = '#22c55e';
+          if(stopwatchDot) stopwatchDot.style.boxShadow = '0 0 6px #22c55e';
+        }
+      }
+    } else {
+      const swMin = String(Math.floor(elapsedSecs / 60)).padStart(2, '0');
+      const swSec = String(elapsedSecs % 60).padStart(2, '0');
+      if (stopwatchVal) stopwatchVal.textContent = `⏱️ ${swMin}:${swSec}`;
+      
+      if (stopwatchWrap) {
+        stopwatchWrap.style.borderColor = '#ef4444';
+        stopwatchWrap.style.background = 'rgba(239,68,68,0.05)';
+        stopwatchWrap.style.color = '#ef4444';
+        if(stopwatchDot) stopwatchDot.style.background = '#ef4444';
+        if(stopwatchDot) stopwatchDot.style.boxShadow = '0 0 6px #ef4444';
+      }
+    }
   };
 
   updateJudgeTimer();
