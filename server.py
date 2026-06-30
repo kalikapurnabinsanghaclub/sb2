@@ -5,6 +5,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPExcepti
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+from pathlib import Path
+import re
 
 app = FastAPI(title="KNSDC Real-time Sync Server")
 
@@ -25,6 +27,10 @@ os.makedirs("data", exist_ok=True)
 API_KEY = os.environ.get("KNSDC_API_KEY", "knsdc-secure-key-2026")
 
 async def verify_api_key(x_api_key: str = Header(...)):
+    # Simple API key verification (already defined above)
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    return x_api_key
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return x_api_key
@@ -201,6 +207,8 @@ def save_state(state: dict):
 @app.get("/state", dependencies=[Depends(verify_api_key)])
 async def get_state():
     return load_state()
+async def get_state():
+    return load_state()
 
 @app.post("/state", dependencies=[Depends(verify_api_key)])
 async def update_state(state: dict):
@@ -210,8 +218,37 @@ async def update_state(state: dict):
         return {"status": "success"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+async def update_state(state: dict):
+    try:
+        save_state(state)
+        await manager.broadcast(json.dumps({"type": "UPDATE", "payload": state}))
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    # Verify API key via query param
+    api_key = websocket.query_params.get("token")
+    if api_key != API_KEY:
+        await websocket.close(code=1008, reason="Invalid API Key")
+        return
+    await manager.shadow_connect(websocket)
+    try:
+        current_state = load_state()
+        await websocket.send_text(json.dumps({"type": "INIT", "payload": current_state}))
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            if message.get("type") == "UPDATE":
+                new_payload = message.get("payload")
+                save_state(new_payload)
+                await manager.broadcast(json.dumps({"type": "UPDATE", "payload": new_payload}))
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WS Error: {e}")
+        manager.disconnect(websocket)
 async def websocket_endpoint(websocket: WebSocket):
     # Security: check token from query param (websockets cannot easily send headers)
     api_key = websocket.query_params.get("token")
@@ -241,6 +278,39 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"WS Error: {e}")
         manager.disconnect(websocket)
 
+def render_template(template_path: str, context: dict) -> str:
+    """Simple placeholder replacement for {{key}} patterns."""
+    tpl = Path(template_path).read_text(encoding="utf-8")
+    def replacer(match):
+        key = match.group(1).strip()
+        return str(context.get(key, f"{{{{{key}}}}}"))
+    rendered = re.sub(r"{{\s*(.*?)\s*}}", replacer, tpl)
+    return rendered
+
+@app.post("/reminder/{event_id}")
+async def send_reminder(event_id: str, token: str = Header(...)):
+    # Verify API key
+    await verify_api_key(token)
+    state = load_state()
+    # Find the event
+    event = next((e for e in state.get("events", []) if str(e.get("id")) == event_id), None)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    # Build context for the template
+    context = {
+        "name": "Participant",  # placeholder name; in real use replace with actual participant
+        "event_name": event.get("name", ""),
+        "registration_id": "N/A",
+        "organizer": event.get("organizer", ""),
+        "venue": event.get("venue", ""),
+        "date": event.get("date", "")
+    }
+    html_body = render_template(str(Path(__file__).parent / "templates" / "event-reminder.html"), context)
+    # For now just return the rendered HTML; integrate with actual email service as needed
+    return {"html": html_body, "event_id": event_id}
+
 if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
