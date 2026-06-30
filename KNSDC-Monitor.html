@@ -6034,6 +6034,8 @@ function moveQueueItem(id, direction) {
     syncAll();
     renderVenueParticipants();
     renderStageView();
+    handleTimerReset();
+    syncTimerToGlobal();
   }
 }
 
@@ -6071,30 +6073,29 @@ let onstageElapsedOffset = 0;
 let currentOnStageId = null;
 let onstageDuration = 180; // default in seconds
 
-function broadcastTimerState() {
+function syncTimerToGlobal() {
+  if (!window.syncEngine || !currentOnStageId) return;
+  const state = window.syncEngine.getData();
+  const started = localStorage.getItem(`onstage_started_${currentOnStageId}`) === 'true';
+  
   const typeSel = document.getElementById('onstage-timer-type-select');
   const selectedType = typeSel ? typeSel.value : 'countdown';
   
-  let started = false;
-  if (currentOnStageId) {
-    started = localStorage.getItem(`onstage_started_${currentOnStageId}`) === 'true';
-  }
-
-  if (window.syncEngine && window.syncEngine.setData) {
-    window.syncEngine.setData(state => {
-      return {
-        ...state,
-        onstageTimer: currentOnStageId ? {
-          started: started,
-          startTime: onstageStartTime,
-          pausedTime: onstagePausedTime,
-          elapsedOffset: onstageElapsedOffset,
-          duration: onstageDuration,
-          timerType: selectedType,
-          participantId: currentOnStageId
-        } : null
-      };
-    });
+  const timerData = {
+    mode: selectedType,
+    durationSecs: onstageDuration,
+    startTime: onstageStartTime,
+    pausedTime: onstagePausedTime,
+    elapsedOffset: onstageElapsedOffset,
+    started: started,
+    running: started && !onstagePausedTime,
+    participantId: currentOnStageId,
+    duration: onstageDuration,
+    timerType: selectedType
+  };
+  
+  if (JSON.stringify(state.onstageTimer) !== JSON.stringify(timerData)) {
+    window.syncEngine.updateState({ onstageTimer: timerData });
   }
 }
 
@@ -6250,12 +6251,8 @@ function startOnStageTimers(p) {
   if (onstageTimerInterval) {
     clearInterval(onstageTimerInterval);
   }
-  
-  updateTimers();
-  let startedState = localStorage.getItem(`onstage_started_${p.id}`) === 'true';
-  if (startedState && !onstagePausedTime) {
-    onstageTimerInterval = setInterval(updateTimers, 1000);
-  }
+  onstageTimerInterval = setInterval(updateTimers, 1000);
+  updateTimers(); // Initial call
 }
 
 function stopOnStageTimers() {
@@ -6303,7 +6300,7 @@ function handleTimerMainAction() {
     if (p) {
       startOnStageTimers(p);
     }
-    broadcastTimerState();
+    syncTimerToGlobal();
   } else {
     // Toggle pause/play
     toggleOnStagePlayPause();
@@ -6342,7 +6339,7 @@ function toggleOnStagePlayPause() {
   if (p) {
     startOnStageTimers(p);
   }
-  broadcastTimerState();
+  syncTimerToGlobal();
 }
 
 function resetOnStageTimers() {
@@ -6367,7 +6364,7 @@ function resetOnStageTimers() {
   if (p) {
     startOnStageTimers(p);
   }
-  broadcastTimerState();
+  syncTimerToGlobal();
 }
 
 function changeOnStageDuration() {
@@ -6398,7 +6395,7 @@ function changeOnStageDuration() {
   if (p) {
     startOnStageTimers(p);
   }
-  broadcastTimerState();
+  syncTimerToGlobal();
 }
 
 function changeOnStageDurationCustom() {
@@ -6416,7 +6413,7 @@ function changeOnStageDurationCustom() {
   if (p) {
     startOnStageTimers(p);
   }
-  broadcastTimerState();
+  syncTimerToGlobal();
 }
 
 function changeOnStageTimerType() {
@@ -6441,7 +6438,7 @@ function changeOnStageTimerType() {
   }
   
   // Broadcast state change immediately
-  broadcastTimerState();
+  syncTimerToGlobal();
 }
 
 function renderVenueParticipants(){
