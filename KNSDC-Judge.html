@@ -1976,6 +1976,7 @@ function initIdentity() {
           JUDGE.id = existingJudge.id;
           JUDGE.present = existingJudge.present;
           JUDGE.isUnlocked = existingJudge.isUnlocked;
+          JUDGE.avatar = existingJudge.avatar || existingJudge.photoUrl || existingJudge.photo || '';
         }
 
         JUDGE.spec     = matchedAgr.spec     || JUDGE.spec;
@@ -2292,6 +2293,8 @@ async function uploadJudgeAvatar(event) {
   
   document.getElementById('pm-avatar-loading').style.display = 'flex';
   
+  const oldAvatar = JUDGE.avatar;
+  
   try {
     const url = await syncEngine.uploadFile(file);
     if (url) {
@@ -2307,6 +2310,15 @@ async function uploadJudgeAvatar(event) {
         return { ...state, judges: jList };
       });
       await syncEngine.forceSaveStateToSupabase();
+      
+      // Delete old photo from Supabase storage if it existed
+      if (oldAvatar && typeof syncEngine.deleteFile === 'function') {
+        try {
+          await syncEngine.deleteFile(oldAvatar);
+        } catch (e) {
+          console.error("Failed to delete old avatar file:", e);
+        }
+      }
       
       // Update UI
       showJudgeProfileModal();
