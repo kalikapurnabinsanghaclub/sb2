@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>KNSDC — Participant Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --primary: #FF6B35;
+    --accent: #2563eb;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    --green: #10b981;
+    --red: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding-bottom:40px; }
+  
+  /* TOAST */
+  #toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+  .toast { background: var(--text); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); animation: toastIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275) forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+  .container { max-width: 600px; margin: 40px auto; padding: 0 20px; }
+  .card { background: var(--surface); border-radius: 16px; padding: 30px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+  
+  h1 { font-size: 24px; font-weight: 800; text-align: center; margin-bottom: 24px; color: var(--primary); }
+  h2 { font-size: 18px; font-weight: 700; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+  
+  .fg { margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select, textarea { width: 100%; padding: 12px 14px; border-radius: 8px; border: 2px solid var(--border); font-size: 15px; font-family: inherit; transition: all 0.2s; background: #fff; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  input:disabled, select:disabled, textarea:disabled { background: #f1f5f9; cursor: not-allowed; opacity: 0.8; }
+  
+  .btn { display: block; width: 100%; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; text-align: center; border: none; transition: 0.2s; color: #fff; }
+  .btn-primary { background: var(--accent); }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-green { background: var(--green); }
+  .btn-green:hover { background: #059669; }
+  .btn-locked { background: var(--text-muted); cursor: not-allowed; }
+
+  #login-view, #dashboard-view { display: none; }
+  
+  .banner { background: #fefce8; border: 1px solid #fef08a; color: #a16207; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div class="container">
+  
+  <!-- LOGIN VIEW -->
+  <div id="login-view" class="card">
+    <h1>KNSDC Participant Portal</h1>
+    <div style="text-align:center;font-size:14px;color:var(--text-muted);margin-bottom:24px;">Log in to view and update your registration form.</div>
+    <form id="login-form">
+      <div class="fg">
+        <label>Username (First Name)</label>
+        <input type="text" id="login-user" placeholder="e.g. Sourav" required>
+      </div>
+      <div class="fg">
+        <label>Password (Participant ID)</label>
+        <input type="text" id="login-pass" placeholder="e.g. KN005" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:24px;">Log In</button>
+    </form>
+  </div>
+
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboard-view">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h1 style="margin:0; text-align:left;">Registration Details</h1>
+      <button onclick="logout()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-weight:700; text-decoration:underline;">Logout</button>
+    </div>
+    
+    <div class="card" id="form-card">
+      <div id="lock-banner" class="banner" style="display:none;">
+        <span>🔒</span> Your form is locked by the Monitor and cannot be edited.
+      </div>
+      
+      <form id="participant-form">
+        <div class="fg">
+          <label>Full Name</label>
+          <input type="text" id="reg-name" required>
+        </div>
+        <div class="fg">
+          <label>Phone Number</label>
+          <input type="tel" id="reg-phone" required>
+        </div>
+        <div class="fg">
+          <label>City / Town</label>
+          <input type="text" id="reg-city">
+        </div>
+        <div class="fg">
+          <label>Guardian Name</label>
+          <input type="text" id="reg-guardian">
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div class="fg">
+            <label>Date of Birth</label>
+            <input type="date" id="reg-dob">
+          </div>
+          <div class="fg">
+            <label>Blood Group</label>
+            <input type="text" id="reg-blood">
+          </div>
+        </div>
+        <div class="fg">
+          <label>Gender</label>
+          <select id="reg-gender">
+            <option value="">Select Gender</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>Full Address</label>
+          <textarea id="reg-address" rows="3"></textarea>
+        </div>
+        <div class="fg">
+          <label>Dance Style</label>
+          <input type="text" id="reg-style">
+        </div>
+        
+        <button type="submit" id="save-btn" class="btn btn-green" style="margin-top:24px;">Save Updates</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="lib/supabase.js"></script>
+<script src="lib/localSync-v4.js?v=4"></script>
+<script>
+let CURRENT_USER = null;
+
+function toast(msg) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// 1. App Init
+function initApp() {
+  const storedId = localStorage.getItem('knsdc_participant_id');
+  if (storedId) {
+    autoLogin(storedId);
+  } else {
+    document.getElementById('login-view').style.display = 'block';
+  }
+}
+
+// Wait for syncEngine to initialize
+const waitSync = setInterval(() => {
+  if (window.syncEngine && window.syncEngine.isInitialized) {
+    clearInterval(waitSync);
+    initApp();
+  }
+}, 100);
+
+// 2. Authentication
+document.getElementById('login-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const username = document.getElementById('login-user').value.trim().toLowerCase();
+  const passId = document.getElementById('login-pass').value.trim().toUpperCase();
+  
+  const state = window.syncEngine.getData() || {};
+  const participants = state.participants || [];
+  
+  const p = participants.find(part => {
+    if (String(part.id).toUpperCase() !== passId) return false;
+    const firstName = (part.name || '').split(' ')[0].toLowerCase();
+    return firstName === username;
+  });
+  
+  if (p) {
+    localStorage.setItem('knsdc_participant_id', p.id);
+    CURRENT_USER = p.id;
+    toast('Logged in successfully!');
+    renderDashboard();
+  } else {
+    toast('Invalid Username or ID Number');
+  }
+});
+
+function autoLogin(id) {
+  const state = window.syncEngine.getData() || {};
+  const participants = state.participants || [];
+  const p = participants.find(part => String(part.id) === String(id));
+  if (p) {
+    CURRENT_USER = p.id;
+    renderDashboard();
+  } else {
+    localStorage.removeItem('knsdc_participant_id');
+    document.getElementById('login-view').style.display = 'block';
+  }
+}
+
+function logout() {
+  localStorage.removeItem('knsdc_participant_id');
+  CURRENT_USER = null;
+  document.getElementById('dashboard-view').style.display = 'none';
+  document.getElementById('login-view').style.display = 'block';
+  document.getElementById('login-form').reset();
+}
+
+// 3. Render Dashboard & Lock Logic
+function renderDashboard() {
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('dashboard-view').style.display = 'block';
+  
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  
+  if (!p) { logout(); return; }
+  
+  // Populate form
+  document.getElementById('reg-name').value = p.name || '';
+  document.getElementById('reg-phone').value = p.phone || '';
+  document.getElementById('reg-city').value = p.city || '';
+  document.getElementById('reg-guardian').value = p.guardianName || '';
+  document.getElementById('reg-dob').value = p.dob || '';
+  document.getElementById('reg-blood').value = p.bloodGroup || '';
+  document.getElementById('reg-gender').value = p.gender || '';
+  document.getElementById('reg-address').value = p.address || '';
+  document.getElementById('reg-style').value = p.style || '';
+  
+  // Lock Logic
+  const inputs = document.querySelectorAll('#participant-form input, #participant-form select, #participant-form textarea');
+  const btn = document.getElementById('save-btn');
+  const banner = document.getElementById('lock-banner');
+  
+  if (p.formLocked === true) {
+    inputs.forEach(inp => inp.disabled = true);
+    btn.disabled = true;
+    btn.className = 'btn btn-locked';
+    btn.textContent = '🔒 Form Locked by Monitor';
+    banner.style.display = 'flex';
+  } else {
+    inputs.forEach(inp => inp.disabled = false);
+    btn.disabled = false;
+    btn.className = 'btn btn-green';
+    btn.textContent = 'Save Updates';
+    banner.style.display = 'none';
+  }
+}
+
+// 4. Save Updates (Auto-Lock)
+document.getElementById('participant-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('save-btn');
+  if (btn.disabled) return;
+  
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  
+  const payload = {
+    name: document.getElementById('reg-name').value.trim(),
+    phone: document.getElementById('reg-phone').value.trim(),
+    city: document.getElementById('reg-city').value.trim(),
+    guardianName: document.getElementById('reg-guardian').value.trim(),
+    dob: document.getElementById('reg-dob').value,
+    bloodGroup: document.getElementById('reg-blood').value.trim(),
+    gender: document.getElementById('reg-gender').value,
+    address: document.getElementById('reg-address').value.trim(),
+    style: document.getElementById('reg-style').value.trim(),
+    formLocked: true // CRITICAL: Auto-lock after saving!
+  };
+  
+  try {
+    await window.syncEngine.updateParticipant(CURRENT_USER, payload);
+    toast('✅ Your form updated successfully!');
+    // Render will naturally lock the UI because we pushed formLocked:true
+  } catch(err) {
+    console.error(err);
+    toast('Error saving updates');
+    btn.disabled = false;
+    btn.textContent = 'Save Updates';
+  }
+});
+
+// Reactively re-render if Monitor unlocks them while they are logged in!
+if (window.syncEngine) {
+  window.syncEngine.subscribe(() => {
+    if (CURRENT_USER && document.getElementById('dashboard-view').style.display === 'block') {
+      // Re-populate and unlock dynamically
+      renderDashboard();
+    }
+  });
+}
+</script>
+</body>
+</html>
