@@ -9224,7 +9224,8 @@ let isSavingCert = false;
 async function saveCertificateSignatures() {
   if (isSavingCert) return;
   isSavingCert = true;
-  const btn = document.querySelector('#st-certificate button.btn-amber');
+  // Broadened selector to catch the button regardless of its CSS color class
+  const btn = document.querySelector('#st-certificate button');
   if (btn) { btn.disabled = true; btn.innerText = 'UPLOADING...'; }
   toast('Processing signatures...');
   
@@ -9234,6 +9235,7 @@ async function saveCertificateSignatures() {
       const preview = document.getElementById(previewId);
       if (input && input.files && input.files[0]) {
         const url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`);
+        if (!url) throw new Error("Failed to upload signature file for " + inputId.replace('cert-sig-', ''));
         return url;
       } else {
         if (preview && preview.src && (preview.src.startsWith('http') || preview.src.startsWith('data:'))) {
@@ -9262,10 +9264,13 @@ async function saveCertificateSignatures() {
       });
       if (window.syncEngine.updateEvent) {
         const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
-        if (!success) { toast('❌ Error saving signatures'); return; }
+        if (!success) throw new Error("Failed to save signatures to database");
       }
     }
     toast('✅ Signatures saved successfully!');
+  } catch(e) {
+    console.error(e);
+    toast('❌ Error: ' + e.message);
   } finally {
     isSavingCert = false;
     if (btn) { btn.disabled = false; btn.innerText = 'SAVE SIGNATURES'; }
