@@ -289,7 +289,8 @@ function renderDashboard() {
   const btn = document.getElementById('save-btn');
   const banner = document.getElementById('lock-banner');
   
-  if (p.formLocked === true) {
+  const formLocked = (p.formAnswers && p.formAnswers._formLocked === true) || p.formLocked || false;
+  if (formLocked === true) {
     inputs.forEach(inp => inp.disabled = true);
     btn.disabled = true;
     btn.className = 'btn btn-locked';
@@ -371,8 +372,32 @@ document.getElementById('participant-form').addEventListener('submit', async (e)
 if (window.syncEngine) {
   window.syncEngine.subscribe(() => {
     if (CURRENT_USER && document.getElementById('dashboard-view').style.display === 'block') {
-      // Re-populate and unlock dynamically
-      renderDashboard();
+      const state = window.syncEngine.getData() || {};
+      const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
+      
+      const formLocked = (p.formAnswers && p.formAnswers._formLocked === true) || p.formLocked || false;
+      const btn = document.getElementById('save-btn');
+      const isCurrentlyLocked = btn && btn.disabled;
+      
+      // If form was just locked remotely, force re-render immediately
+      if (formLocked && !isCurrentlyLocked) {
+        renderDashboard();
+        return;
+      }
+      
+      // If form was unlocked remotely, force re-render immediately
+      if (!formLocked && isCurrentlyLocked) {
+        renderDashboard();
+        return;
+      }
+
+      // Otherwise, only re-render if the user is not actively typing
+      const activeEl = document.activeElement;
+      const isTyping = activeEl && document.getElementById('participant-form').contains(activeEl);
+      
+      if (!isTyping) {
+        renderDashboard();
+      }
     }
   });
 }
