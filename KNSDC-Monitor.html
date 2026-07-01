@@ -7229,8 +7229,8 @@ function renderComparativeStats() {
     label: 'Total Participants',
     data: participantCounts,
     type: 'bar',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(148, 163, 184, 0.2)',
+    borderColor: 'rgba(148, 163, 184, 0.4)',
     borderWidth: 1,
     borderRadius: 4,
     yAxisID: 'y1'
@@ -7311,9 +7311,23 @@ function renderComparativeStats() {
 
   // Render subject breakdown list
   document.getElementById('subject-breakdown-list').innerHTML = subjects.map(s => {
-    const allScores = participants.flatMap(p => 
-      Object.values(p.scores).flatMap(j => j[s.id] !== undefined ? [j[s.id]] : [])
-    );
+    const allScores = [];
+    participants.forEach(p => {
+      if (p.scores) {
+        Object.values(p.scores).forEach(j => {
+          if (j[s.id] !== undefined) allScores.push(Number(j[s.id]));
+        });
+      }
+      if (p.roundScores) {
+        Object.values(p.roundScores).forEach(rScores => {
+          if (rScores) {
+            Object.values(rScores).forEach(j => {
+              if (j[s.id] !== undefined) allScores.push(Number(j[s.id]));
+            });
+          }
+        });
+      }
+    });
     const avg = allScores.length > 0 ? (allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(1) : 0;
     const max = allScores.length > 0 ? Math.max(...allScores) : 0;
     return `
@@ -7331,12 +7345,30 @@ function renderComparativeStats() {
 
   // Render round comparison data
   document.getElementById('round-comparison-data').innerHTML = rounds.map((r, idx) => {
-    const rp = participants.filter(p => p.round === r && p.stageStatus === 'done');
-    if (rp.length === 0) return '';
-    const totalAvg = rp.reduce((acc, p) => {
-      const pScores = Object.values(p.scores).flatMap(j => Object.values(j));
-      return acc + (pScores.length > 0 ? pScores.reduce((a, b) => a + b, 0) / pScores.length : 0);
-    }, 0) / rp.length;
+    let rpCount = 0;
+    let totalScoreSum = 0;
+    let totalScoreCount = 0;
+
+    participants.forEach(p => {
+      let roundScoresForP = null;
+      if (p.round === r && p.scores && p.stageStatus === 'done') {
+        roundScoresForP = p.scores;
+      } else if (p.roundScores && p.roundScores[r]) {
+        roundScoresForP = p.roundScores[r];
+      }
+      
+      if (roundScoresForP) {
+        rpCount++;
+        const pScores = Object.values(roundScoresForP).flatMap(j => Object.values(j));
+        if (pScores.length > 0) {
+          totalScoreSum += (pScores.reduce((a, b) => Number(a) + Number(b), 0) / pScores.length);
+          totalScoreCount++;
+        }
+      }
+    });
+
+    if (rpCount === 0 || totalScoreCount === 0) return '';
+    const totalAvg = totalScoreSum / totalScoreCount;
     
     return `
       <div style="margin-bottom:12px">
