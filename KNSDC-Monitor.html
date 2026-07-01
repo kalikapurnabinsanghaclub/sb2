@@ -2084,6 +2084,12 @@
           <div id="judge-maxavg"></div>
         </div>
       </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:14px">Subject-wise Judge Analysis</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px;" id="judge-subject-charts-container">
+          <!-- Populated by JS -->
+        </div>
+      </div>
       <div class="card">
         <div class="card-title" style="margin-bottom:14px">Score Entry &amp; Overview</div>
         <div id="judge-score-matrix"></div>
@@ -7875,6 +7881,143 @@ function renderJudgeStats(){
         <td>${rank===0?'🥇':rank===1?'🥈':rank===2?'🥉':`#${rank+1}`}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
+    
+  renderJudgeSubjectCharts(presentJudges);
+}
+
+function renderJudgeSubjectCharts(presentJudges) {
+  const container = document.getElementById('judge-subject-charts-container');
+  if (!container) return;
+  if (typeof Chart === 'undefined') {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:12px">Chart library not loaded</div>';
+    return;
+  }
+  container.innerHTML = '';
+
+  if (window.judgeSubjectCharts) {
+    window.judgeSubjectCharts.forEach(c => c.destroy());
+  }
+  window.judgeSubjectCharts = [];
+
+  if (presentJudges.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No judges present for this event.</div>';
+    return;
+  }
+
+  const subjectNames = subjects.map(s => s.name);
+
+  const getSubjectScores = (jId, sId) => {
+    let allScores = [];
+    participants.forEach(p => {
+      if (p.scores && p.scores[jId] && p.scores[jId][sId]) {
+        allScores.push(Number(p.scores[jId][sId]));
+      }
+      if (p.roundScores) {
+        Object.values(p.roundScores).forEach(rScores => {
+          if (rScores && rScores[jId] && rScores[jId][sId]) {
+            allScores.push(Number(rScores[jId][sId]));
+          }
+        });
+      }
+    });
+    return allScores;
+  };
+
+  presentJudges.forEach(j => {
+    const mins = [];
+    const avgs = [];
+    const maxs = [];
+
+    subjects.forEach(s => {
+      const scores = getSubjectScores(j.id, s.id);
+      if (scores.length > 0) {
+        mins.push(Math.min(...scores));
+        maxs.push(Math.max(...scores));
+        avgs.push(Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10);
+      } else {
+        mins.push(0);
+        maxs.push(0);
+        avgs.push(0);
+      }
+    });
+
+    const wrap = document.createElement('div');
+    wrap.style.textAlign = 'center';
+    wrap.innerHTML = `
+      <div style="font-size:13px;font-weight:800;margin-bottom:12px;color:${j.color};text-transform:uppercase;letter-spacing:1px;">${j.name}</div>
+      <div style="position:relative;height:240px;width:100%">
+        <canvas id="judge-subj-chart-${j.id}"></canvas>
+      </div>
+    `;
+    container.appendChild(wrap);
+
+    const ctx = document.getElementById(`judge-subj-chart-${j.id}`);
+    const chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: subjectNames,
+        datasets: [
+          {
+            label: 'Min',
+            data: mins,
+            backgroundColor: 'rgba(244, 63, 94, 0.7)',
+            borderColor: '#f43f5e',
+            borderWidth: 1,
+            borderRadius: 2
+          },
+          {
+            label: 'Avg',
+            data: avgs,
+            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+            borderColor: '#3b82f6',
+            borderWidth: 1,
+            borderRadius: 2
+          },
+          {
+            label: 'Max',
+            data: maxs,
+            backgroundColor: 'rgba(16, 185, 129, 0.7)',
+            borderColor: '#10b981',
+            borderWidth: 1,
+            borderRadius: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { 
+            position: 'bottom',
+            labels: { font: { size: 10, family: 'var(--fm)', weight: 'bold' }, color: '#8892a4', usePointStyle: true, boxWidth: 6, padding: 15 }
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 10,
+            title: {
+              display: true,
+              text: 'Score',
+              color: '#8892a4',
+              font: { size: 10, weight: 'bold' }
+            },
+            ticks: { stepSize: 2, color: '#8892a4' },
+            grid: { color: 'rgba(34,36,54,0.1)' }
+          },
+          x: {
+            ticks: { color: '#8892a4', font: { size: 10, weight: '600' } },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+    window.judgeSubjectCharts.push(chart);
+  });
 }
 
 // ══════════════════════════════════════════
