@@ -7746,17 +7746,31 @@ function renderJudgeStats(){
     const agreements = syncEngine.getData()?.judgeAgreements || [];
     return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
   });
+  const getAllJudgeScores = (p, jId) => {
+    let allScores = [];
+    if (p.scores && p.scores[jId]) {
+      Object.values(p.scores[jId]).forEach(v => allScores.push(Number(v)));
+    }
+    if (p.roundScores) {
+      Object.values(p.roundScores).forEach(rScores => {
+        if (rScores && rScores[jId]) {
+          Object.values(rScores[jId]).forEach(v => allScores.push(Number(v)));
+        }
+      });
+    }
+    return allScores;
+  };
+
   const chartDatasets = presentJudges.map((j, i) => {
     const scoreCounts = new Array(10).fill(0);
     participants.forEach(p => {
-      if (p.scores && p.scores[j.id]) {
-        Object.values(p.scores[j.id]).forEach(val => {
-          const num = Math.round(Number(val));
-          if (num >= 1 && num <= 10) {
-            scoreCounts[num - 1]++;
-          }
-        });
-      }
+      const allVals = getAllJudgeScores(p, j.id);
+      allVals.forEach(val => {
+        const num = Math.round(val);
+        if (num >= 1 && num <= 10) {
+          scoreCounts[num - 1]++;
+        }
+      });
     });
 
     const judgeColors = ['109,40,217', '37,99,235', '5,150,105', '217,119,6'];
@@ -7826,9 +7840,13 @@ function renderJudgeStats(){
 
   // Max & average
   document.getElementById('judge-maxavg').innerHTML = presentJudges.map(j=>{
-    const scores = participants.map(p=>subjects.reduce((acc,s)=>acc+(p.scores[j.id]?p.scores[j.id][s.id]||0:0),0));
-    const max = scores.length?Math.max(...scores):0;
-    const avg = scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):0;
+    let allJudgeScores = [];
+    participants.forEach(p => {
+      const pScores = getAllJudgeScores(p, j.id);
+      if(pScores.length) allJudgeScores.push(...pScores);
+    });
+    const max = allJudgeScores.length ? Math.max(...allJudgeScores) : 0;
+    const avg = allJudgeScores.length ? Math.round((allJudgeScores.reduce((a,b)=>a+b,0)/allJudgeScores.length)*10)/10 : 0;
     const pct = subjects.length*10 > 0 ? Math.round(avg/(subjects.length*10)*100) : 0;
     return `<div class="judge-row" style="margin-bottom:8px">
       <div class="judge-avatar" style="background:${j.color}20;color:${j.color};border:1px solid ${j.color}50">${j.name[0]}</div>
@@ -7844,11 +7862,11 @@ function renderJudgeStats(){
   document.getElementById('judge-score-matrix').innerHTML = `<div class="tbl-wrap"><table>
     <thead><tr><th>Participant</th>${presentJudges.map(j=>`<th>${j.name.split(' ')[0]}</th>`).join('')}<th>Total</th><th>Rank</th></tr></thead>
     <tbody>${[...participants].sort((a,b)=>{
-      const sa=presentJudges.reduce((acc,j)=>acc+subjects.reduce((s2,s)=>s2+(a.scores[j.id]?a.scores[j.id][s.id]||0:0),0),0);
-      const sb=presentJudges.reduce((acc,j)=>acc+subjects.reduce((s2,s)=>s2+(b.scores[j.id]?b.scores[j.id][s.id]||0:0),0),0);
-      return sb-sa;
+      const sa = presentJudges.reduce((acc,j) => acc + getAllJudgeScores(a, j.id).reduce((sum,v)=>sum+v,0), 0);
+      const sb = presentJudges.reduce((acc,j) => acc + getAllJudgeScores(b, j.id).reduce((sum,v)=>sum+v,0), 0);
+      return sb - sa;
     }).map((p,rank)=>{
-      const jTotals = presentJudges.map(j=>subjects.reduce((acc,s)=>acc+(p.scores[j.id]?p.scores[j.id][s.id]||0:0),0));
+      const jTotals = presentJudges.map(j => getAllJudgeScores(p, j.id).reduce((sum,v)=>sum+v,0));
       const total = jTotals.reduce((a,b)=>a+b,0);
       return `<tr>
         <td><strong>${p.name}</strong><div style="font-size:10px;color:var(--text-muted);font-family:var(--fm)">${p.id}</div></td>
