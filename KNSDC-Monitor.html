@@ -9409,28 +9409,34 @@ function editSponsor(id) {
   document.getElementById('ad-partner').focus();
 }
 
+let isDeletingSponsor = false;
 async function deleteSponsor(id) {
-
+  if (isDeletingSponsor) return;
   if(!confirm('Delete this sponsor advertisement?')) return;
   
-  let currentSponsors = switchStates.sponsors || [];
-  const idx = currentSponsors.findIndex(s => s.id === id);
-  if (idx !== -1) {
-    currentSponsors.splice(idx, 1);
-    switchStates.sponsors = currentSponsors;
-  }
-  
-  if (window.syncEngine) {
-    window.syncEngine.setData(state => {
-      if (!state.eventSwitches) state.eventSwitches = {};
-      state.eventSwitches[activeEventId] = { ...switchStates };
-      return state;
-    });
-    if (window.syncEngine.updateEvent) {
-      await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
-      toast('🗑️ Sponsor removed');
-      renderSponsors();
+  isDeletingSponsor = true;
+  try {
+    let currentSponsors = switchStates.sponsors || [];
+    const idx = currentSponsors.findIndex(s => s.id === id);
+    if (idx !== -1) {
+      currentSponsors.splice(idx, 1);
+      switchStates.sponsors = currentSponsors;
     }
+    
+    if (window.syncEngine) {
+      window.syncEngine.setData(state => {
+        if (!state.eventSwitches) state.eventSwitches = {};
+        state.eventSwitches[activeEventId] = { ...switchStates };
+        return state;
+      });
+      if (window.syncEngine.updateEvent) {
+        await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
+        toast('🗑️ Sponsor removed');
+        renderSponsors();
+      }
+    }
+  } finally {
+    isDeletingSponsor = false;
   }
 }
 
