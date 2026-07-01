@@ -100,6 +100,49 @@
         <!-- JS will populate canvas -->
       </div>
     </div>
+
+    <!-- GLOBAL STATISTICS (PORTED FROM MONITOR) -->
+    <div id="global-statistics-section" style="margin-top: 30px; display: none;">
+      <h2 style="font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 16px;">Global Event Statistics</h2>
+
+      <!-- ROUND WISE -->
+      <div id="st-roundwise">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Round Stats</div>
+          <div class="chart-wrap" style="height:250px; position:relative;"><canvas id="round-chart"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Round-wise Gender Distribution</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;" id="gender-charts-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Round-wise Age Distribution</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;" id="age-charts-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- JUDGES -->
+      <div id="st-judges">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Judge Score Distribution</div>
+          <div class="chart-wrap" style="height:250px; position:relative;"><canvas id="judge-chart"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Max &amp; Average Scores</div>
+          <div id="judge-maxavg"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Subject-wise Judge Analysis</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:20px;" id="judge-subject-charts-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -356,6 +399,8 @@ function renderDashboard() {
   
   // Render Performance Journey Chart
   renderPerformanceJourney(p);
+  // Render Global Stats Charts
+  renderGlobalEventStatistics(p);
 }
 // 4. Save Updates (Auto-Lock)
 document.getElementById('participant-form').addEventListener('submit', async (e) => {
@@ -643,6 +688,493 @@ function renderPerformanceJourney(p) {
       }
     }
   });
+}
+
+function renderGlobalEventStatistics(p) {
+  const container = document.getElementById('global-statistics-section');
+  if (!container) return;
+  container.style.display = 'block';
+
+  const state = window.syncEngine.getData() || {};
+  const participants = state.participants || [];
+  const judges = state.judges || [];
+  const subjects = state.subjects || [];
+  const categories = state.categories || [];
+  const activeEventId = p.eventId;
+
+  // Present Judges
+  const presentJudges = judges.filter(j => {
+    if (!j.present) return false;
+    const agreements = state.judgeAgreements || [];
+    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+  });
+
+  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
+  const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+
+  // Helpers
+  const getAllJudgeScores = (part, jId) => {
+    let allScores = [];
+    if (part.scores && part.scores[jId]) {
+      Object.values(part.scores[jId]).forEach(v => allScores.push(Number(v)));
+    }
+    if (part.roundScores) {
+      Object.keys(part.roundScores).forEach(rName => {
+        if (rName === part.round) return; 
+        const rScores = part.roundScores[rName];
+        if (rScores && rScores[jId]) {
+          Object.values(rScores[jId]).forEach(v => allScores.push(Number(v)));
+        }
+      });
+    }
+    return allScores;
+  };
+
+  const getSubjectScores = (jId, sId) => {
+    let allScores = [];
+    participants.forEach(part => {
+      if (part.scores && part.scores[jId] && part.scores[jId][sId]) {
+        allScores.push(Number(part.scores[jId][sId]));
+      }
+      if (part.roundScores) {
+        Object.values(part.roundScores).forEach(rScores => {
+          if (rScores && rScores[jId] && rScores[jId][sId]) {
+            allScores.push(Number(rScores[jId][sId]));
+          }
+        });
+      }
+    });
+    return allScores;
+  };
+
+  const resolveCatBorderColor = (catColorStr, index) => {
+    const classMap = {
+      'b-blue': '#3b82f6', 'b-green': '#10b981', 'b-amber': '#f59e0b',
+      'b-orange': '#ea580c', 'b-red': '#ef4444', 'b-purple': '#8b5cf6',
+      'b-pink': '#ec4899', 'b-teal': '#14b8a6', 'b-indigo': '#6366f1'
+    };
+    if (catColorStr && classMap[catColorStr]) return classMap[catColorStr];
+    if (catColorStr && catColorStr.startsWith('#')) return catColorStr;
+    const fallbackPalette = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
+    return fallbackPalette[index % fallbackPalette.length];
+  };
+
+  const hexToRgba = (hex, alpha) => {
+    let r = 0, g = 0, b = 0;
+    if (hex && hex.length === 4) { r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16); }
+    else if (hex && hex.length === 7) { r = parseInt(hex.slice(1, 3), 16); g = parseInt(hex.slice(3, 5), 16); b = parseInt(hex.slice(5, 7), 16); }
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // 1. ROUND STATS CHART
+  const renderRoundChart = () => {
+    const ctx = document.getElementById('round-chart');
+    if (!ctx) return;
+    const activeEventCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+    const datasets = [];
+    
+    activeEventCats.forEach((cat, catIdx) => {
+      const promotedData = [];
+      const stoppedData = [];
+      const borderColor = resolveCatBorderColor(cat.color, catIdx);
+  
+      roundsOrder.forEach((round, rIdx) => {
+        const catParts = participants.filter(p => String(p.catId) === String(cat.id) && (String(p.eventId) === String(activeEventId) || !p.eventId));
+        const presentInRound = catParts.filter(p => roundsOrder.indexOf(p.round) >= rIdx);
+        const promoted = presentInRound.filter(p => roundsOrder.indexOf(p.round) > rIdx);
+        const stopped = presentInRound.filter(p => roundsOrder.indexOf(p.round) === rIdx);
+  
+        promotedData.push(promoted.length);
+        stoppedData.push(stopped.length);
+      });
+  
+      datasets.push({
+        label: `${cat.name} (Promoted)`,
+        data: promotedData,
+        backgroundColor: hexToRgba(borderColor, 0.85),
+        borderColor: borderColor,
+        borderWidth: 2.5,
+        borderRadius: 4,
+        stack: `cat_${cat.id}`
+      });
+  
+      datasets.push({
+        label: `${cat.name} (Stopped Here)`,
+        data: stoppedData,
+        backgroundColor: hexToRgba(borderColor, 0.25),
+        borderColor: borderColor,
+        borderWidth: 2.5,
+        borderRadius: 4,
+        stack: `cat_${cat.id}`
+      });
+    });
+  
+    if(window.roundChartInstance) window.roundChartInstance.destroy();
+    window.roundChartInstance = new Chart(ctx, {
+      type:'bar',
+      data:{labels, datasets},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        plugins:{
+          legend:{
+            display:true,
+            labels:{ color:'#8892a4', font:{size:10, family:"'Inter', sans-serif", weight:'bold'} }
+          },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales:{
+          x:{ ticks:{color:'#8892a4'}, grid:{color:'rgba(34,36,54,0.15)'}, stacked: true },
+          y:{ ticks:{color:'#8892a4',stepSize:1}, grid:{color:'rgba(34,36,54,0.15)'}, stacked: true }
+        }
+      }
+    });
+  };
+
+  // 2. GENDER CHARTS
+  const renderGenderCharts = () => {
+    const container = document.getElementById('gender-charts-container');
+    if (!container) return;
+    container.innerHTML = '';
+    if (window.genderCharts) window.genderCharts.forEach(c => c.destroy());
+    window.genderCharts = [];
+  
+    roundsOrder.forEach((r, idx) => {
+      const reached = participants.filter(p => {
+        if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
+        return roundsOrder.indexOf(p.round || 'audition') >= idx;
+      });
+  
+      const males = reached.filter(p => p.gender && p.gender.toLowerCase() === 'male').length;
+      const females = reached.filter(p => p.gender && p.gender.toLowerCase() === 'female').length;
+      const total = males + females;
+      
+      const wrap = document.createElement('div');
+      wrap.style.textAlign = 'center';
+      wrap.innerHTML = `
+        <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;">${labels[idx]}</div>
+        <div style="position:relative;height:120px;display:flex;justify-content:center;">
+          <canvas id="gender-chart-${r}"></canvas>
+        </div>
+        <div style="font-size:11px;margin-top:10px;font-family:'Inter', sans-serif;display:flex;justify-content:center;gap:15px">
+          <span style="color:#f97316;font-weight:800">M: ${males}</span>
+          <span style="color:#a855f7;font-weight:800">F: ${females}</span>
+        </div>
+      `;
+      container.appendChild(wrap);
+  
+      const ctx = document.getElementById(`gender-chart-${r}`);
+      const chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Male', 'Female'],
+          datasets: [{
+            data: [males, females],
+            backgroundColor: ['#f97316', '#a855f7'],
+            borderWidth: 0,
+            hoverOffset: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '70%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  if(total === 0) return '0%';
+                  const percentage = Math.round((context.raw / total) * 100);
+                  return ` ${context.label}: ${context.raw} (${percentage}%)`;
+                }
+              }
+            }
+          }
+        },
+        plugins: [{
+          id: 'centerText',
+          beforeDraw: function(chart) {
+            const width = chart.width, height = chart.height, ctx = chart.ctx;
+            ctx.restore();
+            ctx.font = "bold 18px 'Inter', sans-serif";
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#64748b';
+            const text = total.toString();
+            const textX = Math.round((width - ctx.measureText(text).width) / 2);
+            const textY = height / 2;
+            ctx.fillText(text, textX, textY);
+            
+            ctx.font = "600 9px 'Inter', sans-serif";
+            ctx.fillStyle = '#94a3b8';
+            const subText = 'Total';
+            const subX = Math.round((width - ctx.measureText(subText).width) / 2);
+            ctx.fillText(subText, subX, textY + 14);
+            ctx.save();
+          }
+        }]
+      });
+      window.genderCharts.push(chart);
+    });
+  };
+
+  // 3. AGE CHARTS
+  const renderAgeCharts = () => {
+    const container = document.getElementById('age-charts-container');
+    if (!container) return;
+    container.innerHTML = '';
+    if (window.ageCharts) window.ageCharts.forEach(c => c.destroy());
+    window.ageCharts = [];
+  
+    const ageGroups = ['Below 6', '6 - 10', '11 - 20', '21 - 25', '26 - 32', '33+'];
+    const groupColors = ['#f43f5e', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#f59e0b'];
+  
+    roundsOrder.forEach((r, idx) => {
+      const reached = participants.filter(p => {
+        if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
+        return roundsOrder.indexOf(p.round || 'audition') >= idx;
+      });
+  
+      const bucketCounts = [0, 0, 0, 0, 0, 0];
+      reached.forEach(p => {
+        const ageStr = p.age ? String(p.age).replace(/[^0-9]/g, '') : '';
+        if (!ageStr) return;
+        const a = parseInt(ageStr, 10);
+        if (isNaN(a)) return;
+  
+        if (a < 6) bucketCounts[0]++;
+        else if (a >= 6 && a <= 10) bucketCounts[1]++;
+        else if (a >= 11 && a <= 20) bucketCounts[2]++;
+        else if (a >= 21 && a <= 25) bucketCounts[3]++;
+        else if (a >= 26 && a <= 32) bucketCounts[4]++;
+        else if (a >= 33) bucketCounts[5]++;
+      });
+  
+      const wrap = document.createElement('div');
+      wrap.style.textAlign = 'center';
+      wrap.innerHTML = `
+        <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;">${labels[idx]}</div>
+        <div style="position:relative;height:160px;display:flex;justify-content:center;">
+          <canvas id="age-chart-${r}"></canvas>
+        </div>
+      `;
+      container.appendChild(wrap);
+  
+      const ctx = document.getElementById(`age-chart-${r}`);
+      const chart = new Chart(ctx, {
+        type: 'polarArea',
+        data: {
+          labels: ageGroups,
+          datasets: [{
+            data: bucketCounts,
+            backgroundColor: groupColors.map(c => c + 'BB'),
+            borderColor: groupColors,
+            borderWidth: 1.5
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.label}: ${context.raw} Participants`;
+                }
+              }
+            }
+          },
+          scales: {
+            r: { ticks: { display: false }, grid: { color: 'rgba(0,0,0,0.05)' } }
+          }
+        }
+      });
+      window.ageCharts.push(chart);
+    });
+  };
+
+  // 4. JUDGE SCORE DISTRIBUTION
+  const renderJudgeDistChart = () => {
+    const ctx = document.getElementById('judge-chart');
+    if (!ctx) return;
+    if(window.judgeChartInstance) window.judgeChartInstance.destroy();
+    
+    const chartDatasets = presentJudges.map((j, i) => {
+      const scoreCounts = new Array(10).fill(0);
+      participants.forEach(p => {
+        const allVals = getAllJudgeScores(p, j.id);
+        allVals.forEach(val => {
+          const num = Math.round(val);
+          if (num >= 1 && num <= 10) scoreCounts[num - 1]++;
+        });
+      });
+  
+      const judgeColors = ['109,40,217', '37,99,235', '5,150,105', '217,119,6'];
+      const colorStr = judgeColors[i % judgeColors.length];
+  
+      return {
+        label: j.name.split(' ')[0],
+        data: scoreCounts,
+        backgroundColor: `rgba(${colorStr}, 0.15)`,
+        borderColor: `rgba(${colorStr}, 1)`,
+        borderWidth: 2.5,
+        pointBackgroundColor: `rgba(${colorStr}, 1)`,
+        pointBorderColor: '#fff',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: true,
+        tension: 0.4
+      };
+    });
+  
+    window.judgeChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+        datasets: chartDatasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: { color: '#8892a4', font: { size: 10, family: "'Inter', sans-serif", weight: 'bold' } }
+          },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Score Given', color: '#8892a4', font: { size: 10, weight: 'bold' } },
+            ticks: { color: '#8892a4' },
+            grid: { color: 'rgba(34,36,54,0.15)' }
+          },
+          y: {
+            title: { display: true, text: 'Frequency (Count)', color: '#8892a4', font: { size: 10, weight: 'bold' } },
+            ticks: { color: '#8892a4', stepSize: 1 },
+            grid: { color: 'rgba(34,36,54,0.15)' }
+          }
+        }
+      }
+    });
+  };
+
+  // 5. MAX & AVERAGE SCORES
+  const renderMaxAvg = () => {
+    const container = document.getElementById('judge-maxavg');
+    if(!container) return;
+    container.innerHTML = presentJudges.map(j=>{
+      let allJudgeScores = [];
+      participants.forEach(p => {
+        const pScores = getAllJudgeScores(p, j.id);
+        if(pScores.length) allJudgeScores.push(...pScores);
+      });
+      const max = allJudgeScores.length ? Math.max(...allJudgeScores) : 0;
+      const avg = allJudgeScores.length ? Math.round((allJudgeScores.reduce((a,b)=>a+b,0)/allJudgeScores.length)*10)/10 : 0;
+      const pct = subjects.length*10 > 0 ? Math.round(avg/(subjects.length*10)*100) : 0;
+      
+      const styles = {
+        row: 'display:flex; margin-bottom:12px; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:8px;',
+        avatar: `width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;margin-right:12px;background:${j.color}20;color:${j.color};border:1px solid ${j.color}50`,
+        barWrap: 'height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-top:6px;',
+        barFill: `height:100%; width:${pct}%; background:${j.color}; transition:width 0.5s ease`
+      };
+      
+      return `<div style="${styles.row}">
+        <div style="${styles.avatar}">${j.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px">${j.name}</div>
+          <div style="${styles.barWrap}"><div style="${styles.barFill}"></div></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Avg: ${avg} · Max given: ${max}</div>
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  // 6. SUBJECT-WISE JUDGE ANALYSIS
+  const renderJudgeSubjectCharts = () => {
+    const container = document.getElementById('judge-subject-charts-container');
+    if (!container) return;
+    container.innerHTML = '';
+  
+    if (window.judgeSubjectCharts) window.judgeSubjectCharts.forEach(c => c.destroy());
+    window.judgeSubjectCharts = [];
+  
+    if (presentJudges.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No judges present for this event.</div>';
+      return;
+    }
+  
+    const subjectNames = subjects.map(s => s.name);
+  
+    presentJudges.forEach(j => {
+      const mins = [];
+      const avgs = [];
+      const maxs = [];
+  
+      subjects.forEach(s => {
+        const scores = getSubjectScores(j.id, s.id);
+        if (scores.length > 0) {
+          mins.push(Math.min(...scores));
+          maxs.push(Math.max(...scores));
+          avgs.push(Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10);
+        } else {
+          mins.push(0); maxs.push(0); avgs.push(0);
+        }
+      });
+  
+      const wrap = document.createElement('div');
+      wrap.style.textAlign = 'center';
+      wrap.innerHTML = `
+        <div style="font-size:13px;font-weight:800;margin-bottom:12px;color:${j.color};text-transform:uppercase;letter-spacing:1px;">${j.name}</div>
+        <div style="position:relative;height:240px;width:100%">
+          <canvas id="judge-subj-chart-${j.id}"></canvas>
+        </div>
+      `;
+      container.appendChild(wrap);
+  
+      const ctx = document.getElementById(`judge-subj-chart-${j.id}`);
+      const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: subjectNames,
+          datasets: [
+            { label: 'Min', data: mins, backgroundColor: '#fb7185', borderRadius: 2 },
+            { label: 'Avg', data: avgs, backgroundColor: '#60a5fa', borderRadius: 2 },
+            { label: 'Max', data: maxs, backgroundColor: '#34d399', borderRadius: 2 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                usePointStyle: true,
+                boxWidth: 8,
+                font: { size: 11, family: "'Inter', sans-serif" }
+              }
+            }
+          },
+          scales: {
+            y: { min: 0, max: 10, grid: { color: 'rgba(0,0,0,0.05)' } },
+            x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+      window.judgeSubjectCharts.push(chart);
+    });
+  };
+
+  // Execute all renderers
+  renderRoundChart();
+  renderGenderCharts();
+  renderAgeCharts();
+  renderJudgeDistChart();
+  renderMaxAvg();
+  renderJudgeSubjectCharts();
 }
 </script>
 </body>

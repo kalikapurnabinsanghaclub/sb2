@@ -7098,42 +7098,29 @@ function renderIndividualStats(){
   filteredParticipants = eventParticipants;
   const roundFilter = document.getElementById('stats-round-sel')?.value||'all';
   let data = roundFilter==='all' ? eventParticipants : eventParticipants.filter(p=>p.round===roundFilter);
-  data.forEach(p => {
-    if (!p.roundScores) p.roundScores = {};
-    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-    p.scores = p.roundScores[p.round];
-  });
+
   // Sort by total score desc
   data = [...data].sort((a,b)=>{
-    const aClone = { ...a };
-    const bClone = { ...b };
-    if (!aClone.roundScores) aClone.roundScores = {};
-    if (!aClone.roundScores[aClone.round]) aClone.roundScores[aClone.round] = {};
-    aClone.scores = aClone.roundScores[aClone.round];
-    
-    if (!bClone.roundScores) bClone.roundScores = {};
-    if (!bClone.roundScores[bClone.round]) bClone.roundScores[bClone.round] = {};
-    bClone.scores = bClone.roundScores[bClone.round];
+    const aScores = (a.scores && Object.keys(a.scores).length > 0) ? a.scores : (a.roundScores && a.roundScores[a.round] ? a.roundScores[a.round] : {});
+    const bScores = (b.scores && Object.keys(b.scores).length > 0) ? b.scores : (b.roundScores && b.roundScores[b.round] ? b.roundScores[b.round] : {});
     
     let sa = 0;
-    if (aClone.scores) {
-      Object.keys(aClone.scores).forEach(jId => {
-        subjects.forEach(s => sa += Number(aClone.scores?.[jId]?.[s.id]) || 0);
-      });
-    }
+    Object.keys(aScores).forEach(jId => {
+      subjects.forEach(s => sa += Number(aScores?.[jId]?.[s.id]) || 0);
+    });
+    
     let sb = 0;
-    if (bClone.scores) {
-      Object.keys(bClone.scores).forEach(jId => {
-        subjects.forEach(s => sb += Number(bClone.scores?.[jId]?.[s.id]) || 0);
-      });
-    }
+    Object.keys(bScores).forEach(jId => {
+      subjects.forEach(s => sb += Number(bScores?.[jId]?.[s.id]) || 0);
+    });
+    
     return sb-sa;
   });
+  
   document.getElementById('individual-stats-content').innerHTML = data.map((p,rank)=>{
     const pClone = { ...p };
-    if (!pClone.roundScores) pClone.roundScores = {};
-    if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-    pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
+    const effectiveScores = (p.scores && Object.keys(p.scores).length > 0) ? p.scores : (p.roundScores && p.roundScores[p.round] ? p.roundScores[p.round] : {});
+    pClone.scores = effectiveScores;
     
     const cat = categories.find(c=>String(c.id)===String(pClone.catId));
     let total = 0;
