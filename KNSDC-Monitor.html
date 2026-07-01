@@ -2057,6 +2057,12 @@
           <div class="chart-wrap"><canvas id="round-chart"></canvas></div>
         </div>
       </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:14px">Round-wise Gender Distribution</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;" id="gender-charts-container">
+          <!-- Populated by JS -->
+        </div>
+      </div>
       <div id="roundwise-tables"></div>
     </div>
 
@@ -7525,6 +7531,106 @@ function renderRoundwiseStats(){
       }).join('')}</tbody></table></div>
     </div>`;
   }).join('');
+  
+  renderGenderCharts();
+}
+
+function renderGenderCharts() {
+  const container = document.getElementById('gender-charts-container');
+  if (!container) return;
+  if (typeof Chart === 'undefined') {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;grid-column:1/-1;text-align:center;">Chart library not loaded</div>';
+    return;
+  }
+
+  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
+  const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  
+  container.innerHTML = '';
+  
+  if (window.genderCharts) {
+    window.genderCharts.forEach(c => c.destroy());
+  }
+  window.genderCharts = [];
+
+  roundsOrder.forEach((r, idx) => {
+    const reached = participants.filter(p => {
+      if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
+      const currentRIdx = roundsOrder.indexOf(p.round || 'audition');
+      return currentRIdx >= idx;
+    });
+
+    const males = reached.filter(p => p.gender && p.gender.toLowerCase() === 'male').length;
+    const females = reached.filter(p => p.gender && p.gender.toLowerCase() === 'female').length;
+    const total = males + females;
+    
+    const wrap = document.createElement('div');
+    wrap.style.textAlign = 'center';
+    wrap.innerHTML = `
+      <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-dim);text-transform:uppercase;">${labels[idx]}</div>
+      <div style="position:relative;height:120px;display:flex;justify-content:center;">
+        <canvas id="gender-chart-${r}"></canvas>
+      </div>
+      <div style="font-size:11px;margin-top:10px;font-family:var(--fm);display:flex;justify-content:center;gap:15px">
+        <span style="color:#f97316;font-weight:800">M: ${males}</span>
+        <span style="color:#a855f7;font-weight:800">F: ${females}</span>
+      </div>
+    `;
+    container.appendChild(wrap);
+
+    const ctx = document.getElementById(`gender-chart-${r}`);
+    const chart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Male', 'Female'],
+        datasets: [{
+          data: [males, females],
+          backgroundColor: ['#f97316', '#a855f7'],
+          borderWidth: 0,
+          hoverOffset: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                if(total === 0) return '0%';
+                const percentage = Math.round((context.raw / total) * 100);
+                return ` ${context.label}: ${context.raw} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      },
+      plugins: [{
+        id: 'centerText',
+        beforeDraw: function(chart) {
+          const width = chart.width, height = chart.height, ctx = chart.ctx;
+          ctx.restore();
+          ctx.font = 'bold 18px var(--fb)';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#64748b';
+          const text = total.toString();
+          const textX = Math.round((width - ctx.measureText(text).width) / 2);
+          const textY = height / 2;
+          ctx.fillText(text, textX, textY);
+          
+          ctx.font = '600 9px var(--fm)';
+          ctx.fillStyle = '#94a3b8';
+          const subText = 'Total';
+          const subX = Math.round((width - ctx.measureText(subText).width) / 2);
+          ctx.fillText(subText, subX, textY + 14);
+          ctx.save();
+        }
+      }]
+    });
+    window.genderCharts.push(chart);
+  });
 }
 
 function renderJudgeStats(){
