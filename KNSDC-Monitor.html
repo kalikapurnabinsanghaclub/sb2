@@ -2044,7 +2044,17 @@
       <div class="tab active" onclick="statsTab('roundwise',this)">Round-wise</div>
       <div class="tab" onclick="statsTab('judges',this)">Judge Analysis</div>
       <div class="tab" onclick="statsTab('comparative',this)">📊 Comparative Analysis</div>
+      <div class="tab" onclick="statsTab('feedback',this)">⭐ Feedbacks</div>
     </div>
+
+    <!-- FEEDBACKS -->
+    <div id="st-feedback" style="display:none;">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:14px">Participant Feedbacks</div>
+        <div id="feedbacks-container" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px;"></div>
+      </div>
+    </div>
+
 
     <!-- ROUND WISE -->
     <div id="st-roundwise">
@@ -3442,6 +3452,9 @@ function hydrate() {
       if (activeSubTab === 'formbuilder') renderFormBuilder();
       if (activeSubTab === 'categories') renderCategories();
       if (activeSubTab === 'venues') renderVenueDates();
+    }
+    if (pageId === 'statistics' && typeof currentStatsTab !== 'undefined' && currentStatsTab === 'feedback') {
+      if (typeof renderFeedbacks === 'function') renderFeedbacks();
     }
   }
   
@@ -7138,7 +7151,7 @@ function statsTab(tab, el){
   currentStatsTab = tab;
   document.querySelectorAll('#pp-statistics .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  ['individual','roundwise','judges','comparative'].forEach(t=>{
+  ['individual','roundwise','judges','comparative','feedback'].forEach(t=>{
     const el2 = document.getElementById('st-'+t);
     if(el2) el2.style.display = t===tab?'block':'none';
   });
@@ -7146,6 +7159,39 @@ function statsTab(tab, el){
   if(tab==='roundwise') renderRoundwiseStats();
   if(tab==='judges') renderJudgeStats();
   if(tab==='comparative') renderComparativeStats();
+  if(tab==='feedback') renderFeedbacks();
+}
+
+function renderFeedbacks() {
+  const fbs = window.syncEngine.getData().feedbacks || [];
+  const container = document.getElementById('feedbacks-container');
+  if (fbs.length === 0) {
+    container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text-muted);">No feedbacks yet.</div>`;
+    return;
+  }
+  
+  // Sort by newest first
+  const sorted = [...fbs].sort((a,b) => b.timestamp - a.timestamp);
+  
+  container.innerHTML = sorted.map(fb => {
+    const p = participants.find(x => String(x.id) === String(fb.participantId));
+    const pName = p ? p.name : 'Unknown Participant';
+    const stars = '⭐'.repeat(fb.rating) + '☆'.repeat(5 - fb.rating);
+    const dateStr = new Date(fb.timestamp).toLocaleString();
+    
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-weight:700;color:var(--primary);">${pName}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${dateStr}</div>
+        </div>
+        <div style="font-size:14px;letter-spacing:2px;" title="${fb.rating} Stars">${stars}</div>
+      </div>
+      <div style="font-size:13px;line-height:1.5;color:var(--text);margin-top:5px;background:var(--bg);padding:10px;border-radius:8px;">
+        ${fb.text ? fb.text : '<span style="color:var(--text-muted);font-style:italic;">No text provided</span>'}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function searchParticipant(v){
