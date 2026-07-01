@@ -2261,7 +2261,9 @@ window.renderStaffPage = async (state) => {
   }
 };
 
+let isSavingStaff = false;
 window.saveNewStaff = async () => {
+  if (isSavingStaff) return;
   const name = document.getElementById('ns-name').value.trim();
   const email = document.getElementById('ns-email').value.trim();
   const pass = document.getElementById('ns-pass').value.trim();
@@ -2274,18 +2276,27 @@ window.saveNewStaff = async () => {
     return;
   }
   
-  const res = await window.syncEngine.addStaffMember(email, pass, name, role);
-  if (res.success) {
-    errEl.style.display = "none";
-    closeM('add-staff-modal');
-    document.getElementById('ns-name').value = '';
-    document.getElementById('ns-email').value = '';
-    document.getElementById('ns-pass').value = '';
-    toast('✅ Staff member added!');
-    window.refreshUI('staff');
-  } else {
-    errEl.textContent = res.error || "Failed to add staff";
-    errEl.style.display = "block";
+  isSavingStaff = true;
+  const btn = document.querySelector('#add-staff-modal .btn-amber');
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+
+  try {
+    const res = await window.syncEngine.addStaffMember(email, pass, name, role);
+    if (res.success) {
+      errEl.style.display = "none";
+      closeM('add-staff-modal');
+      document.getElementById('ns-name').value = '';
+      document.getElementById('ns-email').value = '';
+      document.getElementById('ns-pass').value = '';
+      toast('✅ Staff member added!');
+      window.refreshUI('staff');
+    } else {
+      errEl.textContent = res.error || "Failed to add staff";
+      errEl.style.display = "block";
+    }
+  } finally {
+    isSavingStaff = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
   }
 };
 
@@ -2461,7 +2472,10 @@ window.openCreateEventModal = () => {
   if(m) m.style.display = 'flex';
 };
 
+let isSavingNewEvent = false;
 window.saveNewEvent = async (btn) => {
+  if (isSavingNewEvent) return;
+  isSavingNewEvent = true;
   if (btn) {
     btn.disabled = true;
     const oldText = btn.innerHTML;
@@ -2609,6 +2623,7 @@ window.saveNewEvent = async (btn) => {
   renderEventsPage(syncEngine.getData());
   renderStaffPage(); // Refresh Staff tab in case a monitor was assigned
   } finally {
+    isSavingNewEvent = false;
     if (btn) {
       btn.disabled = false;
       if (btn.dataset.oldText) btn.innerHTML = btn.dataset.oldText;
@@ -2645,7 +2660,9 @@ window.editEvent = (id) => {
     openM('edit-event-modal');
 };
 
+let isSavingEditEvent = false;
 window.saveEditedEvent = async () => {
+    if (isSavingEditEvent) return;
     const id = document.getElementById('edit-ev-id').value;
     const name = document.getElementById('edit-cev-name').value;
     const org = document.getElementById('edit-cev-org').value;
@@ -2660,81 +2677,90 @@ window.saveEditedEvent = async () => {
         return;
     }
     
-    const roundSchedules = {};
-    ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
-      roundSchedules[r] = {
-        venue: document.getElementById(`edit-cev-round-${r}-venue`).value.trim(),
-        date: document.getElementById(`edit-cev-round-${r}-date`).value,
-        time: document.getElementById(`edit-cev-round-${r}-time`).value
-      };
-    });
-
-    const dbState = syncEngine.getData() || {};
-    const eventsList = dbState.events || [];
-    const originalEv = eventsList.find(e => String(e.id) === String(id));
-    const staff = originalEv ? (originalEv.staff || []) : [];
-
-    const updatedEvent = {
-        name, org, venue, startDate, startTime,
-        endDate: endDate || null,
-        endTime: endTime || null,
-        type: document.getElementById('edit-cev-type').value,
-        capacity: parseInt(document.getElementById('edit-cev-capacity').value),
-        banner: document.getElementById('edit-cev-banner').value,
-        description: document.getElementById('edit-cev-desc').value,
-        roundSchedules,
-        staff
-    };
-
-    // Save to Supabase
-    const success = await syncEngine.updateEvent(id, updatedEvent);
-    if (!success) {
-        toast('❌ Error updating event in database');
-        return;
-    }
-        
-    // 1.5 Auto-generate Venues for Monitor if they don't exist
-    const state = syncEngine.getData();
-    const existingVenues = (state.venues || []).filter(v => String(v.eventId) === String(id));
-    const uniqueVenues = new Set();
-    if (venue) uniqueVenues.add(venue);
-    Object.values(roundSchedules).forEach(r => {
-      if (r.venue) uniqueVenues.add(r.venue);
-    });
+    isSavingEditEvent = true;
+    const btn = document.querySelector('#edit-event-modal .btn-amber');
+    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
     
-    let delay = 100;
-    for (const vName of uniqueVenues) {
-      if (!vName) continue;
-      // Check if this venue name already exists for this event
-      const alreadyExists = existingVenues.some(v => v.name.toLowerCase() === vName.toLowerCase());
-      if (!alreadyExists) {
-        const vObj = {
-          id: Date.now() + delay,
-          name: vName,
-          location: vName,
-          capacity: updatedEvent.capacity || 100,
-          dates: [],
-          eventId: id
+    try {
+      const roundSchedules = {};
+      ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
+        roundSchedules[r] = {
+          venue: document.getElementById(`edit-cev-round-${r}-venue`).value.trim(),
+          date: document.getElementById(`edit-cev-round-${r}-date`).value,
+          time: document.getElementById(`edit-cev-round-${r}-time`).value
         };
-        await syncEngine.createVenue(vObj);
-        delay += 100;
+      });
+
+      const dbState = syncEngine.getData() || {};
+      const eventsList = dbState.events || [];
+      const originalEv = eventsList.find(e => String(e.id) === String(id));
+      const staff = originalEv ? (originalEv.staff || []) : [];
+
+      const updatedEvent = {
+          name, org, venue, startDate, startTime,
+          endDate: endDate || null,
+          endTime: endTime || null,
+          type: document.getElementById('edit-cev-type').value,
+          capacity: parseInt(document.getElementById('edit-cev-capacity').value),
+          banner: document.getElementById('edit-cev-banner').value,
+          description: document.getElementById('edit-cev-desc').value,
+          roundSchedules,
+          staff
+      };
+
+      // Save to Supabase
+      const success = await syncEngine.updateEvent(id, updatedEvent);
+      if (!success) {
+          toast('❌ Error updating event in database');
+          return;
       }
+          
+      // 1.5 Auto-generate Venues for Monitor if they don't exist
+      const state = syncEngine.getData();
+      const existingVenues = (state.venues || []).filter(v => String(v.eventId) === String(id));
+      const uniqueVenues = new Set();
+      if (venue) uniqueVenues.add(venue);
+      Object.values(roundSchedules).forEach(r => {
+        if (r.venue) uniqueVenues.add(r.venue);
+      });
+      
+      let delay = 100;
+      for (const vName of uniqueVenues) {
+        if (!vName) continue;
+        // Check if this venue name already exists for this event
+        const alreadyExists = existingVenues.some(v => v.name.toLowerCase() === vName.toLowerCase());
+        if (!alreadyExists) {
+          const vObj = {
+            id: Date.now() + delay,
+            name: vName,
+            location: vName,
+            capacity: updatedEvent.capacity || 100,
+            dates: [],
+            eventId: id
+          };
+          await syncEngine.createVenue(vObj);
+          delay += 100;
+        }
+      }
+
+      closeM('edit-event-modal');
+      toast('✅ Event "' + name + '" updated!');
+      renderEventsPage(syncEngine.getData());
+    } finally {
+      isSavingEditEvent = false;
+      if (btn) { btn.disabled = false; btn.innerText = '💾 Save Changes'; }
     }
-    
-    closeM('edit-event-modal');
-    toast('✅ Event updated successfully!');
-    renderEventsPage(syncEngine.getData());
 };
 
 window.deleteEvent = async (id) => {
-    if (!confirm('Are you sure you want to delete this event? This will also remove it from the public portal.')) return;
+    if(!confirm('Are you sure you want to delete this event? This action cannot be undone.')) return;
     const success = await syncEngine.deleteEvent(id);
     if (!success) {
-        toast('❌ Error deleting event from database');
-        return;
+      toast('❌ Error deleting event');
+      return;
     }
+    toast('🗑️ Event deleted.');
     renderEventsPage(syncEngine.getData());
-    toast('🗑️ Event deleted successfully.');
 };
 
 window.saveCat = () => {
@@ -3345,7 +3371,9 @@ window.logout = () => {
   }
 };
 
+let isSeedingDB = false;
 async function seedSupabaseDatabase() {
+  if (isSeedingDB) return;
   if (!syncEngine.supabase) {
     alert("Supabase client is not initialized.");
     return;
@@ -3359,6 +3387,10 @@ async function seedSupabaseDatabase() {
     alert("Sample data not loaded.");
     return;
   }
+  
+  isSeedingDB = true;
+  const btn = document.querySelector('button[onclick="seedSupabaseDatabase()"]');
+  if (btn) { btn.disabled = true; btn.innerText = 'Seeding...'; }
   
   try {
     // 1. Seed Events
@@ -3473,6 +3505,9 @@ async function seedSupabaseDatabase() {
     console.error("Seeding error:", err);
     if (statusEl) statusEl.textContent = "Error: " + err.message;
     alert("Error seeding database: " + err.message);
+  } finally {
+    isSeedingDB = false;
+    if (btn) { btn.disabled = false; btn.innerText = '🌱 Seed Default Data (Dev Only)'; }
   }
 }
 
