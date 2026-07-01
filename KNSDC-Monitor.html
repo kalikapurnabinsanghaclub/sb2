@@ -2113,6 +2113,13 @@
           <div id="round-comparison-data"></div>
         </div>
       </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-title">Participant Performance Journey</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Individual round-wise progression for each participant who advanced past Auditions. Dotted lines indicate the global average score for that round.</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:20px;" id="participant-stream-charts-container">
+          <!-- Populated by JS -->
+        </div>
+      </div>
     </div>
   </div>
 
@@ -7379,6 +7386,154 @@ function renderComparativeStats() {
         <div class="score-bar judge-score-val"><div class="score-bar-fill" style="width:${totalAvg * 10}%;background:${colors[idx]}"></div></div>
       </div>`;
   }).join('') || '<div style="color:var(--text-muted);text-align:center;padding:20px">Not enough data to compare rounds</div>';
+  
+  renderParticipantStreamCharts();
+}
+
+function renderParticipantStreamCharts() {
+  const container = document.getElementById('participant-stream-charts-container');
+  if (!container) return;
+  if (typeof Chart === 'undefined') {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:12px">Chart library not loaded</div>';
+    return;
+  }
+  
+  if (window.participantStreamCharts) {
+    window.participantStreamCharts.forEach(c => c.destroy());
+  }
+  window.participantStreamCharts = [];
+  container.innerHTML = '';
+
+  const targetParticipants = participants.filter(p => p.round !== 'audition');
+  if (targetParticipants.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No participants have advanced past Auditions yet.</div>';
+    return;
+  }
+
+  const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+  const roundLabels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  const subjectColors = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
+
+  // Calculate Global Averages
+  const globalAvgs = {};
+  rounds.forEach(r => {
+    globalAvgs[r] = {};
+    subjects.forEach(s => {
+      let total = 0, count = 0;
+      participants.forEach(p => {
+        let scores = null;
+        if (p.round === r && p.scores) scores = p.scores;
+        else if (p.roundScores && p.roundScores[r]) scores = p.roundScores[r];
+        if (scores) {
+          const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
+          if (jScores.length > 0) {
+            total += jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length;
+            count++;
+          }
+        }
+      });
+      globalAvgs[r][s.id] = count > 0 ? Number((total / count).toFixed(1)) : null;
+    });
+  });
+
+  targetParticipants.forEach(p => {
+    const wrap = document.createElement('div');
+    wrap.style.textAlign = 'center';
+    wrap.style.border = '1px solid var(--border)';
+    wrap.style.borderRadius = '12px';
+    wrap.style.padding = '16px';
+    wrap.style.background = 'var(--surface)';
+    wrap.innerHTML = `
+      <div style="font-size:14px;font-weight:800;margin-bottom:4px;color:var(--text);text-transform:uppercase;letter-spacing:1px;">${p.name}</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:12px;font-family:var(--fm)">ID: ${p.id}</div>
+      <div style="position:relative;height:200px;width:100%">
+        <canvas id="stream-chart-${p.id}"></canvas>
+      </div>
+    `;
+    container.appendChild(wrap);
+
+    const datasets = [];
+    
+    subjects.forEach((s, idx) => {
+      const colorStr = subjectColors[idx % subjectColors.length];
+      
+      const pData = rounds.map(r => {
+        let scores = null;
+        if (p.round === r && p.scores) scores = p.scores;
+        else if (p.roundScores && p.roundScores[r]) scores = p.roundScores[r];
+        if (scores) {
+          const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
+          if (jScores.length > 0) return Number((jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length).toFixed(1));
+        }
+        return null;
+      });
+
+      const gData = rounds.map(r => globalAvgs[r][s.id]);
+
+      datasets.push({
+        label: `${s.name} (P)`,
+        data: pData,
+        fill: true,
+        backgroundColor: colorStr + '20', // 12% opacity
+        borderColor: colorStr,
+        pointBackgroundColor: colorStr,
+        pointRadius: 4,
+        borderWidth: 2,
+        tension: 0.3
+      });
+
+      datasets.push({
+        label: `${s.name} (Avg)`,
+        data: gData,
+        fill: false,
+        borderColor: colorStr,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        pointHitRadius: 10,
+        borderWidth: 1.5,
+        tension: 0.3
+      });
+    });
+
+    const ctx = document.getElementById(`stream-chart-${p.id}`);
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: roundLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        spanGaps: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            backgroundColor: '#1e293b',
+            titleFont: { size: 11, weight: 'bold' },
+            bodyFont: { size: 10 },
+            padding: 8,
+            cornerRadius: 4
+          }
+        },
+        scales: {
+          y: {
+            min: 0,
+            max: 10,
+            ticks: { color: '#8892a4', stepSize: 2, font: { size: 9 } },
+            grid: { color: 'rgba(34,36,54,0.1)' }
+          },
+          x: {
+            ticks: { color: '#8892a4', font: { size: 9 } },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+    window.participantStreamCharts.push(chart);
+  });
 }
 
 function renderRoundwiseStats(){
