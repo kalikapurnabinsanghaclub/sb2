@@ -5539,12 +5539,22 @@ function downloadRegs(format = 'excel') {
   if(catFilter) eventParticipants = eventParticipants.filter(p=>String(p.catId)===String(catFilter));
   if(venueFilter) eventParticipants = eventParticipants.filter(p=>String(p.venueId)===String(venueFilter));
   
-  // 1. Identify all unique form field labels used in this event (excluding Address since we make it standard)
+  // 1. Identify all file-based fields to exclude them from export
+  const fileFieldLabels = new Set();
+  if (typeof formFields !== 'undefined') {
+    formFields.forEach(f => {
+      if (['file', 'file_link', 'video_link_or_file', 'audio_link_or_file', 'audio', 'video', 'image'].includes(f.type)) {
+        fileFieldLabels.add(f.label);
+      }
+    });
+  }
+
+  // 2. Identify all unique form field labels used in this event (excluding Address and file fields)
   const formLabels = new Set();
   eventParticipants.forEach(p => {
     if (p.formAnswers) {
       Object.keys(p.formAnswers).forEach(label => {
-        if (label.toLowerCase() !== 'address') {
+        if (label.toLowerCase() !== 'address' && !fileFieldLabels.has(label)) {
           formLabels.add(label);
         }
       });
