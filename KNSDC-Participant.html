@@ -86,40 +86,7 @@
       </div>
       
       <form id="participant-form">
-        <div class="fg">
-          <label>Full Name</label>
-          <input type="text" id="reg-name" required>
-        </div>
-        <div class="fg">
-          <label>Phone Number</label>
-          <input type="tel" id="reg-phone" required>
-        </div>
-        <div class="fg">
-          <label>City / Town</label>
-          <input type="text" id="reg-city">
-        </div>
-
-        <div class="fg">
-          <label>Date of Birth</label>
-          <input type="date" id="reg-dob">
-        </div>
-        <div class="fg">
-          <label>Gender</label>
-          <select id="reg-gender">
-            <option value="">Select Gender</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-        <div class="fg">
-          <label>Full Address</label>
-          <textarea id="reg-address" rows="3"></textarea>
-        </div>
-        <div class="fg">
-          <label>Dance Style</label>
-          <input type="text" id="reg-style">
-        </div>
+        <div id="dynamic-form-container"></div>
         
         <button type="submit" id="save-btn" class="btn btn-green" style="margin-top:24px;">Save Updates</button>
       </form>
@@ -217,23 +184,105 @@ function renderDashboard() {
   
   if (!p) { logout(); return; }
   
-  // Populate form case-insensitively
   const ans = p.formAnswers || {};
   const ansKeys = Object.keys(ans);
   
-  function getAns(key) {
-    const lowerKey = key.toLowerCase();
-    const found = ansKeys.find(k => k.toLowerCase() === lowerKey || k.toLowerCase().includes(lowerKey));
-    return found ? ans[found] : '';
+  // Get active event and form fields
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  let formFields = [];
+  if (ev) {
+    if (state.eventFormFields && state.eventFormFields[ev.id]) {
+      formFields = state.eventFormFields[ev.id];
+    } else {
+      formFields = (ev.formFields && ev.formFields.length > 0) ? ev.formFields : (state.formFields || []);
+      if (typeof formFields === 'string') {
+        try { formFields = JSON.parse(formFields); } catch(e) { formFields = []; }
+      }
+    }
   }
 
-  document.getElementById('reg-name').value = p.name || getAns('name') || '';
-  document.getElementById('reg-phone').value = p.phone || getAns('phone') || getAns('mobile') || '';
-  document.getElementById('reg-city').value = getAns('city') || p.city || '';
-  document.getElementById('reg-dob').value = getAns('date of birth') || getAns('dob') || p.dob || '';
-  document.getElementById('reg-gender').value = p.gender || getAns('gender') || '';
-  document.getElementById('reg-address').value = getAns('address') || p.address || '';
-  document.getElementById('reg-style').value = getAns('style') || getAns('dance style') || p.style || '';
+  const container = document.getElementById('dynamic-form-container');
+  let html = '';
+
+  window.participantFormFields = formFields; // Save for submit handler
+
+  formFields.forEach((f, i) => {
+    const fieldId = `dyn-field-${i}`;
+    const reqMark = f.required ? '<span style="color:#ef4444">*</span>' : '';
+    let val = '';
+    
+    // Map existing value from p
+    const lbl = f.label.toUpperCase();
+    if (lbl.includes('NAME')) val = p.name || '';
+    else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) val = p.phone || '';
+    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) val = p.age || '';
+    else if (f.type === 'category') val = p.catId || '';
+    else if (f.type === 'venue') val = p.venueId || '';
+    else {
+      // Find in formAnswers (case-insensitive)
+      const foundKey = ansKeys.find(k => k.toLowerCase() === f.label.toLowerCase() || k.toLowerCase().includes(f.label.toLowerCase()));
+      if (foundKey) val = ans[foundKey];
+      else val = '';
+    }
+
+    html += `<div class="fg">
+      <label>${f.label} ${reqMark}</label>`;
+
+    if (f.type === 'text') {
+      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else if (f.type === 'number') {
+      html += `<input type="number" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else if (f.type === 'textarea') {
+      html += `<textarea id="${fieldId}" rows="3" ${f.required ? 'required' : ''}>${val}</textarea>`;
+    } else if (f.type === 'radio' && f.options) {
+      html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
+      f.options.forEach(opt => {
+        const isChecked = (val === opt) ? 'checked' : '';
+        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="radio" name="${fieldId}" value="${opt}" ${isChecked} ${f.required ? 'required' : ''}> ${opt}</label>`;
+      });
+      html += `</div>`;
+    } else if (f.type === 'checkbox' && f.options) {
+      const valArr = Array.isArray(val) ? val : [val];
+      html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
+      f.options.forEach(opt => {
+        const isChecked = valArr.includes(opt) ? 'checked' : '';
+        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="checkbox" name="${fieldId}" value="${opt}" ${isChecked}> ${opt}</label>`;
+      });
+      html += `</div>`;
+    } else if (f.type === 'category') {
+      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
+        <option value="">Select Category</option>`;
+      (ev.categories || []).forEach(c => {
+        html += `<option value="${c.id}" ${String(c.id) === String(val) ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+      });
+      html += `</select>`;
+    } else if (f.type === 'venue') {
+      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
+        <option value="">Select Venue</option>`;
+      (ev.venues || []).forEach(v => {
+        html += `<option value="${v.id}" ${String(v.id) === String(val) ? 'selected' : ''}>${v.name}</option>`;
+      });
+      html += `</select>`;
+    } else if (f.type === 'tc') {
+      const isChecked = val ? 'checked' : '';
+      html += `<label style="display:flex; align-items:start; gap:8px; font-weight:normal; text-transform:none; margin-top:5px; font-size:13px; line-height:1.4;">
+        <input type="checkbox" id="${fieldId}" ${isChecked} ${f.required ? 'required' : ''} style="width:auto; margin-top:3px;">
+        <span>${f.tcText || 'I agree to the terms and conditions'}</span>
+      </label>`;
+    } else if (f.type === 'date' || f.label.toUpperCase().includes('DATE')) {
+      html += `<input type="date" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else {
+      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    }
+    
+    html += `</div>`;
+  });
+
+  if (formFields.length === 0) {
+    html = `<div style="text-align:center; padding:20px; color:var(--text-muted);">No form fields configured for this event.</div>`;
+  }
+
+  container.innerHTML = html;
   
   // Lock Logic
   const inputs = document.querySelectorAll('#participant-form input, #participant-form select, #participant-form textarea');
@@ -267,21 +316,44 @@ document.getElementById('participant-form').addEventListener('submit', async (e)
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
   
-  const ans = {
-    ...(p.formAnswers || {}),
-    'City': document.getElementById('reg-city').value.trim(),
-    'Date of Birth': document.getElementById('reg-dob').value,
-    'Full Address': document.getElementById('reg-address').value.trim(),
-    'Dance Style': document.getElementById('reg-style').value.trim()
-  };
+  const formFields = window.participantFormFields || [];
+  let payload = { formAnswers: { ...(p.formAnswers || {}) }, formLocked: true };
   
-  const payload = {
-    name: document.getElementById('reg-name').value.trim(),
-    phone: document.getElementById('reg-phone').value.trim(),
-    gender: document.getElementById('reg-gender').value,
-    formAnswers: ans,
-    formLocked: true // CRITICAL: Auto-lock after saving!
-  };
+  for (let i = 0; i < formFields.length; i++) {
+    const f = formFields[i];
+    const fieldId = `dyn-field-${i}`;
+    const el = document.getElementById(fieldId);
+    let val = '';
+
+    if (f.type === 'radio') {
+      const checked = document.querySelector(`input[name="${fieldId}"]:checked`);
+      val = checked ? checked.value : '';
+    } else if (f.type === 'checkbox') {
+      const checked = Array.from(document.querySelectorAll(`input[name="${fieldId}"]:checked`)).map(c => c.value);
+      val = checked;
+    } else if (f.type === 'tc') {
+      val = el ? el.checked : false;
+    } else if (el) {
+      val = el.value.trim ? el.value.trim() : el.value;
+    }
+
+    if (f.required && (!val || (Array.isArray(val) && val.length === 0))) {
+      toast(`Please fill required field: ${f.label}`);
+      btn.disabled = false;
+      btn.textContent = 'Save Updates';
+      return;
+    }
+
+    payload.formAnswers[f.label] = val;
+
+    // Map to standard properties
+    const lbl = f.label.toUpperCase();
+    if (lbl.includes('NAME')) payload.name = val;
+    else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) payload.phone = val;
+    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) payload.age = val;
+    else if (f.type === 'category') payload.catId = val;
+    else if (f.type === 'venue') payload.venueId = val;
+  }
   
   try {
     await window.syncEngine.updateParticipant(CURRENT_USER, payload);
