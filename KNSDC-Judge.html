@@ -2281,7 +2281,9 @@ function showJudgeProfileModal() {
   document.getElementById('judge-profile-modal').style.display = 'flex';
 }
 
+let isUploadingAvatar = false;
 async function uploadJudgeAvatar(event) {
+  if (isUploadingAvatar) return;
   const file = event.target.files[0];
   if (!file) return;
   
@@ -2291,6 +2293,7 @@ async function uploadJudgeAvatar(event) {
     return;
   }
   
+  isUploadingAvatar = true;
   document.getElementById('pm-avatar-loading').style.display = 'flex';
   
   const oldAvatar = JUDGE.avatar;
@@ -2318,6 +2321,7 @@ async function uploadJudgeAvatar(event) {
         } catch (e) {
           console.error("Failed to delete old avatar file:", e);
         }
+
       }
       
       // Update UI
@@ -3187,7 +3191,9 @@ function updateLiveTotal() {
   document.getElementById('live-total').textContent = total;
 }
 
+let isSavingScore = false;
 async function saveScores() {
+  if (isSavingScore) return;
   if(!scoringParticipantId) { toast('No participant selected!'); return; }
   const p = participants.find(x=>x.id===scoringParticipantId);
   if(!p) return;
@@ -3205,40 +3211,49 @@ async function saveScores() {
     toast('Score is locked by Admin!');
     return;
   }
-
-  if(!p.scores[JUDGE.id]) p.scores[JUDGE.id] = {};
-  if(!p.roundScores) p.roundScores = {};
-  if(!p.roundScores[p.round]) p.roundScores[p.round] = {};
-  if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
-
-  SUBJECTS.forEach(s => {
-    const val = parseInt(document.getElementById('num-'+s.id)?.value||0);
-    p.scores[JUDGE.id][s.id] = val;
-    p.roundScores[p.round][JUDGE.id][s.id] = val;
-  });
-  if(!p.roundComments) p.roundComments = {};
-  if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
-  p.roundComments[p.round][JUDGE.id] = document.getElementById('judge-comment').value;
-  p.comment = document.getElementById('judge-comment').value; // Keep global for backward compat
-
-  toast('Saving score...');
-  const success = await syncEngine.updateParticipant(p.id, p);
-  if(!success) { toast('❌ Error saving score to database'); return; }
-
-  renderParticipantsTable();
-  updateStats();
   
-  const scoringCard = document.getElementById('scoring-panel-container');
-  if (scoringCard) {
-    scoringCard.classList.add('save-success-anim');
-    setTimeout(() => scoringCard.classList.remove('save-success-anim'), 600);
+  isSavingScore = true;
+  const btn = document.getElementById('save-score-btn');
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+
+  try {
+    if(!p.scores[JUDGE.id]) p.scores[JUDGE.id] = {};
+    if(!p.roundScores) p.roundScores = {};
+    if(!p.roundScores[p.round]) p.roundScores[p.round] = {};
+    if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
+
+    SUBJECTS.forEach(s => {
+      const val = parseInt(document.getElementById('num-'+s.id)?.value||0);
+      p.scores[JUDGE.id][s.id] = val;
+      p.roundScores[p.round][JUDGE.id][s.id] = val;
+    });
+    if(!p.roundComments) p.roundComments = {};
+    if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
+    p.roundComments[p.round][JUDGE.id] = document.getElementById('judge-comment').value;
+    p.comment = document.getElementById('judge-comment').value; // Keep global for backward compat
+
+    toast('Saving score...');
+    const success = await syncEngine.updateParticipant(p.id, p);
+    if(!success) { toast('❌ Error saving score to database'); return; }
+
+    renderParticipantsTable();
+    updateStats();
+    
+    const scoringCard = document.getElementById('scoring-panel-container');
+    if (scoringCard) {
+      scoringCard.classList.add('save-success-anim');
+      setTimeout(() => scoringCard.classList.remove('save-success-anim'), 600);
+    }
+    
+    toast('✅ Score submitted successfully!');
+    setTimeout(() => {
+      document.getElementById('scoring-panel-container').style.display = 'none';
+      document.getElementById('welcome-hero').style.display = 'block';
+    }, 1000);
+  } finally {
+    isSavingScore = false;
+    if (btn) { btn.disabled = false; btn.innerText = '💾 Save Scores'; }
   }
-  
-  toast('✅ Score submitted successfully!');
-  setTimeout(() => {
-    document.getElementById('scoring-panel-container').style.display = 'none';
-    document.getElementById('welcome-hero').style.display = 'block';
-  }, 1000);
 }
 
 function clearScorePanel() {
@@ -3412,49 +3427,60 @@ function updateModalSliderColor(id, max, val) {
   if(card) card.classList.toggle('active-subj', val>0);
 }
 
+let isSavingModalScore = false;
 async function saveModalScores() {
+  if (isSavingModalScore) return;
   if(!editingModalParticipantId) return;
   const p = participants.find(x=>x.id===editingModalParticipantId);
   if(!p) return;
 
-  if (!p.roundScores) p.roundScores = {};
-  if (!p.round) p.round = 'audition';
-  if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-  p.scores = p.roundScores[p.round];
+  isSavingModalScore = true;
+  const btn = document.querySelector('#score-modal-body .btn-gold');
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
 
-  if(!p.scores[JUDGE.id]) p.scores[JUDGE.id] = {};
-  if(!p.roundScores) p.roundScores = {};
-  if(!p.roundScores[p.round]) p.roundScores[p.round] = {};
-  if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
+  try {
+    if (!p.roundScores) p.roundScores = {};
+    if (!p.round) p.round = 'audition';
+    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
+    p.scores = p.roundScores[p.round];
 
-  SUBJECTS.forEach(s => {
-    const val = parseInt(document.getElementById('modal-num-'+s.id)?.value||0);
-    p.scores[JUDGE.id][s.id] = val;
-    p.roundScores[p.round][JUDGE.id][s.id] = val;
-  });
-  if(!p.roundComments) p.roundComments = {};
-  if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
-  p.roundComments[p.round][JUDGE.id] = document.getElementById('modal-judge-comment').value;
-  p.comment = document.getElementById('modal-judge-comment').value; // Keep global for backward compat
+    if(!p.scores[JUDGE.id]) p.scores[JUDGE.id] = {};
+    if(!p.roundScores) p.roundScores = {};
+    if(!p.roundScores[p.round]) p.roundScores[p.round] = {};
+    if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
 
-  p.isEdited = p.isEdited || {};
-  p.isEdited[JUDGE.id] = true;
+    SUBJECTS.forEach(s => {
+      const val = parseInt(document.getElementById('modal-num-'+s.id)?.value||0);
+      p.scores[JUDGE.id][s.id] = val;
+      p.roundScores[p.round][JUDGE.id][s.id] = val;
+    });
+    if(!p.roundComments) p.roundComments = {};
+    if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
+    p.roundComments[p.round][JUDGE.id] = document.getElementById('modal-judge-comment').value;
+    p.comment = document.getElementById('modal-judge-comment').value; // Keep global for backward compat
 
-  const isGlobalLocked = switchStates['lock-score'] || switchStates['lockScore'];
-  toast('Updating score...');
-  const success = await syncEngine.updateParticipant(p.id, p);
-  if(!success) { toast('❌ Error updating score'); return; }
+    p.isEdited = p.isEdited || {};
+    p.isEdited[JUDGE.id] = true;
 
-  if (isGlobalLocked) {
-    switchStates['edit-score'] = false;
-    switchStates['editScore'] = false;
-    syncEngine.updateState({ switchStates });
+    const isGlobalLocked = switchStates['lock-score'] || switchStates['lockScore'];
+    toast('Updating score...');
+    const success = await syncEngine.updateParticipant(p.id, p);
+    if(!success) { toast('❌ Error updating score'); return; }
+
+    if (isGlobalLocked) {
+      switchStates['edit-score'] = false;
+      switchStates['editScore'] = false;
+      syncEngine.updateState({ switchStates });
+    }
+
+    closeEditModal();
+    renderParticipantsTable();
+    updateStats();
+    toast('✅ Edit saved!');
+  } finally {
+    isSavingModalScore = false;
+    if (btn) { btn.disabled = false; btn.innerText = '💾 Save Corrections'; }
   }
-
-  closeEditModal();
-  renderParticipantsTable();
-  updateStats();
-  toast('✅ Edit saved!');
 }
 
 function renderParticipantsTable() {
