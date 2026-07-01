@@ -4430,16 +4430,12 @@ function renderRoundPipeline(){
 }
 
 function renderStageView(){
-  const roundSel = document.getElementById('venue-round-sel');
-  const round = roundSel ? roundSel.value : 'audition';
   const venId = currentVenueMonitor;
 
   let data = participants.filter(p => (String(p.eventId) === String(activeEventId) || !p.eventId));
   if (venId) data = data.filter(p => String(p.venueId) === String(venId));
-  data = data.filter(p => p.round === round);
-  data = data.filter(p => getRoundPresent(p, round));
 
-  const onStage = data.find(p => p.stageStatus === 'on-stage');
+  const onStage = data.find(p => p.stageStatus === 'on-stage' && getRoundPresent(p, p.round));
   if(onStage){
     document.getElementById('on-stage-name').textContent = onStage.name;
     const cat = categories.find(c=>String(c.id)===String(onStage.catId));
@@ -5251,7 +5247,7 @@ function openAddRegModal(){
       inputHtml = `<textarea id="${id}" placeholder="${f.placeholder || ''}" data-label="${f.label}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface)"></textarea>`;
     } else if (f.type === 'file') {
       inputHtml = `<div style="display:flex;gap:10px;align-items:center">
-                     <input type="file" id="${id}_file" accept="image/*" onchange="convertFileToBase64(this, '${id}')" />
+                     <input type="file" id="${id}_file" accept="image/*" onchange="handleFileEdit(this, '${id}')" />
                      <input type="hidden" id="${id}" data-label="${f.label}" />
                    </div>`;
     } else if (f.type === 'file_link') {
@@ -5261,7 +5257,7 @@ function openAddRegModal(){
       inputHtml = `<div style="display:flex;gap:10px;flex-direction:column">
                      <input type="text" id="${id}_text" placeholder="Paste Link here" onchange="document.getElementById('${id}').value = this.value" />
                      <div style="font-size:10px;color:var(--text-muted);text-align:center">OR</div>
-                     <input type="file" id="${id}_file" accept="${accept}" onchange="convertFileToBase64(this, '${id}')" />
+                     <input type="file" id="${id}_file" accept="${accept}" onchange="handleFileEdit(this, '${id}')" />
                      <input type="hidden" id="${id}" data-label="${f.label}" />
                    </div>`;
     } else if (f.type === 'radio') {
@@ -6191,15 +6187,35 @@ function startOnStageTimers(p) {
       localStorage.setItem(`onstage_duration_${p.id}`, onstageDuration);
     }
     
-    // Check if started manually
+    // Attempt to sync from Global State first
+    let stateTimer = window.syncEngine ? (window.syncEngine.getData().onstageTimer || {}) : {};
+    let isGlobalMatch = String(stateTimer.participantId) === String(p.id);
+
     let storedStarted = localStorage.getItem(`onstage_started_${p.id}`);
-    if (!storedStarted || storedStarted === 'false') {
+    
+    if (isGlobalMatch && stateTimer.started) {
+      // Prioritize Global State
+      localStorage.setItem(`onstage_started_${p.id}`, 'true');
+      if (stateTimer.startTime) localStorage.setItem(`onstage_start_${p.id}`, stateTimer.startTime);
+      if (stateTimer.pausedTime) {
+        localStorage.setItem(`onstage_paused_at_${p.id}`, stateTimer.pausedTime);
+      } else {
+        localStorage.removeItem(`onstage_paused_at_${p.id}`);
+      }
+      localStorage.setItem(`onstage_elapsed_offset_${p.id}`, stateTimer.elapsedOffset || 0);
+      localStorage.setItem(`onstage_duration_${p.id}`, stateTimer.durationSecs || stateTimer.duration || 180);
+      
+      onstageStartTime = stateTimer.startTime || null;
+      onstagePausedTime = stateTimer.pausedTime || null;
+      onstageElapsedOffset = stateTimer.elapsedOffset || 0;
+      onstageDuration = stateTimer.durationSecs || stateTimer.duration || 180;
+    } else if (!storedStarted || storedStarted === 'false') {
       localStorage.setItem(`onstage_started_${p.id}`, 'false');
       onstageStartTime = null;
       onstagePausedTime = null;
       onstageElapsedOffset = 0;
     } else {
-      // Load start timestamp, paused state, and offset
+      // Load start timestamp, paused state, and offset from local storage
       let storedStart = localStorage.getItem(`onstage_start_${p.id}`);
       let storedPaused = localStorage.getItem(`onstage_paused_at_${p.id}`);
       let storedOffset = localStorage.getItem(`onstage_elapsed_offset_${p.id}`);
