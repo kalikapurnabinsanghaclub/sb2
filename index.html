@@ -1103,6 +1103,33 @@
       }
     }
 
+    /* ═══ Audio Player Equalizer & Track Styles ═══ */
+    .eq-bar {
+      width: 3px;
+      background: linear-gradient(to top, #ec4899, #a855f7);
+      border-radius: 2px;
+      animation: eqBounce var(--dur) ease-in-out infinite alternate;
+    }
+
+    @keyframes eqBounce {
+      0% { height: var(--h1); }
+      100% { height: var(--h2); }
+    }
+
+    .onstage-audio-track:hover {
+      background: rgba(255,255,255,0.9) !important;
+      box-shadow: 0 4px 16px rgba(236,72,153,0.12) !important;
+      transform: translateY(-1px);
+    }
+
+    .onstage-audio-section audio {
+      filter: hue-rotate(320deg);
+    }
+
+    .onstage-audio-section audio::-webkit-media-controls-panel {
+      background: linear-gradient(135deg, #fdf2f8, #fce7f3);
+    }
+
 
     .performer-card-live {
       background: linear-gradient(135deg, #FF6B35, #FFD23F);
@@ -3219,6 +3246,74 @@
     window.renderResults = renderResults;
     
     const syncEngine = new (window.LocalSync || LocalSync)();
+
+    // ═══ Auto-Delete Logic for Participant Audio/Photo Files ═══
+    // Tracks which files have already been scheduled for deletion to avoid duplicates
+    window._onstageDeletedAudios = new Set();
+    window._onstageDeleteTimers = {};
+
+    /**
+     * Schedule deletion of a file from Supabase Storage after `delayMs` milliseconds.
+     * Extracts the storage path from the full URL and calls Supabase Storage API to remove it.
+     * @param {string} fileUrl - Full Supabase storage URL
+     * @param {number} delayMs - Milliseconds to wait before deleting (0 = immediate)
+     */
+    window._scheduleAudioDelete = function(fileUrl, delayMs) {
+      if (!fileUrl || !fileUrl.includes('supabase.co/storage/v1/object/public/knsdc-registration/')) return;
+      if (window._onstageDeleteTimers[fileUrl]) return; // Already scheduled
+
+      const storagePath = fileUrl.split('knsdc-registration/')[1];
+      if (!storagePath) return;
+
+      console.log('[AutoClean] Scheduling deletion of', storagePath, 'in', Math.round(delayMs / 1000), 'seconds');
+
+      window._onstageDeleteTimers[fileUrl] = setTimeout(async () => {
+        try {
+          if (syncEngine && syncEngine.supabase) {
+            const { error } = await syncEngine.supabase.storage
+              .from('knsdc-registration')
+              .remove([storagePath]);
+            if (error) {
+              console.warn('[AutoClean] Failed to delete', storagePath, error);
+            } else {
+              console.log('[AutoClean] ✅ Deleted', storagePath, 'from storage');
+            }
+          }
+        } catch (e) {
+          console.warn('[AutoClean] Exception deleting', storagePath, e);
+        }
+        delete window._onstageDeleteTimers[fileUrl];
+      }, delayMs);
+    };
+
+    /**
+     * Called when an audio track finishes playing completely (onended event).
+     * Schedules the file for deletion from Supabase Storage after 15 minutes.
+     */
+    window._onAudioEnded = function(audioEl) {
+      const url = audioEl.getAttribute('data-audio-url');
+      if (!url) return;
+      
+      // Mark track as completed visually
+      const track = audioEl.closest('.onstage-audio-track');
+      if (track) {
+        track.style.opacity = '0.5';
+        track.style.border = '1px solid rgba(16,185,129,0.3)';
+        const badge = track.querySelector('div > div:first-child');
+        if (badge) {
+          badge.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+          badge.textContent = '✓';
+        }
+      }
+
+      // Schedule deletion in 15 minutes (900,000 ms)
+      const fifteenMinMs = 15 * 60 * 1000;
+      if (!window._onstageDeletedAudios.has(url)) {
+        window._onstageDeletedAudios.add(url);
+        window._scheduleAudioDelete(url, fifteenMinMs);
+        console.log('[AutoClean] 🎵 Audio finished playing. Will delete in 15 minutes:', url);
+      }
+    };
 
     // ════════════ DATA ════════════
     let EVENTS = [];
@@ -6098,6 +6193,12 @@
                     const uploadTs = parseInt(tsMatch[1]);
                     const tenHoursMs = 10 * 60 * 60 * 1000;
                     if (Date.now() - uploadTs > tenHoursMs) {
+                      // Schedule auto-delete for expired photo
+                      if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
+                      if (!window._onstageDeletedAudios.has(photoUrl)) {
+                        window._onstageDeletedAudios.add(photoUrl);
+                        window._scheduleAudioDelete && window._scheduleAudioDelete(photoUrl, 0);
+                      }
                       return ''; // Photo expired (>10 hours old), don't show
                     }
                   }
@@ -6124,6 +6225,70 @@
               </div>
             </div>
 
+            <!-- ★ On Stage Audio Player Section ★ -->
+            ${(() => {
+              if (!onStage || !onStage.formAnswers) return '';
+              const formFields = (state.eventFormFields && state.eventFormFields[ev.id]) || [];
+              const audioItems = [];
+
+              // Collect all audio URLs from form fields
+              for (const f of formFields) {
+                if ((f.type === 'audio_link_or_file' || f.type === 'audio') && onStage.formAnswers[f.label]) {
+                  const url = onStage.formAnswers[f.label];
+                  if (typeof url === 'string' && url.trim()) {
+                    // Check 10-hour expiry for unplayed audio
+                    const tsMatch = url.match(/\/(\d{13})_/);
+                    let expired = false;
+                    if (tsMatch) {
+                      const uploadTs = parseInt(tsMatch[1]);
+                      const tenHoursMs = 10 * 60 * 60 * 1000;
+                      if (Date.now() - uploadTs > tenHoursMs) {
+                        expired = true;
+                        // Schedule auto-delete for expired audio
+                        if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
+                        if (!window._onstageDeletedAudios.has(url)) {
+                          window._onstageDeletedAudios.add(url);
+                          window._scheduleAudioDelete && window._scheduleAudioDelete(url, 0);
+                        }
+                      }
+                    }
+                    if (!expired) {
+                      audioItems.push({ label: f.label, url: url });
+                    }
+                  }
+                }
+              }
+
+              if (audioItems.length === 0) return '';
+
+              let html = '<div class="onstage-audio-section" style="background:linear-gradient(135deg,#fdf2f8 0%,#fce7f3 50%,#fae8ff 100%);border-radius:20px;padding:clamp(18px,4vw,30px);margin-bottom:40px;position:relative;overflow:hidden;border:1px solid rgba(236,72,153,0.15);box-shadow:0 6px 24px rgba(236,72,153,0.08);animation:onstageCatIn 0.6s ease 0.9s both;">';
+              html += '<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 80% 20%,rgba(236,72,153,0.06),transparent 60%);pointer-events:none;"></div>';
+              html += '<div style="position:relative;z-index:1;">';
+              html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">';
+              html += '<div class="onstage-eq-bars" style="display:flex;align-items:flex-end;gap:2px;height:20px;">';
+              html += '<div class="eq-bar" style="--h1:60%;--h2:100%;--dur:0.4s;"></div>';
+              html += '<div class="eq-bar" style="--h1:100%;--h2:40%;--dur:0.5s;"></div>';
+              html += '<div class="eq-bar" style="--h1:40%;--h2:80%;--dur:0.35s;"></div>';
+              html += '<div class="eq-bar" style="--h1:80%;--h2:50%;--dur:0.45s;"></div>';
+              html += '</div>';
+              html += '<h4 style="color:#be185d;font-family:Playfair Display,serif;font-size:1rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin:0;">Performance Audio</h4>';
+              html += '</div>';
+
+              audioItems.forEach((item, idx) => {
+                const safeUrl = item.url.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                const labelClean = item.label.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                html += '<div class="onstage-audio-track" style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 18px;margin-bottom:' + (idx < audioItems.length - 1 ? '12px' : '0') + ';border:1px solid rgba(236,72,153,0.1);backdrop-filter:blur(8px);transition:all 0.3s;box-shadow:0 2px 8px rgba(0,0,0,0.03);">';
+                html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
+                html += '<div style="width:28px;height:28px;background:linear-gradient(135deg,#ec4899,#a855f7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:900;color:#fff;flex-shrink:0;">' + (idx + 1) + '</div>';
+                html += '<div style="font-size:0.82rem;font-weight:700;color:#831843;">🎵 ' + labelClean + '</div>';
+                html += '</div>';
+                html += '<audio controls controlsList="nodownload" src="' + safeUrl + '" style="width:100%;height:36px;border-radius:20px;outline:none;" data-audio-url="' + safeUrl + '" onended="window._onAudioEnded && window._onAudioEnded(this)"></audio>';
+                html += '</div>';
+              });
+
+              html += '</div></div>';
+              return html;
+            })()}
 
             <!-- ★ Live Broadcast Section (Inside renderLiveUI) ★ -->
             ${(ev.switchStates?.liveStream && ev.switchStates?.liveStreamUrl) ? `
