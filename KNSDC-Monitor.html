@@ -5513,26 +5513,52 @@ async function saveNewRegAsync() {
 }
 
 function downloadRegs(format = 'excel') {
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  let eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   
-  // 1. Identify all unique form field labels used in this event
+  const s = (document.getElementById('reg-search')?.value || '').toLowerCase();
+  const catFilter = document.getElementById('cat-filter-sel')?.value;
+  const venueFilter = document.getElementById('venue-filter-sel')?.value;
+  
+  if (s) {
+    eventParticipants = eventParticipants.filter(p => 
+      (p.name && p.name.toLowerCase().includes(s)) || 
+      (p.phone && String(p.phone).toLowerCase().includes(s)) || 
+      (p.id && String(p.id).toLowerCase().includes(s))
+    );
+  }
+  if(catFilter) eventParticipants = eventParticipants.filter(p=>String(p.catId)===String(catFilter));
+  if(venueFilter) eventParticipants = eventParticipants.filter(p=>String(p.venueId)===String(venueFilter));
+  
+  // 1. Identify all unique form field labels used in this event (excluding Address since we make it standard)
   const formLabels = new Set();
   eventParticipants.forEach(p => {
     if (p.formAnswers) {
-      Object.keys(p.formAnswers).forEach(label => formLabels.add(label));
+      Object.keys(p.formAnswers).forEach(label => {
+        if (label.toLowerCase() !== 'address') {
+          formLabels.add(label);
+        }
+      });
     }
   });
   const dynamicCols = Array.from(formLabels);
   
-  const headers = ['ID', 'Name', 'Phone', 'Age', 'Category', 'Venue', 'Round', 'Audition Pres', 'Qualified Pres', 'Semifinal Pres', 'Final Pres', ...dynamicCols];
+  const headers = ['ID', 'Name', 'Phone', 'Address', 'Age', 'Category', 'Venue', 'Round', 'Audition Pres', 'Qualified Pres', 'Semifinal Pres', 'Final Pres', ...dynamicCols];
   const rows = [headers];
 
   eventParticipants.forEach(p => {
     const cat = categories.find(c => String(c.id) === String(p.catId));
     const ven = venues.find(v => String(v.id) === String(p.venueId));
     
+    // Attempt to extract Address safely
+    let addressVal = '';
+    if (p.formAnswers) {
+      // Find case-insensitive address key
+      const addrKey = Object.keys(p.formAnswers).find(k => k.toLowerCase() === 'address');
+      if (addrKey) addressVal = p.formAnswers[addrKey];
+    }
+    
     const standardData = [
-      p.id, p.name, p.phone, p.age,
+      p.id, p.name, p.phone, addressVal, p.age,
       cat ? cat.name : '', ven ? ven.name : '',
       p.round,
       getRoundPresent(p, 'audition') ? 'Yes' : 'No',
