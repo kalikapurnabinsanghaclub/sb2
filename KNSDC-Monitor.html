@@ -3686,7 +3686,7 @@ function renderLeaderboard() {
                                 <td><span class="badge ${cat ? cat.color : 'b-gray'}">${cat ? cat.name : 'Unknown'}</span></td>
                                 <td style="text-align:right">
                                     <div class="judge-score-val" style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore}</div>
-                                    <div style="font-size:9px;color:var(--text-muted)">/ ${(presentJudgesCount * subjects.length * 10)} max</div>
+                                    <div style="font-size:9px;color:var(--text-muted)">/ ${(presentJudgesCount * subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0))} max</div>
                                 </td>
                             </tr>
                         `;
@@ -4125,7 +4125,8 @@ function broadcastResultsToPublic() {
     if (!j.present) return false;
     return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
   });
-  const maxPossible = presentJudges.length * evSubjects.length * 10;
+  const totalMaxScore = evSubjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0);
+  const maxPossible = presentJudges.length * totalMaxScore;
   
   const leaderboard = [...participants]
     .filter(p => String(p.eventId) === String(activeEventId))
@@ -7090,7 +7091,8 @@ function renderIndividualStats(){
       )
     );
     const baseJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
-    const maxPossible = baseJudgesCount * subjects.length * 10;
+    const totalMaxScore = subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0);
+    const maxPossible = baseJudgesCount * totalMaxScore;
     const pct = maxPossible>0?Math.round(total/maxPossible*100):0;
     return `<div class="card" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
@@ -7199,7 +7201,7 @@ function renderIndividualRadar(pid) {
           pointLabels: { font: { size: 8 } },
           ticks: { display: false, stepSize: 2 },
           min: 0,
-          max: 10
+          max: subjects.length ? Math.max(...subjects.map(s => Number(s.maxMarks) || 10)) : 10
         }
       }
     }
@@ -7339,7 +7341,7 @@ function renderComparativeStats() {
           display: true,
           position: 'left',
           min: 0,
-          max: 10,
+          max: subjects.length ? Math.max(...subjects.map(s => Number(s.maxMarks) || 10)) : 10,
           title: { display: true, text: 'Average Score', color: '#8892a4', font: { size: 10, weight: 'bold' } },
           ticks: { color: '#8892a4', stepSize: 2 },
           grid: { color: 'rgba(34,36,54,0.15)' }
@@ -8294,7 +8296,7 @@ function renderJudgeSubjectCharts(presentJudges) {
         scales: {
           y: {
             beginAtZero: true,
-            max: 10,
+            max: subjects.length ? Math.max(...subjects.map(s => Number(s.maxMarks) || 10)) : 10,
             title: {
               display: true,
               text: 'Score',
@@ -8336,10 +8338,12 @@ function renderPromoList(){
   let data = eventParticipants.filter(p=>p.round===fromRound&&p.stageStatus==='done');
   if(catFilter) data = data.filter(p=>String(p.catId)===String(catFilter));
   if(venueFilter) data = data.filter(p=>String(p.venueId)===String(venueFilter));
-  data.forEach(p => {
-    if (!p.roundScores) p.roundScores = {};
-    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-    p.scores = p.roundScores[p.round];
+  data = data.map(p => {
+    const pClone = { ...p };
+    if (!pClone.roundScores) pClone.roundScores = {};
+    if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+    pClone.scores = pClone.roundScores[pClone.round];
+    return pClone;
   });
   data = [...data].sort((a,b)=>{
     let sa = 0;
@@ -8444,29 +8448,27 @@ function autoSelectTopN(){
   
   const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
   
-  eligible.forEach(p => {
-    if (!p.roundScores) p.roundScores = {};
-    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
+  const sortedEligible = eligible.map(p => {
     let total = 0;
-    if (p.scores) {
-      Object.keys(p.scores).forEach(jId => {
-        subjects.forEach(s => total += Number(p.scores?.[jId]?.[s.id]) || 0);
-      });
-    }
-    p._tempScore = total;
+    const scores = p.roundScores && p.roundScores[p.round] ? p.roundScores[p.round] : {};
+    Object.keys(scores).forEach(jId => {
+      subjects.forEach(s => total += Number(scores?.[jId]?.[s.id]) || 0);
+    });
+    return { participant: p, tempScore: total };
   });
   
   const byCat = {};
-  eligible.forEach(p => {
+  sortedEligible.forEach(item => {
+    const p = item.participant;
     if(!byCat[p.catId]) byCat[p.catId] = [];
-    byCat[p.catId].push(p);
+    byCat[p.catId].push(item);
   });
   
   promoSelections.clear();
   Object.values(byCat).forEach(catList => {
-    catList.sort((a,b) => b._tempScore - a._tempScore);
+    catList.sort((a,b) => b.tempScore - a.tempScore);
     const topN = catList.slice(0, n);
-    topN.forEach(p => promoSelections.add(p.id));
+    topN.forEach(item => promoSelections.add(item.participant.id));
   });
   
   toast(`Auto-selected top ${n} participants per category!`);
