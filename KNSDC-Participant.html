@@ -81,9 +81,8 @@
     </div>
     
     <div class="card" id="form-card">
-      <div id="lock-banner" class="banner" style="display:none; justify-content:space-between; align-items:center; gap:10px;">
-        <span>🔒 Your form is locked by the Monitor and cannot be edited.</span>
-        <button onclick="refreshFormStatus()" style="background:var(--accent); color:white; border:none; padding:6px 12px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700; flex-shrink:0;">Check Unlock 🔄</button>
+      <div id="lock-banner" class="banner" style="display:none;">
+        <span>🔒</span> Your form is locked by the Monitor and cannot be edited.
       </div>
       
       <form id="participant-form">
@@ -443,19 +442,23 @@ if (window.syncEngine) {
   });
 }
 
-// Manual and visibility-triggered status refreshers
-window.refreshFormStatus = async function() {
-  if (window.syncEngine) {
-    toast('Checking unlock status...');
-    try {
-      await window.syncEngine.loadParticipants();
-      toast('Status updated!');
-    } catch(e) {
-      console.error(e);
-      toast('Error checking status');
+// 5-second auto-polling loop: only runs when participant is logged in and form is currently locked
+setInterval(async () => {
+  if (CURRENT_USER && window.syncEngine) {
+    const state = window.syncEngine.getData() || {};
+    const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+    if (p) {
+      const formLocked = (p.formAnswers && p.formAnswers._formLocked === true) || p.formLocked || false;
+      if (formLocked) {
+        try {
+          await window.syncEngine.loadParticipants();
+        } catch(e) {
+          console.error('[Participant] Auto-poll status failed:', e);
+        }
+      }
     }
   }
-};
+}, 5000);
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && window.syncEngine) {
