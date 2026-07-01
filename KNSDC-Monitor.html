@@ -5522,7 +5522,7 @@ async function saveNewRegAsync() {
   }
 }
 
-function downloadRegs(format = 'excel') {
+async function downloadRegs(format = 'excel') {
   let eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   
   const s = (document.getElementById('reg-search')?.value || '').toLowerCase();
@@ -5637,12 +5637,34 @@ function downloadRegs(format = 'excel') {
     doc.setFontSize(10);
     doc.text(`Total: ${eventParticipants.length}`, 14, 22);
     
+    const logoBase64 = await getLogoBase64();
+    
     doc.autoTable({
       head: [rows[0]],
       body: rows.slice(1),
       startY: 25,
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [41, 128, 185] }
+      headStyles: { fillColor: [41, 128, 185] },
+      didDrawPage: function(data) {
+        if (logoBase64) {
+          try {
+            // Draw a faint logo in the center as a watermark
+            if (doc.GState) {
+               doc.setGState(new doc.GState({opacity: 0.1}));
+            }
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const imgSize = 140; // Large watermark
+            doc.addImage(logoBase64, 'JPEG', (pageWidth - imgSize) / 2, (pageHeight - imgSize) / 2, imgSize, imgSize);
+            
+            if (doc.GState) {
+               doc.setGState(new doc.GState({opacity: 1.0}));
+            }
+          } catch(e) {
+            console.warn('Could not render watermark', e);
+          }
+        }
+      }
     });
     
     doc.save(`${fileName}.pdf`);
