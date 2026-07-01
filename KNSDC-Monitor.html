@@ -7998,13 +7998,25 @@ function renderJudgeStats(){
       Object.values(p.scores[jId]).forEach(v => allScores.push(Number(v)));
     }
     if (p.roundScores) {
-      Object.values(p.roundScores).forEach(rScores => {
+      Object.keys(p.roundScores).forEach(rName => {
+        if (rName === p.round) return; // Skip active round to avoid double counting
+        const rScores = p.roundScores[rName];
         if (rScores && rScores[jId]) {
           Object.values(rScores[jId]).forEach(v => allScores.push(Number(v)));
         }
       });
     }
     return allScores;
+  };
+
+  const getCurrentJudgeScoreTotal = (p, jId) => {
+    let total = 0;
+    if (p.scores && p.scores[jId]) {
+      Object.values(p.scores[jId]).forEach(v => total += Number(v));
+    } else if (p.roundScores && p.roundScores[p.round] && p.roundScores[p.round][jId]) {
+      Object.values(p.roundScores[p.round][jId]).forEach(v => total += Number(v));
+    }
+    return total;
   };
 
   const chartDatasets = presentJudges.map((j, i) => {
@@ -8108,11 +8120,11 @@ function renderJudgeStats(){
   document.getElementById('judge-score-matrix').innerHTML = `<div class="tbl-wrap"><table>
     <thead><tr><th>Participant</th>${presentJudges.map(j=>`<th>${j.name.split(' ')[0]}</th>`).join('')}<th>Total</th><th>Rank</th></tr></thead>
     <tbody>${[...participants].sort((a,b)=>{
-      const sa = presentJudges.reduce((acc,j) => acc + getAllJudgeScores(a, j.id).reduce((sum,v)=>sum+v,0), 0);
-      const sb = presentJudges.reduce((acc,j) => acc + getAllJudgeScores(b, j.id).reduce((sum,v)=>sum+v,0), 0);
+      const sa = presentJudges.reduce((acc,j) => acc + getCurrentJudgeScoreTotal(a, j.id), 0);
+      const sb = presentJudges.reduce((acc,j) => acc + getCurrentJudgeScoreTotal(b, j.id), 0);
       return sb - sa;
     }).map((p,rank)=>{
-      const jTotals = presentJudges.map(j => getAllJudgeScores(p, j.id).reduce((sum,v)=>sum+v,0));
+      const jTotals = presentJudges.map(j => getCurrentJudgeScoreTotal(p, j.id));
       const total = jTotals.reduce((a,b)=>a+b,0);
       return `<tr>
         <td><strong>${p.name}</strong><div style="font-size:10px;color:var(--text-muted);font-family:var(--fm)">${p.id}</div></td>
