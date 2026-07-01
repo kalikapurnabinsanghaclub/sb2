@@ -1316,12 +1316,17 @@
     <div style="display:flex;flex-direction:column;gap:14px">
 
       <!-- ON STAGE CARD -->
-      <div class="on-stage-card" id="on-stage-wrap">
+      <div class="on-stage-card" id="on-stage-wrap" style="cursor:pointer" onclick="if(typeof currentOnStage !== 'undefined' && currentOnStage) loadScorePanel(currentOnStage)">
         <!-- Header with pulsing active dot and stopwatch -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#2563eb;font-family:var(--fh);font-weight:900;letter-spacing:2px;text-transform:uppercase">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563eb;box-shadow:0 0 8px #2563eb;animation:pulseActiveStage 1.5s infinite"></span>
-            Currently On Stage
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px" onclick="event.stopPropagation()">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#2563eb;font-family:var(--fh);font-weight:900;letter-spacing:2px;text-transform:uppercase">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563eb;box-shadow:0 0 8px #2563eb;animation:pulseActiveStage 1.5s infinite"></span>
+              Currently On Stage
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:var(--text-muted);cursor:pointer;margin:0">
+              <input type="checkbox" id="auto-follow-toggle" checked style="width:12px;height:12px;margin:0;cursor:pointer"/> Auto-Follow
+            </label>
           </div>
           <div id="judge-stage-stopwatch" style="display:none;align-items:center;gap:6px;border:2px solid #ef4444;background:rgba(239,68,68,0.05);padding:4px 8px;border-radius:8px;color:#ef4444;font-family:var(--fm);font-size:14px;font-weight:800;box-shadow:0 2px 8px rgba(239,68,68,0.1)">
             <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px #ef4444;" id="judge-stopwatch-dot"></span>
@@ -4053,7 +4058,15 @@ syncEngine.subscribe((state) => {
 
   // Auto-resolve currentOnStage directly from synchronized participants table
   const actualOnStage = participants.find(p => p.stageStatus === 'on-stage');
+  const prevOnStage = currentOnStage;
   currentOnStage = actualOnStage ? actualOnStage.id : null;
+  
+  // Auto-follow logic: If auto-follow is enabled, update scoringParticipantId to the new on-stage performer
+  const autoFollowEl = document.getElementById('auto-follow-toggle');
+  const autoFollowEnabled = autoFollowEl ? autoFollowEl.checked : true;
+  if (autoFollowEnabled && currentOnStage && currentOnStage !== prevOnStage) {
+    scoringParticipantId = currentOnStage;
+  }
   if (state.switchStates) switchStates = state.switchStates;
   if (state.chatMessages) {
     chatMessages = state.chatMessages.filter(m => m.eventId === state.activeEventId || m.role === 'admin');
