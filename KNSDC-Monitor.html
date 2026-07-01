@@ -3293,9 +3293,15 @@ function setRoundPresent(p, round, isPresent) {
   p.presentMarkedAt = p.roundPresence[p.round || 'audition']?.markedAt || null;
 }
 
+let lastRenderedStateHash = '';
 function hydrate() {
   const s = syncEngine.getData();
   if (!s) return;
+  
+  const currentHash = JSON.stringify(s);
+  if (currentHash === lastRenderedStateHash) return; // Prevent unnecessary re-renders to stop UI flickering
+  lastRenderedStateHash = currentHash;
+
   
   EVENTS = s.events || [];
 
@@ -3579,15 +3585,16 @@ function renderLeaderboard() {
 
     // Scored participants
     const scoredList = baseParticipants.map(p => {
-        if (!p.roundScores) p.roundScores = {};
-        if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-        p.scores = p.roundScores[p.round];
+        const pClone = { ...p };
+        if (!pClone.roundScores) pClone.roundScores = {};
+        if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+        pClone.scores = pClone.roundScores[pClone.round];
 
         let total = 0;
-        Object.values(p.scores || {}).forEach(jScores => {
+        Object.values(pClone.scores || {}).forEach(jScores => {
             Object.values(jScores).forEach(val => total += (Number(val) || 0));
         });
-        return { ...p, totalScore: total };
+        return { ...pClone, totalScore: total };
     });
 
     let html = '';
@@ -3744,15 +3751,16 @@ async function downloadRankingsPDF() {
 
   let baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
   const scoredList = baseParticipants.map(p => {
-      if (!p.roundScores) p.roundScores = {};
-      if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-      p.scores = p.roundScores[p.round];
+      const pClone = { ...p };
+      if (!pClone.roundScores) pClone.roundScores = {};
+      if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+      pClone.scores = pClone.roundScores[pClone.round];
 
       let total = 0;
-      Object.values(p.scores || {}).forEach(jScores => {
+      Object.values(pClone.scores || {}).forEach(jScores => {
           Object.values(jScores).forEach(val => total += (Number(val) || 0));
       });
-      return { ...p, totalScore: total };
+      return { ...pClone, totalScore: total };
   });
 
   const validCategories = [];
@@ -3906,15 +3914,16 @@ async function downloadRankingsJPG() {
 
   let baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
   const scoredList = baseParticipants.map(p => {
-      if (!p.roundScores) p.roundScores = {};
-      if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-      p.scores = p.roundScores[p.round];
+      const pClone = { ...p };
+      if (!pClone.roundScores) pClone.roundScores = {};
+      if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+      pClone.scores = pClone.roundScores[pClone.round];
 
       let total = 0;
-      Object.values(p.scores || {}).forEach(jScores => {
+      Object.values(pClone.scores || {}).forEach(jScores => {
           Object.values(jScores).forEach(val => total += (Number(val) || 0));
       });
-      return { ...p, totalScore: total };
+      return { ...pClone, totalScore: total };
   });
 
   const validCategories = [];
@@ -6702,7 +6711,7 @@ async function autoPromoteTopN() {
     let total = 0;
     if (p.scores) {
       Object.keys(p.scores).forEach(jId => {
-        subjects.forEach(s => total += Number(p.scores[jId][s.id]) || 0);
+        subjects.forEach(s => total += Number(p.scores?.[jId]?.[s.id]) || 0);
       });
     }
     p._tempScore = total;
@@ -7011,30 +7020,45 @@ function renderIndividualStats(){
   });
   // Sort by total score desc
   data = [...data].sort((a,b)=>{
+    const aClone = { ...a };
+    const bClone = { ...b };
+    if (!aClone.roundScores) aClone.roundScores = {};
+    if (!aClone.roundScores[aClone.round]) aClone.roundScores[aClone.round] = {};
+    aClone.scores = aClone.roundScores[aClone.round];
+    
+    if (!bClone.roundScores) bClone.roundScores = {};
+    if (!bClone.roundScores[bClone.round]) bClone.roundScores[bClone.round] = {};
+    bClone.scores = bClone.roundScores[bClone.round];
+    
     let sa = 0;
-    if (a.scores) {
-      Object.keys(a.scores).forEach(jId => {
-        subjects.forEach(s => sa += Number(a.scores[jId][s.id]) || 0);
+    if (aClone.scores) {
+      Object.keys(aClone.scores).forEach(jId => {
+        subjects.forEach(s => sa += Number(aClone.scores?.[jId]?.[s.id]) || 0);
       });
     }
     let sb = 0;
-    if (b.scores) {
-      Object.keys(b.scores).forEach(jId => {
-        subjects.forEach(s => sb += Number(b.scores[jId][s.id]) || 0);
+    if (bClone.scores) {
+      Object.keys(bClone.scores).forEach(jId => {
+        subjects.forEach(s => sb += Number(bClone.scores?.[jId]?.[s.id]) || 0);
       });
     }
     return sb-sa;
   });
   document.getElementById('individual-stats-content').innerHTML = data.map((p,rank)=>{
-    const cat = categories.find(c=>String(c.id)===String(p.catId));
+    const pClone = { ...p };
+    if (!pClone.roundScores) pClone.roundScores = {};
+    if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+    pClone.scores = pClone.roundScores[pClone.round];
+    
+    const cat = categories.find(c=>String(c.id)===String(pClone.catId));
     let total = 0;
     let judgesWhoScored = new Set();
-    if (p.scores) {
-      Object.keys(p.scores).forEach(jId => {
+    if (pClone.scores) {
+      Object.keys(pClone.scores).forEach(jId => {
         let hasScore = false;
         subjects.forEach(s => {
-          if (p.scores[jId][s.id] !== undefined) {
-            total += Number(p.scores[jId][s.id]) || 0;
+          if (pClone.scores?.[jId]?.[s.id] !== undefined) {
+            total += Number(pClone.scores[jId][s.id]) || 0;
             hasScore = true;
           }
         });
@@ -7058,8 +7082,8 @@ function renderIndividualStats(){
           ${rank===0?'🥇':rank===1?'🥈':rank===2?'🥉':rank+1}
         </div>
         <div style="flex:1">
-          <div style="font-weight:700;font-size:15px;font-family:var(--fh);text-transform:uppercase;letter-spacing:0.3px">${p.name}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${p.id} · ${cat?cat.name:'—'} · Age ${p.age} · <span class="badge ${roundBadge(p.round)}">${p.round}</span></div>
+          <div style="font-weight:700;font-size:15px;font-family:var(--fh);text-transform:uppercase;letter-spacing:0.3px">${pClone.name}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${pClone.id} · ${cat?cat.name:'—'} · Age ${pClone.age} · <span class="badge ${roundBadge(pClone.round)}">${pClone.round}</span></div>
         </div>
         <div style="text-align:right">
           <div class="judge-score-val" style="font-family:var(--fh);font-size:26px;font-weight:800;color:var(--amber2)">${total}</div>
@@ -7077,10 +7101,10 @@ function renderIndividualStats(){
             ${subjects.map(s=>{
               let subTotal = 0;
               let scoreCount = 0;
-              if (p.scores) {
-                Object.keys(p.scores).forEach(jId => {
-                  if (p.scores[jId] && p.scores[jId][s.id] !== undefined) {
-                    subTotal += Number(p.scores[jId][s.id]) || 0;
+              if (pClone.scores) {
+                Object.keys(pClone.scores).forEach(jId => {
+                  if (pClone.scores[jId] && pClone.scores[jId][s.id] !== undefined) {
+                    subTotal += Number(pClone.scores[jId][s.id]) || 0;
                     scoreCount++;
                   }
                 });
@@ -7094,12 +7118,12 @@ function renderIndividualStats(){
             }).join('')}
           </div>
           <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn btn-ghost btn-xs judge-score-val" onclick="openScoreModalFor('${p.id}')">⚖️ View All Scores</button>
-            <button class="btn btn-ghost btn-xs judge-score-val" onclick="renderIndividualRadar('${p.id}')">↺ Refresh Graph</button>
+            <button class="btn btn-ghost btn-xs judge-score-val" onclick="openScoreModalFor('${pClone.id}')">⚖️ View All Scores</button>
+            <button class="btn btn-ghost btn-xs judge-score-val" onclick="renderIndividualRadar('${pClone.id}')">↺ Refresh Graph</button>
           </div>
         </div>
         <div class="judge-score-val" style="background:var(--bg2);border-radius:10px;padding:8px;height:200px">
-           <canvas id="radar-${p.id}"></canvas>
+           <canvas id="radar-${pClone.id}"></canvas>
         </div>
       </div>
     </div>`;
@@ -8010,11 +8034,14 @@ function renderJudgeStats(){
   };
 
   const getCurrentJudgeScoreTotal = (p, jId) => {
+    const pClone = { ...p };
+    if (!pClone.roundScores) pClone.roundScores = {};
+    if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+    pClone.scores = pClone.roundScores[pClone.round];
+
     let total = 0;
-    if (p.scores && p.scores[jId]) {
-      Object.values(p.scores[jId]).forEach(v => total += Number(v));
-    } else if (p.roundScores && p.roundScores[p.round] && p.roundScores[p.round][jId]) {
-      Object.values(p.roundScores[p.round][jId]).forEach(v => total += Number(v));
+    if (pClone.scores && pClone.scores[jId]) {
+      Object.values(pClone.scores[jId]).forEach(v => total += Number(v));
     }
     return total;
   };
@@ -8302,13 +8329,13 @@ function renderPromoList(){
     let sa = 0;
     if (a.scores) {
       Object.keys(a.scores).forEach(jId => {
-        subjects.forEach(s => sa += Number(a.scores[jId][s.id]) || 0);
+        subjects.forEach(s => sa += Number(a.scores?.[jId]?.[s.id]) || 0);
       });
     }
     let sb = 0;
     if (b.scores) {
       Object.keys(b.scores).forEach(jId => {
-        subjects.forEach(s => sb += Number(b.scores[jId][s.id]) || 0);
+        subjects.forEach(s => sb += Number(b.scores?.[jId]?.[s.id]) || 0);
       });
     }
     return sb-sa;
@@ -8339,7 +8366,7 @@ function renderPromoList(){
       Object.keys(p.scores).forEach(jId => {
         let hasScore = false;
         subjects.forEach(s => {
-          if (p.scores[jId][s.id] !== undefined) {
+          if (p.scores?.[jId]?.[s.id] !== undefined) {
             total += Number(p.scores[jId][s.id]) || 0;
             hasScore = true;
           }
@@ -8407,7 +8434,7 @@ function autoSelectTopN(){
     let total = 0;
     if (p.scores) {
       Object.keys(p.scores).forEach(jId => {
-        subjects.forEach(s => total += Number(p.scores[jId][s.id]) || 0);
+        subjects.forEach(s => total += Number(p.scores?.[jId]?.[s.id]) || 0);
       });
     }
     p._tempScore = total;
