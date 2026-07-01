@@ -8987,27 +8987,39 @@ function openSubjectModal(id=null){
   openM('subject-modal');
 }
 
+let isSavingSubject = false;
 async function saveSubject(){
+  if (isSavingSubject) return;
   const name=document.getElementById('sm-name').value.trim();
   const max=parseInt(document.getElementById('sm-max').value);
   if(!name||!max){toast('Name and max marks required!');return;}
-  const obj={name,maxMarks:max,desc:document.getElementById('sm-desc').value,eventId:activeEventId};
-  if(editingSubjId){
-    const success = await syncEngine.updateSubject(editingSubjId, obj);
-    if(!success){toast('❌ Error updating subject');return;}
-    const existing = subjects.find(s=>s.id===editingSubjId);
-    if(existing) Object.assign(existing, obj);
-  } else {
-    obj.id=Date.now();
-    const success = await syncEngine.createSubject(obj);
-    if(!success){toast('❌ Error creating subject');return;}
-    if(!subjects.find(s=>s.id===obj.id)) subjects.push(obj);
+  
+  isSavingSubject = true;
+  const btn = document.querySelector('#subject-modal .btn-amber');
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+
+  try {
+    const obj={name,maxMarks:max,desc:document.getElementById('sm-desc').value,eventId:activeEventId};
+    if(editingSubjId){
+      const success = await syncEngine.updateSubject(editingSubjId, obj);
+      if(!success){toast('❌ Error updating subject');return;}
+      const existing = subjects.find(s=>s.id===editingSubjId);
+      if(existing) Object.assign(existing, obj);
+    } else {
+      obj.id=Date.now();
+      const success = await syncEngine.createSubject(obj);
+      if(!success){toast('❌ Error creating subject');return;}
+      if(!subjects.find(s=>s.id===obj.id)) subjects.push(obj);
+    }
+    syncAll();
+    closeM('subject-modal');
+    renderSubjects();
+    toast('Subject saved!');
+    broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
+  } finally {
+    isSavingSubject = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
   }
-  syncAll();
-  closeM('subject-modal');
-  renderSubjects();
-  toast('Subject saved!');
-  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
 }
 async function deleteSubject(id){
   if(!confirm('Delete this subject?')) return;
@@ -9140,7 +9152,9 @@ function renderEventSettings() {
   renderSponsors();
 }
 
+let isSavingEvent = false;
 async function saveEventSettings() {
+  if (isSavingEvent) return;
   const name = document.getElementById('set-ev-name').value.trim();
   const banner = document.getElementById('set-ev-logo').value.trim();
   const description = document.getElementById('set-ev-desc').value.trim();
@@ -9151,22 +9165,25 @@ async function saveEventSettings() {
   const btnText = btn ? btn.querySelector('.btn-text') : null;
   const btnSpinner = btn ? btn.querySelector('.btn-spinner') : null;
   
+  isSavingEvent = true;
   if(btn) {
     btn.disabled = true;
     if(btnText) btnText.innerText = 'SAVING...';
     if(btnSpinner) btnSpinner.style.display = 'block';
   }
 
-  const success = await syncEngine.updateEvent(activeEventId, { name, banner, description });
-  
-  if(btn) {
-    btn.disabled = false;
-    if(btnText) btnText.innerText = 'UPDATE BRANDING';
-    if(btnSpinner) btnSpinner.style.display = 'none';
+  try {
+    const success = await syncEngine.updateEvent(activeEventId, { name, banner, description });
+    if(!success) { toast('❌ Error saving event settings'); return; }
+    toast('✅ Event settings saved!');
+  } finally {
+    isSavingEvent = false;
+    if(btn) {
+      btn.disabled = false;
+      if(btnText) btnText.innerText = 'UPDATE BRANDING';
+      if(btnSpinner) btnSpinner.style.display = 'none';
+    }
   }
-
-  if(!success) { toast('❌ Error saving event settings'); return; }
-  toast('✅ Event settings saved!');
 }
 
 function previewSignature(input, previewId) {
@@ -9180,46 +9197,56 @@ function previewSignature(input, previewId) {
   }
 }
 
+let isSavingCert = false;
 async function saveCertificateSignatures() {
+  if (isSavingCert) return;
+  isSavingCert = true;
+  const btn = document.querySelector('#st-certificate button.btn-amber');
+  if (btn) { btn.disabled = true; btn.innerText = 'UPLOADING...'; }
   toast('Processing signatures...');
   
-  const getUrl = async (inputId, previewId) => {
-    const input = document.getElementById(inputId);
-    const preview = document.getElementById(previewId);
-    if (input && input.files && input.files[0]) {
-      const url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`);
-      return url;
-    } else {
-      if (preview && preview.src && (preview.src.startsWith('http') || preview.src.startsWith('data:'))) {
-        return preview.src;
+  try {
+    const getUrl = async (inputId, previewId) => {
+      const input = document.getElementById(inputId);
+      const preview = document.getElementById(previewId);
+      if (input && input.files && input.files[0]) {
+        const url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`);
+        return url;
       } else {
-        return null;
+        if (preview && preview.src && (preview.src.startsWith('http') || preview.src.startsWith('data:'))) {
+          return preview.src;
+        } else {
+          return null;
+        }
+      }
+    };
+
+    const sec = await getUrl('cert-sig-sec', 'preview-sig-sec');
+    const judge = await getUrl('cert-sig-judge', 'preview-sig-judge');
+    const pres = await getUrl('cert-sig-pres', 'preview-sig-pres');
+
+    switchStates.certificateSetup = {
+      secretary: sec || (switchStates.certificateSetup && switchStates.certificateSetup.secretary) || null,
+      judge: judge || (switchStates.certificateSetup && switchStates.certificateSetup.judge) || null,
+      president: pres || (switchStates.certificateSetup && switchStates.certificateSetup.president) || null
+    };
+
+    if (window.syncEngine) {
+      window.syncEngine.setData(state => {
+        if (!state.eventSwitches) state.eventSwitches = {};
+        state.eventSwitches[activeEventId] = { ...switchStates };
+        return state;
+      });
+      if (window.syncEngine.updateEvent) {
+        const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
+        if (!success) { toast('❌ Error saving signatures'); return; }
       }
     }
-  };
-
-  const sec = await getUrl('cert-sig-sec', 'preview-sig-sec');
-  const judge = await getUrl('cert-sig-judge', 'preview-sig-judge');
-  const pres = await getUrl('cert-sig-pres', 'preview-sig-pres');
-
-  switchStates.certificateSetup = {
-    secretary: sec || (switchStates.certificateSetup && switchStates.certificateSetup.secretary) || null,
-    judge: judge || (switchStates.certificateSetup && switchStates.certificateSetup.judge) || null,
-    president: pres || (switchStates.certificateSetup && switchStates.certificateSetup.president) || null
-  };
-
-  if (window.syncEngine) {
-    window.syncEngine.setData(state => {
-      if (!state.eventSwitches) state.eventSwitches = {};
-      state.eventSwitches[activeEventId] = { ...switchStates };
-      return state;
-    });
-    if (window.syncEngine.updateEvent) {
-      const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
-      if (!success) { toast('❌ Error saving signatures'); return; }
-    }
+    toast('✅ Signatures saved successfully!');
+  } finally {
+    isSavingCert = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'SAVE SIGNATURES'; }
   }
-  toast('✅ Signatures saved successfully!');
 }
 
 // ══════════════════════════════════════════
