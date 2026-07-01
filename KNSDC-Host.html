@@ -1642,11 +1642,18 @@ window.hostAddParticipantToQueue = () => {
   });
 };
 
+let isPushingToCloud = false;
 window.hostPushToCloud = async () => {
+  if (isPushingToCloud) return;
   if (!syncEngine.supabase) {
     toast('Supabase client not loaded. Cannot sync to cloud.');
     return;
   }
+  
+  isPushingToCloud = true;
+  const btn = document.querySelector('button[onclick="hostPushToCloud()"]');
+  if (btn) { btn.disabled = true; btn.innerText = 'Pushing...'; }
+  
   toast('Pushing local data to Global Live Server...');
   try {
     await syncEngine.saveStateToSupabase(syncEngine.state);
@@ -1654,6 +1661,9 @@ window.hostPushToCloud = async () => {
   } catch(e) {
     console.error(e);
     toast('❌ Error pushing data: ' + e.message);
+  } finally {
+    isPushingToCloud = false;
+    if (btn) { btn.disabled = false; btn.innerText = '⬆ Push Local Data to Cloud'; }
   }
 };
 
