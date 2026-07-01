@@ -2100,9 +2100,19 @@
     <!-- COMPARATIVE ANALYSIS -->
     <div id="st-comparative" style="display:none">
       <div class="card" style="margin-bottom:14px">
-        <div class="card-title">Subject Performance Across Rounds (Polly Graph)</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Compare how different subjects were scored across Audition, Qualified, and Final rounds.</div>
-        <div class="chart-wrap" style="height:300px"><canvas id="comparative-chart"></canvas></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div>
+            <div class="card-title">Category-wise Subject Performance</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Compare average subject scores across different categories for a specific round.</div>
+          </div>
+          <select id="cat-perf-round-sel" onchange="renderComparativeStats()" style="padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-weight:700; cursor:pointer;">
+            <option value="audition">Audition</option>
+            <option value="qualified">Qualified</option>
+            <option value="semifinal">Semifinal</option>
+            <option value="final">Final</option>
+          </select>
+        </div>
+        <div class="chart-wrap" style="height:350px"><canvas id="comparative-chart"></canvas></div>
       </div>
       <div class="g2">
         <div class="card">
@@ -7290,18 +7300,24 @@ function renderIndividualRadar(pid) {
 }
 
 function renderComparativeStats() {
-  const rounds = ['audition', 'qualified', 'semifinal', 'final'];
-  const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
-  const subjectColors = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
-  const colors = ['#f59e0b', '#0891b2', '#7c3aed', '#ea580c'];
+  const roundSel = document.getElementById('cat-perf-round-sel');
+  const rName = roundSel ? roundSel.value : 'audition';
+  
+  const labels = subjects.map(s => s.name);
   const datasets = [];
-
-  const getAverageSubjectScoreForRound = (sId, rName) => {
+  
+  const colors = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e', '#f97316', '#6366f1'];
+  
+  const activeJudges = judges.filter(j => j.present);
+  const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+  
+  const getAverageSubjectScoreForCat = (sId, catId) => {
     let total = 0;
     let count = 0;
-    const activeJudges = judges.filter(j => j.present);
     
     participants.forEach(p => {
+      if (String(p.catId) !== String(catId)) return;
+      
       if (p.round === rName && p.scores) {
         activeJudges.forEach(j => {
           if (p.scores[j.id] && p.scores[j.id][sId] !== undefined) {
@@ -7320,50 +7336,21 @@ function renderComparativeStats() {
       }
     });
     
-    return count > 0 ? Number((total / count).toFixed(1)) : null;
+    return count > 0 ? Number((total / count).toFixed(1)) : 0;
   };
 
-  subjects.forEach((s, idx) => {
-    const data = rounds.map(r => getAverageSubjectScoreForRound(s.id, r));
-
-    const colorStr = subjectColors[idx % subjectColors.length];
+  evCats.forEach((c, idx) => {
+    const data = subjects.map(s => getAverageSubjectScoreForCat(s.id, c.id));
+    const colorStr = colors[idx % colors.length];
 
     datasets.push({
-      label: s.name,
+      label: c.name,
       data: data,
-      fill: false,
+      backgroundColor: colorStr + '99',
       borderColor: colorStr,
-      backgroundColor: colorStr,
-      pointBackgroundColor: colorStr,
-      pointBorderColor: '#fff',
-      pointRadius: 6,
-      pointHoverRadius: 8,
-      borderWidth: 3,
-      tension: 0.15,
-      yAxisID: 'y'
+      borderWidth: 2,
+      borderRadius: 4
     });
-  });
-
-  const getParticipantCountForRound = (rName) => {
-    let count = 0;
-    participants.forEach(p => {
-      if (p.round === rName) count++;
-      else if (p.roundScores && p.roundScores[rName]) count++;
-    });
-    return count;
-  };
-
-  const participantCounts = rounds.map(r => getParticipantCountForRound(r));
-
-  datasets.push({
-    label: 'Total Participants',
-    data: participantCounts,
-    type: 'bar',
-    backgroundColor: 'rgba(148, 163, 184, 0.2)',
-    borderColor: 'rgba(148, 163, 184, 0.4)',
-    borderWidth: 1,
-    borderRadius: 4,
-    yAxisID: 'y1'
   });
 
   const ctx = document.getElementById('comparative-chart');
@@ -7376,7 +7363,7 @@ function renderComparativeStats() {
   
   if (comparativeChartInstance) comparativeChartInstance.destroy();
   comparativeChartInstance = new Chart(ctx, {
-    type: 'line',
+    type: 'bar',
     data: {
       labels: labels,
       datasets: datasets
@@ -7384,7 +7371,6 @@ function renderComparativeStats() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      spanGaps: true,
       plugins: {
         legend: {
           display: true,
@@ -7403,19 +7389,14 @@ function renderComparativeStats() {
           padding: 10,
           cornerRadius: 6,
           callbacks: {
-            label: (ctx) => {
-              if (ctx.dataset.label === 'Total Participants') {
-                return ` ${ctx.dataset.label}: ${ctx.raw}`;
-              }
-              return ` ${ctx.dataset.label}: ${ctx.formattedValue} avg`;
-            }
+            label: (ctx) => ` ${ctx.dataset.label}: ${ctx.formattedValue} avg`
           }
         }
       },
       scales: {
         x: {
-          ticks: { color: '#8892a4' },
-          grid: { color: 'rgba(34,36,54,0.15)' }
+          ticks: { color: '#8892a4', font: { weight: 'bold' } },
+          grid: { display: false }
         },
         y: {
           type: 'linear',
@@ -7426,14 +7407,6 @@ function renderComparativeStats() {
           title: { display: true, text: 'Average Score', color: '#8892a4', font: { size: 10, weight: 'bold' } },
           ticks: { color: '#8892a4', stepSize: 2 },
           grid: { color: 'rgba(34,36,54,0.15)' }
-        },
-        y1: {
-          type: 'linear',
-          display: true,
-          position: 'right',
-          title: { display: true, text: 'Participants', color: 'rgba(255,255,255,0.3)', font: { size: 10, weight: 'bold' } },
-          ticks: { color: 'rgba(255,255,255,0.3)', stepSize: 1 },
-          grid: { drawOnChartArea: false } // Prevent grid lines from overlapping
         }
       }
     }
