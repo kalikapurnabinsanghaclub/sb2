@@ -9512,6 +9512,11 @@ function getMyName() {
   } catch(e) { return 'Staff'; }
 }
 
+function escapeHTML(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
 function buildMsgEl(msg){
   const d=document.createElement('div');
   const type = (msg.role === 'monitor') ? 'out' : 'in';
@@ -9526,11 +9531,11 @@ function buildMsgEl(msg){
   
   const dispFrom = (msg.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
   const parts = dispFrom.split(' · ');
-  const rolePart = parts[0];
-  const namePart = parts.slice(1).join(' · ');
+  const rolePart = escapeHTML(parts[0]);
+  const namePart = escapeHTML(parts.slice(1).join(' · '));
   const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
 
-  d.innerHTML=`<div class="cmeta">${styledFrom} · ${msg.time} ${msg.eventId && msg.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${msg.eventId})</span>` : ''}</div><div>${parseMentions(msg.text)}</div>`;
+  d.innerHTML=`<div class="cmeta">${styledFrom} · ${escapeHTML(msg.time)} ${msg.eventId && msg.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${escapeHTML(msg.eventId)})</span>` : ''}</div><div style="word-wrap:break-word">${parseMentions(escapeHTML(msg.text))}</div>`;
   return d;
 }
 
@@ -10137,47 +10142,70 @@ function openAgreementModal(id=null){
   openM('agreement-modal');
 }
 
+let saveAgreementInProgress = false;
 async function saveAgreement(){
+  if (saveAgreementInProgress) return;
   const name=document.getElementById('agr-name').value.trim();
   const phone=document.getElementById('agr-phone').value.trim();
   if(!name||!phone){toast('Name and phone are required!');return;}
-  const email = document.getElementById('agr-email').value.trim();
-  const password = document.getElementById('agr-password').value;
-  const venueEl = document.getElementById('agr-venue');
-  const venueName = venueEl ? (venueEl.options[venueEl.selectedIndex]?.text || '') : '';
-  const obj={name,phone,email,password,city:document.getElementById('agr-city').value,eventId:document.getElementById('agr-event').value,date:document.getElementById('agr-date').value,dateUpto:document.getElementById('agr-date-upto').value,time:document.getElementById('agr-time').value,venueId:parseInt(document.getElementById('agr-venue').value),venueName:venueName,spec:document.getElementById('agr-spec').value,amount:parseInt(document.getElementById('agr-amount').value)||0,advance:parseInt(document.getElementById('agr-advance').value)||0,notes:document.getElementById('agr-notes').value,status:'pending',submitted:false,paymentReceived:0,photoUrl:'',agreedTc:false};
   
-  let agrId = editingAgrId;
-  if(editingAgrId){
-    const success = await syncEngine.updateAgreement(editingAgrId, obj);
-    if(!success){toast('❌ Error updating agreement');return;}
-  } else {
-    // Generate a random 9-digit integer to prevent PostgreSQL integer overflow (max 32-bit signed int is 2,147,483,647)
-    obj.id = Math.floor(Math.random() * 1000000000) + 1;
-    agrId = obj.id;
-    const success = await syncEngine.createAgreement(obj);
-    if(!success){toast('❌ Error creating agreement');return;}
-  }
-  closeM('agreement-modal');
-  renderAgreements();
+  saveAgreementInProgress = true;
+  const btn = document.querySelector('#agreement-modal .btn-amber');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
 
-  // ── Auto-create judge credentials in Supabase ──
-  if(email && password && syncEngine && syncEngine.saveJudgeCredential) {
-    const eventId = obj.eventId;
-    const result = await syncEngine.saveJudgeCredential(email, password, name, eventId, agrId);
+  try {
+    const email = document.getElementById('agr-email').value.trim();
+    const password = document.getElementById('agr-password').value;
+    const venueEl = document.getElementById('agr-venue');
+    const venueName = venueEl ? (venueEl.options[venueEl.selectedIndex]?.text || '') : '';
+    const obj={name,phone,email,password,city:document.getElementById('agr-city').value,eventId:document.getElementById('agr-event').value,date:document.getElementById('agr-date').value,dateUpto:document.getElementById('agr-date-upto').value,time:document.getElementById('agr-time').value,venueId:parseInt(document.getElementById('agr-venue').value),venueName:venueName,spec:document.getElementById('agr-spec').value,amount:parseInt(document.getElementById('agr-amount').value)||0,advance:parseInt(document.getElementById('agr-advance').value)||0,notes:document.getElementById('agr-notes').value,status:'pending',submitted:false,paymentReceived:0,photoUrl:'',agreedTc:false};
     
-    // Sync to staff credentials so it appears in Admin Staff & Roles list
-    if (syncEngine.addStaffMember) {
-      await syncEngine.addStaffMember(email, password, name, 'judge');
-    }
-
-    if(result.success) {
-      toast(editingAgrId ? '✅ Agreement updated & credentials synced!' : '✅ Agreement created — Judge can log in!');
+    let oldEmail = null;
+    let agrId = editingAgrId;
+    if(editingAgrId){
+      const oldAgr = (agreements || []).find(a => a.id === editingAgrId);
+      if(oldAgr && oldAgr.email && oldAgr.email.toLowerCase() !== email.toLowerCase()) {
+        oldEmail = oldAgr.email;
+      }
+      const success = await syncEngine.updateAgreement(editingAgrId, obj);
+      if(!success){toast('❌ Error updating agreement');return;}
     } else {
-      toast('⚠️ Agreement saved but credential sync failed: ' + result.error);
+      // Generate a random 9-digit integer to prevent PostgreSQL integer overflow (max 32-bit signed int is 2,147,483,647)
+      obj.id = Math.floor(Math.random() * 1000000000) + 1;
+      agrId = obj.id;
+      const success = await syncEngine.createAgreement(obj);
+      if(!success){toast('❌ Error creating agreement');return;}
     }
-  } else {
-    toast(editingAgrId?'Agreement updated!':'Agreement created!');
+    closeM('agreement-modal');
+    renderAgreements();
+
+    // ── Auto-create judge credentials in Supabase ──
+    if(email && password && syncEngine && syncEngine.saveJudgeCredential) {
+      const eventId = obj.eventId;
+      const result = await syncEngine.saveJudgeCredential(email, password, name, eventId, agrId);
+      
+      // Sync to staff credentials so it appears in Admin Staff & Roles list
+      if (syncEngine.addStaffMember) {
+        await syncEngine.addStaffMember(email, password, name, 'judge');
+      }
+
+      if(result.success) {
+        if (oldEmail && syncEngine.deleteStaffMember) {
+          await syncEngine.deleteStaffMember(oldEmail);
+        }
+        toast(editingAgrId ? '✅ Agreement updated & credentials synced!' : '✅ Agreement created — Judge can log in!');
+      } else {
+        toast('⚠️ Agreement saved but credential sync failed: ' + result.error);
+      }
+    } else {
+      toast(editingAgrId?'Agreement updated!':'Agreement created!');
+    }
+  } catch (err) {
+    console.error(err);
+    toast('Error saving agreement');
+  } finally {
+    saveAgreementInProgress = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Agreement'; }
   }
 }
 
