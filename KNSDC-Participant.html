@@ -91,9 +91,19 @@
         <button type="submit" id="save-btn" class="btn btn-green" style="margin-top:24px;">Save Updates</button>
       </form>
     </div>
+
+    <!-- NEW CARD FOR PERFORMANCE JOURNEY -->
+    <div class="card" id="performance-journey-card" style="margin-top: 20px; display: none;">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Your Performance Journey</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.4;">Your individual round-wise progression. Dotted lines indicate the global average score for that round.</div>
+      <div id="participant-stream-charts-container" style="width:100%; position:relative;">
+        <!-- JS will populate canvas -->
+      </div>
+    </div>
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
 <script src="lib/localSync-v4.js?v=4"></script>
 <script>
@@ -343,8 +353,10 @@ function renderDashboard() {
     btn.textContent = 'Save Updates';
     banner.style.display = 'none';
   }
+  
+  // Render Performance Journey Chart
+  renderPerformanceJourney(p);
 }
-
 // 4. Save Updates (Auto-Lock)
 document.getElementById('participant-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -465,6 +477,173 @@ document.addEventListener('visibilitychange', () => {
     window.syncEngine.loadParticipants().catch(e => console.error(e));
   }
 });
+
+function renderPerformanceJourney(p) {
+  const container = document.getElementById('participant-stream-charts-container');
+  const card = document.getElementById('performance-journey-card');
+  if (!container || !card) return;
+
+  const hasCurrentScores = p.scores && Object.keys(p.scores).length > 0;
+  const hasPastScores = p.roundScores && Object.keys(p.roundScores).length > 0;
+  if (!hasCurrentScores && !hasPastScores) {
+    card.style.display = 'none';
+    return;
+  }
+  
+  card.style.display = 'block';
+
+  if (typeof Chart === 'undefined') {
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">Chart library not loaded.</div>';
+    return;
+  }
+  
+  if (window.participantStreamChartInstance) {
+    window.participantStreamChartInstance.destroy();
+  }
+  
+  container.innerHTML = '<canvas id="stream-chart"></canvas>';
+  const canvasEl = document.getElementById('stream-chart');
+  
+  // Set height for the container
+  container.style.height = '250px';
+  
+  const ctx2d = canvasEl.getContext('2d');
+  
+  const state = window.syncEngine.getData() || {};
+  const subjects = state.subjects || [];
+  const participants = state.participants || [];
+  
+  const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+  const roundLabels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  
+  // Calculate Global Averages
+  const globalAvgs = {};
+  rounds.forEach(r => {
+    globalAvgs[r] = {};
+    subjects.forEach(s => {
+      let total = 0, count = 0;
+      participants.forEach(part => {
+        let scores = null;
+        if (part.round === r && part.scores) scores = part.scores;
+        else if (part.roundScores && part.roundScores[r]) scores = part.roundScores[r];
+        if (scores) {
+          const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
+          if (jScores.length > 0) {
+            total += jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length;
+            count++;
+          }
+        }
+      });
+      globalAvgs[r][s.id] = count > 0 ? Number((total / count).toFixed(1)) : null;
+    });
+  });
+
+  const datasets = [];
+  
+  subjects.forEach((s, idx) => {
+    const pData = rounds.map(r => {
+      let scores = null;
+      if (p.round === r && p.scores) scores = p.scores;
+      else if (p.roundScores && p.roundScores[r]) scores = p.roundScores[r];
+      if (scores) {
+        const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
+        if (jScores.length > 0) return Number((jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length).toFixed(1));
+      }
+      return null;
+    });
+
+    const gradient = ctx2d.createLinearGradient(0, 0, 0, 250);
+    let colorStart, colorEnd, borderColor;
+    if (idx % 6 === 0) { colorStart = 'rgba(236, 72, 153, 0.85)'; colorEnd = 'rgba(244, 63, 94, 0.5)'; borderColor = '#f43f5e'; }
+    else if (idx % 6 === 1) { colorStart = 'rgba(168, 85, 247, 0.85)'; colorEnd = 'rgba(124, 58, 237, 0.5)'; borderColor = '#8b5cf6'; }
+    else if (idx % 6 === 2) { colorStart = 'rgba(56, 189, 248, 0.85)'; colorEnd = 'rgba(59, 130, 246, 0.5)'; borderColor = '#3b82f6'; }
+    else if (idx % 6 === 3) { colorStart = 'rgba(52, 211, 153, 0.85)'; colorEnd = 'rgba(16, 185, 129, 0.5)'; borderColor = '#10b981'; }
+    else if (idx % 6 === 4) { colorStart = 'rgba(250, 204, 21, 0.85)'; colorEnd = 'rgba(245, 158, 11, 0.5)'; borderColor = '#eab308'; }
+    else { colorStart = 'rgba(251, 146, 60, 0.85)'; colorEnd = 'rgba(234, 88, 12, 0.5)'; borderColor = '#f97316'; }
+
+    gradient.addColorStop(0, colorStart);
+    gradient.addColorStop(1, colorEnd);
+
+    datasets.push({
+      label: s.name,
+      data: pData,
+      fill: true,
+      backgroundColor: gradient,
+      borderColor: borderColor,
+      pointRadius: function(context) {
+        const dataset = context.dataset.data;
+        const validPoints = dataset.filter(val => val !== null).length;
+        return validPoints === 1 ? 4 : 0;
+      },
+      pointHoverRadius: 6,
+      borderWidth: 2,
+      tension: 0.5
+    });
+  });
+
+  const globalData = rounds.map(r => {
+    let total = 0;
+    let hasData = false;
+    subjects.forEach(s => { 
+      if (globalAvgs[r][s.id] !== null) {
+        total += globalAvgs[r][s.id]; 
+        hasData = true;
+      }
+    });
+    return hasData ? Number(total.toFixed(1)) : null;
+  });
+
+  datasets.push({
+    label: 'Global Average (Total)',
+    data: globalData,
+    type: 'line',
+    fill: false,
+    borderColor: 'rgba(148, 163, 184, 0.8)',
+    borderDash: [5, 5],
+    borderWidth: 2,
+    pointRadius: function(context) {
+      const dataset = context.dataset.data;
+      const validPoints = dataset.filter(val => val !== null).length;
+      return validPoints <= 1 ? 3 : 0;
+    },
+    pointHoverRadius: 5,
+    tension: 0.4
+  });
+
+  window.participantStreamChartInstance = new Chart(canvasEl, {
+    type: 'line',
+    data: {
+      labels: roundLabels,
+      datasets: datasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      spanGaps: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          titleFont: { size: 11, weight: 'bold', family: "'Inter', sans-serif" },
+          bodyFont: { size: 10, family: "'Inter', sans-serif" },
+          padding: 10,
+          cornerRadius: 8,
+          boxPadding: 4,
+          usePointStyle: true
+        }
+      },
+      scales: {
+        y: { stacked: true, display: false, min: 0 },
+        x: {
+          ticks: { color: '#94a3b8', font: { size: 10, family: "'Inter', sans-serif", weight: 'bold' } },
+          grid: { display: false },
+          border: { display: false }
+        }
+      }
+    }
+  });
+}
 </script>
 </body>
 </html>
