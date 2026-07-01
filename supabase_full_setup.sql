@@ -152,7 +152,7 @@ CREATE POLICY "judge_creds_upsert"
 -- ══════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS public.public_registrations (
-    id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id         TEXT PRIMARY KEY,            -- custom string IDs like OZ0715 used by the app
     event_id   TEXT,                        -- stored as text to match local event IDs
     name       TEXT NOT NULL,
     phone      TEXT NOT NULL,
@@ -164,9 +164,14 @@ CREATE TABLE IF NOT EXISTS public.public_registrations (
     timestamp  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
     status     TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','waitlist')),
     notes      TEXT,
-    form_data  JSONB DEFAULT '{}'::jsonb,   -- stores all custom form fields
+    form_data  JSONB DEFAULT '{}'::jsonb,   -- stores all custom form fields + _formLocked flag
+    scores     JSONB DEFAULT '{}'::jsonb,   -- judge scores: { judgeId: { subjectId: value } }
+    round_scores JSONB DEFAULT '{}'::jsonb, -- per-round scores: { round: { judgeId: { subjectId: value } } }
+    round_comments JSONB DEFAULT '{}'::jsonb, -- per-round comments: { round: { judgeId: comment } }
+    comment    TEXT,                        -- backward-compat global comment field
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
 
 ALTER TABLE public.public_registrations ENABLE ROW LEVEL SECURITY;
 
@@ -581,3 +586,42 @@ DROP POLICY IF EXISTS "venues_read" ON public.venues;
 CREATE POLICY "venues_read" ON public.venues FOR SELECT USING (true);
 DROP POLICY IF EXISTS "venues_manage" ON public.venues;
 CREATE POLICY "venues_manage" ON public.venues FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ==========================================
+-- MIGRATION: Fix public_registrations schema
+-- Run this if the table already exists with old schema (UUID id, missing score columns)
+-- ==========================================
+DO $$
+BEGIN
+    -- Add scores column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'scores'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN scores JSONB DEFAULT '{}'::jsonb;
+    END IF;
+
+    -- Add round_scores column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'round_scores'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN round_scores JSONB DEFAULT '{}'::jsonb;
+    END IF;
+
+    -- Add round_comments column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'round_comments'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN round_comments JSONB DEFAULT '{}'::jsonb;
+    END IF;
+
+    -- Add comment column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'comment'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN comment TEXT;
+    END IF;
+END $$;
