@@ -227,15 +227,16 @@ function renderDashboard() {
   if (!p) { logout(); return; }
   
   // Populate form
+  const ans = p.formAnswers || {};
   document.getElementById('reg-name').value = p.name || '';
   document.getElementById('reg-phone').value = p.phone || '';
-  document.getElementById('reg-city').value = p.city || '';
-  document.getElementById('reg-guardian').value = p.guardianName || '';
-  document.getElementById('reg-dob').value = p.dob || '';
-  document.getElementById('reg-blood').value = p.bloodGroup || '';
-  document.getElementById('reg-gender').value = p.gender || '';
-  document.getElementById('reg-address').value = p.address || '';
-  document.getElementById('reg-style').value = p.style || '';
+  document.getElementById('reg-city').value = ans['City'] || ans['city'] || p.city || '';
+  document.getElementById('reg-guardian').value = ans['Guardian Name'] || ans['guardian'] || p.guardianName || '';
+  document.getElementById('reg-dob').value = ans['Date of Birth'] || ans['DOB'] || p.dob || '';
+  document.getElementById('reg-blood').value = ans['Blood Group'] || p.bloodGroup || '';
+  document.getElementById('reg-gender').value = p.gender || ans['Gender'] || '';
+  document.getElementById('reg-address').value = ans['Full Address'] || ans['Address'] || p.address || '';
+  document.getElementById('reg-style').value = ans['Dance Style'] || ans['Style'] || p.style || '';
   
   // Lock Logic
   const inputs = document.querySelectorAll('#participant-form input, #participant-form select, #participant-form textarea');
@@ -266,16 +267,24 @@ document.getElementById('participant-form').addEventListener('submit', async (e)
   btn.disabled = true;
   btn.textContent = 'Saving...';
   
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
+  
+  const ans = {
+    ...(p.formAnswers || {}),
+    'City': document.getElementById('reg-city').value.trim(),
+    'Guardian Name': document.getElementById('reg-guardian').value.trim(),
+    'Date of Birth': document.getElementById('reg-dob').value,
+    'Blood Group': document.getElementById('reg-blood').value.trim(),
+    'Full Address': document.getElementById('reg-address').value.trim(),
+    'Dance Style': document.getElementById('reg-style').value.trim()
+  };
+  
   const payload = {
     name: document.getElementById('reg-name').value.trim(),
     phone: document.getElementById('reg-phone').value.trim(),
-    city: document.getElementById('reg-city').value.trim(),
-    guardianName: document.getElementById('reg-guardian').value.trim(),
-    dob: document.getElementById('reg-dob').value,
-    bloodGroup: document.getElementById('reg-blood').value.trim(),
     gender: document.getElementById('reg-gender').value,
-    address: document.getElementById('reg-address').value.trim(),
-    style: document.getElementById('reg-style').value.trim(),
+    formAnswers: ans,
     formLocked: true // CRITICAL: Auto-lock after saving!
   };
   
