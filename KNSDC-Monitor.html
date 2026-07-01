@@ -5359,133 +5359,144 @@ function saveNewReg() {
   saveNewRegAsync();
 }
 
+let isSavingReg = false;
 async function saveNewRegAsync() {
+  if (isSavingReg) return;
   const s = syncEngine.getData();
   const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
   if (!activeEv) return;
 
-  const formData = {};
-  let name = '';
-  let phone = '';
-  let age = 0;
-  let catId = 1;
-  let venueId = 1;
-  let date = new Date().toISOString().split('T')[0];
+  const btn = document.getElementById('ar-submit-btn');
+  isSavingReg = true;
+  if (btn) { btn.disabled = true; btn.innerText = 'Registering...'; }
 
-  // Validate and collect
-  let fields = activeEv.formFields || [];
-  if (typeof fields === 'string') {
-    try { fields = JSON.parse(fields); } catch(e) { fields = []; }
-  }
-  if (!Array.isArray(fields)) fields = [];
-  for (let i = 0; i < fields.length; i++) {
-    const f = fields[i];
-    const id = `ar-field-${i}`;
-    const el = document.getElementById(id);
-    let val = '';
+  try {
+    const formData = {};
+    let name = '';
+    let phone = '';
+    let age = 0;
+    let catId = 1;
+    let venueId = 1;
+    let date = new Date().toISOString().split('T')[0];
 
-    if (f.type === 'radio') {
-      const checked = document.querySelector(`input[name="${id}"]:checked`);
-      val = checked ? checked.value : '';
-    } else if (f.type === 'checkbox') {
-      const checked = Array.from(document.querySelectorAll(`input[name="${id}"]:checked`)).map(c => c.value);
-      val = checked;
-    } else if (f.type === 'tc') {
-      val = el.checked;
-    } else {
-      val = el.value;
+    // Validate and collect
+    let fields = activeEv.formFields || [];
+    if (typeof fields === 'string') {
+      try { fields = JSON.parse(fields); } catch(e) { fields = []; }
     }
+    if (!Array.isArray(fields)) fields = [];
+    for (let i = 0; i < fields.length; i++) {
+      const f = fields[i];
+      const id = `ar-field-${i}`;
+      const el = document.getElementById(id);
+      let val = '';
 
-    if (f.required && (!val || (Array.isArray(val) && val.length === 0))) {
-      toast(`Please fill required field: ${f.label}`);
-      return;
-    }
+      if (f.type === 'radio') {
+        const checked = document.querySelector(`input[name="${id}"]:checked`);
+        val = checked ? checked.value : '';
+      } else if (f.type === 'checkbox') {
+        const checked = Array.from(document.querySelectorAll(`input[name="${id}"]:checked`)).map(c => c.value);
+        val = checked;
+      } else if (f.type === 'tc') {
+        val = el.checked;
+      } else {
+        val = el.value;
+      }
 
-    formData[f.label] = val;
+      if (f.required && (!val || (Array.isArray(val) && val.length === 0))) {
+        toast(`Please fill required field: ${f.label}`);
+        return;
+      }
 
-    // Map to standard properties if possible
-    const lbl = f.label.toUpperCase();
-    if (lbl.includes('NAME')) name = val;
-    else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) phone = val;
-    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX') && !lbl.includes('AVERAGE') && !lbl.includes('MANAGE'))) {
-      const parsed = parseInt(val);
-      if (!isNaN(parsed)) age = parsed;
-    }
-    else if (lbl.includes('DOB') || lbl.includes('DATE OF BIRTH') || lbl.includes('BIRTHDAY') || lbl.includes('BIRTH DATE') || lbl === 'DATE' || lbl.includes('DATE')) {
-      if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-        const dob = new Date(val);
-        const diff = Date.now() - dob.getTime();
-        const calcAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
-        if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
-          if (age === 0 || lbl.includes('BIRTH') || lbl.includes('DOB')) age = calcAge;
+      formData[f.label] = val;
+
+      // Map to standard properties if possible
+      const lbl = f.label.toUpperCase();
+      if (lbl.includes('NAME')) name = val;
+      else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) phone = val;
+      else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX') && !lbl.includes('AVERAGE') && !lbl.includes('MANAGE'))) {
+        const parsed = parseInt(val);
+        if (!isNaN(parsed)) age = parsed;
+      }
+      else if (lbl.includes('DOB') || lbl.includes('DATE OF BIRTH') || lbl.includes('BIRTHDAY') || lbl.includes('BIRTH DATE') || lbl === 'DATE' || lbl.includes('DATE')) {
+        if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+          const dob = new Date(val);
+          const diff = Date.now() - dob.getTime();
+          const calcAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+          if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
+            if (age === 0 || lbl.includes('BIRTH') || lbl.includes('DOB')) age = calcAge;
+          }
         }
       }
+      else if (f.type === 'category') catId = parseInt(val);
+      else if (f.type === 'venue') {
+         venueId = parseInt(val);
+         const dEl = document.getElementById('ar-field-date');
+         if (dEl) date = dEl.value;
+      }
     }
-    else if (f.type === 'category') catId = parseInt(val);
-    else if (f.type === 'venue') {
-       venueId = parseInt(val);
-       const dEl = document.getElementById('ar-field-date');
-       if (dEl) date = dEl.value;
+
+    if (!name) { toast('Please ensure a Name field exists and is filled!'); return; }
+
+    // Validate Age against Category limits
+    const catObj = (activeEv.categories || []).find(c => String(c.id) === String(catId));
+    if (catObj && age > 0) {
+      const min = parseInt(catObj.ageMin) || 0;
+      const max = parseInt(catObj.ageMax) || 999;
+      if (age < min || age > max) {
+        const maxText = max === 999 ? 'above' : max;
+        toast(`Age Not Eligible: Age ${age} is outside the allowed range (${min} - ${maxText}) for category "${catObj.name}".`);
+        return;
+      }
     }
-  }
 
-  if (!name) { toast('Please ensure a Name field exists and is filled!'); return; }
+    // Generate ID using random 2-letter, 4-digit unique code
+    const sData = syncEngine.getData();
+    const allParts = sData.participants || [];
+    const newId = syncEngine.generateUniqueParticipantId();
+    nxtId.reg = (nxtId.reg || 1) + 1;
+    
+    const newP = {
+      id: newId,
+      name: name,
+      phone: phone || '—',
+      age: age,
+      eventId: activeEventId,
+      catId: catId,
+      venueId: venueId,
+      date: date,
+      formAnswers: formData,
+      present: false,
+      round: 'audition',
+      stageStatus: 'waiting',
+      scores: {},
+      roundScores: {},
+      roundPresence: { audition: { present: false, markedAt: null }, qualified: { present: false, markedAt: null }, semifinal: { present: false, markedAt: null }, final: { present: false, markedAt: null } },
+      regDate: new Date().toISOString()
+    };
 
-  // Validate Age against Category limits
-  const catObj = (activeEv.categories || []).find(c => String(c.id) === String(catId));
-  if (catObj && age > 0) {
-    const min = parseInt(catObj.ageMin) || 0;
-    const max = parseInt(catObj.ageMax) || 999;
-    if (age < min || age > max) {
-      const maxText = max === 999 ? 'above' : max;
-      toast(`Age Not Eligible: Age ${age} is outside the allowed range (${min} - ${maxText}) for category "${catObj.name}".`);
+    const success = await syncEngine.createParticipant(newP);
+    if (!success) {
+      toast('❌ Error saving registration to database');
       return;
     }
+    
+    renderApplied();
+    updateNbadges();
+    closeM('add-reg-modal');
+    
+    // Show Success Modal
+    const ven = (activeEv.venues || []).find(v => String(v.id) === String(venueId));
+    document.getElementById('rs-id').textContent = newId;
+    document.getElementById('rs-event').textContent = activeEv.name;
+    document.getElementById('rs-date').textContent = date;
+    document.getElementById('rs-venue').textContent = ven ? ven.name : 'Main Venue';
+    
+    openM('reg-success-modal');
+  } finally {
+    isSavingReg = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'Register Participant'; }
   }
-
-  // Generate ID using random 2-letter, 4-digit unique code
-  const sData = syncEngine.getData();
-  const allParts = sData.participants || [];
-  const newId = syncEngine.generateUniqueParticipantId();
-  nxtId.reg = (nxtId.reg || 1) + 1;
-  
-  const newP = {
-    id: newId,
-    name: name,
-    phone: phone || '—',
-    age: age,
-    eventId: activeEventId,
-    catId: catId,
-    venueId: venueId,
-    date: date,
-    formAnswers: formData,
-    present: false,
-    round: 'audition',
-    stageStatus: 'waiting',
-    scores: {},
-    roundScores: {},
-    roundPresence: { audition: { present: false, markedAt: null }, qualified: { present: false, markedAt: null }, semifinal: { present: false, markedAt: null }, final: { present: false, markedAt: null } },
-    regDate: new Date().toISOString()
-  };
-
-  const success = await syncEngine.createParticipant(newP);
-  if (!success) {
-    toast('❌ Error saving registration to database');
-    return;
-  }
-  
-  renderApplied();
-  updateNbadges();
-  closeM('add-reg-modal');
-  
-  // Show Success Modal
-  const ven = (activeEv.venues || []).find(v => String(v.id) === String(venueId));
-  document.getElementById('rs-id').textContent = newId;
-  document.getElementById('rs-event').textContent = activeEv.name;
-  document.getElementById('rs-date').textContent = date;
-  document.getElementById('rs-venue').textContent = ven ? ven.name : 'Main Venue';
-  
-  openM('reg-success-modal');
 }
 
 function downloadRegs(format = 'excel') {
@@ -5753,25 +5764,37 @@ function openCatModal(id=null){
   openM('cat-modal');
 }
 
+let isSavingCat = false;
 async function saveCat() {
+  if (isSavingCat) return;
   const name=document.getElementById('cm-name').value.trim();
   if(!name){toast('Name required!');return;}
-  const obj={name,ageMin:parseInt(document.getElementById('cm-agemin').value)||0,ageMax:parseInt(document.getElementById('cm-agemax').value)||99,color:document.getElementById('cm-color').value, eventId: activeEventId};
   
-  if(editingCatId){
-    const success = await syncEngine.updateCategory(editingCatId, obj);
-    if (!success) { toast('❌ Error saving category'); return; }
-    const existing = categories.find(c=>c.id===editingCatId);
-    if(existing) Object.assign(existing, obj);
-  } else {
-    obj.id=Date.now();
-    const success = await syncEngine.createCategory(obj);
-    if (!success) { toast('❌ Error creating category'); return; }
-    if(!categories.find(c=>c.id===obj.id)) categories.push(obj);
+  isSavingCat = true;
+  const btn = document.querySelector('#cat-modal .btn-amber');
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+
+  try {
+    const obj={name,ageMin:parseInt(document.getElementById('cm-agemin').value)||0,ageMax:parseInt(document.getElementById('cm-agemax').value)||99,color:document.getElementById('cm-color').value, eventId: activeEventId};
+    
+    if(editingCatId){
+      const success = await syncEngine.updateCategory(editingCatId, obj);
+      if (!success) { toast('❌ Error saving category'); return; }
+      const existing = categories.find(c=>c.id===editingCatId);
+      if(existing) Object.assign(existing, obj);
+    } else {
+      obj.id=Date.now();
+      const success = await syncEngine.createCategory(obj);
+      if (!success) { toast('❌ Error creating category'); return; }
+      if(!categories.find(c=>c.id===obj.id)) categories.push(obj);
+    }
+    syncAll();
+    closeM('cat-modal');renderCategories();toast('Category saved!');
+    broadcast('DATA_SYNC', { categories, subjects });
+  } finally {
+    isSavingCat = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
   }
-  syncAll();
-  closeM('cat-modal');renderCategories();toast('Category saved!');
-  broadcast('DATA_SYNC', { categories, subjects });
 }
 
 async function deleteCat(id) {
