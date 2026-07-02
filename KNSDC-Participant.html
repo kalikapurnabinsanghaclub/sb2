@@ -195,8 +195,7 @@
       <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Participation Certificate</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Congratulations! You can now download your certificate of participation.</div>
       <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-        <button class="btn" onclick="downloadCertificate('png')" style="background:var(--primary);color:white;display:flex;align-items:center;gap:6px;font-weight:bold;">🖼️ Download PNG</button>
-        <button class="btn btn-amber" onclick="downloadCertificate('pdf')" style="display:flex;align-items:center;gap:6px;font-weight:bold;">📄 Download PDF</button>
+        <button class="btn" onclick="generateParticipantCertificateHTML()" style="background:linear-gradient(135deg, #7C3AED, #6366F1);color:white;display:flex;align-items:center;gap:6px;font-weight:bold;padding:12px 20px;">🖨️ Print / Download PDF</button>
       </div>
     </div>
 
@@ -238,7 +237,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="lib/supabase.js"></script>
 <script src="lib/localSync-v4.js?v=4"></script>
 <script>
@@ -546,157 +544,106 @@ async function submitParticipantFeedback() {
     }
   }
 }
-async function fetchImageAsBase64(url) {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-  } catch(e) {
-    return null;
-  }
-}
-
-async function downloadCertificate(type) {
+function generateParticipantCertificateHTML() {
   if (!CURRENT_USER) return;
-  toast('Generating Certificate... Please wait.');
-  
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
   const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  
   if (!p || !ev) return toast('Error: Participant or Event not found.');
-  
+
   const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev.id] : state.switchStates) || {};
   const certSetup = eventSwitches.certificateSetup || {};
-  
-  const canvas = document.createElement('canvas');
-  canvas.width = 1600;
-  canvas.height = 1130; 
-  const ctx = canvas.getContext('2d');
-  
-  // Background
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // Border
-  ctx.strokeStyle = '#f59e0b';
-  ctx.lineWidth = 15;
-  ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
-  ctx.strokeStyle = '#1e293b';
-  ctx.lineWidth = 4;
-  ctx.strokeRect(60, 60, canvas.width - 120, canvas.height - 120);
-  
-  // Watermark
-  ctx.globalAlpha = 0.05;
-  ctx.font = 'bold 150px "Times New Roman"';
-  ctx.fillStyle = '#000000';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.translate(canvas.width/2, canvas.height/2);
-  ctx.rotate(-Math.PI / 4);
-  ctx.fillText(ev.name.toUpperCase(), 0, 0);
-  ctx.rotate(Math.PI / 4);
-  ctx.translate(-canvas.width/2, -canvas.height/2);
-  ctx.globalAlpha = 1.0;
 
-  // Logo
-  const logoBase64 = await fetchImageAsBase64('logo.jpg');
-  if (logoBase64) {
-    const img = new Image();
-    await new Promise(r => { img.onload = r; img.src = logoBase64; });
-    ctx.drawImage(img, canvas.width/2 - 75, 100, 150, 150);
-  }
-
-  // Text content
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#1e293b';
-  
-  ctx.font = 'bold 60px "Times New Roman"';
-  ctx.fillText('CERTIFICATE OF PARTICIPATION', canvas.width/2, 350);
-  
-  ctx.font = 'italic 30px "Times New Roman"';
-  ctx.fillText('This certificate is proudly presented to', canvas.width/2, 430);
-  
-  ctx.font = 'bold 70px "Times New Roman"';
-  ctx.fillStyle = '#f59e0b';
-  ctx.fillText(p.name ? p.name.toUpperCase() : 'PARTICIPANT', canvas.width/2, 530);
-  
-  ctx.beginPath();
-  ctx.moveTo(canvas.width/2 - 300, 550);
-  ctx.lineTo(canvas.width/2 + 300, 550);
-  ctx.strokeStyle = '#1e293b';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = '#1e293b';
-  ctx.font = 'italic 30px "Times New Roman"';
-  ctx.fillText('for outstanding participation in', canvas.width/2, 630);
-  
-  ctx.font = 'bold 50px "Times New Roman"';
-  ctx.fillText(ev.name.toUpperCase(), canvas.width/2, 720);
+  const certNo = `KNSDC-${Date.now().toString().slice(-6)}-${(p.name || 'P').slice(0, 2).toUpperCase()}`;
   
   const cat = (ev.categories || []).find(c => String(c.id) === String(p.catId));
   const catName = cat ? cat.name.toUpperCase() : 'OPEN CATEGORY';
-  
-  ctx.font = 'bold 35px "Times New Roman"';
-  ctx.fillStyle = '#64748b';
-  ctx.fillText(catName, canvas.width/2, 790);
 
-  // Signatures
-  const drawSig = async (url, x, y, label) => {
-    if (url) {
-      const b64 = await fetchImageAsBase64(url);
-      if (b64) {
-        const img = new Image();
-        await new Promise(r => { img.onload = r; img.src = b64; });
-        const ratio = img.width / img.height;
-        const h = 100;
-        const w = h * ratio;
-        ctx.drawImage(img, x - w/2, y - h, w, h);
-      }
-    }
-    ctx.beginPath();
-    ctx.moveTo(x - 120, y);
-    ctx.lineTo(x + 120, y);
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    
-    ctx.font = 'bold 20px "Times New Roman"';
-    ctx.fillStyle = '#1e293b';
-    ctx.fillText(label, x, y + 30);
-  };
+  let secSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">Secretary</div>`;
+  let presSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">President</div>`;
+  let judgeSigHtml = '';
 
-  const ySig = 1000;
-  await drawSig(certSetup.secretary, canvas.width/2 - 400, ySig, 'SECRETARY');
-  await drawSig(certSetup.judge, canvas.width/2, ySig, 'JUDGE');
-  await drawSig(certSetup.president, canvas.width/2 + 400, ySig, 'PRESIDENT');
-
-  const dataUrl = canvas.toDataURL('image/png');
-  const filename = `${(p.name || 'Participant').replace(/\s+/g,'_')}_Certificate`;
-
-  if (type === 'pdf') {
-    if (!window.jspdf) {
-      toast('PDF library not loaded yet. Please try again.');
-      return;
-    }
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1600, 1130] });
-    doc.addImage(dataUrl, 'PNG', 0, 0, 1600, 1130);
-    doc.save(`${filename}.pdf`);
-    toast('✅ PDF Certificate Downloaded!');
-  } else {
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = `${filename}.png`;
-    a.click();
-    toast('✅ PNG Certificate Downloaded!');
+  if (certSetup.secretary) {
+    secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
+                    <img src="${certSetup.secretary}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                    <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Secretary</div>
+                  </div>`;
   }
+  if (certSetup.president) {
+    presSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
+                    <img src="${certSetup.president}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                    <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">President</div>
+                  </div>`;
+  }
+  if (certSetup.judge) {
+    judgeSigHtml = `<div style="text-align:center;">
+                      <div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-bottom:10px;">
+                        <img src="${certSetup.judge}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                        <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Judge</div>
+                      </div>
+                    </div>`;
+  }
+
+  const content = `
+    <div style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:30px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+      <!-- Top Logo -->
+      <div style="margin-bottom:15px;">
+        <img src="logo.jpg" style="height:70px; width:auto; border-radius:50%; box-shadow:0 4px 10px rgba(0,0,0,0.1);" alt="KNS Logo">
+      </div>
+
+      <div style="font-family:'Cinzel Decorative', cursive; font-size:0.9rem; color:#1A237E; margin-bottom:5px;">Kalikapur Nabin Sangha</div>
+      <div style="font-size:1.8rem; font-weight:800; color:#1A237E; margin-bottom:15px; font-family:'Playfair Display', serif; text-transform:uppercase; letter-spacing:1px;">Certificate of Participation</div>
+      
+      <div style="margin:10px 0; font-size:1rem; color:#555;">This is to certify that</div>
+      <div style="font-size:2.2rem; font-weight:900; color:#FF6B35; font-family:'Playfair Display', serif; border-bottom:2px solid #eee; display:inline-block; padding:0 30px; margin-bottom:15px;">${p.name || 'Participant'}</div>
+      
+      <div style="margin:10px 0; font-size:1rem; color:#333; line-height:1.5;">
+        Participant ID: <strong style="color:#1A237E;">${p.id || 'N/A'}</strong> | Category: <strong style="color:#1A237E;">${catName}</strong> <br>
+        has successfully participated in the <br>
+        <strong style="color:#1A237E;">${ev.name || 'Event'}</strong> <br>
+        held on <strong>${ev.disp || (ev.date ? new Date(ev.date).toLocaleDateString() : '')}</strong> at <strong>Kalikapur, Kolkata</strong>.
+      </div>
+
+      <div style="margin-top:30px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 40px;">
+        <div style="text-align:center;">
+          ${secSigHtml}
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+          ${judgeSigHtml}
+          <div style="text-align:center;">
+            <div style="font-size:0.65rem; color:#777; margin-bottom:5px;">Certificate No: ${certNo}</div>
+            <div style="background:#1A237E; color:#fff; padding:4px 12px; font-size:0.75rem; font-weight:800; border-radius:4px; letter-spacing:1px;">KNSDC OFFICIAL</div>
+          </div>
+        </div>
+        <div style="text-align:center;">
+          ${presSigHtml}
+        </div>
+      </div>
+      
+      <!-- Power By Footer -->
+      <div style="margin-top:25px; font-size:0.65rem; color:#9ca3af; text-transform:uppercase; letter-spacing:2px; font-weight:700;">
+        Powered by Kalikapur Nabin Sangha
+      </div>
+      
+      <!-- Logo Watermark -->
+      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:15rem; opacity:0.02; pointer-events:none; font-weight:900;">KNS</div>
+    </div>
+  `;
+
+  const win = window.open('', '', 'height=700,width=900');
+  if (!win) {
+    toast("⚠️ Please allow popups to view and print your certificate.");
+    return;
+  }
+  win.document.write('<html><head><title>KNSDC Certificate</title>');
+  win.document.write('<style>@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); body{margin:0; padding:20px;}</style>');
+  win.document.write('</head><body>');
+  win.document.write(content);
+  win.document.write('</body></html>');
+  win.document.close();
+  
+  toast("📥 Select 'Save as PDF' in the print destination to download your certificate.");
+  setTimeout(() => { win.print(); }, 500);
 }
 
 // 4. Save Updates (Auto-Lock)
