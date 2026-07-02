@@ -1564,6 +1564,7 @@
       let judgeSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-bottom:10px; font-size:0.75rem;">Judge</div>`;
 
       let activeEv = event;
+      let eventSwitches = (activeEv && activeEv.switchStates) || {};
       if (typeof syncEngine !== 'undefined') {
         const state = syncEngine.getData();
         if (state) {
@@ -1571,11 +1572,16 @@
           const actualEvId = realP ? realP.eventId : (p.eventId || state.activeEventId);
           const ev = (typeof EVENTS !== 'undefined') ? EVENTS.find(e => String(e.id) === String(actualEvId)) : null;
           if (ev) activeEv = ev;
+          if (activeEv && state.eventSwitches && state.eventSwitches[activeEv.id]) {
+            eventSwitches = state.eventSwitches[activeEv.id];
+          } else if (state.switchStates) {
+            eventSwitches = state.switchStates;
+          }
         }
       }
 
-      if (activeEv && activeEv.switchStates && activeEv.switchStates.certificateSetup) {
-        const setup = activeEv.switchStates.certificateSetup;
+      if (eventSwitches.certificateSetup) {
+        const setup = eventSwitches.certificateSetup;
         if (setup.secretary) {
           secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
                           <img src="${setup.secretary}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
@@ -2529,11 +2535,7 @@
             <div>
               <div style="font-size:0.7rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:1px;">ID: ${p.id}</div>
               <h3 style="color:#1E293B; font-size:1.4rem; font-weight:900; margin:4px 0;">${p.name}</h3>
-              <div style="color:#64748B; font-size:0.85rem;">${catName} · Round: ${(p.round || 'audition').toUpperCase()}</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:0.65rem; color:#94A3B8; font-weight:700; text-transform:uppercase;">Rank</div>
-              <div style="font-size:2rem; font-weight:900; color:#7C3AED;">#${rank}</div>
+              <div style="font-size:0.85rem; color:#64748B;">${catName}</div>
             </div>
           </div>
 

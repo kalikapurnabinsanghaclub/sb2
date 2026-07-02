@@ -5830,11 +5830,12 @@ async function saveForm() {
     if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
     return newState;
   });
+  await syncAll(); // Force push to sync_state to prevent data loss on reload
   broadcastControlsToPublic();
   if (dbSuccess) {
     toast('Form configuration saved successfully!');
   } else {
-    toast('⚠️ Saved to live session (DB sync skipped)');
+    toast('✅ Form configuration saved to sync state (DB sync skipped)');
   }
 }
 
@@ -9442,6 +9443,7 @@ async function saveEventSettings() {
   try {
     const success = await syncEngine.updateEvent(activeEventId, { name, banner, description });
     if(!success) { toast('❌ Error saving event settings'); return; }
+    await syncAll(); // Force push to sync_state to prevent data loss on reload
     toast('✅ Event settings saved!');
   } finally {
     isSavingEvent = false;
@@ -9507,10 +9509,7 @@ async function saveCertificateSignatures() {
         state.eventSwitches[activeEventId] = { ...switchStates };
         return state;
       });
-      if (window.syncEngine.updateEvent) {
-        const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
-        if (!success) throw new Error("Failed to save signatures to database");
-      }
+      await syncAll();
     }
     toast('✅ Signatures saved successfully!');
   } catch(e) {
@@ -9589,22 +9588,17 @@ async function deploySponsor() {
         state.eventSwitches[activeEventId] = { ...switchStates };
         return state;
       });
-    }
-    if (window.syncEngine && window.syncEngine.updateEvent) {
-      const success = await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
-      if (success) {
-        toast(editingSponsorId ? '✅ Sponsor updated globally!' : '✅ Sponsor deployed globally!');
-        editingSponsorId = null;
-        editingSponsorOriginalLogo = null;
-        document.getElementById('ad-partner').value = '';
-        document.getElementById('ad-tagline').value = '';
-        document.getElementById('ad-link').value = '';
-        document.getElementById('ad-logo-url').value = '';
-        if (fileInput) fileInput.value = '';
-        renderSponsors();
-      } else {
-        toast('❌ Failed to save sponsor to database');
-      }
+      await syncAll(); // Ensure we save the new state immediately
+      
+      toast(editingSponsorId ? '✅ Sponsor updated globally!' : '✅ Sponsor deployed globally!');
+      editingSponsorId = null;
+      editingSponsorOriginalLogo = null;
+      document.getElementById('ad-partner').value = '';
+      document.getElementById('ad-tagline').value = '';
+      document.getElementById('ad-link').value = '';
+      document.getElementById('ad-logo-url').value = '';
+      if (fileInput) fileInput.value = '';
+      renderSponsors();
     }
   } finally {
     isDeployingSponsor = false;
@@ -9679,11 +9673,9 @@ async function deleteSponsor(id) {
         state.eventSwitches[activeEventId] = { ...switchStates };
         return state;
       });
-      if (window.syncEngine.updateEvent) {
-        await window.syncEngine.updateEvent(activeEventId, { switchStates: switchStates });
-        toast('🗑️ Sponsor removed');
-        renderSponsors();
-      }
+      await syncAll();
+      toast('🗑️ Sponsor removed');
+      renderSponsors();
     }
   } finally {
     isDeletingSponsor = false;
