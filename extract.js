@@ -1,5 +1,6 @@
 const fs = require('fs');
-const html = fs.readFileSync('KNSDC-Participant.html', 'utf8');
+const filename = process.argv[2] || 'KNSDC-Participant.html';
+const html = fs.readFileSync(filename, 'utf8');
 const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi);
 let out = '';
 if (scripts) {

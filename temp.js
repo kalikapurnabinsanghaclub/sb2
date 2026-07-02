@@ -1,1435 +1,5452 @@
 
 
+    window.addEventListener('error', function(e) {
+      const div = document.createElement('div');
+      div.id = 'runtime-error-overlay';
+      div.style.cssText = 'position:fixed; top:0; left:0; right:0; background:#ef4444; color:white; z-index:100000; padding:20px; font-family:monospace; font-size:14px; word-break:break-all; border-bottom:4px solid #991b1b; box-shadow:0 10px 30px rgba(0,0,0,0.5)';
+      div.innerHTML = `
+        <div style="font-weight:bold; font-size:18px; margin-bottom:10px">⚠️ Runtime Error Detected</div>
+        <div style="margin-bottom:10px">Message: ${e.message}</div>
+        <div style="font-size:12px; opacity:0.8">Source: ${e.filename}:${e.lineno}</div>
+        <button onclick="this.parentElement.remove()" style="margin-top:15px; padding:8px 16px; background:#991b1b; color:white; border:none; border-radius:4px; cursor:pointer">Close Overlay</button>
+      `;
+      document.body ? document.body.appendChild(div) : document.documentElement.appendChild(div);
+    });
 
-
-window.syncEngine = new (window.LocalSync || LocalSync)();
-
-let CURRENT_USER = null;
-
-function toast(msg) {
-  const c = document.getElementById('toast-container');
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  c.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
-}
-
-// 1. App Init
-function initApp() {
-  const storedId = localStorage.getItem('knsdc_participant_id');
-  if (storedId) {
-    autoLogin(storedId);
-  } else {
-    document.getElementById('login-view').style.display = 'block';
-  }
-}
-
-// Wait for syncEngine to initialize
-const waitSync = setInterval(() => {
-  if (window.syncEngine && window.syncEngine.isInitialized) {
-    clearInterval(waitSync);
-    initApp();
-  }
-}, 100);
-
-// 2. Authentication
-document.getElementById('login-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const username = document.getElementById('login-user').value.trim().toLowerCase();
-  const passId = document.getElementById('login-pass').value.trim().toUpperCase();
-  
-  const state = window.syncEngine.getData() || {};
-  const participants = state.participants || [];
-  
-  const p = participants.find(part => {
-    if (String(part.id).toUpperCase() !== passId) return false;
-    const firstName = (part.name || '').split(' ')[0].toLowerCase();
-    return firstName === username;
-  });
-  
-  if (p) {
-    localStorage.setItem('knsdc_participant_id', p.id);
-    CURRENT_USER = p.id;
-    toast('Logged in successfully!');
-    renderDashboard();
-  } else {
-    toast('Invalid Username or ID Number');
-  }
-});
-
-function autoLogin(id) {
-  const state = window.syncEngine.getData() || {};
-  const participants = state.participants || [];
-  const p = participants.find(part => String(part.id) === String(id));
-  if (p) {
-    CURRENT_USER = p.id;
-    renderDashboard();
-  } else {
-    localStorage.removeItem('knsdc_participant_id');
-    document.getElementById('login-view').style.display = 'block';
-  }
-}
-
-function logout() {
-  localStorage.removeItem('knsdc_participant_id');
-  CURRENT_USER = null;
-  document.getElementById('dashboard-view').style.display = 'none';
-  document.getElementById('login-view').style.display = 'block';
-  document.getElementById('login-form').reset();
-}
-
-window.uploadParticipantFileToCloud = async function(input, targetId) {
-  const file = input.files[0];
-  if(!file) return;
-  if (file.size > 20 * 1024 * 1024) {
-      toast("File too large. Please select a file smaller than 20MB.");
-      input.value = "";
-      return;
-  }
-  
-  toast("Uploading... Please wait.");
-  input.disabled = true;
-  
-  const url = await window.syncEngine.uploadFile(file, 'participants/');
-  input.disabled = false;
-  
-  if (url) {
-    document.getElementById(targetId).value = url;
-    toast("✅ File uploaded successfully!");
-  } else {
-    toast("❌ Failed to upload file.");
-    input.value = "";
-  }
-};
-
-// 3. Render Dashboard & Lock Logic
-function renderDashboard() {
-  document.getElementById('login-view').style.display = 'none';
-  document.getElementById('dashboard-view').style.display = 'block';
-  
-  const state = window.syncEngine.getData() || {};
-  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-  
-  if (!p) { logout(); return; }
-  
-  // Set Dynamic Identity Watermark
-  const watermarkText = `${p.name || 'Participant'} - ${p.id} - ${new Date().toLocaleString()}`;
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='350' height='250'>
-    <text x='50%' y='50%' transform='rotate(-30 175 125)' text-anchor='middle' 
-    font-family='Inter, sans-serif' font-size='16' font-weight='800' fill='#000' opacity='0.7'>${watermarkText}</text>
-  </svg>`;
-  const b64 = btoa(svg);
-  const wm = document.getElementById('identity-watermark');
-  if (wm) wm.style.backgroundImage = `url('data:image/svg+xml;base64,${b64}')`;
-  
-  
-  const ans = p.formAnswers || {};
-  const ansKeys = Object.keys(ans);
-  
-  // Get active event and form fields
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  let formFields = [];
-  if (ev) {
-    if (state.eventFormFields && state.eventFormFields[ev.id]) {
-      formFields = state.eventFormFields[ev.id];
-    } else {
-      formFields = (ev.formFields && ev.formFields.length > 0) ? ev.formFields : (state.formFields || []);
-      if (typeof formFields === 'string') {
-        try { formFields = JSON.parse(formFields); } catch(e) { formFields = []; }
+    function showAuth(isSignup = false) {
+      const modal = document.getElementById('auth-modal');
+      if (!modal) return;
+      modal.classList.add('active');
+      if (isSignup) {
+        document.getElementById('auth-login').style.display = 'none';
+        document.getElementById('auth-signup').style.display = 'block';
+      } else {
+        document.getElementById('auth-login').style.display = 'block';
+        document.getElementById('auth-signup').style.display = 'none';
       }
     }
-  }
 
-  const container = document.getElementById('dynamic-form-container');
-  let html = '';
+    function hideAuth() {
+      const modal = document.getElementById('auth-modal');
+      if (modal) modal.classList.remove('active');
+    }
 
-  window.participantFormFields = formFields; // Save for submit handler
-
-  formFields.forEach((f, i) => {
-    const fieldId = `dyn-field-${i}`;
-    const reqMark = f.required ? '<span style="color:#ef4444">*</span>' : '';
-    let val = '';
+    window.showAuth = showAuth;
+    window.hideAuth = hideAuth;
     
-    // Map existing value from p
-    const lbl = f.label.toUpperCase();
-    if (lbl.includes('NAME')) val = p.name || '';
-    else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) val = p.phone || '';
-    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) val = p.age || '';
-    else if (f.type === 'category') val = p.catId || '';
-    else if (f.type === 'venue') val = p.venueId || '';
-    else {
-      // Find in formAnswers (case-insensitive)
-      const foundKey = ansKeys.find(k => k.toLowerCase() === f.label.toLowerCase() || k.toLowerCase().includes(f.label.toLowerCase()));
-      if (foundKey) val = ans[foundKey];
-      else val = '';
+    // Local Mode Check
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      window.addEventListener('DOMContentLoaded', () => {
+        const warn = document.createElement('div');
+        warn.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:white;text-align:center;padding:12px;z-index:9999;font-weight:bold;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.2)';
+        warn.innerHTML = '⚠️ WARNING: You are using LOCALHOST. Please run <b>LAUNCH.bat</b> for the stable Offline Portal.';
+        document.body.prepend(warn);
+      });
+    }
+  
+
+    const timelineData = {
+      mission: {
+        title: "Our Mission",
+        items: [
+          { title: "Cultural Extravaganza", desc: "Organize Laxmi Puja & organize dance competition named Dance Ignition Season 5." },
+          { title: "Social Welfare", desc: "Blood donation camp & tree plantation drives." },
+          { title: "Infrastructure", desc: "Build our club a little more & decorated our club." }
+        ]
+      },
+      vision: {
+        title: "Our Vision",
+        items: [
+          { title: "Community Bonding", desc: "Bringing people together through shared cultural experiences." },
+          { title: "Youth Empowerment", desc: "Providing a platform for young talents to showcase their skills." },
+          { title: "Sustainable Future", desc: "Promoting green initiatives and health awareness in Kalikapur." }
+        ]
+      },
+      values: {
+        title: "Our Values",
+        items: [
+          { title: "Inclusivity", desc: "Welcoming everyone from all walks of life to join our initiatives." },
+          { title: "Dedication", desc: "Committed to delivering impactful social work and grand events." },
+          { title: "Tradition & Progress", desc: "Honoring our roots while embracing modern community development." }
+        ]
+      }
+    };
+
+    function openTimelineModal(key) {
+      const data = timelineData[key];
+      if (!data) return;
+      document.getElementById('timelineTitle').innerText = data.title;
+      const wrapper = document.getElementById('timelineWrapper');
+      wrapper.innerHTML = data.items.map(item => `
+        <div class="timeline-item">
+          <div class="timeline-title">${item.title}</div>
+          <div class="timeline-desc">${item.desc}</div>
+        </div>
+      `).join('');
+      document.getElementById('timelineModal').classList.remove('hidden');
+    }
+    window.openTimelineModal = openTimelineModal;
+  
+
+
+
+
+
+    // --- HOISTED EXPORTS (MUST BE AT TOP TO PREVENT REFERENCE ERRORS IF SCRIPT WRAPPED/FAILS) ---
+    window.scrollTo = scrollTo;
+    window.showAuth = showAuth;
+    window.openImageModal = openImageModal;
+    window.showEventDetail = showEventDetail;
+    window.closeEventDetailModal = closeEventDetailModal;
+    window.hideAuth = hideAuth;
+    window.flipCard = flipCard;
+    window.switchMainTab = switchMainTab;
+    window.switchCategory = switchCategory;
+    window.switchPromoRound = switchPromoRound;
+    window.switchGalleryFilter = switchGalleryFilter;
+    window.handleLogin = handleLogin;
+    window.handleSignup = handleSignup;
+    window.openDonationForm = openDonationForm;
+    window.closeDonationForm = closeDonationForm;
+    window.handleCustomDonationAmount = handleCustomDonationAmount;
+    window.setDonationAmountBtn = setDonationAmountBtn;
+    window.processDonation = processDonation;
+    window.closeCertificate = closeCertificate;
+    window.setRating = setRating;
+    window.logout = logout;
+    window.downloadData = downloadData;
+    window.generateDonationCertificate = generateDonationCertificate;
+    window.generateParticipantCertificate = generateParticipantCertificate;
+    window.printCert = printCert;
+    window.searchParticipant = searchParticipant;
+    window.renderPromotion = renderPromotion;
+    window.renderResults = renderResults;
+    
+    const syncEngine = new (window.LocalSync || LocalSync)();
+
+    // ═══ Auto-Delete Logic for Participant Audio/Photo Files ═══
+    // Tracks which files have already been scheduled for deletion to avoid duplicates
+    window._onstageDeletedAudios = new Set();
+    window._onstageDeleteTimers = {};
+
+    /**
+     * Schedule deletion of a file from Supabase Storage after `delayMs` milliseconds.
+     * Extracts the storage path from the full URL and calls Supabase Storage API to remove it.
+     * @param {string} fileUrl - Full Supabase storage URL
+     * @param {number} delayMs - Milliseconds to wait before deleting (0 = immediate)
+     */
+    window._scheduleAudioDelete = function(fileUrl, delayMs) {
+      if (!fileUrl || !fileUrl.includes('supabase.co/storage/v1/object/public/knsdc-registration/')) return;
+      if (window._onstageDeleteTimers[fileUrl]) return; // Already scheduled
+
+      const storagePath = fileUrl.split('knsdc-registration/')[1];
+      if (!storagePath) return;
+
+      console.log('[AutoClean] Scheduling deletion of', storagePath, 'in', Math.round(delayMs / 1000), 'seconds');
+
+      window._onstageDeleteTimers[fileUrl] = setTimeout(async () => {
+        try {
+          if (syncEngine && syncEngine.supabase) {
+            const { error } = await syncEngine.supabase.storage
+              .from('knsdc-registration')
+              .remove([storagePath]);
+            if (error) {
+              console.warn('[AutoClean] Failed to delete', storagePath, error);
+            } else {
+              console.log('[AutoClean] ✅ Deleted', storagePath, 'from storage');
+            }
+          }
+        } catch (e) {
+          console.warn('[AutoClean] Exception deleting', storagePath, e);
+        }
+        delete window._onstageDeleteTimers[fileUrl];
+      }, delayMs);
+    };
+
+    /**
+     * Called when an audio track finishes playing completely (onended event).
+     * Schedules the file for deletion from Supabase Storage after 15 minutes.
+     */
+    window._onAudioEnded = function(audioEl) {
+      const url = audioEl.getAttribute('data-audio-url');
+      if (!url) return;
+      
+      // Mark track as completed visually
+      const track = audioEl.closest('.onstage-audio-track');
+      if (track) {
+        track.style.opacity = '0.5';
+        track.style.border = '1px solid rgba(16,185,129,0.3)';
+        const badge = track.querySelector('div > div:first-child');
+        if (badge) {
+          badge.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+          badge.textContent = '✓';
+        }
+      }
+
+      // Schedule deletion in 15 minutes (900,000 ms)
+      const fifteenMinMs = 15 * 60 * 1000;
+      if (!window._onstageDeletedAudios.has(url)) {
+        window._onstageDeletedAudios.add(url);
+        window._scheduleAudioDelete(url, fifteenMinMs);
+        console.log('[AutoClean] 🎵 Audio finished playing. Will delete in 15 minutes:', url);
+      }
+    };
+
+    // ════════════ DATA ════════════
+    let EVENTS = [];
+
+    let PREV = [];
+
+    let LEADERSHIP = [
+      { name: "Abhimonnu Halder", role: "President", emoji: "👤" },
+      { name: "Subhankar Mukharjee", role: "Secretary", emoji: "📋" },
+      { name: "Sourav Bairagi", role: "Controller and Handler", emoji: "👤", image: "sourav.jpg" }
+    ];
+
+    let ABOUT_ITEMS = [
+      { icon: "🎭", title: "Cultural Events", desc: "Dance, music, drama & art competitions celebrating our heritage", col: "#FF6B35" },
+      { icon: "⚽", title: "Sports Programs", desc: "Cricket, football, athletics & more for all age groups", col: "#7B2D8B" },
+    ];
+
+    let DONATIONS = [
+      { id: 1, name: "Annual Fast Fund", target: 50000, raised: 32500, icon: "🙏", col: "#FF6B35" },
+      { id: 2, name: "Dance Ignition Vol.7", target: 100000, raised: 78000, icon: "💃", col: "#7B2D8B" },
+      { id: 3, name: "Sports Equipment", target: 30000, raised: 18000, icon: "⚽", col: "#10B981" },
+      { id: 4, name: "Club Infrastructure", target: 200000, raised: 145000, icon: "🏛️", col: "#F59E0B" },
+      { id: 5, name: "Youth Scholarship", target: 80000, raised: 55000, icon: "🎓", col: "#E91E8C" }
+    ];
+    let GALLERY = [
+      ...[
+        "photo_6118659175400280599_y.jpg", "photo_6125286919823365090_y.jpg",
+        "photo_6125286919823365091_y.jpg", "photo_6125286919823365093_y.jpg",
+        "photo_6125286919823365094_y.jpg", "photo_6125286919823365095_y.jpg",
+        "photo_6125286919823365096_y.jpg", "photo_6125286919823365097_y.jpg",
+        "photo_6125286919823365099_y.jpg", "photo_6125286919823365100_y.jpg",
+        "photo_6125286919823365101_y.jpg", "photo_6125286919823365102_y.jpg",
+        "photo_6125286919823365103_y.jpg", "photo_6125286919823365104_y.jpg",
+        "photo_6125286919823365105_y.jpg", "photo_6125286919823365106_y.jpg",
+        "photo_6125286919823365107_y.jpg", "photo_6125286919823365108_y.jpg",
+        "photo_6125286919823365109_y.jpg", "photo_6125286919823365110_y.jpg",
+        "photo_6125286919823365111_y.jpg", "photo_6125286919823365112_y.jpg",
+        "photo_6125286919823365113_y.jpg"
+      ].map(img => ({ url: `cultural/${img}`, cap: "Cultural Event", cat: "Cultural" })),
+      { url: "Sports/photo_6127538719637049299_y.jpg", cap: "Sports Action 1", cat: "Sports" },
+      { url: "Sports/photo_6127538719637049300_y.jpg", cap: "Sports Action 2", cat: "Sports" }
+    ];
+
+
+
+    const PERFORMERS = [
+      { name: "Priya Sharma", cat: "Solo Dance · Classical Fusion" },
+      { name: "Riya Das", cat: "Solo Dance · Contemporary" },
+      { name: "Team Rhythmica", cat: "Group Dance · Bollywood" },
+      { name: "Ankita Roy", cat: "Folk Dance · Kathak" },
+      { name: "Modern Groove Crew", cat: "Contemporary · Street Jazz" },
+    ];
+
+    let selectedRole = "public";
+    let LIVE_RESULTS = [];
+    let PROMOTED = [];
+    let CATEGORIES = [];
+    let isRegistrationOpen = true;
+    let EVENT_STATS = { total: 0, qualified: 0, avg: 0 };
+    let currentCategory = "All";
+    let currentPromoRound = "qualified";
+    let currentGalleryFilter = "All";
+    let currentRating = 0;
+    let donationAmount = 0;
+    let selectedDonation = null;
+
+    function openImageModal(src) {
+      document.getElementById('imageModalImg').src = src;
+      document.getElementById('imageModal').classList.remove('hidden');
     }
 
-    html += `<div class="fg">
-      <label>${f.label} ${reqMark}</label>`;
+    // ══════════ PUBLIC VOTING ══════════
+    function submitPublicVote(eventId, participantId, round) {
+      const msgEl = document.getElementById('vote-msg-' + eventId);
+      const slider = document.getElementById('vote-slider-' + eventId);
+      const phoneEl = document.getElementById('vote-phone-' + eventId);
+      const nameEl = document.getElementById('vote-name-' + eventId);
+      if (!msgEl || !slider || !phoneEl) return;
 
-    if (f.type === 'text') {
-      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
-    } else if (f.type === 'number') {
-      html += `<input type="number" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
-    } else if (f.type === 'textarea') {
-      html += `<textarea id="${fieldId}" rows="3" ${f.required ? 'required' : ''}>${val}</textarea>`;
-    } else if (f.type === 'radio' && f.options) {
-      html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
-      f.options.forEach(opt => {
-        const isChecked = (val === opt) ? 'checked' : '';
-        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="radio" name="${fieldId}" value="${opt}" ${isChecked} ${f.required ? 'required' : ''}> ${opt}</label>`;
+      const score = parseInt(slider.value, 10);
+      const phone = phoneEl.value.trim();
+      const voterName = nameEl ? nameEl.value.trim() : '';
+      const lsKey = `knsdc_vote_${participantId}_${round}`;
+
+      // Validate name
+      if (!voterName || voterName.length < 2) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter your full name.';
+        if (nameEl) nameEl.focus();
+        return;
+      }
+
+      // Validate phone
+      if (!phone || phone.length < 7) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter a valid phone number.';
+        phoneEl.focus();
+        return;
+      }
+
+      // Unique vote key per participant+round in localStorage
+      if (localStorage.getItem(lsKey)) {
+        msgEl.style.color = '#f59e0b';
+        msgEl.textContent = '⚡ You already rated this performer in this round!';
+        return;
+      }
+
+      // Write vote into shared state
+      syncEngine.setData(s => {
+        const updated = { ...s };
+        if (!updated.publicVotes) updated.publicVotes = {};
+        const voteKey = participantId + '_' + round;
+        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+        // Double-check server side for same phone (in case of different device)
+        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+        if (alreadyVoted) return s; // no change
+        updated.publicVotes[voteKey] = [
+          ...updated.publicVotes[voteKey],
+          { phone, name: voterName, score, ts: Date.now() }
+        ];
+        return updated;
       });
-      html += `</div>`;
-    } else if (f.type === 'checkbox' && f.options) {
-      const valArr = Array.isArray(val) ? val : [val];
-      html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
-      f.options.forEach(opt => {
-        const isChecked = valArr.includes(opt) ? 'checked' : '';
-        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="checkbox" name="${fieldId}" value="${opt}" ${isChecked}> ${opt}</label>`;
-      });
-      html += `</div>`;
-    } else if (f.type === 'category') {
-      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
-        <option value="">Select Category</option>`;
-      (ev.categories || []).forEach(c => {
-        html += `<option value="${c.id}" ${String(c.id) === String(val) ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
-      });
-      html += `</select>`;
-    } else if (f.type === 'venue') {
-      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
-        <option value="">Select Venue</option>`;
-      (ev.venues || []).forEach(v => {
-        html += `<option value="${v.id}" ${String(v.id) === String(val) ? 'selected' : ''}>${v.name}</option>`;
-      });
-      html += `</select>`;
-    } else if (f.type === 'tc') {
-      const isChecked = val ? 'checked' : '';
-      html += `<label style="display:flex; align-items:start; gap:8px; font-weight:normal; text-transform:none; margin-top:5px; font-size:13px; line-height:1.4;">
-        <input type="checkbox" id="${fieldId}" ${isChecked} ${f.required ? 'required' : ''} style="width:auto; margin-top:3px;">
-        <span>${f.tcText || 'I agree to the terms and conditions'}</span>
-      </label>`;
-    } else if (f.type === 'date' || f.label.toUpperCase().includes('DATE')) {
-      html += `<input type="date" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
-    } else if (f.type === 'file_link') {
-      html += `<input type="text" id="${fieldId}" placeholder="Paste link (e.g. Google Drive, YouTube)" value="${val}" ${f.required ? 'required' : ''}>`;
-    } else if (f.type === 'video_link_or_file' || f.type === 'audio_link_or_file') {
-      const accept = f.type === 'video_link_or_file' ? 'video/*' : 'audio/*';
-      html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
-        <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
-        <input type="hidden" id="${fieldId}" value="${val}">
-        ${val ? `<div style="font-size:12px;color:green;margin-top:4px;">File/Link saved.</div>` : ''}
-      </div>`;
-    } else if (f.type === 'file' || f.type === 'photo') {
-      const accept = f.type === 'photo' ? 'image/*' : '*/*';
-      html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
-        <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
-        <input type="hidden" id="${fieldId}" value="${val}">
-        ${val ? `<div style="font-size:12px;color:green;margin-top:4px;">File uploaded: <a href="${val}" target="_blank">View File</a></div>` : ''}
-      </div>`;
-    } else {
-      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+
+      // Mark locally so same browser can't re-vote
+      localStorage.setItem(lsKey, '1');
+
+      // UI feedback
+      msgEl.style.color = '#059669';
+      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+      slider.disabled = true;
+      phoneEl.disabled = true;
+      if (nameEl) nameEl.disabled = true;
+      const btn = document.querySelector(`#vote-widget-${eventId} button`);
+      if (btn) {
+        btn.disabled = true;
+        btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+        btn.style.color = '#059669';
+        btn.style.boxShadow = 'none';
+        btn.textContent = '✅ Rating Submitted!';
+      }
     }
     
-    html += `</div>`;
-  });
-
-  if (formFields.length === 0) {
-    html = `<div style="text-align:center; padding:20px; color:var(--text-muted);">No form fields configured for this event.</div>`;
-  }
-
-  container.innerHTML = html;
-  
-  // Lock Logic
-  const inputs = document.querySelectorAll('#participant-form input, #participant-form select, #participant-form textarea');
-  const btn = document.getElementById('save-btn');
-  const banner = document.getElementById('lock-banner');
-  
-  const formLocked = p.formLocked === true;
-  if (formLocked === true) {
-    inputs.forEach(inp => inp.disabled = true);
-    btn.disabled = true;
-    btn.className = 'btn btn-locked';
-    btn.textContent = '🔒 Form Locked by Monitor';
-    banner.style.display = 'flex';
-  } else {
-    inputs.forEach(inp => inp.disabled = false);
-    btn.disabled = false;
-    btn.className = 'btn btn-green';
-    btn.textContent = 'Save Updates';
-    banner.style.display = 'none';
-  }
-  
-  // Render Detailed Results
-  renderDetailedResults(p);
-  // Render Performance Journey Chart
-  renderPerformanceJourney(p);
-  // Render Global Stats Charts
-  renderGlobalEventStatistics(p);
-
-  // Render Certificate Card
-  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev ? ev.id : null] : state.switchStates) || {};
-  if (ev && (eventSwitches.certificatePublic === true || eventSwitches.downloadPublic === true)) {
-    document.getElementById('certificate-card').style.display = 'block';
-  } else {
-    document.getElementById('certificate-card').style.display = 'none';
-  }
-
-  // Render Feedback Card
-  const existingFeedback = p.formAnswers && p.formAnswers._feedback;
-  if (existingFeedback) {
-    document.getElementById('feedback-card').style.display = 'block';
-    document.getElementById('feedback-form-container').style.display = 'none';
-    document.getElementById('feedback-success-msg').style.display = 'block';
-  } else {
-    document.getElementById('feedback-card').style.display = 'block';
-    document.getElementById('feedback-form-container').style.display = 'block';
-    document.getElementById('feedback-success-msg').style.display = 'none';
-  }
-}
-
-async function submitParticipantFeedback() {
-  const ratingEl = document.querySelector('input[name="fb_rating"]:checked');
-  if (!ratingEl) {
-    toast("⚠️ Please select a star rating.");
-    return;
-  }
-  const rating = parseInt(ratingEl.value, 10);
-  const text = document.getElementById('feedback-text').value.trim();
-  
-  if (window.syncEngine && window.syncEngine.submitFeedback) {
-    const success = await window.syncEngine.submitFeedback(CURRENT_USER, rating, text);
-    if (success) {
-      document.getElementById('feedback-form-container').style.display = 'none';
-      document.getElementById('feedback-success-msg').style.display = 'block';
-      toast("💖 Feedback sent successfully!");
-    } else {
-      toast("❌ Failed to send feedback.");
+    // Support Vote (Anytime Favorite)
+    function showFavoriteVoteModal(eventId, participantId) {
+      document.getElementById('fav-vote-evid').value = eventId;
+      document.getElementById('fav-vote-pid').value = participantId;
+      document.getElementById('fav-vote-msg').textContent = '';
+      document.getElementById('fav-vote-msg').style.color = '#ef4444';
+      document.getElementById('fav-vote-name').value = '';
+      document.getElementById('fav-vote-phone').value = '';
+      
+      const btn = document.getElementById('fav-vote-submit');
+      btn.disabled = false;
+      btn.textContent = 'Submit Like ❤️';
+      btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+      
+      document.getElementById('favoriteVoteModal').classList.remove('hidden');
     }
-  }
-}
-function generateParticipantCertificateHTML() {
-  if (!CURRENT_USER) return;
-  const state = window.syncEngine.getData() || {};
-  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  if (!p || !ev) return toast('Error: Participant or Event not found.');
+    window.showFavoriteVoteModal = showFavoriteVoteModal;
+    
+    function submitFavoriteVote() {
+      const eventId = document.getElementById('fav-vote-evid').value;
+      const participantId = document.getElementById('fav-vote-pid').value;
+      const msgEl = document.getElementById('fav-vote-msg');
+      const nameEl = document.getElementById('fav-vote-name');
+      const phoneEl = document.getElementById('fav-vote-phone');
+      const btn = document.getElementById('fav-vote-submit');
+      
+      const voterName = nameEl.value.trim();
+      const phone = phoneEl.value.trim();
+      const lsKey = `knsdc_fav_${participantId}`;
 
-  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev.id] : state.switchStates) || {};
-  const certSetup = eventSwitches.certificateSetup || {};
+      if (!voterName || voterName.length < 2) {
+        msgEl.textContent = '⚠️ Please enter your full name.';
+        nameEl.focus();
+        return;
+      }
 
-  const certNo = `KNSDC-${Date.now().toString().slice(-6)}-${(p.name || 'P').slice(0, 2).toUpperCase()}`;
-  
-  const cat = (ev.categories || []).find(c => String(c.id) === String(p.catId));
-  const catName = cat ? cat.name.toUpperCase() : 'OPEN CATEGORY';
+      if (!phone || phone.length < 7) {
+        msgEl.textContent = '⚠️ Please enter a valid phone number.';
+        phoneEl.focus();
+        return;
+      }
 
-  let secSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">Secretary</div>`;
-  let presSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">President</div>`;
-  let judgeSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-bottom:10px; font-size:0.75rem;">Judge</div>`;
+      if (localStorage.getItem(lsKey)) {
+        msgEl.style.color = '#b45309';
+        msgEl.textContent = '⚡ You have already supported this performer!';
+        return;
+      }
 
-  if (certSetup.secretary) {
-    secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
-                    <img src="${certSetup.secretary}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
-                    <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Secretary</div>
-                  </div>`;
-  }
-  if (certSetup.president) {
-    presSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
-                    <img src="${certSetup.president}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
-                    <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">President</div>
-                  </div>`;
-  }
-  if (certSetup.judge) {
-    judgeSigHtml = `<div style="text-align:center;">
-                      <div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-bottom:10px;">
-                        <img src="${certSetup.judge}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
-                        <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Judge</div>
+      syncEngine.setData(s => {
+        const updated = { ...s };
+        if (!updated.publicVotes) updated.publicVotes = {};
+        // We save favorite votes as round="favorite" with a score of 10 to boost average if wanted, or just 0
+        const voteKey = participantId + '_favorite';
+        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+        
+        updated.publicVotes[voteKey].push({
+          score: 10,
+          phone: phone,
+          name: voterName,
+          timestamp: new Date().toISOString()
+        });
+        
+        return updated;
+      });
+
+      localStorage.setItem(lsKey, 'true');
+      
+      msgEl.style.color = '#059669';
+      msgEl.innerHTML = `✅ Thank you for supporting! 🙏`;
+      nameEl.disabled = true;
+      phoneEl.disabled = true;
+      
+      btn.disabled = true;
+      btn.textContent = '✅ Supported!';
+      btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+      btn.style.color = '#059669';
+      
+      setTimeout(() => {
+        document.getElementById('favoriteVoteModal').classList.add('hidden');
+        showEventDetail(eventId); // Refresh the view to show updated likes
+      }, 1500);
+    }
+    window.submitFavoriteVote = submitFavoriteVote;
+
+    // Standalone version for the white-background rating section
+    function submitPublicVoteStandalone(eventId, participantId, round) {
+      const msgEl = document.getElementById('vote-msg-standalone');
+      const slider = document.getElementById('vote-slider-standalone');
+      const phoneEl = document.getElementById('vote-phone-standalone');
+      const nameEl = document.getElementById('vote-name-standalone');
+      if (!msgEl || !slider || !phoneEl) return;
+
+      const score = parseInt(slider.value, 10);
+      const phone = phoneEl.value.trim();
+      const voterName = nameEl ? nameEl.value.trim() : '';
+      const lsKey = `knsdc_vote_${participantId}_${round}`;
+
+      if (!voterName || voterName.length < 2) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter your full name.';
+        if (nameEl) nameEl.focus();
+        return;
+      }
+
+      if (!phone || phone.length < 7) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter a valid phone number.';
+        phoneEl.focus();
+        return;
+      }
+
+      if (localStorage.getItem(lsKey)) {
+        msgEl.style.color = '#b45309';
+        msgEl.textContent = '⚡ You already rated this performer in this round!';
+        return;
+      }
+
+      syncEngine.setData(s => {
+        const updated = { ...s };
+        if (!updated.publicVotes) updated.publicVotes = {};
+        const voteKey = participantId + '_' + round;
+        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+        if (alreadyVoted) return s;
+        updated.publicVotes[voteKey] = [
+          ...updated.publicVotes[voteKey],
+          { phone, name: voterName, score, ts: Date.now() }
+        ];
+        return updated;
+      });
+
+      localStorage.setItem(lsKey, '1');
+
+      msgEl.style.color = '#059669';
+      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+      slider.disabled = true;
+      phoneEl.disabled = true;
+      if (nameEl) nameEl.disabled = true;
+      const btn = document.querySelector('#vote-widget-standalone button');
+      if (btn) {
+        btn.disabled = true;
+        btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+        btn.style.color = '#059669';
+        btn.style.boxShadow = 'none';
+        btn.textContent = '✅ Rating Submitted!';
+      }
+    }
+
+    // Live section vote (renderLiveUI)
+    function submitPublicVoteLive(eventId, participantId, round) {
+      const msgEl = document.getElementById('vote-msg-live');
+      const slider = document.getElementById('vote-slider-live');
+      const phoneEl = document.getElementById('vote-phone-live');
+      const nameEl = document.getElementById('vote-name-live');
+      if (!msgEl || !slider || !phoneEl) return;
+
+      const score = parseInt(slider.value, 10);
+      const phone = phoneEl.value.trim();
+      const voterName = nameEl ? nameEl.value.trim() : '';
+      const lsKey = `knsdc_vote_${participantId}_${round}`;
+
+      if (!voterName || voterName.length < 2) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter your full name.';
+        if (nameEl) nameEl.focus();
+        return;
+      }
+
+      if (!phone || phone.length < 7) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter a valid phone number.';
+        phoneEl.focus();
+        return;
+      }
+
+      if (localStorage.getItem(lsKey)) {
+        msgEl.style.color = '#b45309';
+        msgEl.textContent = '⚡ You already rated this performer in this round!';
+        return;
+      }
+
+      syncEngine.setData(s => {
+        const updated = { ...s };
+        if (!updated.publicVotes) updated.publicVotes = {};
+        const voteKey = participantId + '_' + round;
+        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+        if (alreadyVoted) return s;
+        updated.publicVotes[voteKey] = [
+          ...updated.publicVotes[voteKey],
+          { phone, name: voterName, score, ts: Date.now() }
+        ];
+        return updated;
+      });
+
+      localStorage.setItem(lsKey, '1');
+
+      msgEl.style.color = '#059669';
+      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+      slider.disabled = true;
+      phoneEl.disabled = true;
+      if (nameEl) nameEl.disabled = true;
+      const btn = document.querySelector('#vote-widget-live button');
+      if (btn) {
+        btn.disabled = true;
+        btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+        btn.style.color = '#059669';
+        btn.style.boxShadow = 'none';
+        btn.textContent = '✅ Rating Submitted!';
+      }
+    }
+
+    window.submitPublicVote = submitPublicVote;
+    window.submitPublicVoteStandalone = submitPublicVoteStandalone;
+    window.submitPublicVoteLive = submitPublicVoteLive;
+    window.lastAutoScrolledPerformerRound = null;
+    window.scrollToLiveEvents = function() {
+      const el = document.getElementById("dynamicLiveContainer");
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+    window.staffLogout = () => {
+      if (confirm('Are you sure you want to log out of the Judge Portal?')) {
+        localStorage.removeItem('kns_user');
+        localStorage.removeItem('kns_role');
+        window.location.href = 'index.html';
+      }
+    };
+    // ── DIRECT SUPABASE EVENTS FETCH ─────────────────────────────────────
+    async function fetchEventsDirectly() {
+      try {
+        if (!window.supabase) return;
+        const client = window.supabase.createClient(
+          "https://mmbtfbxxnprtzpzdklot.supabase.co",
+          "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA"
+        );
+        const { data, error } = await client.from('events').select('*').order('start_date', { ascending: true });
+        if (error || !data || data.length === 0) return;
+        
+        let catData = [];
+        let venData = [];
+        try {
+          const { data: cData } = await client.from('categories').select('*');
+          if (cData) catData = cData;
+        } catch(e) { console.error('Error loading categories directly:', e); }
+        
+        try {
+          const { data: vData } = await client.from('venues').select('*');
+          if (vData) venData = vData;
+        } catch(e) { console.error('Error loading venues directly:', e); }
+
+        const today = new Date();
+        const syncState = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
+        const mapped = data.map(dbEv => {
+          const stateSwitches = syncState.eventSwitches ? (syncState.eventSwitches[dbEv.id] || {}) : {};
+          const evSwitches = {
+            publicReg: false,
+            stagePreview: false,
+            resultPublic: false,
+            ...(dbEv.switch_states || {}),
+            ...stateSwitches
+          };
+          
+          const eventCats = catData
+            .filter(c => String(c.event_id) === String(dbEv.id))
+            .map(c => ({
+              id: Number(c.id),
+              name: c.name,
+              color: c.color,
+              ageMin: Number(c.age_min),
+              ageMax: Number(c.age_max),
+              eventId: c.event_id
+            }));
+
+          const eventVens = venData
+            .filter(v => String(v.event_id) === String(dbEv.id))
+            .map(v => ({
+              id: Number(v.id),
+              name: v.name,
+              location: v.location,
+              eventId: v.event_id,
+              capacity: Number(v.capacity) || 0,
+              dates: Array.isArray(v.dates) ? v.dates : (v.dates ? [v.dates] : [])
+            }));
+
+          return {
+            id: dbEv.id,
+            name: dbEv.name || 'Unknown Event',
+            date: dbEv.start_date || '',
+            startDate: dbEv.start_date || '',
+            startTime: dbEv.start_time || '',
+            endDate: dbEv.end_date || '',
+            endTime: dbEv.end_time || '',
+            disp: dbEv.start_date || '',
+            cat: dbEv.type || 'General',
+            venue: dbEv.venue || 'Kalikapur Community Hall',
+            banner: dbEv.banner || null,
+            description: dbEv.description || '',
+            org: dbEv.org || 'KNSDC',
+            roundSchedules: dbEv.round_schedules || {},
+            staff: dbEv.staff || [],
+            formFields: (syncState.eventFormFields && syncState.eventFormFields[dbEv.id] && syncState.eventFormFields[dbEv.id].length > 0) ? syncState.eventFormFields[dbEv.id] : (dbEv.form_fields || null),
+            switchStates: evSwitches,
+            icon: dbEv.type === 'Cultural' ? '\u{1F483}' : dbEv.type === 'Sports' ? '\u26BD' : '\uD83D\uDCC5',
+            col: dbEv.type === 'Cultural' ? '#7B2D8B' : dbEv.type === 'Sports' ? '#F59E0B' : '#FF6B35',
+            categories: eventCats,
+            venues: eventVens
+          };
+        });
+        const activeEvents = mapped.filter(ev => {
+          const ed = ev.endDate || ev.startDate || '';
+          const et = ev.endTime || '23:59';
+          if (!ed) return true;
+          const evEndObj = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
+          return isNaN(evEndObj.getTime()) ? true : evEndObj >= today;
+        });
+        const pastEvents = mapped.filter(ev => {
+          const ed = ev.endDate || ev.startDate || '';
+          const et = ev.endTime || '23:59';
+          if (!ed) return false;
+          const evEndObj = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
+          return isNaN(evEndObj.getTime()) ? false : evEndObj < today;
+        });
+        if (activeEvents.length > 0) {
+          EVENTS = activeEvents;
+          if (typeof renderEvents === 'function') renderEvents();
+          if (typeof renderMarquee === 'function') renderMarquee();
+          if (typeof checkLiveStatus === 'function') checkLiveStatus();
+          console.log('[DirectFetch] ' + activeEvents.length + ' events loaded from Supabase.');
+        }
+        if (pastEvents.length > 0) {
+          PREV = pastEvents.map((ev, idx) => ({
+            id: ev.id,
+            name: ev.name || ev.title || "Past Event",
+            year: ev.startDate || ev.date || "2025",
+            cat: ev.type || ev.category || "General",
+            desc: ev.description || "A successful event hosted by KNSDC.",
+            parts: Math.floor(Math.random() * 500) + 100,
+            winner: "Community",
+            col: (ev.type || ev.category) === 'Cultural' ? '#FF6B35' : '#7B2D8B',
+            scores: null
+          }));
+          if (typeof renderPrevEvents === 'function') renderPrevEvents();
+        }
+        if (!window._eventsRealtimeSubscribed) {
+          window._eventsRealtimeSubscribed = true;
+          client.channel('public:events-index')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+              fetchEventsDirectly();
+            })
+            .subscribe();
+        }
+      } catch (e) { console.error('[DirectFetch] Exception:', e); }
+    }
+    fetchEventsDirectly();
+    // ─────────────────────────────────────────────────────────────────────
+
+    function sortQueue(queueArray, cats) {
+      const categoriesList = cats || [];
+      return [...queueArray].sort((a, b) => {
+        // 1. Manual order override
+        const orderA = a.queueOrder !== undefined && a.queueOrder !== null ? a.queueOrder : Infinity;
+        const orderB = b.queueOrder !== undefined && b.queueOrder !== null ? b.queueOrder : Infinity;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        
+        // 2. Category order based on index in categories
+        const catIdxA = categoriesList.findIndex(c => c.id == a.catId);
+        const catIdxB = categoriesList.findIndex(c => c.id == b.catId);
+        const idxA = catIdxA !== -1 ? catIdxA : Infinity;
+        const idxB = catIdxB !== -1 ? catIdxB : Infinity;
+        if (idxA !== idxB) {
+          return idxA - idxB;
+        }
+        
+        // 3. presentMarkedAt timestamp order
+        const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+        const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+        return timeA - timeB;
+      });
+    }
+
+    function setupSync() {
+      syncEngine.subscribe((state) => {
+        // Clean up participants state to default undefined present to true
+        if (state && state.participants) {
+          const seenIds = new Set();
+          state.participants = state.participants.filter(p => {
+            if (!p || !p.id) return false;
+            const idStr = String(p.id);
+            if (seenIds.has(idStr)) return false;
+            seenIds.add(idStr);
+            return true;
+          });
+          state.participants.forEach(p => {
+            if (p && p.present === undefined) p.present = false;
+          });
+        }
+
+        // ── Handle Stage Flash Messages ──
+        const flash = state ? (state.flashMessage || {}) : {};
+        let flashOverlay = document.getElementById('stage-flash-overlay');
+        if (flash.active && flash.text) {
+          if (!flashOverlay) {
+            flashOverlay = document.createElement('div');
+            flashOverlay.id = 'stage-flash-overlay';
+            flashOverlay.className = 'flash-overlay';
+            document.body.appendChild(flashOverlay);
+          }
+          
+          let emoji = '📢';
+          let title = 'ANNOUNCEMENT';
+          let particleHtml = '';
+          const particles = [];
+          
+          if (flash.type === 'goodluck') {
+            emoji = '🍀';
+            title = 'Good Luck!';
+            particles.push('🍀', '✨', '🎈', '👍', '🌟');
+          } else if (flash.type === 'break') {
+            emoji = '☕';
+            title = 'Intermission';
+            particles.push('☕', '🍩', '🥐', '🍪', '⏰');
+          } else if (flash.type === 'prize') {
+            emoji = '🏆';
+            title = 'Prize Ceremony';
+            particles.push('🏆', '🥇', '🥈', '🥉', '✨', '🎉');
+          } else if (flash.type === 'congrats') {
+            emoji = '🎉';
+            title = 'Congratulations!';
+            particles.push('🎉', '✨', '🥳', '🎈', '⭐');
+          } else if (flash.type === 'thanks') {
+            emoji = '🤝';
+            title = 'Thank You';
+            particles.push('🤝', '❤️', '✨', '🌟', '🙏');
+          } else if (flash.type === 'thankyou_emotion') {
+            emoji = '❤️';
+            title = 'Best Wishes';
+            particles.push('❤️', '💖', '💝', '🌸', '🙏', '✨');
+          } else if (flash.type === 'lakshmi_puja') {
+            emoji = '🪔';
+            title = 'শুভ শারদীয়া ও কোজাগরী লক্ষ্মী পুজো';
+            particles.push('🪔', '✨', '🌸', '🌼', '🙏');
+          } else {
+            emoji = '📢';
+            title = 'Notice';
+            particles.push('✨', '⭐', '📢', '🌟');
+          }
+          
+          for (let i = 0; i < 15; i++) {
+            const p = particles[Math.floor(Math.random() * particles.length)];
+            const left = Math.random() * 100;
+            const delay = Math.random() * 6;
+            const duration = 5 + Math.random() * 5;
+            particleHtml += `<span class="float-particle" style="left: ${left}%; animation-delay: ${delay}s; animation-duration: ${duration}s;">${p}</span>`;
+          }
+
+          let emojiHtml = `<span class="flash-emoji">${emoji}</span>`;
+          if (flash.type === 'lakshmi_puja') {
+            emojiHtml = `
+              <svg width="55" height="55" viewBox="0 0 100 100" class="lakshmi-vector" style="animation: glowLaxmi 2.5s infinite ease-in-out; flex-shrink: 0; z-index: 1; margin-right: 4px;">
+                <path d="M50 75 C30 75, 20 60, 20 50 C20 40, 30 35, 50 35 C70 35, 80 40, 80 50 C80 60, 70 75, 50 75 Z" fill="#b91c1c" opacity="0.1"/>
+                <path d="M15 50 C15 75, 85 75, 85 50 C85 45, 75 40, 50 40 C25 40, 15 45, 15 50 Z" fill="#ffd700" stroke="#b91c1c" stroke-width="3"/>
+                <path d="M30 50 C30 65, 70 65, 70 50 Z" fill="#ea580c"/>
+                <path d="M50 15 C55 30, 60 40, 50 45 C40 40, 45 30, 50 15 Z" fill="#ff7700" stroke="#ffea00" stroke-width="2" style="transform-origin: 50px 35px; animation: flickerFlame 0.8s infinite ease-in-out;"/>
+                <path d="M50 25 C52 32, 54 37, 50 40 C46 37, 48 32, 50 25 Z" fill="#ffea00"/>
+              </svg>
+            `;
+          }
+          
+          flashOverlay.innerHTML = `
+            <div class="flash-card flash-theme-${flash.type || 'custom'}">
+              <div class="floating-container">${particleHtml}</div>
+              ${emojiHtml}
+              <div class="flash-content-wrap" style="position: relative; z-index: 1;">
+                <div class="flash-title">${title}</div>
+                <div class="flash-text" style="white-space: pre-line;">${flash.text}</div>
+              </div>
+            </div>
+          `;
+          flashOverlay.style.display = 'flex';
+        } else {
+          if (flashOverlay) {
+            flashOverlay.style.display = 'none';
+            flashOverlay.innerHTML = '';
+          }
+        }
+
+
+        // 1. Sync & Categorize Events (Auto-move Past to Previous)
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const todayStr = today.toISOString().split('T')[0];
+
+        const rawEvents = state.events || [];
+        const rawUpcoming = state.upcomingEvents || [];
+        const rawPast = state.pastEvents || [];
+        
+        // Merge lists, prioritizing rawEvents (master records with switchStates) over simplified lists
+        const allEventSource = [...rawUpcoming, ...rawPast, ...rawEvents];
+        
+        // Apply real-time dictionary toggles to the existing EVENTS array (fetched via fetchEventsDirectly)
+        if (EVENTS && EVENTS.length > 0) {
+          EVENTS = EVENTS.map(ev => {
+            const dictSwitches = (state.eventSwitches && state.eventSwitches[ev.id]) ? state.eventSwitches[ev.id] : {};
+            const merged = { ...ev.switchStates, ...dictSwitches };
+            return {
+              ...ev,
+              formFields: (state.eventFormFields && state.eventFormFields[ev.id] && state.eventFormFields[ev.id].length > 0) ? state.eventFormFields[ev.id] : (ev.formFields || null),
+              switchStates: {
+                publicReg: merged.publicReg !== false,
+                stagePreview: merged.stagePreview !== false,
+                resultPublic: merged.resultPublic !== false,
+                promoPublic: merged.promoPublic !== false,
+                downloadPublic: merged.downloadPublic !== false,
+                publicVoting: merged.publicVoting === true,
+                ...merged
+              },
+              categories: (ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
+              venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
+            };
+          });
+        }
+
+        renderEvents();
+        renderMarquee();
+        checkLiveStatus();
+        renderRegistrationOptions();
+
+        // Realtime Form Sync: If the user is currently looking at the registration modal, re-render it to show updated fields
+        if (suSelectedEventId && !document.getElementById("authModal").classList.contains("hidden") && document.getElementById("suStep3").classList.contains("hidden") === false) {
+          renderDynamicForm(suSelectedEventId, true);
+        }
+
+        // Update notice/event count badge
+        const badge = document.getElementById('notifCount');
+        if (badge) {
+          const count = EVENTS.length;
+          if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = 'flex';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+
+        function renderRegistrationOptions() {
+          const sel = document.getElementById('suEvent');
+          if (!sel) return;
+          const currentVal = sel.value;
+          sel.innerHTML = '<option value="" disabled selected>— Register For Event —</option>';
+          EVENTS.forEach(ev => {
+            const opt = document.createElement('option');
+            opt.value = ev.id;
+            opt.textContent = ev.name;
+            if (String(ev.id) === currentVal) opt.selected = true;
+            sel.appendChild(opt);
+          });
+        }
+
+        // 3. Sync Leadership
+        if (state.teamMembers) {
+          LEADERSHIP = state.teamMembers.map(m => ({
+            name: m.name.toLowerCase().includes("suvendu") ? "Abhimonnu Halder" : m.name,
+            role: m.role,
+            emoji: m.icon && m.icon.includes('music') ? '🎭' : m.icon && m.icon.includes('wallet') ? '💰' : '👤'
+          }));
+        }
+        if (!LEADERSHIP.find(l => l.name.toLowerCase().includes('sourav'))) {
+            LEADERSHIP.push({ name: "sourav bairagi", role: "controler and handeler", emoji: "👤" });
+        }
+        renderLeadership();
+
+        // 4. Sync About Items (Work Items)
+        if (state.workItems) {
+          ABOUT_ITEMS = state.workItems.map((w, idx) => ({
+            title: w.title,
+            desc: w.description,
+            icon: w.status === 'completed' ? '✅' : '🛠️',
+            col: idx % 2 === 0 ? '#FF6B35' : '#7B2D8B'
+          }));
+          renderAboutItems();
+        }
+
+        // 4.5 Sync Donations & Gallery
+        if (state.donations) {
+          DONATIONS = state.donations;
+          renderDonations();
+        }
+        if (state.gallery && state.gallery.length > 0) {
+          GALLERY = state.gallery;
+          renderGallery();
+        }
+
+        // 5. Sync Live Results & Ranking
+        const todayStrLocal = new Date().toISOString().split('T')[0];
+        const activeEvGlobal = EVENTS.find(e => String(e.id) === String(state.activeEventId)) || EVENTS.find(e => e.date === todayStrLocal) || EVENTS[0];
+        
+        const showResults = activeEvGlobal?.switchStates?.resultPublic === true;
+        const showPromo = activeEvGlobal?.switchStates?.promoPublic === true;
+        const showDownload = activeEvGlobal?.switchStates?.downloadPublic === true;
+
+        const resBtn = document.getElementById("resultsTabBtn");
+        const proBtn = document.getElementById("promoTabBtn"); // Updated to match HTML ID
+        const dwnBtn = document.getElementById("downloadTabBtn");
+
+        if (resBtn) resBtn.style.display = showResults ? "inline-flex" : "none";
+        if (proBtn) proBtn.style.display = showPromo ? "inline-flex" : "none";
+        if (dwnBtn) dwnBtn.style.display = showDownload ? "inline-flex" : "none";
+
+        // Auto-switch active tabs if current active is hidden
+        if (!showResults && showPromo) {
+          const promoTab = document.getElementById("promotionTab");
+          const resultsTab = document.getElementById("resultsTab");
+          if (promoTab) promoTab.classList.remove("hidden");
+          if (resultsTab) resultsTab.classList.add("hidden");
+          if (proBtn) proBtn.classList.add("on");
+          if (resBtn) resBtn.classList.remove("on");
+        } else if (showResults) {
+          const promoTab = document.getElementById("promotionTab");
+          const resultsTab = document.getElementById("resultsTab");
+          if (proBtn && !proBtn.classList.contains("on")) {
+            if (resultsTab) resultsTab.classList.remove("hidden");
+            if (promoTab) promoTab.classList.add("hidden");
+            if (resBtn) resBtn.classList.add("on");
+          }
+        }
+
+        const activeEventId = state.activeEventId;
+        const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
+        
+        if (activeEv) {
+          // Sync Categories for filters unconditionally
+          if (activeEv.categories) {
+            const prevCat = currentCategory;
+            CATEGORIES = activeEv.categories;
+            renderCategoryFilters();
+            if (!CATEGORIES.some(c => c.name === prevCat) && prevCat !== "All") {
+              currentCategory = "All";
+            }
+          }
+
+          // 4. Results & Promotion Logic
+          const resultsTab = document.getElementById('resultsTab');
+          const promotionTab = document.getElementById('promotionTab');
+          if (resultsTab || promotionTab) {
+            const participants = state.participants || [];
+            // Filter by active event
+            const LIVE_PARTICIPANTS = participants.filter(p => String(p.eventId) === String(activeEventId));
+            
+            // A. Compute Promoted
+            const rawPromoted = LIVE_PARTICIPANTS.filter(p => p.round !== 'audition');
+            const mappedPromoted = rawPromoted.map(p => ({
+              id: p.id,
+              name: p.name,
+              cat: activeEv.categories?.find(c => String(c.id) === String(p.catId))?.name || 'Participant',
+              round: p.round
+            }));
+            window.PROMOTED = mappedPromoted;
+            PROMOTED = mappedPromoted;
+
+            // B. Compute Live Results
+            const rawLiveResults = LIVE_PARTICIPANTS.map(p => {
+              let total = 0;
+              Object.values(p.scores || {}).forEach(jScores => {
+                Object.values(jScores).forEach(val => total += (Number(val) || 0));
+              });
+              return { name: p.name, score: total, catId: p.catId, round: p.round || 'audition', id: p.id };
+            }).sort((a, b) => b.score - a.score);
+
+            const mappedLiveResults = rawLiveResults.map((p, idx) => ({
+              rank: idx + 1,
+              name: p.name,
+              cat: activeEv.categories?.find(c => String(c.id) === String(p.catId))?.name || 'Participant',
+              score: p.score,
+              round: p.round || 'audition',
+              id: p.id
+            }));
+            window.LIVE_RESULTS = mappedLiveResults;
+            LIVE_RESULTS = mappedLiveResults;
+
+            // C. Stats
+            EVENT_STATS.total = LIVE_PARTICIPANTS.length;
+            EVENT_STATS.avg = (LIVE_RESULTS.reduce((a, b) => a + b.score, 0) / (LIVE_RESULTS.length || 1)).toFixed(1);
+
+            const avgEl = document.getElementById('stat-avg-score');
+            if (avgEl) avgEl.textContent = EVENT_STATS.avg;
+            const totalEl = document.getElementById('stat-total-parts');
+            if (totalEl) totalEl.textContent = EVENT_STATS.total;
+
+            // D. Render Views
+            if (typeof renderResults === 'function') renderResults();
+            if (typeof renderPromotion === 'function') renderPromotion();
+
+            // E. Show/Hide Tabs based on switch states & active button selection
+            const showResults = activeEv.switchStates?.resultPublic !== false;
+            const showPromo = activeEv.switchStates?.promoPublic === true;
+
+            const resBtn = document.getElementById("resultsTabBtn");
+            const proBtn = document.getElementById("promoTabBtn");
+
+            if (!showResults) {
+              if (resultsTab) resultsTab.classList.add('hidden');
+            }
+            if (!showPromo) {
+              if (promotionTab) promotionTab.classList.add('hidden');
+            }
+
+            if (showResults && showPromo) {
+              const resActive = resBtn && resBtn.classList.contains("on");
+              if (resActive) {
+                if (resultsTab) resultsTab.classList.remove("hidden");
+                if (promotionTab) promotionTab.classList.add("hidden");
+              } else {
+                if (resultsTab) resultsTab.classList.add("hidden");
+                if (promotionTab) promotionTab.classList.remove("hidden");
+              }
+            } else if (showResults) {
+              if (resultsTab) resultsTab.classList.remove("hidden");
+              if (promotionTab) promotionTab.classList.add("hidden");
+            } else if (showPromo) {
+              if (resultsTab) resultsTab.classList.add("hidden");
+              if (promotionTab) promotionTab.classList.remove("hidden");
+            }
+          }
+        }
+
+        // 6. Stage Sync (Event-wise)
+        const dynamicContainer = document.getElementById("dynamicLiveContainer");
+        if (!dynamicContainer) return;
+
+        const events = EVENTS || [];
+        const participants = state.participants || [];
+        const categories = state.categories || [];
+
+        // Find which events have people on stage or in queue
+        const activeEventIds = [...new Set(participants.filter(p => p.stageStatus === 'on-stage' || p.stageStatus === 'queue').map(p => p.eventId))];
+        
+        if (activeEventIds.length === 0) {
+          dynamicContainer.innerHTML = `
+            <div style="background: #ffffff; border-radius: 16px; padding: 40px; text-align: center; color: #1E293B; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+              <div style="font-size: 3rem; margin-bottom: 15px;">🎭</div>
+              <h3 style="font-family: 'Playfair Display', serif; font-size: 1.5rem; margin-bottom: 5px; color: #1E293B;">Intermission</h3>
+              <p style="color: #64748B">Please stay tuned for the next performance</p>
+            </div>
+          `;
+          return;
+        }
+
+        let html = "";
+        let visibleCount = 0;
+        activeEventIds.forEach(eid => {
+          const ev = events.find(e => String(e.id) === String(eid));
+          if (!ev || ev.switchStates?.stagePreview === false) return;
+          const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
+
+          visibleCount++;
+          const eventCats = ev.categories || categories;
+          const onStage = participants.find(p => p.eventId == eid && p.stageStatus === 'on-stage');
+          const queue = sortQueue(participants.filter(p => p.eventId == eid && p.stageStatus === 'queue'), eventCats);
+
+          let publicVoteAvg = '—';
+          let publicVoteCount = 0;
+          if (publicVotingOn && onStage) {
+             const voteKey = onStage.id + '_' + onStage.round;
+             const votes = (state.publicVotes || {})[voteKey] || [];
+             publicVoteCount = votes.length;
+             if (votes.length > 0) {
+                publicVoteAvg = (votes.reduce((a, v) => a + v.score, 0) / votes.length).toFixed(1);
+             }
+          }
+
+          html += `
+            <div class="event-live-section" style="margin-bottom: 40px; padding: 32px;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <div style="width: 10px; height: 10px; background: #ef4444; border-radius: 50%; box-shadow: 0 0 10px rgba(239,68,68,0.4); animation: pulse 1.5s infinite;"></div>
+                <h3 style="color: #1E293B; font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700;">${ev.name}</h3>
+              </div>
+              
+              <div class="stage-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <!-- Stage Area with inline voting -->
+                <div style="background:linear-gradient(135deg, #f5f3ff, #ede9fe);border-radius:16px;padding:24px 20px;text-align:center;position:relative;overflow:hidden; border: 1px solid rgba(139,92,246,0.12); box-shadow: 0 4px 16px rgba(139,92,246,0.06);">
+                  <div style="position:relative;z-index:1;">
+                    <h4 style="color:#7C3AED;font-family:'Playfair Display',serif;font-size:1rem;letter-spacing:2px;margin-bottom:15px;">🎬 ON STAGE NOW</h4>
+                    ${onStage ? `
+                      <div style="background:#ffffff;border-radius:12px;padding:20px;border:1px solid rgba(139,92,246,0.1);margin-bottom:0;">
+                        <div style="font-weight:900;font-size:1.8rem;color:#1E293B;margin-bottom:4px;">${onStage.name}</div>
+                        <div style="color:#64748B;font-size:0.9rem;">${eventCats.find(c=>c.id==onStage.catId)?.name||'Participant'} · Round: ${onStage.round.toUpperCase()}</div>
+                        
                       </div>
-                    </div>`;
-  }
+                    ` : `
+                      <div style="color:#64748B;padding:20px;border:1px dashed rgba(139,92,246,0.2);border-radius:12px; background: #ffffff;">
+                        Transitioning...
+                        ${publicVotingOn ? '<div style="margin-top:10px;font-size:0.75rem;color:rgba(124,58,237,0.6);">⏳ Rating opens when performer takes the stage</div>' : ''}
+                      </div>
+                    `}
+                  </div>
+                </div>
 
-  const content = `
-    <div style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:30px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-      <!-- Top Logo -->
-      <div style="margin-bottom:15px;">
-        <img src="logo.jpg" style="height:100px; width:auto; border-radius:50%; box-shadow:0 4px 10px rgba(0,0,0,0.15);" alt="KNS Logo">
-      </div>
+                <!-- Live Rating Stats Card -->
+                ${(onStage && publicVotingOn) ? `
+                  <div style="background: #ffffff; padding: 25px; border-radius: 16px; border: 1px solid rgba(245,158,11,0.15); display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; overflow: hidden; box-shadow: 0 4px 16px rgba(245,158,11,0.06);">
+                     <div style="position: absolute; top: -20px; right: -20px; font-size: 100px; opacity: 0.04; pointer-events: none;">🌟</div>
+                     <h3 style="color: #D97706; font-family: 'Cinzel Decorative', cursive; font-size: 1rem; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase;">Audience Rating</h3>
+                     <div style="display: flex; align-items: baseline; gap: 5px;">
+                       <div style="font-size: 3.5rem; font-weight: 900; color: #1E293B; line-height: 1;">${publicVoteAvg}</div>
+                       <div style="font-size: 1rem; color: #94A3B8; font-weight: 800;">/10</div>
+                     </div>
+                     <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); border-radius: 20px; padding: 4px 12px; color: #D97706; font-size: 0.75rem; margin-top: 15px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
+                       Based on ${publicVoteCount} Ratings
+                     </div>
+                  </div>
+                ` : ''}
 
-      <div style="font-family:'Cinzel Decorative', cursive; font-size:1.1rem; color:#1A237E; margin-bottom:5px; font-weight:800;">Kalikapur Nabin Sangha</div>
-      <div style="font-size:2rem; font-weight:900; color:#1A237E; margin-bottom:15px; font-family:'Playfair Display', serif; text-transform:uppercase; letter-spacing:1px;">Certificate of Participation</div>
-      
-      <div style="margin:10px 0; font-size:1.1rem; color:#555;">This is to certify that</div>
-      <div style="font-size:2.5rem; font-weight:900; color:#FF6B35; font-family:'Playfair Display', serif; border-bottom:2px solid #eee; display:inline-block; padding:0 40px; margin-bottom:15px; letter-spacing:0.5px;">${p.name || 'Participant'}</div>
-      
-      <div style="margin:10px 0; font-size:1.1rem; color:#333; line-height:1.6;">
-        Participant ID: <strong style="color:#1A237E;">${p.id || 'N/A'}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; Category: <strong style="color:#1A237E;">${catName}</strong> <br>
-        has successfully participated in the <br>
-        <strong style="color:#1A237E; font-size:1.2rem;">${ev.name || 'Event'}</strong> <br>
-        held on <strong style="color:#444;">${ev.disp || (ev.date ? new Date(ev.date).toLocaleDateString() : '')}</strong> at <strong>Kalikapur, Kolkata</strong>.
-      </div>
+                <!-- Sleek horizontal public voting strip in the GAP spanning full grid-width has been moved inside the On Stage Card for better UX -->
 
-      <div style="margin-top:35px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 40px;">
-        <div style="display:flex; gap:50px; align-items:flex-end; text-align:center;">
-          <div>
-            ${secSigHtml}
+
+                 ${(() => {
+                   if (onStage && eid == state.activeEventId) {
+                      const eventObj = EVENTS.find(e => e.id == eid);
+                      if (eventObj) {
+                        const round = onStage.round;
+                        const sched = eventObj.roundSchedules ? eventObj.roundSchedules[round] : null;
+                        const v = sched && sched.venue ? sched.venue : eventObj.venue;
+                        const d = sched && sched.date ? sched.date : eventObj.disp;
+                        setTimeout(() => {
+                          const el = document.getElementById('liveEventSchedule');
+                          if (el) el.innerHTML = `📅 ${d}&nbsp;&nbsp;•&nbsp;&nbsp;📍 ${v}`;
+                        }, 50);
+                      }
+                   }
+                   return "";
+                 })()}
+
+                <!-- Queue Area - Hidden when empty, synced with Monitor UPCOMING -->
+                ${queue.length > 0 ? `
+                <div style="background: #ffffff; padding: 25px; border-radius: 16px; border: 1px solid rgba(139,92,246,0.1); box-shadow: 0 4px 16px rgba(139,92,246,0.04);">
+                   <h3 style="color: #1E293B; font-family: 'Cinzel Decorative', cursive; font-size: 1rem; margin-bottom: 15px;">📋 Coming Next</h3>
+                   <div class="queue-list">
+                      ${queue.map((p, idx) => `
+                        <div class="queue-item" style="display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, rgba(139,92,246,0.04), rgba(99,102,241,0.02)); padding: 10px 15px; border-radius: 10px; margin-bottom: 8px; border: 1px solid rgba(139,92,246,0.08);">
+                           <span style="color: #7C3AED; font-weight: 800; font-size: 0.9rem;">#${idx + 1}</span>
+                           <div style="flex: 1;">
+                              <div style="color: #1E293B; font-weight: 700; font-size: 0.9rem;">${p.name}</div>
+                              <div style="color: #64748B; font-size: 0.75rem;">${eventCats.find(c => c.id == p.catId)?.name || 'Participant'}</div>
+                           </div>
+                        </div>
+                      `).join('')}
+                   </div>
+                </div>
+                ` : ''}
+              </div>
+
+
+              <!-- ★ Live Broadcast Section ★ -->
+              ${(ev.switchStates?.liveStream && ev.switchStates?.liveStreamUrl) ? `
+              <div style="margin-top: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 24px 32px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
+                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+                  <div style="display: flex; align-items: center; gap: 16px;">
+                    <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: pulse 2s infinite;">🔴</div>
+                    <div style="position:relative; z-index:1;">
+                      <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.3rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
+                      <p style="color: rgba(255,255,255,0.9); font-size: 0.9rem; margin: 4px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is on!</p>
+                    </div>
+                  </div>
+                </div>
+                ${(() => {
+                  let input = ev.switchStates?.liveStreamUrl || '';
+                  if(!input) return '';
+                  let embedUrl = input;
+                  if (input.toLowerCase().startsWith('<iframe')) {
+                     return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">${input.replace('<iframe', '<iframe style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;"')}</div>`;
+                  }
+                  const ytMatch = input.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+                  if (ytMatch && ytMatch[1]) {
+                    embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1`;
+                  } else if (input.includes('facebook.com') && input.includes('/videos/')) {
+                    embedUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(input)}&show_text=false&width=auto`;
+                  }
+                  return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">\n  <iframe src="${embedUrl}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>\n</div>\n<div style="margin-top: 12px; text-align: center;"><a href="${input.replace(/'/g, '&apos;').replace(/\"/g, '&quot;')}" target="_blank" style="color: rgba(255,255,255,0.95); text-decoration: underline; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.5px; transition: color 0.2s;" onmouseover="this.style.color=\'#fff\'" onmouseout="this.style.color=\'rgba(255,255,255,0.95)\'">⚠️ Not playing? Click here to watch directly</a></div>`;
+                })()}
+
+                </div>
+              </div>
+              ` : ''}
+
+              <!-- ★ Public Rating Submission Section (Below On Stage Now) ★ -->
+              ${(onStage && publicVotingOn) ? `
+              <div style="margin-top: 24px; background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 20px; padding: 28px 32px; border: 2px solid #FFD23F; position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(255,210,63,0.2);">
+                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.06; pointer-events:none;">🌟</div>
+                <div style="position:absolute; bottom:-30px; left:-30px; font-size:100px; opacity:0.05; pointer-events:none;">🎭</div>
+                
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                  <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; box-shadow: 0 4px 15px rgba(255,210,63,0.35);">⭐</div>
+                  <div>
+                    <h4 style="color: #92400e; font-family: 'Cinzel Decorative', cursive; font-size: 1.05rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Rate This Performance</h4>
+                    <p style="color: #78716c; font-size: 0.8rem; margin: 4px 0 0;">Submit your rating for <strong style="color:#1e1b4b;">${onStage.name}</strong> · ${onStage.round.toUpperCase()}</p>
+                  </div>
+                </div>
+
+                <div id="vote-widget-${eid}" style="position: relative;">
+                  <!-- Slider Row -->
+                  <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 18px; background: #fff; padding: 16px 20px; border-radius: 14px; border: 1px solid rgba(255,210,63,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                    <div style="font-size: 0.85rem; color: #92400e; font-weight: 800; white-space: nowrap;">1</div>
+                    <input type="range" id="vote-slider-${eid}" class="premium-rating-slider" min="1" max="10" value="5" step="1"
+                      oninput="document.getElementById('vote-val-${eid}').textContent=this.value;" />
+                    <div style="font-size: 0.85rem; color: #92400e; font-weight: 800;">10</div>
+                    <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 12px; padding: 8px 18px; min-width: 55px; text-align: center; box-shadow: 0 4px 12px rgba(255,210,63,0.3);">
+                      <span id="vote-val-${eid}" style="font-size: 1.8rem; font-weight: 900; color: #1e1b4b; line-height:1;">5</span>
+                      <div style="font-size: 0.6rem; color: rgba(30,27,75,0.6); font-weight: 800; letter-spacing: 1px;">/ 10</div>
+                    </div>
+                  </div>
+
+                  <!-- Name + Phone + Submit Row -->
+                  <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; gap: 10px;">
+                      <div style="flex: 1; position: relative;">
+                        <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:0.9rem;">👤</span>
+                        <input type="text" id="vote-name-${eid}" placeholder="Enter your full name"
+                          style="width:100%; padding:12px 12px 12px 36px; border:2px solid #fbbf24; border-radius:12px; font-size:0.9rem; color:#1e1b4b; font-weight:700; outline:none; background:#fff; transition: all 0.2s; box-sizing:border-box;"
+                          onfocus="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';"
+                          onblur="this.style.borderColor='#fbbf24'; this.style.boxShadow='none';" />
+                      </div>
+                      <div style="flex: 1; position: relative;">
+                        <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:0.9rem;">📱</span>
+                        <input type="tel" id="vote-phone-${eid}" placeholder="Enter your phone number" maxlength="15"
+                          style="width:100%; padding:12px 12px 12px 36px; border:2px solid #fbbf24; border-radius:12px; font-size:0.9rem; color:#1e1b4b; font-weight:700; outline:none; background:#fff; transition: all 0.2s; box-sizing:border-box;"
+                          onfocus="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';"
+                          onblur="this.style.borderColor='#fbbf24'; this.style.boxShadow='none';" />
+                      </div>
+                    </div>
+                    <button onclick="window.submitPublicVote('${eid}','${onStage.id}','${onStage.round}')"
+                      style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:12px; padding:14px 28px; font-size:1rem; font-weight:900; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 15px rgba(255,210,63,0.35); letter-spacing: 0.5px; width:100%;"
+                      onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(255,210,63,0.45)';"
+                      onmouseout="this.style.transform=''; this.style.boxShadow='0 4px 15px rgba(255,210,63,0.35)';">
+                      ⭐ Submit Rating
+                    </button>
+                  </div>
+
+                  <!-- Feedback Message -->
+                  <div id="vote-msg-${eid}" style="font-size:0.85rem; font-weight:800; color:#92400e; margin-top:12px; min-height:16px; text-align:center;"></div>
+                </div>
+
+                <!-- Rating Stats Mini -->
+                ${publicVoteCount > 0 ? `
+                  <div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; background: #fff; border-radius: 20px; border: 1px solid #fbbf24; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                    <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">Current Avg:</span>
+                    <span style="font-size: 1.1rem; font-weight: 900; color: #b45309;">${publicVoteAvg}/10</span>
+                    <span style="font-size: 0.75rem; color: #d4d4d4;">·</span>
+                    <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">${publicVoteCount} ratings</span>
+                  </div>
+                ` : ''}
+              </div>
+              ` : ''}
+
+            </div>
+          `;
+        });
+        if (visibleCount === 0) {
+          html = `
+            <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 40px; text-align: center; color: #fff;">
+              <div style="font-size: 3rem; margin-bottom: 15px;">🎭</div>
+              <h3 style="font-family: 'Playfair Display', serif; font-size: 1.5rem; margin-bottom: 5px;">Intermission</h3>
+              <p style="color: rgba(255,255,255,0.6)">Please stay tuned for the next performance</p>
+            </div>
+          `;
+        }
+        
+        dynamicContainer.innerHTML = html;
+
+        // --- Live Voting Banner Toast & Auto-Scroll Controller ---
+        let activeVotingPerformer = null;
+        let activeVotingRound = null;
+        activeEventIds.forEach(eid => {
+          const ev = events.find(e => String(e.id) === String(eid));
+          if (!ev || ev.switchStates?.stagePreview === false) return;
+          const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
+          if (publicVotingOn) {
+            const onStage = participants.find(p => p.eventId == eid && p.stageStatus === 'on-stage');
+            if (onStage) {
+              activeVotingPerformer = onStage;
+              activeVotingRound = onStage.round;
+            }
+          }
+        });
+
+        const toastEl = document.getElementById('live-voting-toast');
+        if (toastEl) {
+          if (activeVotingPerformer) {
+            const hasVoted = localStorage.getItem(`knsdc_vote_${activeVotingPerformer.id}_${activeVotingRound}`);
+            if (!hasVoted) {
+              const descEl = document.getElementById('live-voting-toast-desc');
+              if (descEl) {
+                descEl.innerHTML = `Rate performance of <strong>${activeVotingPerformer.name}</strong> now!`;
+              }
+              toastEl.style.display = 'flex';
+
+              // Auto scroll down to stage card once per performer-round combination
+              const scrollKey = `${activeVotingPerformer.id}_${activeVotingRound}`;
+              if (window.lastAutoScrolledPerformerRound !== scrollKey) {
+                window.lastAutoScrolledPerformerRound = scrollKey;
+                setTimeout(() => {
+                  window.scrollToLiveEvents();
+                }, 800);
+              }
+            } else {
+              toastEl.style.display = 'none';
+            }
+          } else {
+            toastEl.style.display = 'none';
+          }
+        }
+        // ---------------------------------------------------------
+        
+        // --- Standalone Public Rating Section (white area below results) ---
+        const ratingBox = document.getElementById('publicRatingStandalone');
+        if (ratingBox) {
+          // Check if public voting is enabled at all
+          const anyVotingOn = activeEventIds.some(eid => {
+            const ev = events.find(e => String(e.id) === String(eid));
+            return ev && (ev.publicVoting === true || ev.switchStates?.publicVoting === true);
+          });
+
+          if (activeVotingPerformer && activeVotingRound) {
+            const eid = activeVotingPerformer.eventId;
+            const pid = activeVotingPerformer.id;
+            const pName = activeVotingPerformer.name;
+            const pRound = activeVotingRound;
+            const evObj = events.find(e => String(e.id) === String(eid));
+            const evCats = evObj?.categories || categories;
+            const catName = evCats.find(c => c.id == activeVotingPerformer.catId)?.name || 'Participant';
+            
+            // Check if already voted
+            const lsKey = `knsdc_vote_${pid}_${pRound}`;
+            const alreadyVoted = localStorage.getItem(lsKey);
+
+            // Build round voting indicators (4 rounds)
+            const roundNames = ['audition','qualified','semifinal','final'];
+            const roundIndicators = roundNames.map(rn => {
+              const votedThisRound = localStorage.getItem(`knsdc_vote_${pid}_${rn}`);
+              return `<div style="display:flex; align-items:center; gap:4px; padding:3px 10px; border-radius:16px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; ${votedThisRound ? 'background:rgba(16,185,129,0.1); color:#059669; border:1px solid rgba(16,185,129,0.2);' : rn === pRound ? 'background:rgba(245,158,11,0.1); color:#d97706; border:1px solid rgba(245,158,11,0.2); animation:pulse 2s infinite;' : 'background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0;'}">${votedThisRound ? '✅' : rn === pRound ? '⭐' : '○'} ${rn}</div>`;
+            }).join('');
+
+            // Get live stats
+            const voteKey = pid + '_' + pRound;
+            const voteArr = (state.publicVotes || {})[voteKey] || [];
+            const vCount = voteArr.length;
+            const vAvg = vCount > 0 ? (voteArr.reduce((a, v) => a + v.score, 0) / vCount).toFixed(1) : '—';
+
+            ratingBox.style.display = 'block';
+            // Build the live stream HTML if it's on
+            const liveStreamHtml = (evObj?.switchStates?.liveStream && evObj?.switchStates?.liveStreamUrl) ? `
+              <div style="margin-bottom: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 24px 32px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
+                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+                  <div style="display: flex; align-items: center; gap: 16px;">
+                    <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: pulse 2s infinite;">🔴</div>
+                    <div style="position:relative; z-index:1;">
+                      <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.3rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
+                      <p style="color: rgba(255,255,255,0.9); font-size: 0.9rem; margin: 4px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is on!</p>
+                    </div>
+                  </div>
+                </div>
+                ${(() => {
+                  let input = evObj?.switchStates?.liveStreamUrl || '';
+                  if(!input) return '';
+                  let embedUrl = input;
+                  if (input.toLowerCase().startsWith('<iframe')) {
+                     return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">${input.replace('<iframe', '<iframe style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;"')}</div>`;
+                  }
+                  const ytMatch = input.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+                  if (ytMatch && ytMatch[1]) {
+                    embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1`;
+                  } else if (input.includes('facebook.com') && input.includes('/videos/')) {
+                    embedUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(input)}&show_text=false&width=auto`;
+                  }
+                  return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">\n  <iframe src="${embedUrl}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>\n</div>\n<div style="margin-top: 12px; text-align: center;"><a href="${input.replace(/'/g, '&apos;').replace(/\"/g, '&quot;')}" target="_blank" style="color: rgba(255,255,255,0.95); text-decoration: underline; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.5px; transition: color 0.2s;" onmouseover="this.style.color=\'#fff\'" onmouseout="this.style.color=\'rgba(255,255,255,0.95)\'">⚠️ Not playing? Click here to watch directly</a></div>`;
+                })()}
+
+                </div>
+              </div>
+            ` : '';
+
+            ratingBox.innerHTML = `
+              ${liveStreamHtml}
+              <div style="background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 24px; padding: 32px; border: 2px solid #FFD23F; position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(255,210,63,0.15);">
+                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.06; pointer-events:none;">🌟</div>
+                <div style="position:absolute; bottom:-30px; left:-30px; font-size:100px; opacity:0.05; pointer-events:none;">🎭</div>
+                
+                <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 14px;">
+                  <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(255,210,63,0.35);">⭐</div>
+                  <div>
+                    <h4 style="color: #92400e; font-family: 'Cinzel Decorative', cursive; font-size: 1.1rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Rate This Performance</h4>
+                    <p style="color: #78716c; font-size: 0.85rem; margin: 4px 0 0;">Now performing: <strong style="color:#1e1b4b;">${pName}</strong> · ${catName} · ${pRound.toUpperCase()}</p>
+                  </div>
+                </div>
+
+                <!-- Round Voting Indicators -->
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; padding:10px 14px; background:rgba(255,255,255,0.7); border-radius:12px; border:1px solid rgba(255,210,63,0.2);">
+                  <span style="font-size:0.7rem; color:#92400e; font-weight:800; align-self:center; margin-right:4px;">ROUNDS:</span>
+                  ${roundIndicators}
+                </div>
+
+                ${alreadyVoted ? `
+                  <div style="background:#fff; padding:24px; border-radius:16px; text-align:center; border:1px solid #d1fae5;">
+                    <div style="font-size:2rem; margin-bottom:8px;">✅</div>
+                    <div style="font-size:1rem; font-weight:800; color:#059669;">You have already rated this performer!</div>
+                    <div style="font-size:0.85rem; color:#78716c; margin-top:4px;">Thank you for your rating 🙏</div>
+                  </div>
+                ` : `
+                  <div id="vote-widget-standalone">
+                    <!-- Slider Row -->
+                    <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 18px; background: #fff; padding: 16px 20px; border-radius: 14px; border: 1px solid rgba(255,210,63,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                      <div style="font-size: 0.85rem; color: #92400e; font-weight: 800;">1</div>
+                      <input type="range" id="vote-slider-standalone" class="premium-rating-slider" min="1" max="10" value="5" step="1"
+                        oninput="document.getElementById('vote-val-standalone').textContent=this.value;" />
+                      <div style="font-size: 0.85rem; color: #92400e; font-weight: 800;">10</div>
+                      <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 12px; padding: 8px 18px; min-width: 55px; text-align: center; box-shadow: 0 4px 12px rgba(255,210,63,0.3);">
+                        <span id="vote-val-standalone" style="font-size: 1.8rem; font-weight: 900; color: #1e1b4b; line-height:1;">5</span>
+                        <div style="font-size: 0.6rem; color: rgba(30,27,75,0.6); font-weight: 800; letter-spacing: 1px;">/ 10</div>
+                      </div>
+                    </div>
+
+                    <!-- Name + Phone + Submit Row -->
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 180px; position: relative;">
+                          <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:0.9rem;">👤</span>
+                          <input type="text" id="vote-name-standalone" placeholder="Enter your full name"
+                            style="width:100%; padding:12px 12px 12px 36px; border:2px solid #fbbf24; border-radius:12px; font-size:0.9rem; color:#1e1b4b; font-weight:700; outline:none; background:#fff; transition: all 0.2s; box-sizing:border-box;"
+                            onfocus="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';"
+                            onblur="this.style.borderColor='#fbbf24'; this.style.boxShadow='none';" />
+                        </div>
+                        <div style="flex: 1; min-width: 180px; position: relative;">
+                          <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:0.9rem;">📱</span>
+                          <input type="tel" id="vote-phone-standalone" placeholder="Enter your phone number" maxlength="15"
+                            style="width:100%; padding:12px 12px 12px 36px; border:2px solid #fbbf24; border-radius:12px; font-size:0.9rem; color:#1e1b4b; font-weight:700; outline:none; background:#fff; transition: all 0.2s; box-sizing:border-box;"
+                            onfocus="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';"
+                            onblur="this.style.borderColor='#fbbf24'; this.style.boxShadow='none';" />
+                        </div>
+                      </div>
+                      <button onclick="window.submitPublicVoteStandalone('${eid}','${pid}','${pRound}')"
+                        style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:12px; padding:14px 28px; font-size:1rem; font-weight:900; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 15px rgba(255,210,63,0.35); width:100%;"
+                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(255,210,63,0.45)';"
+                        onmouseout="this.style.transform=''; this.style.boxShadow='0 4px 15px rgba(255,210,63,0.35)';">
+                        ⭐ Submit Rating
+                      </button>
+                    </div>
+                    <div id="vote-msg-standalone" style="font-size:0.85rem; font-weight:800; color:#92400e; margin-top:12px; min-height:16px; text-align:center;"></div>
+                  </div>
+                `}
+
+                ${vCount > 0 ? `
+                  <div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; background: #fff; border-radius: 20px; border: 1px solid #fbbf24; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                    <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">Current Avg:</span>
+                    <span style="font-size: 1.1rem; font-weight: 900; color: #b45309;">${vAvg}/10</span>
+                    <span style="font-size: 0.75rem; color: #d4d4d4;">·</span>
+                    <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">${vCount} ratings</span>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          } else if (anyVotingOn) {
+            // Public voting is ON but no performer is on stage — show waiting placeholder
+            ratingBox.style.display = 'block';
+            ratingBox.innerHTML = `
+              <div style="background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 24px; padding: 40px 32px; border: 2px dashed rgba(255,210,63,0.5); text-align:center; position: relative; overflow: hidden; box-shadow: 0 4px 16px rgba(255,210,63,0.08);">
+                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.04; pointer-events:none;">🌟</div>
+                <div style="font-size: 3rem; margin-bottom: 12px; animation: float 3s ease-in-out infinite;">⏳</div>
+                <h4 style="color: #92400e; font-family: 'Cinzel Decorative', cursive; font-size: 1.1rem; margin-bottom: 8px; letter-spacing: 1.5px; text-transform: uppercase;">Rating Opens Soon</h4>
+                <p style="color: #78716c; font-size: 0.9rem; max-width: 400px; margin: 0 auto;">Public rating will be available when the next performer takes the stage. Stay tuned!</p>
+              </div>
+            `;
+          } else {
+            ratingBox.style.display = 'none';
+            ratingBox.innerHTML = '';
+          }
+        }
+
+        // Auto-sync active registration form if open
+        if (suSelectedEventId && !document.getElementById('suStep3').classList.contains('hidden')) {
+          renderDynamicForm(suSelectedEventId, true);
+        }
+
+        // Hide loader when first data arrives
+        const pl = document.getElementById("pageLoader");
+        if (pl && pl.style.opacity !== '0') {
+          pl.style.opacity = '0';
+          setTimeout(() => pl.style.visibility = 'hidden', 800);
+        }
+      });
+    }
+
+    function generateParticipantCertificate(p) {
+      const overlay = document.getElementById('certOverlay');
+      const content = document.getElementById('certContent');
+      if (!overlay || !content) return;
+
+      const certNo = `KNSDC-${Date.now().toString().slice(-6)}-${p.name.slice(0, 2).toUpperCase()}`;
+      const todayStr = new Date().toISOString().split('T')[0];
+      const event = (typeof EVENTS !== 'undefined' && EVENTS.length > 0) ? (EVENTS.find(e => e.date === todayStr) || EVENTS[0]) : { name: "Cultural Festival", disp: new Date().toLocaleDateString() };
+
+      // Retrieve dynamic Category Name
+      let catName = p.cat || p.category || 'Participant';
+      if (typeof syncEngine !== 'undefined') {
+        const state = syncEngine.getData();
+        if (state) {
+          // Find the actual participant record by ID or name to get their registered category ID
+          const realP = state.participants?.find(x => x.id === p.id || (p.name && x.name.toLowerCase() === p.name.toLowerCase()));
+          const actualCatId = realP ? realP.catId : p.catId;
+          const actualEvId = realP ? realP.eventId : (p.eventId || state.activeEventId);
+          
+          const ev = EVENTS?.find(e => String(e.id) === String(actualEvId));
+          const categories = ev ? (ev.categories || []) : (state.categories || []);
+          const cat = categories.find(c => String(c.id) === String(actualCatId));
+          if (cat) {
+            catName = cat.name;
+          } else if (realP && realP.category) {
+            catName = realP.category;
+          }
+        }
+      }
+
+      let secSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">Secretary</div>`;
+      let presSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">President</div>`;
+      let judgeSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-bottom:10px; font-size:0.75rem;">Judge</div>`;
+
+      let activeEv = event;
+      if (typeof syncEngine !== 'undefined') {
+        const state = syncEngine.getData();
+        if (state) {
+          const realP = state.participants?.find(x => x.id === p.id || (p.name && x.name.toLowerCase() === p.name.toLowerCase()));
+          const actualEvId = realP ? realP.eventId : (p.eventId || state.activeEventId);
+          const ev = (typeof EVENTS !== 'undefined') ? EVENTS.find(e => String(e.id) === String(actualEvId)) : null;
+          if (ev) activeEv = ev;
+        }
+      }
+
+      if (activeEv && activeEv.switchStates && activeEv.switchStates.certificateSetup) {
+        const setup = activeEv.switchStates.certificateSetup;
+        if (setup.secretary) {
+          secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
+                          <img src="${setup.secretary}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                          <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Secretary</div>
+                        </div>`;
+        }
+        if (setup.president) {
+          presSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
+                          <img src="${setup.president}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                          <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">President</div>
+                        </div>`;
+        }
+        if (setup.judge) {
+          judgeSigHtml = `<div style="text-align:center;">
+                            <div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-bottom:10px;">
+                              <img src="${setup.judge}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                              <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Judge</div>
+                            </div>
+                          </div>`;
+        }
+      }
+
+      content.innerHTML = `
+        <div style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:30px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+          <!-- Top Logo -->
+          <div style="margin-bottom:15px;">
+            <img src="logo.jpg" style="height:100px; width:auto; border-radius:50%; box-shadow:0 4px 10px rgba(0,0,0,0.15);" alt="KNS Logo">
           </div>
+
+          <div style="font-family:'Cinzel Decorative', cursive; font-size:1.1rem; color:#1A237E; margin-bottom:5px; font-weight:800;">Kalikapur Nabin Sangha</div>
+          <div style="font-size:2rem; font-weight:900; color:#1A237E; margin-bottom:15px; font-family:'Playfair Display', serif; text-transform:uppercase; letter-spacing:1px;">Certificate of Participation</div>
+          
+          <div style="margin:10px 0; font-size:1.1rem; color:#555;">This is to certify that</div>
+          <div style="font-size:2.5rem; font-weight:900; color:#FF6B35; font-family:'Playfair Display', serif; border-bottom:2px solid #eee; display:inline-block; padding:0 40px; margin-bottom:15px; letter-spacing:0.5px;">${p.name}</div>
+          
+          <div style="margin:10px 0; font-size:1.1rem; color:#333; line-height:1.6;">
+            Participant ID: <strong style="color:#1A237E;">${p.id || 'N/A'}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; Category: <strong style="color:#1A237E;">${catName}</strong> <br>
+            has successfully participated in the <br>
+            <strong style="color:#1A237E; font-size:1.2rem;">${event.name}</strong> <br>
+            held on <strong style="color:#444;">${event.disp}</strong> at <strong>Kalikapur, Kolkata</strong>.
+          </div>
+
+          <div style="margin-top:35px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 40px;">
+            <div style="display:flex; gap:50px; align-items:flex-end; text-align:center;">
+              <div>
+                ${secSigHtml}
+              </div>
+              <div>
+                ${presSigHtml}
+              </div>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;">
+              ${judgeSigHtml}
+              <div>
+                <div style="font-size:0.65rem; color:#777; margin-bottom:5px; font-weight:600;">Certificate No: ${certNo}</div>
+                <div style="background:linear-gradient(135deg, #1A237E, #3949AB); color:#fff; padding:5px 14px; font-size:0.75rem; font-weight:800; border-radius:6px; letter-spacing:1.5px; box-shadow:0 2px 4px rgba(0,0,0,0.15);">KNSDC OFFICIAL</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Power By Footer -->
+          <div style="margin-top:25px; font-size:0.65rem; color:#9ca3af; text-transform:uppercase; letter-spacing:2px; font-weight:700;">
+            Powered by Kalikapur Nabin Sangha
+          </div>
+          
+          <!-- Logo Watermark -->
+          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:15rem; opacity:0.02; pointer-events:none; font-weight:900;">KNS</div>
+        </div>
+      `;
+
+      overlay.classList.remove('hidden');
+
+      const downloadBtn = document.getElementById('certDownloadBtn');
+      if (downloadBtn) {
+        downloadBtn.onclick = () => {
+          printCert();
+          showToast("Ready to Save", "Select 'Save as PDF' in the print destination to download your certificate.", "📥");
+        };
+      }
+    }
+
+    function printCert() {
+      const content = document.getElementById('certContent').innerHTML;
+      const win = window.open('', '', 'height=800,width=1200');
+      if (!win) {
+        showToast("Popup Blocked", "Please allow popups to view and print your certificate.", "⚠️");
+        return;
+      }
+      win.document.write(`
+        <html>
+          <head>
+            <title>KNSDC Certificate</title>
+            <style>
+              @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); 
+              body { margin:0; padding:20px; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #e2e8f0; }
+              #cert-wrapper { width: 1056px; height: 750px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; }
+              #controls { display: flex; gap: 15px; margin-bottom: 20px; }
+              .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; display: flex; align-items: center; gap: 8px; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s; }
+              .btn:active { opacity: 0.8; }
+              .btn-print { background: #7c3aed; }
+              .btn-jpg { background: #ea580c; }
+              @media print {
+                @page { size: landscape; margin: 0; }
+                body { padding: 0; background: white; align-items: flex-start; justify-content: flex-start; }
+                #controls { display: none !important; }
+                #cert-wrapper { width: 100%; height: 100%; box-shadow: none; margin: 0; }
+              }
+            </style>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+          </head>
+          <body>
+            <div id="controls">
+              <button class="btn btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+              <button class="btn btn-jpg" onclick="downloadJPG()">🖼️ Download JPG</button>
+            </div>
+            <div id="cert-wrapper">
+              ${content}
+            </div>
+            <script>
+              function downloadJPG() {
+                const btn = document.querySelector('.btn-jpg');
+                btn.textContent = 'Generating...';
+                btn.disabled = true;
+                
+                html2canvas(document.getElementById('cert-wrapper'), { scale: 2, useCORS: true }).then(canvas => {
+                  const link = document.createElement('a');
+                  link.download = 'Participant_Certificate.jpg';
+                  link.href = canvas.toDataURL('image/jpeg', 0.95);
+                  link.click();
+                  
+                  btn.textContent = '🖼️ Download JPG';
+                  btn.disabled = false;
+                }).catch(err => {
+                  alert('Failed to generate JPG.');
+                  btn.textContent = '🖼️ Download JPG';
+                  btn.disabled = false;
+                });
+              }
+            <\/script>
+          </body>
+        </html>
+      `);
+      win.document.close();
+    }
+
+    function downloadData(type) {
+      const state = syncEngine.getData();
+      const activeEv = (EVENTS || []).find(e => String(e.id) === String(state.activeEventId));
+      const eventName = activeEv?.name || 'KNSDC 2026';
+      const orgName = 'KALIKAPUR NABIN SANGHA DC';
+      const publishDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+      const publishTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      const participants = state.participants || [];
+      const LIVE_PARTICIPANTS = participants.filter(p => String(p.eventId) === String(state.activeEventId));
+
+      const categories = state.categories || activeEv?.categories || [];
+      const catMap = {};
+      categories.forEach(c => {
+        catMap[c.id] = c.name;
+      });
+
+      // Helper function to get J | P score object for a given round
+      const getRoundJPObj = (p, rName) => {
+        const publicVotes = state.publicVotes || {};
+        const vKey = p.id + '_' + rName;
+        const vArr = publicVotes[vKey] || [];
+        const vCount = vArr.length;
+        const vTotal = vCount > 0 ? vArr.reduce((a, v) => a + v.score, 0) : 0;
+
+        const scoresObj = (p.round === rName) ? (p.scores || {}) : ((p.roundScores && p.roundScores[rName]) || {});
+        let judgeTotal = 0;
+        let hasScores = false;
+        Object.values(scoresObj).forEach(jScores => {
+          Object.values(jScores).forEach(val => {
+            judgeTotal += (Number(val) || 0);
+            hasScores = true;
+          });
+        });
+
+        const roundsOrderList = ['audition', 'qualified', 'semifinal', 'final'];
+        const currentIdx = roundsOrderList.indexOf(p.round || 'audition');
+        const targetIdx = roundsOrderList.indexOf(rName);
+
+        let judgeStr = '—';
+        let hasJudge = false;
+        if (hasScores) {
+          judgeStr = String(judgeTotal);
+          hasJudge = true;
+        } else if (currentIdx >= targetIdx) {
+          judgeStr = '0';
+          hasJudge = true;
+        }
+
+        let pubStr = '—';
+        let hasPub = false;
+        if (vCount > 0) {
+          pubStr = `🌟${vTotal}`;
+          hasPub = true;
+        } else if (currentIdx >= targetIdx) {
+          pubStr = '🌟0';
+          hasPub = true;
+        }
+
+        return { judgeStr, pubStr, hasJudge, hasPub };
+      };
+
+      // Helper to compute Overall Rating
+      const getOverallRatingStr = (p) => {
+        const publicVotes = state.publicVotes || {};
+        let overallVotes = [];
+        ['audition', 'qualified', 'semifinal', 'final'].forEach(rnd => {
+          const vKey = p.id + '_' + rnd;
+          if (publicVotes[vKey]) {
+            overallVotes = overallVotes.concat(publicVotes[vKey]);
+          }
+        });
+        const totalCount = overallVotes.length;
+        const totalSum = overallVotes.reduce((a, v) => a + v.score, 0);
+        return totalCount > 0 ? `🌟 ${totalSum} (${totalCount})` : '—';
+      };
+
+      const roundOrderMap = { 'final': 4, 'semifinal': 3, 'qualified': 2, 'audition': 1 };
+      const getRoundScoreVal = (p, rName) => {
+        const scoresObj = (p.round === rName) ? (p.scores || {}) : ((p.roundScores && p.roundScores[rName]) || {});
+        let total = 0;
+        Object.values(scoresObj).forEach(jScores => {
+          Object.values(jScores).forEach(val => {
+            total += (Number(val) || 0);
+          });
+        });
+        return total;
+      };
+
+      if (type === 'results-pdf') {
+        if (LIVE_PARTICIPANTS.length === 0) { showToast("No Results", "No results available yet.", "⚠️"); return; }
+
+        const roundOrder = ['audition', 'qualified', 'semifinal', 'final'];
+        const roundLabels = { audition: 'Audition', qualified: 'Qualified', semifinal: 'Semifinal', final: 'Final' };
+        
+        const grouped = { audition: [], qualified: [], semifinal: [], final: [] };
+        LIVE_PARTICIPANTS.forEach(p => {
+          const rnd = p.round || 'audition';
+          if (grouped[rnd]) {
+            grouped[rnd].push(p);
+          }
+        });
+
+        // Sort each round's list by their score in that round
+        roundOrder.forEach(rnd => {
+          grouped[rnd].sort((a, b) => {
+            const scoreA = getRoundScoreVal(a, rnd);
+            const scoreB = getRoundScoreVal(b, rnd);
+            return scoreB - scoreA;
+          });
+        });
+
+        generatePDFRoundwise(eventName, orgName, 'Full Results — All Rounds', publishDate, publishTime, roundOrder, roundLabels, grouped, getRoundJPObj, getOverallRatingStr, categories);
+
+      } else if (type === 'category-sheet') {
+        if (LIVE_PARTICIPANTS.length === 0) { showToast("No Results", "No results available yet.", "⚠️"); return; }
+
+        // Group by category name
+        const groupedByCat = {};
+        LIVE_PARTICIPANTS.forEach(p => {
+          const catName = catMap[p.catId] || 'Uncategorized';
+          if (!groupedByCat[catName]) groupedByCat[catName] = [];
+          groupedByCat[catName].push(p);
+        });
+
+        const pages = Object.keys(groupedByCat).sort().map(catName => {
+          const parts = groupedByCat[catName];
+          parts.sort((a, b) => {
+            const rA = roundOrderMap[a.round] || 0;
+            const rB = roundOrderMap[b.round] || 0;
+            if (rA !== rB) return rB - rA;
+            const scoreA = getRoundScoreVal(a, a.round);
+            const scoreB = getRoundScoreVal(b, b.round);
+            return scoreB - scoreA;
+          });
+          return {
+            cat: catName,
+            participants: parts
+          };
+        });
+
+        generatePDFCategoryPages(eventName, orgName, 'Category-wise Sheet', publishDate, publishTime, pages, getRoundJPObj, getOverallRatingStr);
+
+      } else if (type === 'final-result') {
+        const finalists = LIVE_PARTICIPANTS.filter(p => p.round === 'final');
+        if (finalists.length === 0) { showToast("No Finalists", "No final round results available yet.", "⚠️"); return; }
+
+        const scoredFinalists = finalists.map(p => {
+          return { ...p, finalScore: getRoundScoreVal(p, 'final') };
+        }).sort((a, b) => b.finalScore - a.finalScore);
+
+        generatePDFFinalResult(eventName, orgName, 'Live Rankings ⭐ Final Leaderboard', publishDate, publishTime, scoredFinalists, categories);
+
+      } else if (type === 'promotion') {
+        const grouped = {
+          qualified: [],
+          semifinal: [],
+          final: []
+        };
+
+        LIVE_PARTICIPANTS.forEach(p => {
+          const rnd = p.round || 'audition';
+          const catName = catMap[p.catId] || 'Participant';
+          
+          if (rnd === 'qualified' || rnd === 'semifinal' || rnd === 'final') {
+            grouped.qualified.push({ ID: p.id, Name: p.name, Category: catName });
+          }
+          if (rnd === 'semifinal' || rnd === 'final') {
+            grouped.semifinal.push({ ID: p.id, Name: p.name, Category: catName });
+          }
+          if (rnd === 'final') {
+            grouped.final.push({ ID: p.id, Name: p.name, Category: catName });
+          }
+        });
+
+        const sortByID = (a, b) => String(a.ID).localeCompare(String(b.ID), undefined, { numeric: true, sensitivity: 'base' });
+        grouped.qualified.sort(sortByID);
+        grouped.semifinal.sort(sortByID);
+        grouped.final.sort(sortByID);
+
+        const roundOrder = ['qualified', 'semifinal', 'final'];
+        generatePDFPromotion(eventName, orgName, 'Official Promotion List', publishDate, publishTime, roundOrder, grouped);
+      }
+    }
+
+    function generatePDFReport(eventName, orgName, title, date, time, headers, rows) {
+      const win = window.open('', '_blank', 'height=800,width=900');
+      win.document.write(`<!DOCTYPE html><html><head><title>${title} — ${eventName}</title>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+      <style>
+        @page { margin: 20mm 15mm; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Outfit', sans-serif; color: #1E293B; padding: 40px; position: relative; }
+        .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 6rem; font-weight: 900; color: rgba(124,58,237,0.04); font-family: 'Playfair Display', serif; pointer-events: none; z-index: 0; white-space: nowrap; letter-spacing: 8px; }
+        .header { text-align: center; border-bottom: 3px solid #4F46E5; padding-bottom: 20px; margin-bottom: 30px; position: relative; z-index: 1; }
+        .logo-row { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 12px; }
+        .logo-img { width: 55px; height: 55px; border-radius: 50%; border: 3px solid #FF6B35; object-fit: cover; }
+        .event-name { font-family: 'Playfair Display', serif; font-size: 26px; font-weight: 900; color: #1A237E; }
+        .org-name { font-size: 12px; color: #64748B; letter-spacing: 3px; text-transform: uppercase; font-weight: 700; }
+        .doc-title { font-size: 18px; font-weight: 800; color: #4F46E5; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .pub-info { font-size: 11px; color: #94A3B8; margin-top: 6px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; position: relative; z-index: 1; }
+        th { background: linear-gradient(135deg, #4F46E5, #6366F1); color: #fff; padding: 12px 10px; text-align: left; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+        th:first-child { border-radius: 8px 0 0 0; }
+        th:last-child { border-radius: 0 8px 0 0; }
+        td { padding: 10px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+        tr:nth-child(even) { background: #f8fafc; }
+        tr:hover { background: rgba(99,102,241,0.04); }
+        .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94A3B8; border-top: 1px solid #e2e8f0; padding-top: 15px; position: relative; z-index: 1; }
+        .footer strong { color: #4F46E5; }
+        @media print { .watermark { position: fixed; } .no-print { display: none; } }
+      </style></head><body>
+      <div class="watermark">${orgName}</div>
+      <div class="header">
+        <div class="logo-row">
+          <img src="logo.jpg" class="logo-img" onerror="this.style.display='none'" />
           <div>
-            ${presSigHtml}
+            <div class="event-name">${eventName}</div>
+            <div class="org-name">${orgName}</div>
+          </div>
+        </div>
+        <div class="doc-title">📊 ${title}</div>
+        <div class="pub-info">Published on ${date} at ${time}</div>
+      </div>
+      <table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr>${r.map(v => `<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      <div class="footer">
+        <strong>${eventName}</strong> — ${orgName}<br>
+        Generated on ${date} at ${time} · This is a computer-generated document
+      </div>
+      <script>setTimeout(() => window.print(), 600);<\/script>
+      </body></html>`);
+      win.document.close();
+    }
+
+    const _pdfCSS = `
+      @page { margin: 18mm 14mm; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: 'Outfit', sans-serif; color: #1E293B; padding: 32px; position: relative; }
+      .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-35deg); font-size: 5.5rem; font-weight: 900; color: rgba(124,58,237,0.04); pointer-events: none; z-index: 0; white-space: nowrap; letter-spacing: 8px; }
+      .header { text-align: center; border-bottom: 3px solid #4F46E5; padding-bottom: 18px; margin-bottom: 24px; position: relative; z-index: 1; }
+      .logo-row { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 10px; }
+      .logo-img { width: 52px; height: 52px; border-radius: 50%; border: 3px solid #FF6B35; object-fit: cover; }
+      .event-name { font-size: 24px; font-weight: 900; color: #1A237E; }
+      .org-name { font-size: 11px; color: #64748B; letter-spacing: 3px; text-transform: uppercase; font-weight: 700; }
+      .doc-title { font-size: 16px; font-weight: 800; color: #4F46E5; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px; }
+      .pub-info { font-size: 10px; color: #94A3B8; margin-top: 5px; }
+      .round-section { margin-bottom: 28px; position: relative; z-index: 1; }
+      .round-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 10px 16px; background: linear-gradient(135deg,#f8fafc,#f1f5f9); border-radius: 10px; border-left: 4px solid #4F46E5; }
+      .round-name { font-size: 14px; font-weight: 900; color: #4F46E5; }
+      .round-count { font-size: 11px; color: #94A3B8; font-weight: 600; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: linear-gradient(135deg,#4F46E5,#6366F1); color: #fff; padding: 10px 9px; text-align: left; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+      th:first-child { border-radius: 7px 0 0 0; } th:last-child { border-radius: 0 7px 0 0; }
+      td { padding: 9px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+      tr:nth-child(even) { background: #f8fafc; }
+      .cat-page { page-break-after: always; position: relative; z-index: 1; }
+      .cat-page:last-child { page-break-after: auto; }
+      .cat-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 14px 20px; background: linear-gradient(135deg,#EDE9FE,#F5F3FF); border-radius: 14px; border-left: 5px solid #7C3AED; }
+      .cat-name { font-size: 18px; font-weight: 900; color: #4F46E5; }
+      .cat-count { font-size: 11px; color: #7C3AED; font-weight: 600; margin-top: 2px; }
+      .footer { margin-top: 36px; text-align: center; font-size: 10px; color: #94A3B8; border-top: 1px solid #e2e8f0; padding-top: 14px; position: relative; z-index: 1; }
+      .footer strong { color: #4F46E5; }
+      .badge { display: inline-block; padding: 3px 8px; border-radius: 30px; font-size: 10px; font-weight: 800; text-transform: uppercase; text-align: center; }
+      .badge.b-green { background: rgba(16,185,129,0.08); color: #059669; border: 1px solid rgba(16,185,129,0.15); }
+      .badge.b-amber { background: rgba(245,158,11,0.08); color: #D97706; border: 1px solid rgba(245,158,11,0.15); }
+      .badge.b-gray { background: rgba(100,116,139,0.08); color: #475569; border: 1px solid rgba(100,116,139,0.15); }
+      .jp-box { display: flex; align-items: center; justify-content: center; gap: 6px; }
+      .j-val { color: #B45309; font-weight: 700; font-family: monospace; font-size: 12px; }
+      .jp-sep { color: #CBD5E1; }
+      .p-val { color: #6D28D9; font-weight: 600; font-family: monospace; font-size: 11px; }
+      .part-name { font-weight: 800; color: #1E293B; font-size: 12.5px; }
+      .part-id { font-size: 10px; color: #64748B; font-family: monospace; font-weight: 600; margin-top: 2px; }
+      @media print { .watermark { position: fixed; } }
+    `;
+
+    function _pdfHeader(eventName, orgName, title, date, time) {
+      return `<div class="watermark">${orgName}</div>
+      <div class="header">
+        <div class="logo-row">
+          <img src="logo.jpg" class="logo-img" onerror="this.style.display='none'" />
+          <div>
+            <div class="event-name">${eventName}</div>
+            <div class="org-name">${orgName}</div>
+          </div>
+        </div>
+        <div class="doc-title">📊 ${title}</div>
+        <div class="pub-info">Published on ${date} at ${time}</div>
+      </div>`;
+    }
+
+    function _pdfFooter(eventName, orgName, date, time) {
+      return `<div class="footer"><strong>${eventName}</strong> — ${orgName}<br>Generated on ${date} at ${time} · Computer-generated document</div>`;
+    }
+
+    // Full Results PDF — grouped by round with detailed J | P grid
+    function generatePDFRoundwise(eventName, orgName, title, date, time, roundOrder, roundLabels, grouped, getRoundJP, getOverallRating, categories) {
+      const win = window.open('', '_blank', 'height=800,width=900');
+      const roundEmoji = { audition: '🎬', qualified: '✅', semifinal: '⭐', final: '🏆' };
+      let body = '';
+      
+      roundOrder.forEach(rnd => {
+        const list = grouped[rnd];
+        if (!list || !list.length) return;
+        
+        let rowsHtml = list.map((p, i) => {
+          const cat = categories.find(c => String(c.id) === String(p.catId));
+          const catLabel = cat ? `<span class="badge ${cat.color}">${cat.name}</span>` : '—';
+          
+          // Audition JP
+          const aud = getRoundJP(p, 'audition');
+          const audHtml = `<div class="jp-box"><span class="j-val">${aud.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${aud.pubStr}</span></div>`;
+          
+          // Qualified JP
+          const qual = getRoundJP(p, 'qualified');
+          const qualHtml = `<div class="jp-box"><span class="j-val">${qual.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${qual.pubStr}</span></div>`;
+          
+          // Semifinal JP
+          const semi = getRoundJP(p, 'semifinal');
+          const semiHtml = `<div class="jp-box"><span class="j-val">${semi.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${semi.pubStr}</span></div>`;
+          
+          // Final JP
+          const fin = getRoundJP(p, 'final');
+          const finHtml = `<div class="jp-box"><span class="j-val">${fin.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${fin.pubStr}</span></div>`;
+
+          const statusBadge = `<span class="badge ${p.stageStatus==='done'?'b-green':p.stageStatus==='on-stage'?'b-amber':'b-gray'}">${p.stageStatus}</span>`;
+          const overallRating = getOverallRating(p);
+
+          return `<tr>
+            <td style="color:var(--text-muted);font-family:var(--fm)">${i + 1}</td>
+            <td>
+              <div class="part-name">${p.name}</div>
+              <div class="part-id">${p.id}</div>
+            </td>
+            <td>${catLabel}</td>
+            <td style="text-align:center">${audHtml}</td>
+            <td style="text-align:center">${qualHtml}</td>
+            <td style="text-align:center">${semiHtml}</td>
+            <td style="text-align:center">${finHtml}</td>
+            <td style="text-align:center">${statusBadge}</td>
+            <td style="text-align:center;font-weight:bold;color:var(--purple)">${overallRating}</td>
+          </tr>`;
+        }).join('');
+
+        body += `<div class="round-section" style="margin-bottom: 35px;">
+          <div class="round-header">
+            <div class="round-name">${roundEmoji[rnd] || '🎯'} ${roundLabels[rnd] || rnd.toUpperCase()}</div>
+            <div class="round-count">${list.length} participant${list.length > 1 ? 's' : ''}</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Participant</th>
+                <th>Category</th>
+                <th style="text-align:center">Audition (J | P)</th>
+                <th style="text-align:center">Qualified (J | P)</th>
+                <th style="text-align:center">Semifinal (J | P)</th>
+                <th style="text-align:center">Final (J | P)</th>
+                <th style="text-align:center">Status</th>
+                <th style="text-align:center">🌟 Total Rating</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+      });
+      
+      if (!body) body = '<p style="text-align:center;color:#94A3B8;padding:30px;">No data available.</p>';
+      win.document.write(`<!DOCTYPE html><html><head><title>${title} — ${eventName}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+        <style>${_pdfCSS}</style></head><body>
+        ${_pdfHeader(eventName, orgName, title, date, time)}
+        ${body}
+        ${_pdfFooter(eventName, orgName, date, time)}
+        <script>setTimeout(() => window.print(), 600);<\/script>
+      </body></html>`);
+      win.document.close();
+    }
+
+    // Category-wise Sheet — one page per category with detailed J | P grid
+    function generatePDFCategoryPages(eventName, orgName, title, date, time, pages, getRoundJP, getOverallRating) {
+      const win = window.open('', '_blank', 'height=800,width=900');
+      let body = pages.map((pg, pi) => {
+        let rowsHtml = pg.participants.map((p, idx) => {
+          // Audition JP
+          const aud = getRoundJP(p, 'audition');
+          const audHtml = `<div class="jp-box"><span class="j-val">${aud.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${aud.pubStr}</span></div>`;
+          
+          // Qualified JP
+          const qual = getRoundJP(p, 'qualified');
+          const qualHtml = `<div class="jp-box"><span class="j-val">${qual.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${qual.pubStr}</span></div>`;
+          
+          // Semifinal JP
+          const semi = getRoundJP(p, 'semifinal');
+          const semiHtml = `<div class="jp-box"><span class="j-val">${semi.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${semi.pubStr}</span></div>`;
+          
+          // Final JP
+          const fin = getRoundJP(p, 'final');
+          const finHtml = `<div class="jp-box"><span class="j-val">${fin.judgeStr}</span><span class="jp-sep">|</span><span class="p-val">${fin.pubStr}</span></div>`;
+
+          const statusBadge = `<span class="badge ${p.stageStatus==='done'?'b-green':p.stageStatus==='on-stage'?'b-amber':'b-gray'}">${p.stageStatus}</span>`;
+          const overallRating = getOverallRating(p);
+
+          return `<tr>
+            <td style="color:var(--text-muted);font-family:var(--fm)">${idx + 1}</td>
+            <td>
+              <div class="part-name">${p.name}</div>
+              <div class="part-id">${p.id}</div>
+            </td>
+            <td style="text-align:center">${audHtml}</td>
+            <td style="text-align:center">${qualHtml}</td>
+            <td style="text-align:center">${semiHtml}</td>
+            <td style="text-align:center">${finHtml}</td>
+            <td style="text-align:center">${statusBadge}</td>
+            <td style="text-align:center;font-weight:bold;color:var(--purple)">${overallRating}</td>
+          </tr>`;
+        }).join('');
+
+        return `
+        <div class="cat-page">
+          ${pi === 0 ? _pdfHeader(eventName, orgName, title, date, time) : `<div style="margin-bottom:20px;font-size:10px;color:#94A3B8;text-align:center;">${eventName} · ${orgName} · ${title}</div>`}
+          <div class="cat-header">
+            <div>
+              <div class="cat-name">📂 Category: ${pg.cat}</div>
+              <div class="cat-count">${pg.participants.length} participant${pg.participants.length > 1 ? 's' : ''}</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Participant</th>
+                <th style="text-align:center">Audition (J | P)</th>
+                <th style="text-align:center">Qualified (J | P)</th>
+                <th style="text-align:center">Semifinal (J | P)</th>
+                <th style="text-align:center">Final (J | P)</th>
+                <th style="text-align:center">Status</th>
+                <th style="text-align:center">🌟 Total Rating</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          ${pi === pages.length - 1 ? _pdfFooter(eventName, orgName, date, time) : ''}
+        </div>`;
+      }).join('');
+
+      win.document.write(`<!DOCTYPE html><html><head><title>${title} — ${eventName}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+        <style>${_pdfCSS}</style></head><body>
+        ${body}
+        <script>setTimeout(() => window.print(), 600);<\/script>
+      </body></html>`);
+      win.document.close();
+    }
+
+    // Final Leaderboard Result PDF — with a beautiful podium grouped category-wise
+    function generatePDFFinalResult(eventName, orgName, title, date, time, scoredFinalists, categories) {
+      const win = window.open('', '_blank', 'height=800,width=900');
+      
+      // Group scoredFinalists by category
+      const groupedByCat = {};
+      scoredFinalists.forEach(p => {
+        const cat = categories.find(c => String(c.id) === String(p.catId));
+        const catName = cat ? cat.name : 'Uncategorized';
+        if (!groupedByCat[catName]) groupedByCat[catName] = [];
+        groupedByCat[catName].push(p);
+      });
+
+      let body = '';
+      const catNames = Object.keys(groupedByCat).sort();
+
+      catNames.forEach((catName, pi) => {
+        const list = groupedByCat[catName];
+        const podiumTop3 = list.slice(0, 3);
+        
+        let podiumHtml = '';
+        if (podiumTop3.length > 0) {
+          podiumHtml = `
+          <div class="podium-container">
+            <!-- 2nd Place -->
+            ${podiumTop3[1] ? `
+            <div class="podium-col col-2nd">
+              <div class="podium-card card-2nd">
+                <div class="podium-crown">🥈</div>
+                <div class="podium-name">${podiumTop3[1].name}</div>
+                <div class="podium-score">${podiumTop3[1].finalScore} pts</div>
+                <div class="podium-id">${podiumTop3[1].id}</div>
+              </div>
+              <div class="podium-block block-2nd">
+                <div class="podium-number">2</div>
+              </div>
+            </div>
+            ` : `<div class="podium-col col-placeholder"></div>`}
+
+            <!-- 1st Place -->
+            ${podiumTop3[0] ? `
+            <div class="podium-col col-1st">
+              <div class="podium-card card-1st">
+                <div class="podium-crown">🥇</div>
+                <div class="podium-name">${podiumTop3[0].name}</div>
+                <div class="podium-score">${podiumTop3[0].finalScore} pts</div>
+                <div class="podium-id">${podiumTop3[0].id}</div>
+              </div>
+              <div class="podium-block block-1st">
+                <div class="podium-number">1</div>
+              </div>
+            </div>
+            ` : ''}
+
+            <!-- 3rd Place -->
+            ${podiumTop3[2] ? `
+            <div class="podium-col col-3rd">
+              <div class="podium-card card-3rd">
+                <div class="podium-crown">🥉</div>
+                <div class="podium-name">${podiumTop3[2].name}</div>
+                <div class="podium-score">${podiumTop3[2].finalScore} pts</div>
+                <div class="podium-id">${podiumTop3[2].id}</div>
+              </div>
+              <div class="podium-block block-3rd">
+                <div class="podium-number">3</div>
+              </div>
+            </div>
+            ` : `<div class="podium-col col-placeholder"></div>`}
+          </div>`;
+        }
+
+        let tableHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th style="width:100px">Rank</th>
+              <th>Participant ID</th>
+              <th>Name</th>
+              <th style="text-align:right">Final Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((p, i) => {
+              return `
+                <tr>
+                  <td>
+                    <span class="badge ${i < 3 ? 'b-amber' : 'b-gray'}" style="font-size: 10px; padding: 3px 8px;">
+                      ${i === 0 ? '🏆 1st' : i === 1 ? '🥈 2nd' : i === 2 ? '🥉 3rd' : `#${i + 1}`}
+                    </span>
+                  </td>
+                  <td style="font-family: monospace; font-weight: bold; color: #475569;">${p.id}</td>
+                  <td><strong>${p.name}</strong></td>
+                  <td style="text-align:right; font-weight:800; color:#B45309; font-size:13px;">${p.finalScore}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>`;
+
+        body += `
+        <div class="cat-page">
+          ${pi === 0 ? _pdfHeader(eventName, orgName, title, date, time) : `<div style="margin-bottom:20px;font-size:10px;color:#94A3B8;text-align:center;">${eventName} · ${orgName} · ${title}</div>`}
+          <div class="cat-header">
+            <div>
+              <div class="cat-name">📂 Category: ${catName}</div>
+              <div class="cat-count">${list.length} finalist${list.length > 1 ? 's' : ''}</div>
+            </div>
+          </div>
+          ${podiumHtml}
+          ${tableHtml}
+          ${pi === catNames.length - 1 ? _pdfFooter(eventName, orgName, date, time) : ''}
+        </div>`;
+      });
+
+      win.document.write(`<!DOCTYPE html><html><head><title>${title} — ${eventName}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+        <style>
+          ${_pdfCSS}
+          .podium-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            gap: 20px;
+            margin: 30px auto;
+            max-width: 600px;
+            height: 240px;
+          }
+          .podium-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            flex: 1;
+          }
+          .col-placeholder {
+            visibility: hidden;
+          }
+          .podium-card {
+            text-align: center;
+            margin-bottom: 8px;
+            width: 100%;
+          }
+          .podium-crown {
+            font-size: 22px;
+            margin-bottom: 2px;
+          }
+          .podium-name {
+            font-weight: 800;
+            font-size: 13px;
+            color: #1E293B;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px;
+            margin: 0 auto;
+          }
+          .podium-score {
+            font-weight: 900;
+            font-size: 13px;
+            margin-top: 1px;
+          }
+          .card-1st .podium-score { color: #D97706; }
+          .card-2nd .podium-score { color: #2563EB; }
+          .card-3rd .podium-score { color: #0891B2; }
+          .podium-id {
+            font-size: 10px;
+            color: #64748B;
+            font-family: monospace;
+          }
+          .podium-block {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px 8px 0 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+          }
+          .block-1st {
+            height: 110px;
+            background: linear-gradient(135deg, #FCD34D, #F59E0B);
+            border: 1px solid #D97706;
+          }
+          .block-2nd {
+            height: 85px;
+            background: linear-gradient(135deg, #93C5FD, #3B82F6);
+            border: 1px solid #2563EB;
+          }
+          .block-3rd {
+            height: 65px;
+            background: linear-gradient(135deg, #67E8F9, #06B6D4);
+            border: 1px solid #0891B2;
+          }
+          .podium-number {
+            font-size: 28px;
+            font-weight: 900;
+            color: #FFFFFF;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+          }
+        </style></head><body>
+        ${body}
+        <script>setTimeout(() => window.print(), 600);<\/script>
+      </body></html>`);
+      win.document.close();
+    }
+
+    // Promotion List PDF
+    function generatePDFPromotion(eventName, orgName, title, date, time, roundOrder, grouped) {
+      const roundLabels = { audition: 'Audition', qualified: 'Qualified', semifinal: 'Semi-Final', final: 'Final' };
+      const win = window.open('', '_blank', 'height=800,width=900');
+      win.document.write(`<!DOCTYPE html><html><head><title>${title} — ${eventName}</title>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+      <style>
+        @page { margin: 20mm 15mm; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Outfit', sans-serif; color: #1E293B; padding: 40px; position: relative; }
+        .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 6rem; font-weight: 900; color: rgba(124,58,237,0.04); font-family: 'Playfair Display', serif; pointer-events: none; z-index: 0; white-space: nowrap; letter-spacing: 8px; }
+        .header { text-align: center; border-bottom: 3px solid #4F46E5; padding-bottom: 20px; margin-bottom: 30px; position: relative; z-index: 1; }
+        .logo-row { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 12px; }
+        .logo-img { width: 55px; height: 55px; border-radius: 50%; border: 3px solid #FF6B35; object-fit: cover; }
+        .event-name { font-family: 'Playfair Display', serif; font-size: 26px; font-weight: 900; color: #1A237E; }
+        .org-name { font-size: 12px; color: #64748B; letter-spacing: 3px; text-transform: uppercase; font-weight: 700; }
+        .doc-title { font-size: 18px; font-weight: 800; color: #4F46E5; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .pub-info { font-size: 11px; color: #94A3B8; margin-top: 6px; }
+        .round-section { margin-bottom: 30px; position: relative; z-index: 1; }
+        .round-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 12px 18px; background: linear-gradient(135deg, #f8fafc, #f1f5f9); border-radius: 12px; border-left: 4px solid #4F46E5; }
+        .round-name { font-size: 16px; font-weight: 900; color: #4F46E5; }
+        .round-count { font-size: 12px; color: #94A3B8; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: linear-gradient(135deg, #4F46E5, #6366F1); color: #fff; padding: 10px; text-align: left; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+        th:first-child { border-radius: 8px 0 0 0; }
+        th:last-child { border-radius: 0 8px 0 0; }
+        td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+        tr:nth-child(even) { background: #f8fafc; }
+        .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94A3B8; border-top: 1px solid #e2e8f0; padding-top: 15px; position: relative; z-index: 1; }
+        .footer strong { color: #4F46E5; }
+        .empty-msg { text-align: center; padding: 20px; color: #94A3B8; font-size: 12px; }
+        @media print { .watermark { position: fixed; } }
+      </style></head><body>
+      <div class="watermark">${orgName}</div>
+      <div class="header">
+        <div class="logo-row">
+          <img src="logo.jpg" class="logo-img" onerror="this.style.display='none'" />
+          <div>
+            <div class="event-name">${eventName}</div>
+            <div class="org-name">${orgName}</div>
+          </div>
+        </div>
+        <div class="doc-title">🏆 ${title}</div>
+        <div class="pub-info">Published on ${date} at ${time}</div>
+      </div>`);
+
+      let hasData = false;
+      roundOrder.forEach(rnd => {
+        const list = grouped[rnd];
+        if (!list || !list.length) return;
+        hasData = true;
+        win.document.write(`
+          <div class="round-section">
+            <div class="round-header">
+              <div class="round-name">🎯 Promoted to ${roundLabels[rnd] || rnd.toUpperCase()}</div>
+              <div class="round-count">${list.length} participant${list.length > 1 ? 's' : ''}</div>
+            </div>
+            <table><thead><tr><th>#</th><th>ID</th><th>Name</th><th>Category</th></tr></thead>
+            <tbody>${list.map((p, i) => `<tr><td>${i + 1}</td><td>${p.ID}</td><td><strong>${p.Name}</strong></td><td>${p.Category}</td></tr>`).join('')}</tbody></table>
+          </div>`);
+      });
+      if (!hasData) {
+        win.document.write(`<div class="empty-msg">No promotion data available.</div>`);
+      }
+
+      win.document.write(`
+      <div class="footer">
+        <strong>${eventName}</strong> — ${orgName}<br>
+        Generated on ${date} at ${time} · This is a computer-generated document
+      </div>
+      <script>setTimeout(() => window.print(), 600);<\/script>
+      </body></html>`);
+      win.document.close();
+    }
+
+    function searchParticipant() {
+      const nameInput = document.getElementById('participantSearchName');
+      const idInput = document.getElementById('participantSearchId');
+      const area = document.getElementById('searchResultArea');
+      if (!area) return;
+
+      const name = nameInput ? nameInput.value.trim() : '';
+      const id = idInput ? idInput.value.toUpperCase().trim() : '';
+
+      if (!id && !name) {
+        area.innerHTML = `<div style="color:#ef4444; font-size:0.85rem; padding:12px; background:rgba(239,68,68,0.06); border-radius:12px; border:1px solid rgba(239,68,68,0.15);">⚠️ Please enter both your Name and ID.</div>`;
+        return;
+      }
+      if (!id) {
+        area.innerHTML = `<div style="color:#ef4444; font-size:0.85rem; padding:12px; background:rgba(239,68,68,0.06); border-radius:12px; border:1px solid rgba(239,68,68,0.15);">⚠️ Please enter your participant ID.</div>`;
+        return;
+      }
+      if (!name) {
+        area.innerHTML = `<div style="color:#ef4444; font-size:0.85rem; padding:12px; background:rgba(239,68,68,0.06); border-radius:12px; border:1px solid rgba(239,68,68,0.15);">⚠️ Please enter your name.</div>`;
+        return;
+      }
+
+      const state = syncEngine.getData();
+      const p = state.participants.find(x => x.id === id);
+
+      if (!p) {
+        area.innerHTML = `<div style="color:#ef4444; font-size:0.85rem; padding:12px; background:rgba(239,68,68,0.06); border-radius:12px; border:1px solid rgba(239,68,68,0.15);">❌ Participant ID "${id}" not found. Please check your ID and try again.</div>`;
+        return;
+      }
+
+      // Check if score checking is enabled for this participant's event
+      const ev = (EVENTS || []).find(e => String(e.id) === String(p.eventId));
+      if (!ev || ev.switchStates?.downloadPublic !== true) {
+        area.innerHTML = `<div style="color:#ef4444; font-size:0.85rem; padding:12px; background:rgba(239,68,68,0.06); border-radius:12px; border:1px solid rgba(239,68,68,0.15);">⚠️ Score checking is currently disabled.</div>`;
+        return;
+      }
+
+      // Validate name matches (case-insensitive)
+      if (p.name.toLowerCase() !== name.toLowerCase()) {
+        area.innerHTML = `<div style="color:#ef4444; font-size:0.85rem; padding:16px; background:rgba(239,68,68,0.06); border-radius:12px; border:1px solid rgba(239,68,68,0.15);">
+          <div style="font-size:1.2rem; margin-bottom:6px;">❌</div>
+          <strong>Name and ID do not match.</strong><br>
+          <span style="font-size:0.8rem; color:#94a3b8; margin-top:4px; display:inline-block;">The name you entered does not match the registered name for ID "${id}". Please check your details and try again.</span>
+        </div>`;
+        return;
+      }
+
+      const categories = ev ? (ev.categories || []) : (state.categories || []);
+      const cat = categories.find(c => String(c.id) === String(p.catId));
+      const catName = cat ? cat.name : 'Participant';
+
+      // Calculate total score across all judges
+      const totalScore = Object.values(p.scores || {}).reduce((a, b) => {
+        if (typeof b === 'object') return a + Object.values(b).reduce((x, y) => x + (Number(y) || 0), 0);
+        return a + (Number(b) || 0);
+      }, 0);
+      const rank = (window.LIVE_RESULTS || []).find(r => r.name === p.name)?.rank || 'N/A';
+
+      // Update "Your Score" stat card if it exists
+      const yourScoreEl = document.getElementById('stat-your-score');
+      if (yourScoreEl) yourScoreEl.textContent = totalScore;
+
+      const pData = { id: p.id, phone: p.phone || '', name: p.name, cat: catName, catId: p.catId, eventId: p.eventId, rank: rank, score: totalScore };
+      const pEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(pData))));
+
+      area.innerHTML = `
+        <div style="padding:24px; border-radius:20px; border:2px solid rgba(124,58,237,0.2); text-align:left; animation:bounceIn 0.5s ease both; background:linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); box-shadow: 0 8px 24px rgba(124,58,237,0.08);">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+            <div>
+              <div style="font-size:0.7rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:1px;">ID: ${p.id}</div>
+              <h3 style="color:#1E293B; font-size:1.4rem; font-weight:900; margin:4px 0;">${p.name}</h3>
+              <div style="color:#64748B; font-size:0.85rem;">${catName} · Round: ${(p.round || 'audition').toUpperCase()}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:0.65rem; color:#94A3B8; font-weight:700; text-transform:uppercase;">Rank</div>
+              <div style="font-size:2rem; font-weight:900; color:#7C3AED;">#${rank}</div>
+            </div>
+          </div>
+
+          <button class="btn btn-p" style="width:100%; justify-content:center; padding:14px; margin-top:16px; background:linear-gradient(135deg, #7C3AED, #6366F1); border:none; color:#fff; font-weight:900; border-radius:14px; font-size:0.95rem; cursor:pointer; box-shadow:0 6px 18px rgba(124,58,237,0.2);" onclick="window.generateParticipantCertificate(JSON.parse(decodeURIComponent(escape(atob('${pEncoded}')))))"> 
+            🎓 View & Download Official Certificate
+          </button>
+        </div>
+      `;
+    }
+
+    function init() {
+      const state = syncEngine.getData();
+      if (!state) return;
+
+      renderParticles();
+      renderMarquee();
+      renderEvents();
+      checkLiveStatus();
+      renderPrevEvents();
+      renderGallery();
+      renderAboutItems();
+      renderLeadership();
+      renderDonations();
+      renderRoles();
+
+      // Deep Linking: Check for ?reg=EVENT_ID
+      const params = new URLSearchParams(window.location.search);
+      const regId = params.get('reg');
+      if (regId) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setTimeout(() => {
+          showAuth(true, regId);
+        }, 500);
+      }
+
+      // Deep Linking for login check from portal hub
+      const loginRequired = params.get('login');
+      if (loginRequired === 'true') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setTimeout(() => {
+          showAuth(false);
+        }, 500);
+      }
+
+      // Initialize scroll active observer
+      setupScrollActiveObserver();
+      // Fire scroll event once on load so active nav item is highlighted immediately
+      window.dispatchEvent(new Event('scroll'));
+
+      const userStr = localStorage.getItem('kns_user');
+      const role = localStorage.getItem('kns_role');
+      if (!userStr || !role) return;
+
+      let user;
+      try { user = JSON.parse(userStr); } catch(e) { return; }
+
+      if (role === 'public') {
+        updateUserUI(user);
+      } else {
+        const userName = user.name ? user.name.split(' ')[0] : 'Staff';
+        const container = document.getElementById('authContainer');
+        const portalMap = {
+          'admin': 'KNSDC-Admin.html',
+          'host': 'KNSDC-Host.html',
+          'monitor': 'KNSDC-Monitor.html',
+          'judge': 'KNSDC-Judge.html'
+        };
+
+        if (container) {
+          container.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 6px; background: rgba(255, 107, 53, 0.1); padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(255, 107, 53, 0.2);">
+              <span style="font-size: 0.8rem; font-weight: 800; color: #FF6B35;">👋 ${userName}</span>
+              <button class="btn btn-o" style="padding: 6px 14px; font-size: 0.75rem; border-radius: 15px;" onclick="window.location.href='${portalMap[role] || 'portal.html'}'">🚀 Portal</button>
+              <button class="btn" style="padding: 6px 10px; font-size: 0.75rem; background: #eee; color: #666; border-radius: 15px;" onclick="logout()">Logout</button>
+            </div>
+          `;
+        }
+      }
+    }
+
+    function updateUserUI(user) {
+      const authBtn = document.getElementById("authNavBtn");
+      const profileNav = document.getElementById("userProfileNav");
+      const userNameNav = document.getElementById("userNameNav");
+      const guestStats = document.getElementById("guestStats");
+      const userDash = document.getElementById("userDashboard");
+      const dashUserName = document.getElementById("dashUserName");
+
+      if (authBtn) authBtn.classList.add("hidden");
+      if (profileNav) profileNav.classList.remove("hidden");
+      if (userNameNav) userNameNav.textContent = user.name;
+      if (guestStats) guestStats.style.display = "none";
+      if (userDash) {
+        userDash.classList.remove("hidden");
+        userDash.style.display = "block";
+      }
+      if (dashUserName) dashUserName.textContent = user.name;
+
+      renderUserEnrollments(user.email);
+    }
+
+    function renderUserEnrollments(email) {
+      const container = document.getElementById("userEnrollmentsList");
+      if (!container) return;
+
+      const state = syncEngine.getData();
+      const participants = state.participants || [];
+      const myRegs = participants.filter(p => p.email === email);
+
+      container.innerHTML = myRegs.map(r => {
+        const ev = EVENTS.find(e => String(e.id) === String(r.eventId));
+        let schedText = r.id;
+        if (ev && ev.roundSchedules && ev.roundSchedules[r.round]) {
+           const s = ev.roundSchedules[r.round];
+           if (s.date) schedText += ` · 📅 ${s.date}`;
+           if (s.venue) schedText += ` · 📍 ${s.venue}`;
+        }
+        
+        return `
+          <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 800; font-size: 0.85rem; color: #fff;">${ev ? ev.icon : '🎟️'} ${ev ? ev.name : 'Unknown Event'}</div>
+              <div style="font-size: 0.7rem; color: rgba(255, 255, 255, 0.5);">${schedText} · ${r.round.toUpperCase()}</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 0.7rem; color: #22c55e; font-weight: 800;">${r.stageStatus.toUpperCase()}</div>
+              <button class="btn btn-ghost" style="padding: 2px 5px; font-size: 0.65rem; color: #FFD23F;" onclick="navigateTo('live')">Live →</button>
+            </div>
+          </div>
+        `;
+      }).join('') || '<div style="color: rgba(255, 255, 255, 0.3); font-size: 0.8rem; text-align: center; padding: 10px;">No enrollments yet. Join an event below!</div>';
+    }
+
+    function renderQueueItem(p, idx, categories) {
+      return `<div class="queue-item" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.08); padding: 10px 15px; border-radius: 10px; margin-bottom: 8px;">
+        <span style="color: #FFD23F; font-weight: 800; font-size: 0.9rem;">#${idx + 1}</span>
+        <div style="flex: 1;">
+          <div style="color: #fff; font-weight: 700; font-size: 0.9rem;">${p.name}</div>
+          <div style="color: rgba(255,255,255,0.5); font-size: 0.75rem;">${categories.find(c => c.id == p.catId)?.name || 'Participant'}</div>
+        </div>
+      </div>`;
+    }
+
+    function logout() {
+      if (confirm("Are you sure you want to logout?")) {
+        localStorage.removeItem('kns_user');
+        localStorage.removeItem('kns_role');
+        window.location.reload();
+      }
+    }
+
+    // ════════════ PARTICLES ════════════
+    function renderParticles() {
+      const colors = ["#FFD23F", "#fff", "#FF6B35", "#00BFA5", "#E91E8C", "#fff", "#FFD23F", "#FF6B35", "#00BFA5", "#fff", "#E91E8C", "#FFD23F", "#fff", "#FF6B35"];
+      const sizes = [40, 60, 30, 80, 50, 35, 70, 45, 55, 65, 25, 90, 42, 68];
+      const positions = [[5, 10], [15, 20], [25, 60], [35, 30], [50, 80], [60, 15], [70, 50], [80, 70], [90, 25], [40, 45], [20, 35], [75, 65], [30, 55], [55, 40]];
+      const durations = [3, 4, 5, 3.5, 4.5, 5.5, 3, 4, 5, 3.5, 4, 5, 3.2, 4.2];
+      const delays = [0, 0.5, 1, 1.5, 0.3, 0.8, 1.2, 0.2, 0.7, 1.3, 0.4, 0.9, 0.6, 1.1];
+
+      const container = document.getElementById("particlesContainer");
+      if (!container) return;
+      colors.forEach((col, i) => {
+        const div = document.createElement("div");
+        div.style.cssText = `position:absolute;border-radius:50%;opacity:0.14;width:${sizes[i]}px;height:${sizes[i]}px;background:${col};left:${positions[i][0]}%;top:${positions[i][1]}%;animation:float ${durations[i]}s ease-in-out infinite;animation-delay:${delays[i]}s`;
+        container.appendChild(div);
+      });
+
+      for (let i = 0; i < 22; i++) {
+        const star = document.createElement("div");
+        star.textContent = "⭐";
+        star.style.cssText = `position:absolute;font-size:${Math.random() * 10 + 7}px;left:${Math.random() * 100}%;top:${Math.random() * 100}%;animation:twinkle ${Math.random() * 2 + 2}s ease-in-out infinite;animation-delay:${Math.random() * 2}s;opacity:0.55;pointer-events:none`;
+        container.appendChild(star);
+      }
+    }
+
+    // ════════════ MARQUEE ════════════
+    function renderMarquee() {
+      const marquee = document.getElementById("marqueeTrack");
+      if (!marquee) return;
+      marquee.innerHTML = "";
+      [...EVENTS, ...EVENTS].forEach((e, i) => {
+        const span = document.createElement("span");
+        span.style.cssText = `display:inline-flex;align-items:center;gap:8px;color:#fff;font-weight:800;font-size:0.9rem;cursor:pointer;`;
+        span.onclick = () => navigateTo('notice');
+        span.innerHTML = `<span>${e.icon}</span>${e.name} — ${e.disp}<span style="opacity:0.4;margin:0 14px">◆</span>`;
+        marquee.appendChild(span);
+      });
+    }
+
+    
+    function renderLiveSponsorsMarquee() {
+      const marqueeContainer = document.getElementById('live-sponsor-marquee');
+      if (!marqueeContainer) return;
+
+      const state = syncEngine.getData();
+      let activeEvId = state.activeEventId;
+      if (!activeEvId) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const ev = EVENTS.find(e => e.date === todayStr) || EVENTS.find(e => e.date > todayStr);
+        if (ev) activeEvId = ev.id;
+      }
+
+      const ev = EVENTS.find(e => String(e.id) === String(activeEvId));
+      const sponsors = (ev && ev.switchStates && ev.switchStates.sponsors) ? ev.switchStates.sponsors : [];
+
+      if (sponsors.length === 0) {
+        marqueeContainer.style.display = 'none';
+        return;
+      }
+      
+      marqueeContainer.style.display = 'block';
+
+      const sponsorsHash = JSON.stringify(sponsors);
+      if (marqueeContainer.dataset.sponsorsHash === sponsorsHash) return;
+      marqueeContainer.dataset.sponsorsHash = sponsorsHash;
+      
+      // Use the same track style as the event marquee
+      marqueeContainer.innerHTML = `<div class="mar-track"></div>`;
+      const track = marqueeContainer.querySelector('.mar-track');
+      
+      // We need to duplicate sponsors to create an infinite scrolling effect
+      // If we have few sponsors, duplicate them multiple times to fill the screen
+      let displaySponsors = [...sponsors];
+      while (displaySponsors.length < 10) {
+        displaySponsors = [...displaySponsors, ...sponsors];
+      }
+      
+      displaySponsors.forEach((sp) => {
+        const span = document.createElement("span");
+        span.style.cssText = `display:inline-flex;align-items:center;gap:8px;color:#fff;font-weight:800;font-size:0.9rem;text-decoration:none;`;
+        if (sp.link) {
+          span.style.cursor = 'pointer';
+          span.onclick = () => window.open(sp.link, '_blank');
+        }
+        
+        let imgHtml = sp.logo ? `<img src="${sp.logo}" style="height:24px; width:auto; border-radius:4px; object-fit:contain; background:rgba(255,255,255,0.8); padding:2px;"/>` : '';
+        let taglineHtml = sp.tagline ? `<span style="opacity:0.8; font-weight:500; font-size:0.8rem;">(${sp.tagline})</span>` : '';
+        
+        span.innerHTML = `${imgHtml} ${sp.name} ${taglineHtml}<span style="opacity:0.4;margin:0 24px">◆</span>`;
+        track.appendChild(span);
+      });
+    }
+
+    function renderEvents() {
+      const grid = document.getElementById("eventsGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      EVENTS.forEach((ev, i) => {
+        const div = document.createElement("div");
+        div.className = "ch glass-pink shining-border";
+        div.style.cssText = `position:relative;border-radius:20px;padding:28px 20px;text-align:center;border-top:4px solid ${ev.col};animation:bounceIn 0.6s ${i * 0.1}s ease both; cursor:pointer;`;
+        div.onclick = (e) => {
+          if(e.target.closest('button')) return;
+          showEventDetail(ev.id);
+        };
+
+        const isRegOpen = (ev.switchStates && ev.switchStates.publicReg !== undefined) ? ev.switchStates.publicReg : isRegistrationOpen;
+        const btnText = isRegOpen ? "Register Now" : "Registration Open Soon";
+        const btnStyle = isRegOpen
+          ? `background:linear-gradient(135deg,${ev.col},${ev.col}bb); cursor:pointer;`
+          : `background:#9ca3af; cursor:not-allowed; opacity:0.8;`;
+
+        const topMedia = ev.banner 
+          ? `<img src="${ev.banner}" alt="${ev.name} Banner" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:12px; margin-bottom:12px;">`
+          : `<div style="font-size:2.5rem;margin-bottom:12px;animation:float 3s ease-in-out infinite;animation-delay:${i * 0.25}s">${ev.icon}</div>`;
+
+        div.innerHTML = `
+          ${topMedia}
+          <div style="display:inline-block;background:rgba(233, 30, 140, 0.1);color:#E91E8C;border-radius:20px;padding:3px 12px;font-size:0.72rem;font-weight:800;margin-bottom:10px;letter-spacing:0.5px">${ev.cat}</div>
+          <h3 style="font-family:'Playfair Display',serif;font-size:1.05rem;font-weight:700;margin-bottom:8px;line-height:1.4;color:#1e293b;">${ev.name}</h3>
+          <p style="color:#64748b;font-size:0.82rem;margin-bottom:18px">📅 ${ev.disp}</p>
+          <div style="display:grid; gap:8px;">
+            <button class="btn" style="${btnStyle} color:#fff;padding:9px 20px;border-radius:20px;font-size:0.82rem;width:100%;justify-content:center;border:none;font-family:'Nunito',sans-serif;font-weight:800;" ${isRegOpen ? `onclick="showAuth(true, '${ev.id}')"` : 'disabled'}>${btnText}</button>
+            <button class="btn" style="padding:8px 20px; border-radius:20px; font-size:0.75rem; width:100%; justify-content:center; background:rgba(34, 197, 94, 0.12); border:1px solid rgba(34, 197, 94, 0.3); color:#22c55e; font-weight:800;" onclick="openDonationForm('${ev.name}', '${ev.col}')">🤝 Support Event</button>
+          </div>
+        `;
+        grid.appendChild(div);
+      });
+      // Check for deep link on first load
+      if (!window.hasCheckedDeepLink && EVENTS.length > 0) {
+        window.hasCheckedDeepLink = true;
+        const params = new URLSearchParams(window.location.search);
+        const eventId = params.get('event');
+        if (eventId) {
+          setTimeout(() => showEventDetail(eventId), 300);
+        }
+      }
+    }
+
+    function checkLiveStatus() {
+      const outerCard = document.getElementById("live-card-outer");
+      const fallbackContainer = document.getElementById("liveContentFallback");
+      if (!outerCard || !fallbackContainer) return;
+      let container = fallbackContainer; // fallback logic implicitly uses this
+
+      const state = syncEngine.getData();
+      const isOffline = state && state.systemStatus === 'offline';
+      
+      // Update Live/Offline section badge
+      const secDot = document.getElementById('public-live-section-dot');
+      const secText = document.getElementById('public-live-section-text');
+      const secBadge = document.getElementById('public-live-section-badge');
+      if (secDot && secText && secBadge) {
+        if (isOffline) {
+          secDot.style.background = '#94a3b8';
+          secDot.style.boxShadow = 'none';
+          secDot.style.animation = 'none';
+          secText.textContent = 'OFFLINE';
+          secBadge.style.background = 'rgba(241, 245, 249, 0.7)';
+        } else {
+          secDot.style.background = '#ef4444';
+          secDot.style.boxShadow = '0 0 12px #ef4444';
+          secDot.style.animation = 'pulse 1.5s infinite';
+          secText.textContent = 'LIVE NOW';
+          secBadge.style.background = 'rgba(255, 255, 255, 0.7)';
+        }
+      }
+
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+
+      // 1. Prioritize explicitly active event from Monitor
+      let liveEvent = null;
+      if (state.activeEventId) {
+        liveEvent = EVENTS.find(e => String(e.id) === String(state.activeEventId));
+      }
+
+      // 2. Fallback to today's event if no explicit active event
+      if (!liveEvent) {
+        liveEvent = EVENTS.find(e => e.date === todayStr);
+      }
+
+      // Check if we have an active stage preview enabled
+      const hasLiveStage = liveEvent && liveEvent.switchStates?.stagePreview !== false;
+
+      // Handle visibility of the live section and navigation links
+      const liveSection = document.getElementById('live');
+      if (liveSection) {
+        const isEventPageActive = document.getElementById('event-page-view') && document.getElementById('event-page-view').style.display === 'block';
+        liveSection.style.display = (hasLiveStage && !isEventPageActive) ? 'block' : 'none';
+      }
+
+      // (results-section removed)
+
+      const navLink = document.getElementById('nav-link-live');
+      if (navLink) navLink.style.display = hasLiveStage ? 'block' : 'none';
+
+      const heroLink = document.getElementById('hero-link-live');
+      if (heroLink) heroLink.style.display = hasLiveStage ? 'block' : 'none';
+
+      const sideDot = document.getElementById('side-dot-live');
+      if (sideDot) sideDot.style.display = hasLiveStage ? 'block' : 'none';
+
+      if (isOffline) {
+        outerCard.style.display = 'none';
+          fallbackContainer.style.display = 'block';
+          fallbackContainer.innerHTML = `
+          <div style="padding: 60px 20px; text-align: center; border-radius: 24px; border: 1px solid #e2e8f0; background: #ffffff; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+            <div style="font-size: 3.5rem; margin-bottom: 20px; filter: drop-shadow(0 0 10px rgba(148,163,184,0.2));">💤</div>
+            <h3 style="color: #1E293B; font-family: 'Playfair Display', serif; font-size: 1.7rem; font-weight: 800; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">System Offline</h3>
+            <p style="color: #64748B; font-size: 0.95rem; font-weight: 600; max-width: 480px; margin: 0 auto;">The KNSDC Live Event ecosystem is currently offline. Please check back later when we are broadcasting live!</p>
+          </div>
+        `;
+        return;
+      }
+
+      if (liveEvent) {
+        renderLiveUI(liveEvent);
+        renderLiveSponsorsMarquee();
+      } else {
+        // Find nearest future event
+        const futureEvents = EVENTS.filter(e => e.date > todayStr).sort((a, b) => a.date.localeCompare(b.date));
+        if (futureEvents.length > 0) {
+          renderUpcomingLiveUI(futureEvents[0]);
+          renderLiveSponsorsMarquee();
+        } else {
+          outerCard.style.display = 'none';
+          fallbackContainer.style.display = 'block';
+          fallbackContainer.innerHTML = `
+            <div style="padding: 60px 20px; text-align: center; border-radius: 24px; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+              <div style="font-size: 3rem; margin-bottom: 20px;">🎬</div>
+              <h3 style="color: #1E293B; font-family: 'Playfair Display', serif; font-size: 1.5rem; margin-bottom: 10px;">Stay Tuned!</h3>
+              <p style="color: #64748B; font-size: 0.9rem;">The current event season has concluded. Check back soon for new announcements!</p>
+            </div>
+          `;
+        }
+      }
+    }
+
+    function renderLiveUI(ev) {
+      const outerCard = document.getElementById("live-card-outer");
+      const fallbackContainer = document.getElementById("liveContentFallback");
+      if (outerCard) outerCard.style.display = 'block';
+      if (fallbackContainer) fallbackContainer.style.display = 'none';
+      
+      const headerContainer = document.getElementById("live-card-header");
+      const bodyTopContainer = document.getElementById("live-card-body-top");
+      const bodyBottomContainer = document.getElementById("live-card-body-bottom");
+      
+      const state = syncEngine.getData();
+      const participants = state.participants || [];
+      const onStage = participants.find(p => p.eventId == ev.id && p.stageStatus === 'on-stage');
+      
+      const onStageName = onStage ? onStage.name : 'Transitioning Stage...';
+      const onStageCat = onStage ? ((ev.categories?.find(c => c.id == onStage.catId)?.name || onStage.category || 'Participant') + ` · Round: ${onStage.round ? onStage.round.toUpperCase() : 'AUDITION'}`) : 'Please stay tuned for the next performance';
+
+      // Determine effective schedule based on current on-stage round if available
+      let effectiveVenue = ev.venue;
+      let effectiveDisp = ev.disp;
+      
+      // We will update these dynamically in hydrateLiveState if a specific round is detected
+      
+      if (headerContainer) headerContainer.innerHTML = `
+          <div class="live-pad-header live-flex" style="background: linear-gradient(135deg, #7C3AED, #6366F1, #4F46E5); position: relative; overflow: hidden;">
+            <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: rgba(255,255,255,0.15); border-radius: 50%; filter: blur(40px);"></div>
+            <div style="position: relative; z-index: 1;">
+              <div class="live-dot-container" style="display: inline-flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.15); color: #fff; padding: 6px 18px; border-radius: 30px; margin-bottom: 12px; font-size: 0.82rem; font-weight: 800; border: 1px solid rgba(255, 255, 255, 0.25); letter-spacing: 1px;">
+                <span class="live-dot" style="background: #FFD23F; box-shadow: 0 0 10px #FFD23F;"></span> ${ev.cat.toUpperCase()} LIVE
+              </div>
+              <h3 class="live-title" style="font-family: \'Playfair Display\', serif; color: #fff; font-weight: 900; letter-spacing: -1px; line-height: 1.1;">${ev.name}</h3>
+              <p id="liveEventSchedule" style="color: rgba(255, 255, 255, 0.85); margin-top: 12px; font-size: 0.95rem; font-weight: 500;"><span>📅 ${effectiveDisp}</span><span class="desktop-only">&nbsp;&nbsp;•&nbsp;&nbsp;</span><span>📍 ${effectiveVenue}</span></p>
+            </div>
+            <div class="support-btn-container" style="display:flex; align-items:center; gap:16px; position: relative; z-index: 1;">
+              <button class="btn btn-p" style="background:#fff; color:#4F46E5; padding:15px 28px; border-radius:18px; font-weight:900; box-shadow: 0 10px 25px rgba(79,70,229,0.2); border: none; transition: all 0.3s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 14px 30px rgba(79,70,229,0.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 10px 25px rgba(79,70,229,0.2)'" onclick="openDonationForm()">💖 Support Event</button>
+            </div>
+          </div>`;
+      if (bodyTopContainer) bodyTopContainer.innerHTML = `
+          <div style="padding: clamp(15px, 4vw, 40px) clamp(15px, 4vw, 40px) 10px clamp(15px, 4vw, 40px);">
+            <div class="onstage-hero-card" style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 50%, #e0e7ff 100%); border-radius: 24px; padding: clamp(25px, 5vw, 50px) clamp(15px, 4vw, 30px); margin-bottom: 40px; position: relative; overflow: hidden; border: 1px solid rgba(139, 92, 246, 0.15); box-shadow: 0 8px 32px rgba(139, 92, 246, 0.06);">
+              <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at center, rgba(124,58,237,0.06) 0%, transparent 70%); pointer-events: none;"></div>
+
+              <!-- Floating spotlight particles -->
+              <div class="onstage-particles" style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden;">
+                <div class="onstage-particle" style="--x:15%;--y:20%;--dur:4s;--del:0s;--size:6px;background:#a78bfa;"></div>
+                <div class="onstage-particle" style="--x:75%;--y:30%;--dur:5s;--del:1s;--size:4px;background:#818cf8;"></div>
+                <div class="onstage-particle" style="--x:40%;--y:70%;--dur:3.5s;--del:0.5s;--size:5px;background:#c4b5fd;"></div>
+                <div class="onstage-particle" style="--x:85%;--y:60%;--dur:6s;--del:2s;--size:3px;background:#7c3aed;"></div>
+                <div class="onstage-particle" style="--x:25%;--y:80%;--dur:4.5s;--del:1.5s;--size:7px;background:#ddd6fe;"></div>
+              </div>
+
+              <div style="position: relative; z-index: 1; display: flex; align-items: center; gap: clamp(20px, 5vw, 40px); flex-wrap: wrap; justify-content: center;">
+                
+                <!-- ★ PARTICIPANT PHOTO (left side) ★ -->
+                ${(() => {
+                  if (!onStage) return '';
+                  // Find photo URL from formAnswers — look for fields of type 'photo' or 'file' with photo-like label
+                  const formFields = (state.eventFormFields && state.eventFormFields[ev.id]) || [];
+                  let photoUrl = '';
+                  
+                  // Strategy 1: Check form fields metadata for photo/file type with photo in label
+                  for (const f of formFields) {
+                    const fieldKey = f.label;
+                    if (!fieldKey) continue;
+                    const isPhotoField = f.type === 'photo' || (f.type === 'file' && /photo|image|pic|picture|selfie|headshot/i.test(f.label));
+                    if (isPhotoField && onStage.formAnswers && onStage.formAnswers[fieldKey]) {
+                      photoUrl = onStage.formAnswers[fieldKey];
+                      break;
+                    }
+                  }
+                  
+                  // Strategy 2: Fallback — scan formAnswers values for image URLs
+                  if (!photoUrl && onStage.formAnswers) {
+                    const imgExts = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|$)/i;
+                    for (const [key, val] of Object.entries(onStage.formAnswers)) {
+                      if (typeof val === 'string' && imgExts.test(val) && val.includes('supabase.co')) {
+                        photoUrl = val;
+                        break;
+                      }
+                    }
+                  }
+                  
+                  if (!photoUrl) return '';
+
+                  // Check 10-hour expiry: filename has timestamp like "participants/1782928700275_xxx.jpg"
+                  const tsMatch = photoUrl.match(/\/(\d{13})_/);
+                  if (tsMatch) {
+                    const uploadTs = parseInt(tsMatch[1]);
+                    const tenHoursMs = 10 * 60 * 60 * 1000;
+                    if (Date.now() - uploadTs > tenHoursMs) {
+                      // Schedule auto-delete for expired photo
+                      if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
+                      if (!window._onstageDeletedAudios.has(photoUrl)) {
+                        window._onstageDeletedAudios.add(photoUrl);
+                        window._scheduleAudioDelete && window._scheduleAudioDelete(photoUrl, 0);
+                      }
+                      return ''; // Photo expired (>10 hours old), don't show
+                    }
+                  }
+
+                  return '<div class="onstage-photo-frame" style="flex-shrink:0;position:relative;width:clamp(140px,25vw,220px);height:clamp(180px,32vw,280px);border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(124,58,237,0.2),0 0 0 3px rgba(139,92,246,0.15);animation:onstagePhotoIn 0.8s cubic-bezier(0.22,1,0.36,1) 0.3s both;">'
+                    + '<img src="' + photoUrl.replace(/'/g,'&apos;').replace(/"/g,'&quot;') + '" alt="' + (onStage.name || 'Performer') + '" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display=\'none\'">'
+                    + '<div class="onstage-photo-shine"></div>'
+                    + '<div style="position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(transparent,rgba(15,23,42,0.8));pointer-events:none;">'
+                    + '<div style="font-size:0.7rem;font-weight:800;color:rgba(255,255,255,0.9);letter-spacing:1.5px;text-transform:uppercase;">📸 Live Photo</div>'
+                    + '</div>'
+                    + '<div class="onstage-photo-glow"></div>'
+                    + '</div>';
+                })()}
+
+                <!-- Right: Name and info -->
+                <div style="text-align: center; flex: 1; min-width: 200px;">
+                  <div style="font-size: 3.2rem; margin-bottom: 12px; filter: drop-shadow(0 5px 15px rgba(124,58,237,0.15)); animation: onstageEmojiPulse 3s ease-in-out infinite;">🎭</div>
+                  <h4 style="color: #7C3AED; font-family: 'Playfair Display', serif; font-size: 1.1rem; margin-bottom: 10px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; animation: onstageTextGlow 2s ease-in-out infinite alternate;">On Stage Now</h4>
+                  <div class="performer-card-live" style="background: transparent; border: none; padding: 0;">
+                    <div class="performer-name-live" id="currentPerformerName" style="font-size: 2.8rem; font-weight: 900; color: #1E293B; text-shadow: none; animation: onstageNameIn 0.6s ease 0.5s both;">${onStageName}</div>
+                    <div class="performer-category-live" id="currentPerformerCat" style="font-size: 1.1rem; color: #64748B; font-weight: 600; margin-top: 5px; animation: onstageCatIn 0.6s ease 0.7s both;">${onStageCat}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ★ On Stage Audio Player Section ★ -->
+            ${(() => {
+              if (!onStage || !onStage.formAnswers) return '';
+              const formFields = (state.eventFormFields && state.eventFormFields[ev.id]) || [];
+              const audioItems = [];
+
+              // Collect all audio URLs from form fields
+              for (const f of formFields) {
+                if ((f.type === 'audio_link_or_file' || f.type === 'audio') && onStage.formAnswers[f.label]) {
+                  const url = onStage.formAnswers[f.label];
+                  if (typeof url === 'string' && url.trim()) {
+                    // Check 10-hour expiry for unplayed audio
+                    const tsMatch = url.match(/\/(\d{13})_/);
+                    let expired = false;
+                    if (tsMatch) {
+                      const uploadTs = parseInt(tsMatch[1]);
+                      const tenHoursMs = 10 * 60 * 60 * 1000;
+                      if (Date.now() - uploadTs > tenHoursMs) {
+                        expired = true;
+                        // Schedule auto-delete for expired audio
+                        if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
+                        if (!window._onstageDeletedAudios.has(url)) {
+                          window._onstageDeletedAudios.add(url);
+                          window._scheduleAudioDelete && window._scheduleAudioDelete(url, 0);
+                        }
+                      }
+                    }
+                    if (!expired) {
+                      audioItems.push({ label: f.label, url: url });
+                    }
+                  }
+                }
+              }
+
+              if (audioItems.length === 0) return '';
+
+              let html = '<div class="onstage-audio-section" style="background:linear-gradient(135deg,#fdf2f8 0%,#fce7f3 50%,#fae8ff 100%);border-radius:20px;padding:clamp(18px,4vw,30px);margin-bottom:40px;position:relative;overflow:hidden;border:1px solid rgba(236,72,153,0.15);box-shadow:0 6px 24px rgba(236,72,153,0.08);animation:onstageCatIn 0.6s ease 0.9s both;">';
+              html += '<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 80% 20%,rgba(236,72,153,0.06),transparent 60%);pointer-events:none;"></div>';
+              html += '<div style="position:relative;z-index:1;">';
+              html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">';
+              html += '<div class="onstage-eq-bars" style="display:flex;align-items:flex-end;gap:2px;height:20px;">';
+              html += '<div class="eq-bar" style="--h1:60%;--h2:100%;--dur:0.4s;"></div>';
+              html += '<div class="eq-bar" style="--h1:100%;--h2:40%;--dur:0.5s;"></div>';
+              html += '<div class="eq-bar" style="--h1:40%;--h2:80%;--dur:0.35s;"></div>';
+              html += '<div class="eq-bar" style="--h1:80%;--h2:50%;--dur:0.45s;"></div>';
+              html += '</div>';
+              html += '<h4 style="color:#be185d;font-family:Playfair Display,serif;font-size:1rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin:0;">Performance Audio</h4>';
+              html += '</div>';
+
+              audioItems.forEach((item, idx) => {
+                const safeUrl = item.url.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                const labelClean = item.label.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                html += '<div class="onstage-audio-track" style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 18px;margin-bottom:' + (idx < audioItems.length - 1 ? '12px' : '0') + ';border:1px solid rgba(236,72,153,0.1);backdrop-filter:blur(8px);transition:all 0.3s;box-shadow:0 2px 8px rgba(0,0,0,0.03);">';
+                html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
+                html += '<div style="width:28px;height:28px;background:linear-gradient(135deg,#ec4899,#a855f7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:900;color:#fff;flex-shrink:0;">' + (idx + 1) + '</div>';
+                html += '<div style="font-size:0.82rem;font-weight:700;color:#831843;">🎵 ' + labelClean + '</div>';
+                html += '</div>';
+                html += '<audio controls controlsList="nodownload" src="' + safeUrl + '" style="width:100%;height:36px;border-radius:20px;outline:none;" data-audio-url="' + safeUrl + '" onended="window._onAudioEnded && window._onAudioEnded(this)"></audio>';
+                html += '</div>';
+              });
+
+              html += '</div></div>';
+              return html;
+            })()}
+
+            <!-- ★ Live Broadcast Section (Inside renderLiveUI) ★ -->
+            ${(ev.switchStates?.liveStream && ev.switchStates?.liveStreamUrl) ? `
+              <div style="margin-bottom: 40px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 24px; padding: 30px 40px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
+                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+                  <div style="display: flex; align-items: center; gap: 20px;">
+                    <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: pulse 2s infinite;">🔴</div>
+                    <div style="position:relative; z-index:1; text-align: left;">
+                      <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.4rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
+                      <p style="color: rgba(255,255,255,0.9); font-size: 1rem; margin: 4px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is on!</p>
+                    </div>
+                  </div>
+                </div>
+                ${(() => {
+                  let input = ev.switchStates?.liveStreamUrl || '';
+                  if(!input) return '';
+                  let embedUrl = input;
+                  if (input.toLowerCase().startsWith('<iframe')) {
+                     return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">${input.replace('<iframe', '<iframe style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;"')}</div>`;
+                  }
+                  const ytMatch = input.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+                  if (ytMatch && ytMatch[1]) {
+                    embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1`;
+                  } else if (input.includes('facebook.com') && input.includes('/videos/')) {
+                    embedUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(input)}&show_text=false&width=auto`;
+                  }
+                  return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">\n  <iframe src="${embedUrl}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>\n</div>\n<div style="margin-top: 12px; text-align: center;"><a href="${input.replace(/'/g, '&apos;').replace(/\"/g, '&quot;')}" target="_blank" style="color: rgba(255,255,255,0.95); text-decoration: underline; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.5px; transition: color 0.2s;" onmouseover="this.style.color=\'#fff\'" onmouseout="this.style.color=\'rgba(255,255,255,0.95)\'">⚠️ Not playing? Click here to watch directly</a></div>`;
+                })()}
+
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- ★ Public Rating Slider (Inside renderLiveUI) ★ -->
+            <div id="liveRatingSection" style="margin-bottom: 40px;">
+              ${(() => {
+                const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
+                if (!publicVotingOn) return '';
+                
+                const lsKey = onStage ? `knsdc_vote_${onStage.id}_${onStage.round}` : '';
+                const alreadyVoted = onStage ? localStorage.getItem(lsKey) : false;
+                
+                // Round voting indicators
+                const roundNames = ['audition','qualified','semifinal','final'];
+                const roundIndicators = onStage ? roundNames.map(rn => {
+                  const voted = localStorage.getItem(`knsdc_vote_${onStage.id}_${rn}`);
+                  const isCurrent = rn === onStage.round;
+                  return `<div style="display:flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;${voted ? 'background:rgba(16,185,129,0.1);color:#059669;border:1px solid rgba(16,185,129,0.2);' : isCurrent ? 'background:rgba(245,158,11,0.12);color:#d97706;border:1px solid rgba(245,158,11,0.25);animation:pulse 2s infinite;' : 'background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0;'}">${voted ? '✅' : isCurrent ? '⭐' : '○'} ${rn}</div>`;
+                }).join('') : '';
+
+                // Get vote stats
+                let vAvg = '—', vCount = 0;
+                if (onStage) {
+                  const voteKey = onStage.id + '_' + onStage.round;
+                  const voteArr = (state.publicVotes || {})[voteKey] || [];
+                  vCount = voteArr.length;
+                  if (vCount > 0) vAvg = (voteArr.reduce((a, v) => a + v.score, 0) / vCount).toFixed(1);
+                }
+
+                if (onStage) {
+                  const catN = ev.categories?.find(c => c.id == onStage.catId)?.name || 'Participant';
+                  return `
+                    <div style="background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 24px; padding: 32px; border: 2px solid #FFD23F; position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(255,210,63,0.15);">
+                      <div style="position:absolute;top:-40px;right:-40px;font-size:120px;opacity:0.06;pointer-events:none;">🌟</div>
+                      <div style="position:absolute;bottom:-30px;left:-30px;font-size:100px;opacity:0.05;pointer-events:none;">🎭</div>
+                      
+                      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:48px;height:48px;background:linear-gradient(135deg,#FFD23F,#f59e0b);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;box-shadow:0 4px 15px rgba(255,210,63,0.35);">⭐</div>
+                        <div>
+                          <h4 style="color:#92400e;font-family:'Cinzel Decorative',cursive;font-size:1.1rem;margin:0;letter-spacing:1.5px;text-transform:uppercase;">Rate This Performance</h4>
+                          <p style="color:#78716c;font-size:0.85rem;margin:4px 0 0;">Now performing: <strong style="color:#1e1b4b;">${onStage.name}</strong> · ${catN} · ${onStage.round.toUpperCase()}</p>
+                        </div>
+                      </div>
+
+                      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;padding:10px 14px;background:rgba(255,255,255,0.7);border-radius:12px;border:1px solid rgba(255,210,63,0.2);">
+                        <span style="font-size:0.7rem;color:#92400e;font-weight:800;align-self:center;margin-right:4px;">ROUNDS:</span>
+                        ${roundIndicators}
+                      </div>
+
+                      ${alreadyVoted ? `
+                        <div style="background:#fff;padding:24px;border-radius:16px;text-align:center;border:1px solid #d1fae5;">
+                          <div style="font-size:2rem;margin-bottom:8px;">✅</div>
+                          <div style="font-size:1rem;font-weight:800;color:#059669;">You have already rated this performer!</div>
+                          <div style="font-size:0.85rem;color:#78716c;margin-top:4px;">Thank you for your rating 🙏</div>
+                        </div>
+                      ` : `
+                        <div id="vote-widget-live">
+                          <div style="display:flex;align-items:center;gap:16px;margin-bottom:18px;background:#fff;padding:16px 20px;border-radius:14px;border:1px solid rgba(255,210,63,0.4);box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+                            <div style="font-size:0.85rem;color:#92400e;font-weight:800;">1</div>
+                            <input type="range" id="vote-slider-live" class="premium-rating-slider" min="1" max="10" value="5" step="1" oninput="document.getElementById('vote-val-live').textContent=this.value;" />
+                            <div style="font-size:0.85rem;color:#92400e;font-weight:800;">10</div>
+                            <div style="background:linear-gradient(135deg,#FFD23F,#f59e0b);border-radius:12px;padding:8px 18px;min-width:55px;text-align:center;box-shadow:0 4px 12px rgba(255,210,63,0.3);">
+                              <span id="vote-val-live" style="font-size:1.8rem;font-weight:900;color:#1e1b4b;line-height:1;">5</span>
+                              <div style="font-size:0.6rem;color:rgba(30,27,75,0.6);font-weight:800;letter-spacing:1px;">/ 10</div>
+                            </div>
+                          </div>
+
+                          <div style="display:flex;gap:10px;flex-direction:column;">
+                            <div style="display:flex;gap:10px;">
+                              <div style="flex:1;position:relative;">
+                                <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:0.9rem;">👤</span>
+                                <input type="text" id="vote-name-live" placeholder="Enter your full name" style="width:100%;padding:12px 12px 12px 36px;border:2px solid #fbbf24;border-radius:12px;font-size:0.9rem;color:#1e1b4b;font-weight:700;outline:none;background:#fff;transition:all 0.2s;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';" onblur="this.style.borderColor='#fbbf24';this.style.boxShadow='none';" />
+                              </div>
+                              <div style="flex:1;position:relative;">
+                                <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:0.9rem;">📱</span>
+                                <input type="tel" id="vote-phone-live" placeholder="Enter your phone number" maxlength="15" style="width:100%;padding:12px 12px 12px 36px;border:2px solid #fbbf24;border-radius:12px;font-size:0.9rem;color:#1e1b4b;font-weight:700;outline:none;background:#fff;transition:all 0.2s;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b';this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';" onblur="this.style.borderColor='#fbbf24';this.style.boxShadow='none';" />
+                              </div>
+                            </div>
+                            <button onclick="window.submitPublicVoteLive('${ev.id}','${onStage.id}','${onStage.round}')" style="background:linear-gradient(135deg,#FFD23F,#f59e0b);color:#1e1b4b;border:none;border-radius:12px;padding:14px 28px;font-size:1rem;font-weight:900;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 15px rgba(255,210,63,0.35);width:100%;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 25px rgba(255,210,63,0.45)';" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 15px rgba(255,210,63,0.35)';">
+                              ⭐ Submit Rating
+                            </button>
+                          </div>
+                          <div id="vote-msg-live" style="font-size:0.85rem;font-weight:800;color:#92400e;margin-top:12px;min-height:16px;text-align:center;"></div>
+                        </div>
+                      `}
+
+                      ${vCount > 0 ? `
+                        <div style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;background:#fff;border-radius:20px;border:1px solid #fbbf24;box-shadow:0 2px 6px rgba(0,0,0,0.04);">
+                          <span style="font-size:0.85rem;color:#78716c;font-weight:600;">Current Avg:</span>
+                          <span style="font-size:1.1rem;font-weight:900;color:#b45309;">${vAvg}/10</span>
+                          <span style="font-size:0.75rem;color:#d4d4d4;">·</span>
+                          <span style="font-size:0.85rem;color:#78716c;font-weight:600;">${vCount} ratings</span>
+                        </div>
+                      ` : ''}
+                    </div>
+                  `;
+                } else {
+                  // Voting ON but no performer on stage
+                  return `
+                    <div style="background:linear-gradient(135deg,#fffdf5 0%,#fff8e1 50%,#fff3cd 100%);border-radius:24px;padding:40px 32px;border:2px dashed rgba(255,210,63,0.5);text-align:center;position:relative;overflow:hidden;box-shadow:0 4px 16px rgba(255,210,63,0.08);">
+                      <div style="position:absolute;top:-40px;right:-40px;font-size:120px;opacity:0.04;pointer-events:none;">🌟</div>
+                      <div style="font-size:3rem;margin-bottom:12px;animation:float 3s ease-in-out infinite;">⏳</div>
+                      <h4 style="color:#92400e;font-family:'Cinzel Decorative',cursive;font-size:1.1rem;margin-bottom:8px;letter-spacing:1.5px;text-transform:uppercase;">Rating Opens Soon</h4>
+                      <p style="color:#78716c;font-size:0.9rem;max-width:400px;margin:0 auto;">Public rating will be available when the next performer takes the stage. Stay tuned!</p>
+                    </div>
+                  `;
+                }
+              })()}
+            </div>
+
+            </div>
+      `;
+      if (bodyBottomContainer) bodyBottomContainer.innerHTML = `
+          <div style="padding: 10px clamp(15px, 4vw, 40px) clamp(15px, 4vw, 40px) clamp(15px, 4vw, 40px);">
+
+
+            <!-- Participant Hub: Queue & Score Check -->
+            <div class="participant-hub-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:25px; margin-bottom:40px;">
+              <!-- Coming Next Queue - Hidden when empty (synced with Monitor UPCOMING) -->
+              <div id="queueSection" style="padding: 30px; border-radius: 24px; background: #ffffff; border: 1px solid rgba(139, 92, 246, 0.1); box-shadow: 0 4px 20px rgba(139, 92, 246, 0.06);">
+                <h3 style="font-family: 'Playfair Display', serif; font-size: 1.4rem; margin-bottom: 24px; font-weight: 800; color: #1E293B; display:flex; align-items:center; gap:12px;">
+                  <span style="background:linear-gradient(135deg, #ede9fe, #e0e7ff); width:42px; height:42px; display:flex; align-items:center; justify-content:center; border-radius:12px; color:#7C3AED; font-size:1.2rem;">📋</span> Coming Next
+                </h3>
+                <div id="queueList"></div>
+              </div>
+
+              <!-- Check Your Score Section -->
+              ${ev.switchStates?.downloadPublic === true ? `
+              <div style="padding: 30px; border-radius: 24px; background: #ffffff; border: 1px solid rgba(124, 58, 237, 0.15); text-align:center; display:flex; flex-direction:column; justify-content:center; box-shadow: 0 4px 20px rgba(124, 58, 237, 0.06);">
+                <div style="background:linear-gradient(135deg, #ede9fe, #ddd6fe); width:60px; height:60px; display:flex; align-items:center; justify-content:center; border-radius:20px; margin:0 auto 18px; color:#7C3AED; font-size:1.8rem; border: 1px solid rgba(124,58,237,0.2);">🔍</div>
+                <h4 style="color:#1E293B; font-family:'Playfair Display',serif; margin-bottom:6px; font-size:1.5rem; font-weight:800;">Check Your Score</h4>
+                <p style="color:#64748B; font-size:0.85rem; margin-bottom:20px; line-height:1.6;">Enter your <strong>Name</strong> and <strong>ID</strong> to view your score, category ranking, and download certificate.</p>
+                
+                <div style="display:flex; flex-direction:column; gap:12px; max-width:340px; margin:0 auto; width:100%;">
+                  <input type="text" id="participantSearchName" placeholder="Enter your full name" style="width:100%; background:#f8fafc; border:2px solid #e2e8f0; border-radius:15px; padding:14px 20px; color:#1E293B; font-family:'Nunito',sans-serif; text-align:center; font-size:0.95rem; outline:none; transition:all 0.3s;" onfocus="this.style.borderColor='#7C3AED'; this.style.boxShadow='0 0 0 4px rgba(124,58,237,0.1)'" onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                  <input type="text" id="participantSearchId" placeholder="Enter ID (e.g. AB1234)" style="width:100%; background:#f8fafc; border:2px solid #e2e8f0; border-radius:15px; padding:14px 20px; color:#1E293B; font-family:'Nunito',sans-serif; text-align:center; font-size:0.95rem; outline:none; transition:all 0.3s;" onfocus="this.style.borderColor='#7C3AED'; this.style.boxShadow='0 0 0 4px rgba(124,58,237,0.1)'" onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                  <button class="btn btn-p" style="width:100%; background:linear-gradient(135deg, #7C3AED, #6366F1); border:none; color:#fff; font-weight:900; padding:14px; border-radius:15px; font-size:1rem; cursor:pointer; box-shadow: 0 6px 18px rgba(124,58,237,0.25); transition:all 0.2s;" onclick="searchParticipant()" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 10px 25px rgba(124,58,237,0.35)'" onmouseout="this.style.transform='';this.style.boxShadow='0 6px 18px rgba(124,58,237,0.25)'">🔍 Check Score & Certificate</button>
+                </div>
+                <div id="searchResultArea" style="margin-top:25px;"></div>
+              </div>
+              ` : ''}
+            </div>
+
+            <!-- Public Download Hub (controlled by RESULT PUBLIC & PROMOTION PUBLIC switches) -->
+            ${(() => {
+              const _resultPublic = ev.switchStates?.resultPublic === true;
+              const _promoPublic = ev.switchStates?.promoPublic === true;
+              if (!_resultPublic && !_promoPublic) return '';
+              return `
+              <div style="background:linear-gradient(135deg, #f8fafc, #f1f5f9); border:1px solid #e2e8f0; border-radius:20px; padding:24px; margin-bottom:32px; text-align:center;">
+                <h4 style="color:#7C3AED; font-family:'Playfair Display',serif; margin-bottom:15px; font-size:1.1rem;">📥 Official Event Downloads</h4>
+                <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:12px;">
+                  ${_resultPublic ? `<button class="uiverse-btn" onclick="downloadData('results-pdf')">
+                    <span class="button__text">Results PDF</span>
+                    <span class="button__icon"><svg class="svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></span>
+                  </button>` : ''}
+                  ${_resultPublic ? `<button class="uiverse-btn" onclick="downloadData('category-sheet')">
+                    <span class="button__text">Category Sheet</span>
+                    <span class="button__icon"><svg class="svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></span>
+                  </button>` : ''}
+                  ${_resultPublic ? `<button class="uiverse-btn" onclick="downloadData('final-result')">
+                    <span class="button__text">Final Result</span>
+                    <span class="button__icon"><svg class="svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></span>
+                  </button>` : ''}
+                  ${_promoPublic ? `<button class="uiverse-btn" onclick="downloadData('promotion')">
+                    <span class="button__text">Promotion List</span>
+                    <span class="button__icon"><svg class="svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></span>
+                  </button>` : ''}
+                </div>
+              </div>`;
+            })()}
+
+            <div style="display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap;">
+              <button id="resultsTabBtn" class="tab-b mainTab on" data-tab="results" onclick="switchMainTab(event)">📊 Results</button>
+              <button id="promoTabBtn" class="tab-b mainTab hidden" data-tab="promotion" onclick="switchMainTab(event)">🏆 Selected / Promoted</button>
+            </div>
+            <div id="resultsTab" class="mainTabContent">
+              <div id="resultsStatsLive" style="margin-bottom:20px;"></div>
+            </div>
+            <div id="promotionTab" class="mainTabContent hidden">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:15px; background:#f8fafc; padding:15px; border-radius:16px; border:1px solid #e2e8f0;">
+                <div>
+                  <h4 id="promotionTitle" style="color:#1E293B; font-family:'Playfair Display',serif; font-size:1.1rem; margin:0;">🏆 Official Promotion List</h4>
+                  <p id="promotionSubtitle" style="color:#64748B; font-size:0.75rem; margin:2px 0 0;">Participants qualified for the next round of KNSDC 2025.</p>
+                </div>
+                <div style="display:flex; gap:10px; flex:1; justify-content:flex-end; min-width:280px;">
+                  <div style="position:relative; flex:1; max-width:250px;">
+                    <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94A3B8; font-size:0.8rem;">🔍</span>
+                    <input type="text" id="promoSearch" placeholder="Search ID..." oninput="window.renderPromotion()" style="width:100%; padding:8px 10px 8px 32px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#1E293B; font-size:0.85rem; outline:none; transition:border-color 0.3s;" onfocus="this.style.borderColor='#7C3AED'" onblur="this.style.borderColor='#e2e8f0'">
+                  </div>
+                  <button class="uiverse-btn" onclick="downloadData('promotion')">
+                    <span class="button__text">Download List</span>
+                    <span class="button__icon"><svg class="svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></span>
+                  </button>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+                <button id="promoRoundBtn-qualified" class="tab-b promoRoundTab on" onclick="window.switchPromoRound('qualified')">✅ Qualified</button>
+                <button id="promoRoundBtn-semifinal" class="tab-b promoRoundTab" onclick="window.switchPromoRound('semifinal')">⭐ Semifinal</button>
+                <button id="promoRoundBtn-final" class="tab-b promoRoundTab" onclick="window.switchPromoRound('final')">🏆 Final</button>
+              </div>
+              <div id="promotionList" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px;"></div>
+          </div>
+      `;
+      renderQueue();
+      renderResults();
+      renderPromotion();
+    }
+
+    function renderUpcomingLiveUI(ev) {
+      const outerCard = document.getElementById("live-card-outer");
+      const fallbackContainer = document.getElementById("liveContentFallback");
+      if (outerCard) outerCard.style.display = 'none';
+      if (fallbackContainer) fallbackContainer.style.display = 'block';
+      const container = fallbackContainer;
+      container.innerHTML = `
+        <div style="border-radius: 24px; overflow: hidden; background: #ffffff; border: 1px solid rgba(139,92,246,0.12); box-shadow: 0 12px 40px rgba(139,92,246,0.08); padding: 40px; text-align: center;">
+          <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(139,92,246,0.06); color: #7C3AED; padding: 6px 18px; border-radius: 30px; margin-bottom: 20px; font-size: 0.85rem; font-weight: 800; border: 1px solid rgba(139,92,246,0.15);">
+            📅 NEXT BIG EVENT
+          </div>
+          <div style="font-size: 4rem; margin-bottom: 16px; animation: float 3s ease-in-out infinite;">${ev.icon}</div>
+          <h3 style="font-family: 'Playfair Display', serif; font-size: 2.2rem; color: #1E293B; font-weight: 900; margin-bottom: 12px;">${ev.name}</h3>
+          <p style="color: #7C3AED; font-size: 1.2rem; font-weight: 800; margin-bottom: 24px;">Coming on ${ev.disp}</p>
+          <div style="max-width: 500px; margin: 0 auto; background: #f8fafc; padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0;">
+            <p style="color: #64748B; font-size: 0.9rem; line-height: 1.6;">Get ready for an extraordinary ${ev.cat} experience at Kalikapur Community Hall. Live updates, real-time scoring, and participant queues will go live on the event day.</p>
+          </div>
+          <div style="display:flex; gap:12px; justify-content:center; margin-top:30px;">
+            <button class="btn btn-p" style="padding: 14px 40px; font-size: 1rem; border-radius: 30px;" onclick="navigateTo('notice')">View Event Details →</button>
+            <button class="btn" style="padding: 14px 40px; font-size: 1rem; border-radius: 30px; background:rgba(16,185,129,0.08); color:#059669; border:1px solid rgba(16,185,129,0.2); font-weight:800;" onclick="openDonationForm()">🤝 Support Event</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQueue() {
+      const queueList = document.getElementById("queueList");
+      const queueSection = document.getElementById("queueSection");
+      if (!queueList) return;
+      queueList.innerHTML = "";
+
+      const state = syncEngine.getData();
+      const activeEventId = state.activeEventId;
+      const participants = state.participants || [];
+      const events = EVENTS || [];
+      const ev = events.find(e => String(e.id) === String(activeEventId));
+      const categories = ev ? (ev.categories || []) : [];
+
+      // Find participants in queue for the active event
+      const liveQueue = sortQueue(participants.filter(p => p.eventId == activeEventId && p.stageStatus === 'queue'), categories);
+
+      if (liveQueue.length > 0) {
+        // Show queue section when there are queued performers
+        if (queueSection) queueSection.style.display = '';
+        liveQueue.forEach((p, i) => {
+          const cat = categories.find(c => c.id == p.catId);
+          const catName = cat ? cat.name : (p.category || 'Participant');
+          const div = document.createElement("div");
+          div.className = "queue-item";
+          div.style.animationDelay = `${i * 0.1}s`;
+          div.innerHTML = `<span class="queue-number">#${i + 2}</span><span class="queue-name">${p.name}</span><div class="queue-category">${catName}</div>`;
+          queueList.appendChild(div);
+        });
+      } else {
+        // Hide queue section when monitor queue is empty
+        if (queueSection) queueSection.style.display = 'none';
+      }
+    }
+
+    // ════════════ RESULTS ════════════
+    function renderResults() {
+      // Compute max score from active event's subjects and judges
+      const rsState = syncEngine.getData();
+      const rsActiveEvId = String(rsState.activeEventId);
+      const rsActiveEv = (rsState.events || []).find(e => String(e.id) === rsActiveEvId);
+      const rsSubjects = rsActiveEv?.subjects || rsState.subjects || [];
+      const rsJudgeAgreements = rsState.judgeAgreements || [];
+      
+      const eventJudges = (rsState.judges || []).filter(j => {
+        if (j.present !== true) return false;
+        // Check if this judge is assigned to the active event
+        const isAssigned = rsJudgeAgreements.some(a => 
+          String(a.eventId) === rsActiveEvId &&
+          ((a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+           (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase()))
+        );
+        return isAssigned;
+      });
+      
+      const numJudges = eventJudges.length > 0 ? eventJudges.length : ((rsState.judges || []).filter(j => j.present === true).length || 1);
+      
+      const maxPerJudge = rsSubjects.reduce((a, s) => a + (s.maxMarks || 10), 0);
+      const maxTotalScore = numJudges * maxPerJudge;
+      window._KNSDC_MAX_SCORE = maxTotalScore;
+      window._KNSDC_SUBJECTS = rsSubjects;
+      window._KNSDC_NUM_JUDGES = numJudges;
+
+      const stats = document.getElementById("resultsStatsLive");
+      if (stats) {
+        // Build category-wise distribution from monitor categories
+        const activeEId = rsState.activeEventId;
+        const rsCats = (rsActiveEv ? (rsActiveEv.categories || []) : (rsState.categories || []))
+          .filter(c => String(c.eventId) === String(activeEId));
+        const rsParticipants = rsState.participants || [];
+
+        const catDistHTML = rsCats.map((cat, idx) => {
+          const catParticipants = rsParticipants.filter(p => p.eventId == activeEId && p.catId == cat.id);
+          const catCount = catParticipants.length;
+          const catScored = catParticipants.filter(p => {
+            const totalScore = Object.values(p.scores || {}).reduce((a, b) => {
+              if (typeof b === 'object') return a + Object.values(b).reduce((x, y) => x + (Number(y) || 0), 0);
+              return a + (Number(b) || 0);
+            }, 0);
+            return totalScore > 0;
+          });
+          const catAvgScore = catScored.length > 0 ? (catScored.reduce((a, p) => {
+            const ts = Object.values(p.scores || {}).reduce((a2, b) => {
+              if (typeof b === 'object') return a2 + Object.values(b).reduce((x, y) => x + (Number(y) || 0), 0);
+              return a2 + (Number(b) || 0);
+            }, 0);
+            return a + ts;
+          }, 0) / catScored.length).toFixed(1) : '\u2014';
+
+          // Compute maximum score in this category
+          const catMaxScore = catScored.length > 0 ? Math.max(...catScored.map(p => {
+            return Object.values(p.scores || {}).reduce((a2, b) => {
+              if (typeof b === 'object') return a2 + Object.values(b).reduce((x, y) => x + (Number(y) || 0), 0);
+              return a2 + (Number(b) || 0);
+            }, 0);
+          })) : '\u2014';
+          
+          const gradients = [
+            ['#6366F1','#818CF8','rgba(99,102,241,0.12)','rgba(99,102,241,0.2)'],
+            ['#8B5CF6','#A78BFA','rgba(139,92,246,0.12)','rgba(139,92,246,0.2)'],
+            ['#EC4899','#F472B6','rgba(236,72,153,0.12)','rgba(236,72,153,0.2)'],
+            ['#14B8A6','#2DD4BF','rgba(20,184,166,0.12)','rgba(20,184,166,0.2)'],
+            ['#F59E0B','#FBBF24','rgba(245,158,11,0.12)','rgba(245,158,11,0.2)'],
+            ['#EF4444','#F87171','rgba(239,68,68,0.12)','rgba(239,68,68,0.2)'],
+            ['#3B82F6','#60A5FA','rgba(59,130,246,0.12)','rgba(59,130,246,0.2)'],
+            ['#10B981','#34D399','rgba(16,185,129,0.12)','rgba(16,185,129,0.2)'],
+          ];
+          const g = gradients[idx % gradients.length];
+          const pct = maxTotalScore > 0 && catAvgScore !== '\u2014' ? Math.round((catAvgScore / maxTotalScore) * 100) : 0;
+          const maxPct = maxTotalScore > 0 && catMaxScore !== '\u2014' ? Math.round((catMaxScore / maxTotalScore) * 100) : 0;
+
+          return `
+            <div style="background:#ffffff; padding:18px; border-radius:18px; border:1px solid ${g[3]}; box-shadow:0 4px 16px ${g[2]}; position:relative; overflow:hidden;">
+              <div style="position:absolute;top:-8px;right:-8px;width:50px;height:50px;background:${g[2]};border-radius:50%;filter:blur(15px);pointer-events:none;"></div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;position:relative;z-index:1;">
+                <div style="width:36px;height:36px;background:linear-gradient(135deg,${g[0]},${g[1]});border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:0.85rem;color:#fff;font-weight:900;box-shadow:0 4px 12px ${g[2]};">${cat.name.charAt(0).toUpperCase()}</div>
+                <div style="flex:1;">
+                  <div style="font-size:0.85rem;font-weight:800;color:#1E293B;">${cat.name}</div>
+                  <div style="font-size:0.7rem;color:#94A3B8;font-weight:600;">${catCount} participant${catCount !== 1 ? 's' : ''}</div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                <div style="background:${g[2]};padding:10px 12px;border-radius:12px;text-align:center;">
+                  <div style="font-size:1.15rem;font-weight:900;color:${g[0]};">${catAvgScore}</div>
+                  <div style="font-size:0.6rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Avg Score</div>
+                </div>
+                <div style="background:rgba(234,88,12,0.08);padding:10px 12px;border-radius:12px;text-align:center;border:1px solid rgba(234,88,12,0.1);">
+                  <div style="font-size:1.15rem;font-weight:900;color:#EA580C;">${catMaxScore}</div>
+                  <div style="font-size:0.6rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Max Score</div>
+                </div>
+              </div>
+              ${catAvgScore !== '\u2014' ? `
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:0.6rem;color:#94A3B8;font-weight:700;min-width:28px;">AVG</span>
+                    <div style="flex:1;height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                      <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${g[0]},${g[1]});border-radius:3px;transition:width 0.8s ease;"></div>
+                    </div>
+                    <span style="font-size:0.6rem;color:#94A3B8;font-weight:700;min-width:28px;text-align:right;">${pct}%</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:0.6rem;color:#94A3B8;font-weight:700;min-width:28px;">MAX</span>
+                    <div style="flex:1;height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                      <div style="height:100%;width:${maxPct}%;background:linear-gradient(90deg,#EA580C,#F97316);border-radius:3px;transition:width 0.8s ease;"></div>
+                    </div>
+                    <span style="font-size:0.6rem;color:#94A3B8;font-weight:700;min-width:28px;text-align:right;">${maxPct}%</span>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+
+        if (rsCats.length > 0) {
+          stats.innerHTML = `
+            <div style="background:#ffffff; border-radius:24px; padding:28px; border:1px solid rgba(99,102,241,0.12); box-shadow:0 8px 24px rgba(99,102,241,0.06);">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                <div style="width:42px;height:42px;background:linear-gradient(135deg,#6366F1,#818CF8);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;box-shadow:0 4px 15px rgba(99,102,241,0.25);">📊</div>
+                <div>
+                  <h4 style="color:#1E293B;font-family:'Playfair Display',serif;font-size:1.2rem;margin:0;font-weight:800;">Category-wise Distribution</h4>
+                  <p style="color:#94A3B8;font-size:0.8rem;margin:2px 0 0;">${rsCats.length} categories · ${rsParticipants.filter(p => p.eventId == activeEId).length} total participants</p>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
+                ${catDistHTML}
+              </div>
+            </div>
+          `;
+        } else {
+          stats.innerHTML = '';
+        }
+
+
+      }
+
+      // resultsList rendered section removed per user request
+    }
+
+    // ════════════ PROMOTION ════════════
+    function renderCategoryFilters() {
+      // 1. Render Promotion Categories Filter
+      const promoContainer = document.getElementById("categoryFilters");
+      if (promoContainer) {
+        let html = `<button class="catBtn ${currentCategory === 'All' ? 'on' : ''}" data-cat="All" onclick="window.switchCategory(event)">🌟 All Categories</button>`;
+        CATEGORIES.forEach(c => {
+          const emojiMap = { 'Dance': '💃', 'Music': '🎵', 'Art': '🎨', 'Yoga': '🧘', 'Sports': '⚽' };
+          let emoji = '';
+          for (let key in emojiMap) {
+            if (c.name.includes(key)) { emoji = emojiMap[key] + ' '; break; }
+          }
+          html += `<button class="catBtn ${currentCategory === c.name ? 'on' : ''}" data-cat="${c.name}" onclick="window.switchCategory(event)">${emoji}${c.name}</button>`;
+        });
+        promoContainer.innerHTML = html;
+      }
+    }
+
+    function renderPromotion() {
+      const list = document.getElementById("promotionList");
+      if (!list) return;
+      const search = document.getElementById("promoSearch")?.value.toLowerCase() || "";
+      list.innerHTML = "";
+      
+      // Update Title & Subtitle based on selected round filter
+      const titleEl = document.getElementById("promotionTitle");
+      const subEl = document.getElementById("promotionSubtitle");
+      const roundLabel = currentPromoRound.charAt(0).toUpperCase() + currentPromoRound.slice(1);
+      if (titleEl) titleEl.innerHTML = `🏆 Promoted to ${roundLabel} Round`;
+      if (subEl) subEl.innerHTML = `Participants who successfully qualified for the ${currentPromoRound} stage.`;
+
+      // Filter by round selection logic
+      let roundFiltered = [];
+      if (currentPromoRound === 'qualified') {
+        roundFiltered = PROMOTED.filter(p => p.round === 'qualified' || p.round === 'semifinal' || p.round === 'final');
+      } else if (currentPromoRound === 'semifinal') {
+        roundFiltered = PROMOTED.filter(p => p.round === 'semifinal' || p.round === 'final');
+      } else if (currentPromoRound === 'final') {
+        roundFiltered = PROMOTED.filter(p => p.round === 'final');
+      }
+
+      // Filter by category if Category Filter is active (currentCategory !== "All")
+      if (currentCategory !== "All") {
+        roundFiltered = roundFiltered.filter(p => p.cat === currentCategory);
+      }
+
+      // Filter by search query
+      const filtered = roundFiltered.filter(p => 
+        p.id && p.id.toLowerCase().includes(search)
+      );
+
+      // Sort by ID alphabetically/numerically
+      filtered.sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' }));
+
+      if (PROMOTED.length === 0) {
+        list.innerHTML = `<div style="grid-column:1/-1; padding:60px 20px; text-align:center; background:#ffffff; border-radius:24px; border:1px solid #e2e8f0; box-shadow:0 10px 30px rgba(0,0,0,0.02);"><div style="font-size:4rem; margin-bottom:20px; opacity:0.8;">⏳</div><h4 style="font-size:1.4rem; color:#1E293B; font-weight:800; margin-bottom:10px;">No Promotions Yet</h4><p style="color:#64748B; font-size:1rem; max-width:400px; margin:0 auto; line-height:1.6;">The judges are still finalizing the scores. Once participants are promoted to the next round via the Monitor Dashboard, they will appear here automatically.</p></div>`;
+        return;
+      }
+
+      if (filtered.length === 0) {
+        list.innerHTML = `<div style="grid-column:1/-1; padding:40px; text-align:center; color:#94A3B8;">No participants qualified for the ${currentPromoRound} round${search ? ` matching "${search}"` : ''}.</div>`;
+        return;
+      }
+
+      filtered.forEach((p, i) => {
+        const div = document.createElement("div");
+        div.className = "ch";
+        div.style.cssText = `border-radius:18px; padding:16px 20px; border:1px solid rgba(124,58,237,0.12); display:flex; align-items:center; gap:14px; animation:bounceIn 0.4s ${i * 0.05}s ease both; background:#ffffff; box-shadow: 0 2px 12px rgba(124,58,237,0.05);`;
+
+        // Render appropriate status badge
+        let badgeHtml = '';
+        if (p.round === 'final') {
+          badgeHtml = `<div style="background:rgba(234,88,12,0.08); color:#ea580c; padding:4px 10px; border-radius:30px; font-size:0.75rem; font-weight:900; border:1px solid rgba(234,88,12,0.15);">FINALIST</div>`;
+        } else if (p.round === 'semifinal') {
+          badgeHtml = `<div style="background:rgba(124,58,237,0.08); color:#7c3aed; padding:4px 10px; border-radius:30px; font-size:0.75rem; font-weight:900; border:1px solid rgba(124,58,237,0.15);">SEMIFINALIST</div>`;
+        } else {
+          badgeHtml = `<div style="background:rgba(16,185,129,0.08); color:#059669; padding:4px 10px; border-radius:30px; font-size:0.75rem; font-weight:900; border:1px solid rgba(16,185,129,0.15);">QUALIFIED</div>`;
+        }
+
+        div.innerHTML = `
+          <div style="width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg, #7C3AED, #6366F1); display:flex; align-items:center; justify-content:center; color:#fff; font-size:1rem; font-weight:900; flex-shrink:0; box-shadow:0 4px 12px rgba(124,58,237,0.2);">${i + 1}</div>
+          <div style="flex:1">
+            <div style="font-weight:800; font-size:1.05rem; color:#1E293B; letter-spacing:0.3px;">ID: ${p.id || 'N/A'}</div>
+            <div style="font-size:0.82rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:1px;">${p.cat}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            ${badgeHtml}
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    // ════════════ PREV EVENTS ════════════
+    function renderPrevEvents() {
+      const grid = document.getElementById("prevEventsGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      PREV.forEach((ev, i) => {
+        const div = document.createElement("div");
+        div.className = "ch";
+        div.style.cssText = `border-radius:24px; overflow:hidden; border-left:6px solid ${ev.col}; animation:fadeUp 0.55s ${i * 0.1}s ease both; background: #ffffff; border-top:1px solid #e2e8f0; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(0,0,0,0.04);`;
+        div.innerHTML = `
+          <div style="padding:24px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+              <div style="display:flex;gap:8px">
+                <span style="background:${ev.col}22;color:${ev.col};border-radius:12px;padding:3px 12px;font-size:0.72rem;font-weight:800">${ev.cat}</span>
+                <span style="background:#f3f4f6;color:#6b7280;border-radius:12px;padding:3px 10px;font-size:0.72rem;font-weight:700">${ev.year}</span>
+              </div>
+              <div style="color:#6b7280;font-size:0.82rem">👥 ${(ev.parts || 0).toLocaleString()}</div>
+            </div>
+            <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;margin-bottom:12px">${ev.name}</h3>
+            
+            <div style="margin-bottom: 14px;">
+              <div style="font-size: 0.65rem; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">📖 About the Event</div>
+              <p style="color:#4b5563;font-size:0.85rem;line-height:1.6;margin:0">${ev.desc}</p>
+            </div>
+
+            ${(ev.cat === 'Cultural' || ev.cat === 'Sports') ? `
+              <div style="margin-bottom: 18px; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 12px; border: 1px dashed rgba(0,0,0,0.1);">
+                <div style="font-size: 0.65rem; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">📊 Official Scorecard</div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  ${ev.scores ? ev.scores.map((s, idx) => `
+                    <div style="display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700; color: #1E293B;">
+                      <span>${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${s.n}</span>
+                      <span style="color: ${ev.col}">${s.s}</span>
+                    </div>
+                  `).join('') : ''}
+                </div>
+              </div>
+            ` : ''}
+
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex; gap:8px;">
+                <button onclick="navigateTo('previous')" style="background:${ev.col}18;color:${ev.col};border:1px solid ${ev.col}44;border-radius:20px;padding:6px 16px;font-size:0.75rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif">Gallery →</button>
+                <button onclick="openDonationForm()" style="background:rgba(0,0,0,0.05);color:#4b5563;border:1px solid rgba(0,0,0,0.1);border-radius:20px;padding:6px 16px;font-size:0.75rem;font-weight:800;cursor:pointer;">Support goals</button>
+              </div>
+              <div style="font-size:0.75rem;color:#6b7280; font-weight: 700;">✨ ${(ev.parts || 0).toLocaleString()} Participants</div>
+            </div>
+          </div>
+        `;
+        grid.appendChild(div);
+      });
+    }
+
+    // ════════════ GALLERY ════════════
+    function renderGallery() {
+      const grid = document.getElementById("galleryGrid");
+      if (!grid) return;
+      
+      if (window.bookFlipTimer) {
+        clearInterval(window.bookFlipTimer);
+        window.bookFlipTimer = null;
+      }
+      if (window.socialSlideshowTimer) {
+        clearInterval(window.socialSlideshowTimer);
+        window.socialSlideshowTimer = null;
+      }
+
+      // Create a local copy to render, injecting our Sports & Social images if they aren't present
+      let renderList = [...GALLERY];
+      const extraImgs = [
+        { url: "Sports/photo_6127538719637049299_y.jpg", cap: "Sports Action 1", cat: "Sports" },
+        { url: "Sports/photo_6127538719637049300_y.jpg", cap: "Sports Action 2", cat: "Sports" },
+        { url: "social/photo_6127538719637049314_y.jpg", cap: "Social Work 1", cat: "Social Work" },
+        { url: "social/photo_6127538719637049315_y.jpg", cap: "Social Work 2", cat: "Social Work" },
+        { url: "social/photo_6127538719637049317_y.jpg", cap: "Social Work 3", cat: "Social Work" },
+        { url: "social/photo_6127538719637049318_y.jpg", cap: "Social Work 4", cat: "Social Work" },
+        { url: "social/photo_6127538719637049319_y.jpg", cap: "Social Work 5", cat: "Social Work" },
+        { url: "social/photo_6127538719637049320_y.jpg", cap: "Social Work 6", cat: "Social Work" },
+        { url: "social/photo_6127538719637049321_y.jpg", cap: "Social Work 7", cat: "Social Work" },
+        { url: "social/photo_6127538719637049322_y.jpg", cap: "Social Work 8", cat: "Social Work" }
+      ];
+      extraImgs.forEach(s => {
+        if (!renderList.find(r => r.url === s.url)) {
+          renderList.push(s);
+        }
+      });
+
+      if (currentGalleryFilter === "All") {
+        grid.style.display = "block";
+        let pagesHTML = "";
+        let images = renderList;
+        if (!images || images.length === 0) {
+          images = [
+            "photo_6118659175400280599_y.jpg", "photo_6125286919823365090_y.jpg",
+            "photo_6125286919823365091_y.jpg", "photo_6125286919823365093_y.jpg",
+            "photo_6125286919823365094_y.jpg", "photo_6125286919823365095_y.jpg",
+            "photo_6125286919823365096_y.jpg", "photo_6125286919823365097_y.jpg",
+            "photo_6125286919823365099_y.jpg", "photo_6125286919823365100_y.jpg",
+            "photo_6125286919823365101_y.jpg", "photo_6125286919823365102_y.jpg",
+            "photo_6125286919823365103_y.jpg", "photo_6125286919823365104_y.jpg",
+            "photo_6125286919823365105_y.jpg", "photo_6125286919823365106_y.jpg",
+            "photo_6125286919823365107_y.jpg", "photo_6125286919823365108_y.jpg",
+            "photo_6125286919823365109_y.jpg", "photo_6125286919823365110_y.jpg",
+            "photo_6125286919823365111_y.jpg", "photo_6125286919823365112_y.jpg",
+            "photo_6125286919823365113_y.jpg"
+          ].map(img => ({url: `cultural/${img}`, cap: "Cultural Event"}));
+        }
+        let pageZIndex = images.length;
+        
+        for (let i = 0; i < images.length; i += 2) {
+          const frontImg = images[i];
+          const backImg = images[i+1];
+          const pageIndex = i/2;
+          
+          pagesHTML += `
+            <div class="book-page" style="z-index: ${pageZIndex--};" id="book-page-${pageIndex}">
+              <div class="page-front" onclick="if(window.openImageModal) openImageModal('${frontImg.url}')">
+                <img src="${frontImg.url}" alt="${frontImg.cap}">
+              </div>
+              <div class="page-back" ${backImg ? `onclick="if(window.openImageModal) openImageModal('${backImg.url}')"` : ''}>
+                ${backImg ? `<img src="${backImg.url}" alt="${backImg.cap}">` : `<div style="padding: 20px; text-align: center; color: #888; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">End of Gallery</div>`}
+              </div>
+            </div>
+          `;
+        }
+        
+        grid.innerHTML = `
+          <div class="book-container">
+            <div class="book" id="autoFlipBook">
+              ${pagesHTML}
+            </div>
+          </div>
+        `;
+        
+        let currentPage = 0;
+        const totalPages = Math.ceil(images.length / 2);
+        
+        window.bookFlipTimer = setInterval(() => {
+          const book = document.getElementById("autoFlipBook");
+          if (!book) {
+            clearInterval(window.bookFlipTimer);
+            return;
+          }
+          
+          if (currentPage >= totalPages) {
+            for (let j = 0; j < totalPages; j++) {
+              const p = document.getElementById(`book-page-${j}`);
+              if(p) {
+                p.classList.remove('flipped');
+                p.style.zIndex = totalPages - j;
+              }
+            }
+            currentPage = 0;
+          } else {
+            const p = document.getElementById(`book-page-${currentPage}`);
+            if (p) {
+              p.classList.add('flipped');
+              setTimeout(() => {
+                if (p.classList.contains('flipped')) {
+                  p.style.zIndex = currentPage + 1;
+                }
+              }, 750);
+            }
+            currentPage++;
+          }
+        }, 3000);
+        
+        return;
+      }
+
+      if (currentGalleryFilter === "Cultural") {
+        grid.style.display = "block";
+        const images = [
+          "photo_6118659175400280599_y.jpg", "photo_6125286919823365090_y.jpg",
+          "photo_6125286919823365091_y.jpg", "photo_6125286919823365093_y.jpg",
+          "photo_6125286919823365094_y.jpg", "photo_6125286919823365095_y.jpg",
+          "photo_6125286919823365096_y.jpg", "photo_6125286919823365097_y.jpg",
+          "photo_6125286919823365099_y.jpg", "photo_6125286919823365100_y.jpg",
+          "photo_6125286919823365101_y.jpg", "photo_6125286919823365102_y.jpg",
+          "photo_6125286919823365103_y.jpg", "photo_6125286919823365104_y.jpg",
+          "photo_6125286919823365105_y.jpg", "photo_6125286919823365106_y.jpg",
+          "photo_6125286919823365107_y.jpg", "photo_6125286919823365108_y.jpg",
+          "photo_6125286919823365109_y.jpg", "photo_6125286919823365110_y.jpg",
+          "photo_6125286919823365111_y.jpg", "photo_6125286919823365112_y.jpg",
+          "photo_6125286919823365113_y.jpg"
+        ];
+        
+        let panelsHTML = "";
+        images.forEach((img, i) => {
+          const angle = i * (360 / images.length);
+          panelsHTML += `
+            <div class="carousel-panel" style="transform: rotateY(${angle}deg) translateZ(950px);" onclick="if(window.openImageModal) openImageModal('cultural/${img}')">
+              <img src="cultural/${img}" alt="Cultural Image ${i+1}">
+            </div>
+          `;
+        });
+        
+        grid.innerHTML = `
+          <div class="carousel-container">
+            <div class="carousel-spinner">
+              ${panelsHTML}
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (currentGalleryFilter === "Sports") {
+        grid.style.display = "grid";
+        grid.innerHTML = "";
+        const sportsImages = [
+          {url: "Sports/photo_6127538719637049299_y.jpg", cap: "Sports Event"},
+          {url: "Sports/photo_6127538719637049300_y.jpg", cap: "Sports Event"}
+        ];
+        sportsImages.forEach((p, i) => {
+          const div = document.createElement("div");
+          div.className = "photo-w ch";
+          div.style.cssText = `animation:bounceIn 0.4s ${i * 0.08}s ease both;cursor:pointer`;
+          div.innerHTML = `
+            <img src="${p.url}" alt="${p.cap}" style="width:100%;height:100%;object-fit:cover;display:block">
+            <div style="position:absolute;inset:0;background:linear-gradient(transparent 50%,rgba(0,0,0,0.68));border-radius:16px;display:flex;align-items:flex-end;padding:12px 14px">
+              <p style="color:#fff;font-weight:700;font-size:0.85rem;margin:0">${p.cap}</p>
+            </div>
+          `;
+          div.onclick = () => window.openImageModal ? openImageModal(p.url) : alert(`Clicked: ${p.cap}`);
+          grid.appendChild(div);
+        });
+        return;
+      }
+
+      grid.style.display = "grid";
+      const filtered = currentGalleryFilter === "All" ? renderList : renderList.filter(p => p.cat === currentGalleryFilter);
+      grid.innerHTML = "";
+      filtered.forEach((p, i) => {
+        const div = document.createElement("div");
+        div.className = "photo-w ch";
+        div.style.cssText = `animation:bounceIn 0.4s ${i * 0.08}s ease both;cursor:pointer`;
+        div.innerHTML = `
+          <img src="${p.url}" alt="${p.cap}">
+          <div class="cap-overlay">
+            <p class="cap-text">${p.cap}</p>
+          </div>
+        `;
+        div.onclick = () => window.openImageModal ? openImageModal(p.url) : alert(`Clicked: ${p.cap}`);
+        grid.appendChild(div);
+      });
+    }
+
+    // ════════════ ABOUT ITEMS ════════════
+    function renderAboutItems() {
+      const grid = document.getElementById("aboutGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      ABOUT_ITEMS.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "ch";
+        div.style.cssText = `border-radius:24px; padding:28px 24px; border:1px solid #e2e8f0; transition:all 0.3s ease; background:#ffffff; box-shadow: 0 2px 12px rgba(0,0,0,0.04);`;
+        div.innerHTML = `
+          <div style="font-size:2.4rem; margin-bottom:14px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.1));">${item.icon}</div>
+          <h4 style="font-weight:900; font-size:1.1rem; margin-bottom:10px; color:#7C3AED; font-family:'Playfair Display', serif; letter-spacing:0.5px;">${item.title}</h4>
+          <p style="font-size:0.88rem; color:#64748B; line-height:1.7; font-family:'Nunito', sans-serif;">${item.desc}</p>
+        `;
+        grid.appendChild(div);
+      });
+    }
+
+    // ════════════ LEADERSHIP ════════════
+    function renderLeadership() {
+      const grid = document.getElementById("leadershipGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      
+      if (!document.getElementById("leader-expand-css")) {
+        const style = document.createElement("style");
+        style.id = "leader-expand-css";
+        style.innerHTML = `
+          .leader-card { position: relative; background: transparent; width: 300px; height: 250px; border: none; margin: 10px; animation: bounceIn 0.6s ease both; }
+          .leader-card:hover { width: 300px; }
+          .leader-card .container-image { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 190px; height: 190px; cursor: pointer; border: none; border-radius: 50%; box-shadow: 0 0 3px 1px #1818183d, 2px 2px 3px #18181865, inset 2px 2px 2px #ffffff; transition: all .3s ease-in-out, opacity .3s; transition-delay: .6s, 0s; }
+          .leader-card:hover .container-image { opacity: 0; border-radius: 8px; transition-delay: 0s, .6s; }
+          .leader-card .container-image .image-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 125px; height: 125px; object-fit: cover; border-radius: 50%; filter: drop-shadow(2px 2px 2px #1818188a); transition: all .3s ease-in-out; transition-delay: .4s; }
+          .leader-card:hover .container-image .image-circle { opacity: 0; transition-delay: 0s; }
+          .leader-card .content { display: flex; justify-content: space-between; align-items: center; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px; width: 190px; height: 190px; cursor: pointer; border: none; border-radius: 8px; box-shadow: 0 0 3px 1px #1818183d, 2px 2px 3px #18181865, inset 2px 2px 2px #ffffff; visibility: hidden; transition: .3s ease-in-out; transition-delay: 0s; z-index: 1; }
+          .leader-card:hover .content { width: 300px; height: 190px; visibility: visible; transition-delay: .5s; }
+          .leader-card .content .detail { display: flex; flex-direction: column; width: 60%; height: 100%; opacity: 0; transition: all .3s ease-in-out; transition-delay: 0s; justify-content: center; }
+          .leader-card:hover .content .detail { opacity: 100%; transition: 1s; transition-delay: .3s; }
+          .leader-card .content .detail span { margin-bottom: 5px; font-size: 1.1rem; font-weight: 800; font-family: 'Playfair Display', serif; }
+          .leader-card .content .detail p { font-size: 0.85rem; font-weight: 700; font-family: 'Nunito', sans-serif; text-transform: uppercase; margin: 0; }
+          .leader-card .content .product-image { position: relative; width: 40%; height: 100%; }
+          .leader-card .content .product-image .box-image { display: flex; position: absolute; top: 0; left: -10%; width: 100%; height: 115%; opacity: 0; transform: scale(.5); transition: all .5s ease-in-out; transition-delay: 0s; }
+          .leader-card:hover .content .product-image .box-image { top: -15%; left: 10%; opacity: 100%; transform: scale(1); transition-delay: .3s; }
+          .leader-card .content .product-image .box-image .img-product { margin: auto; width: 100px; height: 100px; border-radius: 50%; object-fit: cover; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        `;
+        document.head.appendChild(style);
+      }
+
+      const colors = [
+        { // 1. Purple
+          front: 'linear-gradient(120deg, #f3e8ff 60%, #faf5ff 88%, #e9d5ff 40%, rgba(168, 85, 247, 0.6) 48%)',
+          back: 'linear-gradient(120deg, #c084fc 30%, #9333ea 88%, #f3e8ff 40%, #d8b4fe 78%)',
+          text: '#9333ea', border: '#9333ea'
+        },
+        { // 2. Orange/Coral
+          front: 'linear-gradient(120deg, bisque 60%, rgb(255, 231, 222) 88%, rgb(255, 211, 195) 40%, rgba(255, 127, 80, 0.603) 48%)',
+          back: 'linear-gradient(120deg, rgb(255, 174, 145) 30%, coral 88%, bisque 40%, rgb(255, 185, 160) 78%)',
+          text: 'coral', border: 'coral'
+        },
+        { // 3. Green
+          front: 'linear-gradient(120deg, #dcfce7 60%, #f0fdf4 88%, #bbf7d0 40%, rgba(34, 197, 94, 0.6) 48%)',
+          back: 'linear-gradient(120deg, #4ade80 30%, #16a34a 88%, #dcfce7 40%, #86efac 78%)',
+          text: '#16a34a', border: '#16a34a'
+        }
+      ];
+
+      LEADERSHIP.forEach((l, i) => {
+        const c = colors[i % colors.length];
+        const div = document.createElement("div");
+        div.className = "leader-card";
+        div.style.animationDelay = `${i * 0.15}s`;
+        div.innerHTML = `
+          <div class="container-image" style="background: ${c.front}">
+            ${l.image ? 
+              `<img src="${l.image}" class="image-circle">` : 
+              `<div class="image-circle" style="display:flex; align-items:center; justify-content:center; font-size:4rem; color:${c.text}; border: 3px solid ${c.border}; background: #fff;">${l.emoji}</div>`
+            }
+          </div>
+          <div class="content" style="background: ${c.front}">
+            <div class="detail">
+              <span style="color: ${c.text};">${l.name}</span>
+              <p style="color: ${c.text}; opacity: 0.9;">${l.role}</p>
+
+            </div>
+            <div class="product-image">
+              <div class="box-image">
+                ${l.image ? 
+                  `<img src="${l.image}" class="img-product" style="border: 3px solid ${c.border};">` : 
+                  `<div class="img-product" style="display:flex; align-items:center; justify-content:center; font-size:3rem; color:#fff; background: ${c.back}; border: 3px solid ${c.border};">${l.emoji}</div>`
+                }
+              </div>
+            </div>
+          </div>
+        `;
+        grid.appendChild(div);
+      });
+    }
+
+    // ════════════ DONATIONS ════════════
+    function renderDonations() {
+      const grid = document.getElementById("donationsGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      DONATIONS.forEach((d, i) => {
+        const percentage = Math.round((d.raised / d.target) * 100);
+        const div = document.createElement("div");
+        div.className = "ch glass";
+        div.style.cssText = `border-radius:20px;padding:24px;animation:fadeUp 0.5s ${i*0.1}s ease both;border:2px solid transparent;cursor:pointer`;
+        div.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+            <div style="font-size:2rem">${d.icon}</div>
+            <div style="font-size:0.82rem;font-weight:800;color:${d.col}">${percentage}% funded</div>
+          </div>
+          <h3 style="font-weight:800;font-size:1rem;margin-bottom:8px">${d.name}</h3>
+          <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#6b7280;margin-bottom:8px">
+            <span>Raised: <strong style="color:${d.col}">₹${(d.raised || 0).toLocaleString()}</strong></span>
+            <span>Goal: <strong>₹${(d.target || 0).toLocaleString()}</strong></span>
+          </div>
+          <div class="pbar" style="margin-bottom:18px">
+            <div class="pfill" style="background:linear-gradient(90deg,${d.col},${d.col}99);width:${percentage}%"></div>
+          </div>
+          <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,${d.col},${d.col}cc);color:#fff;padding:10px;border-radius:14px;font-size:0.88rem;cursor:pointer;border:none;font-family:'Nunito',sans-serif;font-weight:800" onclick="openDonationForm('${d.name}', '${d.col}')">💝 Donate Now</button>
+        `;
+        div.onclick = (e) => {
+          if (e.target.tagName !== "BUTTON" && !e.target.closest('button')) {
+            openDonationForm(d.name, d.col);
+          }
+        };
+        grid.appendChild(div);
+      });
+    }
+
+    // ════════════ ROLES ════════════
+    function renderRoles() {
+      const div = document.getElementById("rolesDiv");
+      if (!div) return;
+      div.innerHTML = "";
+      const roles = ["public", "admin", "monitor", "host", "judge"];
+      roles.forEach(role => {
+        const btn = document.createElement("button");
+        btn.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+
+        // Base styles
+        const defaultStyle = `padding:5px 12px;border-radius:20px;border:none;cursor:pointer;font-size:0.75rem;font-weight:800;font-family:'Nunito',sans-serif;transition:all 0.2s;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35)`;
+        const activeStyle = `padding:5px 12px;border-radius:20px;border:none;cursor:pointer;font-size:0.75rem;font-weight:800;font-family:'Nunito',sans-serif;transition:all 0.2s;background:linear-gradient(135deg,#FFD23F,#FF6B35);color:#1A1A2E`;
+
+        btn.style.cssText = role === selectedRole ? activeStyle : defaultStyle;
+
+        btn.onclick = () => {
+          selectedRole = role;
+          renderRoles(); // Re-render to update styles
+        };
+        div.appendChild(btn);
+      });
+    }
+
+    // ════════════ FUNCTIONS ════════════
+    function navigateTo(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      // Close mobile menu if open
+      const navItems = document.getElementById('navItems');
+      const navToggle = document.getElementById('navToggle');
+      if (navItems && navItems.classList.contains('open')) {
+        navItems.classList.remove('open');
+        navToggle.classList.remove('open');
+      }
+
+      // Instant UI Feedback — highlight the clicked nav item immediately
+      updateActiveUI(id);
+
+      const offset = 90; // height of fixed navbar
+      const elementPosition = el.getBoundingClientRect().top + window.scrollY - offset;
+
+      window.scrollTo({
+        top: elementPosition,
+        behavior: 'smooth'
+      });
+    }
+
+    function toggleMenu() {
+      const navItems = document.getElementById('navItems');
+      const navToggle = document.getElementById('navToggle');
+      if (navItems && navToggle) {
+        navItems.classList.toggle('open');
+        navToggle.classList.toggle('open');
+      }
+    }
+
+    // Auto-close menu when clicking outside
+    document.addEventListener('click', function(event) {
+      const navItems = document.getElementById('navItems');
+      const navToggle = document.getElementById('navToggle');
+      if (!navItems || !navToggle) return;
+      if (navItems.classList.contains('open') && 
+          !navItems.contains(event.target) && 
+          !navToggle.contains(event.target)) {
+        navItems.classList.remove('open');
+        navToggle.classList.remove('open');
+      }
+    });
+
+    function setupScrollActiveObserver() {
+      // Disabled to prevent conflict with scroll event listener
+    }
+
+    function updateActiveUI(id) {
+      // Update Navbar
+      document.querySelectorAll('.nl').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-section') === id);
+      });
+
+      // Update Side Dots
+      document.querySelectorAll('.side-dot').forEach(dot => {
+        dot.classList.toggle('active', dot.getAttribute('data-section') === id);
+      });
+
+      // Update Section Pills
+      document.querySelectorAll('.sec-pill').forEach(pill => {
+        pill.classList.toggle('active', pill.getAttribute('data-section') === id);
+      });
+    }
+
+    // Scroll Spy
+    window.addEventListener('scroll', () => {
+      const sections = ['home', 'notice', 'live', 'previous', 'about', 'donate', 'contact'];
+      let current = '';
+
+      // Check if we are at the bottom of the page
+      const isAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 50);
+      
+      if (isAtBottom) {
+        // Find the last visible section
+        for (let i = sections.length - 1; i >= 0; i--) {
+          const section = document.getElementById(sections[i]);
+          if (section && section.offsetParent !== null) {
+            current = sections[i];
+            break;
+          }
+        }
+      } else {
+        sections.forEach(id => {
+          const section = document.getElementById(id);
+          if (section && section.offsetParent !== null) {
+            const rect = section.getBoundingClientRect();
+            // If the top of the section is at or above the viewport threshold (accounting for fixed header)
+            if (rect.top <= 100) {
+              current = id;
+            }
+          }
+        });
+      }
+
+      if (current) {
+        // Update Navbar
+        document.querySelectorAll('.nl').forEach(btn => {
+          btn.classList.toggle('active', btn.getAttribute('data-section') === current);
+        });
+
+        // Update Section Pills
+        document.querySelectorAll('.sec-pill').forEach(pill => {
+          pill.classList.toggle('active', pill.getAttribute('data-section') === current);
+        });
+
+        // Update Side Dots
+        document.querySelectorAll('.side-dot').forEach(dot => {
+          dot.classList.toggle('active', dot.getAttribute('data-section') === current);
+        });
+      }
+
+      // Back to Top button
+      const btt = document.getElementById('backToTop');
+      if (window.scrollY > 500) {
+        btt.classList.add('show');
+      } else {
+        btt.classList.remove('show');
+      }
+    });
+
+    function showToast(title, text, icon, targetId) {
+      const container = document.getElementById('toastContainer') || createToastContainer();
+      const toast = document.createElement('div');
+      toast.className = 'toast-notif';
+      toast.onclick = () => {
+        if (targetId) navigateTo(targetId);
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 400);
+      };
+      toast.innerHTML = `
+        <div class="toast-icon">${icon}</div>
+        <div class="toast-body">
+          <div class="toast-title">${title}</div>
+          <div class="toast-text">${text}</div>
+        </div>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 400);
+      }, 6000);
+    }
+
+    function createToastContainer() {
+      const div = document.createElement('div');
+      div.id = 'toastContainer';
+      div.className = 'toast-container';
+      document.body.appendChild(div);
+      return div;
+    }
+
+    var suSelectedEventId = null;
+
+    function showAuth(signup = false, eventId = null) {
+      if (signup && eventId) {
+        // DIRECT PARTICIPATION: Skip login/signup, go straight to event form
+        suSelectedEventId = eventId;
+        document.getElementById("authModal").classList.remove("hidden");
+        if (!document.getElementById("flipCard").classList.contains("flipped")) {
+          flipCard();
+        }
+        renderDynamicForm(eventId);
+        return;
+      }
+      document.getElementById("authModal").classList.remove("hidden");
+      if (signup) {
+        if (!document.getElementById("flipCard").classList.contains("flipped")) {
+          flipCard();
+        }
+        suSelectedEventId = null;
+        goToSuStep1();
+      }
+    }
+
+    function goToSuStep1() {
+      document.getElementById("suStep1").classList.remove("hidden");
+      document.getElementById("suStep2").classList.add("hidden");
+      document.getElementById("suStep3").classList.add("hidden");
+    }
+
+    function goToSuStep2() {
+      const name = document.getElementById("suName").value.trim();
+      const email = document.getElementById("suEmail").value.trim();
+      const pass = document.getElementById("suPass").value;
+
+      if (!name || !email || !pass) {
+        alert("Please fill in your name, email and password.");
+        return;
+      }
+
+      // If we already have a selected event ID from a card click, skip selection and go to form
+      if (suSelectedEventId) {
+        renderDynamicForm(suSelectedEventId);
+        return;
+      }
+
+      document.getElementById("suStep1").classList.add("hidden");
+      document.getElementById("suStep2").classList.remove("hidden");
+      document.getElementById("suStep3").classList.add("hidden");
+
+      renderSuEventList();
+    }
+
+    function renderSuEventList() {
+      const container = document.getElementById("suEventList");
+      if (!container) return;
+      container.innerHTML = EVENTS.map(ev => `
+        <div onclick="renderDynamicForm('${ev.id}')" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; cursor:pointer; transition:all 0.2s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);" onmouseover="this.style.borderColor='#4f46e5'; this.style.boxShadow='0 10px 15px -3px rgba(79,70,229,0.1)';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.05)';">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:800; font-size:0.95rem; color:#1e293b;">${ev.icon} ${ev.name}</div>
+            <div style="font-size:0.75rem; color:#4f46e5; font-weight:700; background:#f5f3ff; padding:4px 8px; border-radius:8px;">${ev.disp}</div>
+          </div>
+        </div>
+      `).join('') || '<div style="color:#64748b; text-align:center; padding:20px; font-weight:600;">No events available.</div>';
+    }
+
+    function renderDynamicForm(eventId, isSync = false) {
+      suSelectedEventId = eventId;
+      const container = document.getElementById("suDynamicForm");
+      if (!container) return;
+      
+      const ev = EVENTS.find(e => String(e.id) === String(eventId));
+      if (!ev) return;
+
+      if (!isSync) {
+        document.getElementById("suStep1").classList.add("hidden");
+        document.getElementById("suStep2").classList.add("hidden");
+        document.getElementById("suStep3").classList.remove("hidden");
+      }
+      const titleEl = document.getElementById("suStep3Title");
+      if (titleEl) {
+        titleEl.textContent = ev.name.toUpperCase();
+        titleEl.style.color = '#4f46e5';
+        titleEl.style.textShadow = 'none';
+      }
+
+      // Capture existing values if syncing
+      const savedValues = {};
+      if (isSync) {
+        document.querySelectorAll(".su-df").forEach(el => savedValues[el.id] = el.value);
+        document.querySelectorAll(".su-df-radio:checked").forEach(el => savedValues[el.name] = el.value);
+        document.querySelectorAll(".su-df-check:checked").forEach(el => {
+           if(!savedValues[el.getAttribute('data-label')]) savedValues[el.getAttribute('data-label')] = [];
+           savedValues[el.getAttribute('data-label')].push(el.value);
+        });
+        const catEl = document.querySelector(".su-df-cat");
+        if(catEl) savedValues['su-df-cat'] = catEl.value;
+        const venEl = document.querySelector(".su-df-ven");
+        if(venEl) savedValues['su-df-ven'] = venEl.value;
+      }
+
+      let html = `<input type="hidden" id="suEventId" value="${ev.id}"/>`;
+
+      // No account fields needed - direct participation form only
+
+      let fields = ev.formFields || [];
+      while (typeof fields === 'string') {
+        try { fields = JSON.parse(fields); } catch(e) { fields = []; break; }
+      }
+      if (typeof fields === 'object' && fields !== null && !Array.isArray(fields)) {
+        fields = Object.values(fields);
+      }
+      
+      // Auto-fallback to Standard Trio (Full Name, Gender, Phone Number) if empty
+      if (!fields || fields.length === 0) {
+        fields = [
+          { type: 'text', label: 'Full Name', required: true, placeholder: 'As per ID proof' },
+          { type: 'radio', label: 'Gender', required: true, options: ['Male', 'Female', 'Other'] },
+          { type: 'number', label: 'Phone Number', required: true, placeholder: '98XXXXXXXX' }
+        ];
+      }
+      
+      fields.forEach((f, idx) => {
+        const id = `df_${idx}`;
+        const labelStyle = `font-size:0.75rem; color:#4f46e5; font-weight:800; letter-spacing:1px; text-transform:uppercase; display:block; margin-bottom:8px; opacity: 0.9;`;
+        const inputStyle = `background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:14px 18px; color:#1e293b; font-size:1rem; box-shadow:inset 0 2px 4px rgba(0,0,0,0.02); width: 100%; box-sizing: border-box;`;
+        
+        if (f.type === 'text') {
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></div>`;
+        } else if (f.type === 'number') {
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="number" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></div>`;
+        } else if (f.type === 'email') {
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="email" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></div>`;
+        } else if (f.type === 'dob' || f.type === 'date') {
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="date" id="${id}" onchange="calcPublicAge(this.value)" style="${inputStyle}"></div>`;
+        } else if (f.type === 'address' || f.type === 'textarea') {
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><textarea class="inp su-df" data-label="${f.label}" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></textarea></div>`;
+        } else if (f.type === 'file_link') {
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="text" id="${id}" placeholder="Paste link (e.g., Google Drive, YouTube)" style="${inputStyle}"></div>`;
+        } else if (f.type === 'video_link_or_file' || f.type === 'audio_link_or_file') {
+          const accept = f.type === 'video_link_or_file' ? 'video/*' : 'audio/*';
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <input type="file" accept="${accept}" style="${inputStyle}; padding:10px; background:#f8fafc" onchange="uploadPublicFileToCloud(this, '${id}')">
+              <input type="hidden" class="inp su-df" data-label="${f.label}" id="${id}">
+            </div>
+          </div>`;
+        } else if (f.type === 'file' || f.type === 'photo') {
+          const accept = f.type === 'photo' ? 'image/*' : '*/*';
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <input type="file" accept="${accept}" style="${inputStyle}; padding:10px; background:#f8fafc" onchange="uploadPublicFileToCloud(this, '${id}')">
+              <input type="hidden" class="inp su-df" data-label="${f.label}" id="${id}">
+            </div>
+          </div>`;
+        } else if (f.type === 'radio') {
+          const isGender = f.label.toUpperCase().includes('GENDER');
+          html += `
+            <div style="margin-bottom:20px;">
+              <label style="${labelStyle}">${isGender ? '⚧ ' : ''}${f.label}${f.required?' *':''}</label>
+              <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;">
+                ${(f.options || []).map(o => `
+                  <label style="font-size:0.95rem; font-weight:600; color:#1e293b; display:flex; align-items:center; gap:8px; cursor:pointer; background:#f8fafc; padding:10px 15px; border-radius:12px; border:1px solid #cbd5e1; transition:0.2s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+                    <input type="radio" name="${id}" class="su-df-radio" value="${o}" data-label="${f.label}" style="width:18px; height:18px; accent-color:#4f46e5;"> 
+                    <span>${o === 'Male' ? '👨' : o === 'Female' ? '👩' : ''} ${o}</span>
+                  </label>`).join('')}
+              </div>
+            </div>
+          `;
+        } else if (f.type === 'checkbox') {
+          html += `
+            <div style="margin-bottom:20px;">
+              <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+              <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+                ${(f.options || []).map(o => `<label style="display:flex; align-items:center; gap:10px; font-size:0.95rem; font-weight:600; color:#1e293b; cursor:pointer;"><input type="checkbox" class="su-df-check" value="${o}" data-label="${f.label}" style="width:20px; height:20px; accent-color:#4f46e5;"> ${o}</label>`).join('')}
+              </div>
+            </div>
+          `;
+        } else if (f.type === 'tc') {
+          html += `
+            <label style="display:flex; align-items:flex-start; gap:12px; font-size:0.85rem; color:#1e293b; cursor:pointer; margin-top:15px; background:#f8fafc; padding:18px; border-radius:16px; border:1px solid #cbd5e1; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
+              <input type="checkbox" class="su-df-tc" required data-label="${f.label}" style="margin-top:2px; width:22px; height:22px; accent-color:#4f46e5; flex-shrink:0;"> 
+              <div style="line-height:1.5;">
+                <strong style="color:#4f46e5; display:block; margin-bottom:4px; font-size:0.75rem; letter-spacing:1px;">TERMS & CONDITIONS</strong>
+                <span>${f.tcText || 'I confirm that the above information is accurate and I agree to abide by the rules and regulations of KNSDC 2025.'}</span>
+              </div>
+            </label>
+          `;
+        } else if (f.type === 'category') {
+          const cats = ev.categories || [];
+          html += `
+            <div class="fg" style="margin-bottom:20px;">
+              <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+              <select class="inp su-df-cat" data-label="${f.label}" style="${inputStyle} width:100%;">
+                <option value="">— Select Category —</option>
+                ${cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+              </select>
+            </div>
+          `;
+        } else if (f.type === 'venue') {
+          const vens = ev.venues || [];
+          html += `
+            <div class="fg" style="margin-bottom:20px;">
+              <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+              <select class="inp su-df-ven" data-label="${f.label}" style="${inputStyle} width:100%;">
+                <option value="">— Select Venue —</option>
+                ${vens.map(v => `<option value="${v.id}">${v.name}</option>`).join('')}
+              </select>
+            </div>
+          `;
+        } else if (f.type === 'payment') {
+          html += `
+            <div class="fg" style="margin-bottom:20px;">
+              <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+              <div style="padding:24px; border:2px dashed #4f46e5; border-radius:16px; background:#f5f3ff; text-align:center; box-shadow: 0 4px 15px rgba(79,70,229,0.05);">
+                <div style="font-size:1.2rem; font-weight:800; color:#4f46e5; margin-bottom:6px;">Pay Registration Fee</div>
+                <div style="font-size:0.75rem; color:#64748b; font-weight:600; margin-bottom:12px;">Secure Integrated Payment Gateway</div>
+                <button type="button" class="btn btn-p" style="padding:10px 20px; font-size:0.9rem; font-weight:700; background:#4f46e5; border-radius:10px; color:#fff; cursor:pointer;" onclick="processRegistrationPaymentDemo()">💳 Pay Now (Demo)</button>
+              </div>
+            </div>
+          `;
+        }
+      });
+      
+      // Redundant button removed - handled by footer
+      container.innerHTML = html;
+
+      // Restore values if syncing
+      if (isSync) {
+        Object.entries(savedValues).forEach(([id, val]) => {
+          const el = document.getElementById(id);
+          if (el && el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number' || el.type === 'tel')) {
+            el.value = val;
+          } else if (id === 'su-df-cat' || id === 'su-df-ven') {
+            const sel = document.querySelector('.' + id);
+            if (sel) sel.value = val;
+          } else if (Array.isArray(val)) { // Checkboxes
+            document.querySelectorAll(`[data-label="${id}"]`).forEach(cb => {
+              if (val.includes(cb.value)) cb.checked = true;
+            });
+          } else { // Radios
+            const rad = document.querySelector(`input[name="${id}"][value="${val}"]`);
+            if (rad) rad.checked = true;
+          }
+        });
+      }
+    }
+
+    window.calcPublicAge = function(dobString) {
+      if(!dobString) return;
+      const dob = new Date(dobString);
+      const diff = Date.now() - dob.getTime();
+      const age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+      const ageInputs = Array.from(document.querySelectorAll('input.su-df[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
+      if (ageInputs.length > 0) ageInputs[0].value = age;
+    };
+
+    window.uploadPublicFileToCloud = async function(input, targetId) {
+      const file = input.files[0];
+      if(!file) return;
+      if (file.size > 20 * 1024 * 1024) {
+         showToast("File too large", "Please select a file smaller than 20MB, or paste a link instead.", "⚠️");
+         input.value = "";
+         return;
+      }
+      
+      showToast("Uploading...", "Please wait while your file is securely uploaded.", "⏳");
+      input.disabled = true;
+      
+      const url = await syncEngine.uploadFile(file, 'participants/');
+      input.disabled = false;
+      
+      if (url) {
+        document.getElementById(targetId).value = url;
+        showToast("Success", "File uploaded successfully!", "✅");
+      } else {
+        showToast("Error", "Failed to upload file. Please try again or paste a link.", "❌");
+        input.value = "";
+      }
+    };
+
+    window.closeEventPage = function() {
+      // Show main sections (live is managed by checkLiveStatus)
+      const mainSections = ['home', 'notice', 'previous', 'about', 'contact'];
+      mainSections.forEach(id => {
+         const el = document.getElementById(id);
+         if(el) el.style.display = 'block'; // Or revert to original display, but block/flex is default in this CSS for these sections
+      });
+      // specific display for home
+      document.getElementById('home').style.display = 'block'; // it has flex internally via children but block is fine
+      
+      const footer = document.querySelector('.footer-bg');
+      if(footer) footer.style.display = 'block';
+      
+      document.getElementById('event-page-view').style.display = 'none';
+      
+      // Let checkLiveStatus determine if live should be shown now that event-page-view is closed
+      if (typeof checkLiveStatus === 'function') checkLiveStatus();
+      
+      // Revert URL
+      history.pushState(null, '', window.location.pathname);
+      window.scrollTo(0, document.getElementById('home').offsetTop);
+    };
+
+    window.addEventListener('popstate', (e) => {
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get('event');
+      if (eventId) {
+        showEventDetail(eventId);
+      } else {
+        closeEventPage();
+      }
+    });
+
+    function showEventDetail(id) {
+      const ev = EVENTS.find(e => String(e.id) === String(id));
+      if (!ev) return;
+      
+      // Update URL without reloading
+      if (!window.location.search.includes('event=' + id)) {
+        history.pushState({eventId: id}, '', '?event=' + id);
+      }
+      
+      // Hide main sections
+      const mainSections = ['home', 'notice', 'live', 'previous', 'about', 'contact'];
+      mainSections.forEach(sid => {
+         const el = document.getElementById(sid);
+         if(el) el.style.display = 'none';
+      });
+      const footer = document.querySelector('.footer-bg');
+      if(footer) footer.style.display = 'none';
+      
+      const pageView = document.getElementById('event-page-view');
+      
+      // Banner
+      const bannerEl = document.getElementById('epv-banner');
+      if (ev.banner) {
+        bannerEl.style.backgroundImage = `url('${ev.banner}')`;
+      } else {
+        bannerEl.style.backgroundImage = 'linear-gradient(135deg, #1e293b, #334155)';
+      }
+      
+      document.getElementById('epv-cat').textContent = ev.cat || 'Event';
+      document.getElementById('epv-title').textContent = ev.name || 'Unknown Event';
+      document.getElementById('epv-date').textContent = ev.disp || '--';
+      document.getElementById('epv-venue').textContent = ev.venue || '--';
+      document.getElementById('epv-org').textContent = ev.org || 'KNSDC';
+      document.getElementById('epv-desc').textContent = ev.description || 'No description provided.';
+      
+      const schedCont = document.getElementById('epv-schedule-container');
+      const schedBody = document.getElementById('epv-schedule');
+      
+      if (ev.roundSchedules && Object.keys(ev.roundSchedules).length > 0) {
+        let scheduleHtml = '';
+        const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+        rounds.forEach(r => {
+          const s = ev.roundSchedules[r];
+          if (s && (s.date || s.venue)) {
+            scheduleHtml += `<div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,0,0,0.05); padding-bottom:12px;">
+              <div>
+                <strong style="text-transform:capitalize; color:#4f46e5; font-size:1.1rem;">${r}</strong>
+                <div style="font-size:0.95rem; color:#64748b; margin-top:4px;">${s.venue || 'TBA'}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-weight:700; color:#1e293b; font-size:1rem;">${s.date || 'TBA'}</div>
+                <div style="font-size:0.9rem; color:#64748b; margin-top:2px;">${s.time || 'TBA'}</div>
+              </div>
+            </div>`;
+          }
+        });
+        if (scheduleHtml) {
+          schedBody.innerHTML = scheduleHtml;
+          schedCont.style.display = 'block';
+        } else {
+          schedCont.style.display = 'none';
+        }
+      } else {
+        schedCont.style.display = 'none';
+      }
+      
+      const state = syncEngine.getData();
+      
+      // judgeAgreements is stripped from public sync for security. 
+      // We rely on state.judges which is populated when judges log into the Judge Portal.
+      const eventJudges = (state.judges || []).filter(j => String(j.eventId) === String(ev.id));
+      
+      const judgesCont = document.getElementById('epv-judges-container');
+      const judgesBody = document.getElementById('epv-judges');
+      
+      if (eventJudges.length > 0) {
+        let jHtml = '';
+        eventJudges.forEach(j => {
+           const name = j.name || 'Unknown Judge';
+           const spec = j.spec || j.specialization || j.category || 'Judge';
+           const photo = j.avatar || j.photoUrl || j.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7B2D8B&color=fff&size=150`;
+           
+           jHtml += `
+             <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:20px; text-align:center; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+               <img src="${photo}" alt="${name}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; margin-bottom:12px; border:3px solid #fff; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+               <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px;">${name}</div>
+               <div style="font-size:0.85rem; color:#E91E8C; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">${spec}</div>
+             </div>
+           `;
+        });
+        judgesBody.innerHTML = jHtml;
+        judgesCont.style.display = 'block';
+      } else {
+        judgesCont.style.display = 'none';
+      }
+      
+      // Public Favorites Logic
+      const allParts = state.participants || [];
+      const evParts = allParts.filter(p => String(p.eventId) === String(ev.id));
+      const pubVotes = state.publicVotes || {};
+      
+      const favoritesData = [];
+      
+      evParts.forEach(p => {
+        // Collect all votes for this participant across all rounds
+        let allVotes = [];
+        ['audition', 'qualified', 'semifinal', 'final', 'favorite'].forEach(round => {
+          const key = p.id + '_' + round;
+          if (pubVotes[key]) allVotes = allVotes.concat(pubVotes[key]);
+        });
+        
+        if (allVotes.length > 0) {
+          // Calculate unique "Likes" (unique phone numbers)
+          const uniquePhones = new Set();
+          let totalScore = 0;
+          let ratingCount = 0;
+          allVotes.forEach(v => {
+            if (v.phone) uniquePhones.add(v.phone);
+            if (v.score !== undefined && v.score <= 10) {
+              totalScore += v.score;
+              ratingCount++;
+            }
+          });
+          
+          const likes = uniquePhones.size;
+          const avgScore = ratingCount > 0 ? (totalScore / ratingCount).toFixed(1) : '0.0';
+          
+          favoritesData.push({
+            p: p,
+            likes: likes,
+            avg: avgScore
+          });
+        }
+      });
+      
+      const pubCont = document.getElementById('epv-public-rating-container');
+      const pubBody = document.getElementById('epv-public-rating');
+      
+      if (favoritesData.length > 0) {
+        // Sort by likes descending, then average descending
+        favoritesData.sort((a, b) => b.likes - a.likes || b.avg - a.avg);
+        
+        let pHtml = '';
+        favoritesData.forEach(fav => {
+          const pName = fav.p.name || 'Participant';
+          const pCat = ev.categories?.find(c => c.id == fav.p.catId)?.name || 'General';
+          
+          pHtml += `
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; display:flex; align-items:center; gap:16px; box-shadow:0 4px 12px rgba(0,0,0,0.03); position:relative; overflow:hidden;">
+              <div style="width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);">
+                ${fav.p.id ? fav.p.id.slice(-2).toUpperCase() : '🌟'}
+              </div>
+              <div style="flex:1; overflow:hidden;">
+                <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pName}</div>
+                <div style="font-size:0.8rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pCat}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
+                  <span style="font-size:1.3rem;">❤️</span>
+                  <span style="font-size:1.5rem; font-weight:900; color:#059669;">${fav.likes}</span>
+                </div>
+                <div style="font-size:0.8rem; color:#f59e0b; font-weight:800; margin-top:4px;">⭐ ${fav.avg} AVG</div>
+                <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="margin-top:10px; background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-weight:800; font-size:0.75rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote</button>
+              </div>
+            </div>
+          `;
+        });
+        
+        pubBody.innerHTML = pHtml;
+        pubCont.style.display = 'block';
+      } else {
+        pubCont.style.display = 'none';
+      }
+      
+      const isRegOpen = (ev.switchStates && ev.switchStates.publicReg !== undefined) ? ev.switchStates.publicReg : isRegistrationOpen;
+      
+      const regBtn = document.getElementById('epv-reg-btn');
+      if (isRegOpen) {
+        regBtn.textContent = 'Register Now';
+        regBtn.style.background = 'linear-gradient(135deg, #7B2D8B, #E91E8C)';
+        regBtn.style.cursor = 'pointer';
+        regBtn.onclick = () => {
+          showAuth(true, ev.id);
+        };
+      } else {
+        regBtn.textContent = 'Registration Closed';
+        regBtn.style.background = '#9ca3af';
+        regBtn.style.cursor = 'not-allowed';
+        regBtn.onclick = null;
+      }
+      
+      document.getElementById('epv-support-btn').onclick = () => {
+        openDonationForm(ev.name, ev.col);
+      };
+      
+      pageView.style.display = 'block';
+      window.scrollTo(0, 0);
+    }
+
+    function closeEventDetailModal() {
+      // Kept for backward compatibility if any old code calls it
+      const modal = document.getElementById('eventDetailModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function hideAuth() {
+      document.getElementById("authModal").classList.add("hidden");
+      document.getElementById("flipCard").classList.remove("flipped");
+    }
+
+    function flipCard() {
+      document.getElementById("flipCard").classList.toggle("flipped");
+    }
+
+    function switchMainTab(event) {
+      const btn = event.currentTarget;
+      const tabName = btn.getAttribute("data-tab");
+
+      // Hide all tabs
+      document.querySelectorAll(".mainTabContent").forEach(t => t.classList.add("hidden"));
+
+      // Show selected tab
+      const tabEl = document.getElementById(tabName + "Tab");
+      if (tabEl) tabEl.classList.remove("hidden");
+
+      // Update button styles
+      document.querySelectorAll(".mainTab").forEach(b => b.classList.remove("on"));
+      btn.classList.add("on");
+    }
+
+    function switchCategory(event) {
+      const btn = event.currentTarget;
+      const cat = btn.getAttribute("data-cat");
+      currentCategory = cat;
+
+      // Update button styles across both filters synchronously
+      document.querySelectorAll(".catBtn").forEach(b => {
+        if (b.getAttribute("data-cat") === cat) {
+          b.classList.add("on");
+        } else {
+          b.classList.remove("on");
+        }
+      });
+
+      // Re-render both views
+      renderResults();
+      renderPromotion();
+    }
+
+    function switchPromoRound(round) {
+      currentPromoRound = round;
+
+      // Update button styles
+      document.querySelectorAll(".promoRoundTab").forEach(b => {
+        if (b.id === "promoRoundBtn-" + round) {
+          b.classList.add("on");
+        } else {
+          b.classList.remove("on");
+        }
+      });
+
+      // Re-render promotion list
+      renderPromotion();
+    }
+
+    function switchGalleryFilter(event) {
+      const btn = event.currentTarget;
+      const filter = btn.getAttribute("data-filter");
+      currentGalleryFilter = filter;
+
+      // Update button styles
+      document.querySelectorAll(".galBtn").forEach(b => b.classList.remove("on"));
+      btn.classList.add("on");
+
+      // Re-render gallery
+      renderGallery();
+    }
+
+    async function handleLogin() {
+      const user = document.getElementById('loginU').value.trim();
+      const pass = document.getElementById('loginP').value;
+
+      if (!user || !pass) {
+        showToast("Credentials Required", "Please enter your email and password.", "⚠️");
+        return;
+      }
+
+      showToast("Authenticating", "Checking credentials with Supabase...", "🔑");
+
+      const res = await syncEngine.signIn(user, pass);
+      if (res.success) {
+        showToast("Welcome Back!", "Login successful!", "👋");
+        
+        if (res.role === 'member' || res.role === 'public') {
+          localStorage.setItem('kns_role', 'public');
+          hideAuth();
+          window.location.reload();
+        } else {
+          localStorage.setItem('kns_role', res.role);
+          
+          const portalMap = {
+            'admin': 'KNSDC-Admin.html',
+            'host': 'KNSDC-Host.html',
+            'judge': 'KNSDC-Judge.html',
+            'monitor': 'KNSDC-Monitor.html'
+          };
+
+          const target = portalMap[res.role] || 'portal.html';
+          showToast("Redirecting", "Launching " + res.role + " portal...", "🚀");
+          setTimeout(() => {
+            window.location.href = target;
+          }, 1500);
+        }
+      } else {
+        // Fallback to local participants check for offline/mock compatibility
+        const s = syncEngine.getData();
+        const participants = s.participants || [];
+        const found = participants.find(p => p.email === user && p.password === pass);
+        if (found) {
+          showToast("Welcome Back (Offline)!", "Offline session started, " + found.name, "👋");
+          localStorage.setItem('kns_role', 'public');
+          localStorage.setItem('kns_user', JSON.stringify(found));
+          hideAuth();
+          window.location.reload();
+          return;
+        }
+
+        // Check Judge Agreements
+        const judgeFound = (s.judgeAgreements || []).find(j => j.email === user && j.password === pass);
+        if (judgeFound) {
+          showToast("Welcome Back!", "Logged in as Judge: " + judgeFound.name, "🧑‍⚖️");
+          localStorage.setItem('kns_role', 'judge');
+          localStorage.setItem('kns_user', JSON.stringify(judgeFound));
+          hideAuth();
+          setTimeout(() => { window.location.href = 'KNSDC-Judge.html'; }, 1000);
+          return;
+        }
+
+        // Check Host Assignments
+        const hostFound = (s.hostAssignments || []).find(h => h.email === user && h.password === pass);
+        if (hostFound) {
+          showToast("Welcome Back!", "Logged in as Host: " + hostFound.name, "🎤");
+          localStorage.setItem('kns_role', 'host');
+          localStorage.setItem('kns_user', JSON.stringify(hostFound));
+          hideAuth();
+          setTimeout(() => { window.location.href = 'KNSDC-Host.html'; }, 1000);
+          return;
+        }
+
+        // Check Participant Portal Login (First Name + ID)
+        const sData = syncEngine.getData();
+        const participantFound = (sData.participants || []).find(p => {
+          if (String(p.id).toUpperCase() !== String(pass).trim().toUpperCase()) return false;
+          const firstName = (p.name || '').split(' ')[0].toLowerCase();
+          return firstName === String(user).trim().toLowerCase();
+        });
+
+        if (participantFound) {
+          showToast("Welcome Participant!", "Redirecting to your portal...", "🎭");
+          localStorage.setItem('knsdc_participant_id', participantFound.id);
+          hideAuth();
+          setTimeout(() => { window.location.href = 'KNSDC-Participant.html'; }, 1000);
+          return;
+        }
+
+        // Custom local/offline fallbacks for requested accounts to bypass unconfirmed email status
+        const customFallbacks = {
+          'souravbairagi121999@gmail.com': { role: 'admin', pass: 'Sb@210617' },
+          'kalikapurnabinsanghaclub@gmail.com': { role: 'monitor', pass: 'kns743336' }
+        };
+        if (customFallbacks[user] && pass === customFallbacks[user].pass) {
+          const role = customFallbacks[user].role;
+          showToast("Welcome!", "Logged in as " + role, "👋");
+          localStorage.setItem('kns_role', role);
+          localStorage.setItem('kns_user', JSON.stringify({ name: user.split('@')[0], email: user }));
+          
+          const portalMap = {
+            'admin': 'KNSDC-Admin.html',
+            'host': 'KNSDC-Host.html',
+            'judge': 'KNSDC-Judge.html',
+            'monitor': 'KNSDC-Monitor.html'
+          };
+          setTimeout(() => { window.location.href = portalMap[role] || 'portal.html'; }, 1000);
+          return;
+        }
+
+        showToast("Authentication Failed", "Invalid credentials. Please check your email and password.", "❌");
+      }
+    }
+
+    function handleSignup() {
+      const state = syncEngine.getData();
+      const participants = state.participants || [];
+      const eventId = suSelectedEventId;
+
+      if (!eventId) { showToast("Event Selection", "Please select an event to register.", "⚠️"); return; }
+
+      // Gather Dynamic Fields
+      const formData = {};
+      
+      // 1. Text & Numbers
+      document.querySelectorAll(".su-df").forEach(f => {
+        formData[f.getAttribute("data-label")] = f.value;
+      });
+      
+      // 2. Radios
+      document.querySelectorAll(".su-df-radio:checked").forEach(r => {
+        formData[r.getAttribute("data-label")] = r.value;
+      });
+      
+      // 3. Checkboxes
+      document.querySelectorAll(".su-df-check:checked").forEach(c => {
+        const label = c.getAttribute("data-label");
+        if (!formData[label]) formData[label] = [];
+        formData[label].push(c.value);
+      });
+
+      // 4. Categories & Venues
+      let catId = 1; let venueId = 1;
+      const catEl = document.querySelector(".su-df-cat");
+      if (catEl && catEl.value) {
+        catId = parseInt(catEl.value);
+        formData[catEl.getAttribute("data-label")] = catEl.value; // Store value for validation check
+      }
+      const venEl = document.querySelector(".su-df-ven");
+      if (venEl && venEl.value) {
+        venueId = parseInt(venEl.value);
+        formData[venEl.getAttribute("data-label")] = venEl.value; // Store value for validation check
+      }
+
+      // T&C Check
+      const tcs = document.querySelectorAll(".su-df-tc");
+      for (let tc of tcs) {
+        if (!tc.checked) { showToast("Terms & Conditions", "You must agree to the Terms & Conditions.", "⚠️"); return; }
+      }
+
+      // Check required fields
+      const ev = EVENTS.find(e => String(e.id) === String(eventId));
+      if (ev && ev.formFields) {
+        let fFields = ev.formFields;
+        if (typeof fFields === 'string') {
+          try { fFields = JSON.parse(fFields); } catch(e) { fFields = []; }
+        }
+        for (let f of fFields) {
+          if (f.required && !formData[f.label] && f.type !== 'tc') {
+            showToast("Required Field", `Please fill in: ${f.label}`, "⚠️");
+            return;
+          }
+        }
+      }
+
+      // Finalize Cat/Ven labels for storage (replace ID with Name)
+      if (catEl && catEl.value) {
+        formData[catEl.getAttribute("data-label")] = catEl.options[catEl.selectedIndex].text;
+      }
+      if (venEl && venEl.value) {
+        formData[venEl.getAttribute("data-label")] = venEl.options[venEl.selectedIndex].text;
+      }
+
+      // Extract basic info from form fields
+      let name = '';
+      let phone = '';
+      let gender = '';
+      let age = 0;
+      Object.entries(formData).forEach(([label, val]) => {
+        const lbl = label.toUpperCase();
+        if (lbl.includes('NAME')) name = val;
+        else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) phone = val;
+        else if (lbl.includes('GENDER')) gender = val;
+        else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX') && !lbl.includes('AVERAGE') && !lbl.includes('MANAGE'))) {
+          const parsed = parseInt(val);
+          if (!isNaN(parsed)) age = parsed;
+        }
+        else if (lbl.includes('DOB') || lbl.includes('DATE OF BIRTH') || lbl.includes('BIRTHDAY') || lbl.includes('BIRTH DATE') || lbl === 'DATE' || lbl.includes('DATE')) {
+          if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            const dob = new Date(val);
+            const diff = Date.now() - dob.getTime();
+            const calcAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+            if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
+              if (age === 0 || lbl.includes('BIRTH') || lbl.includes('DOB')) age = calcAge; // prioritize explicit DOB fields, else take any valid date
+            }
+          }
+        }
+      });
+
+      if (!name) { showToast("Name Required", "Please fill in your Name!", "⚠️"); return; }
+
+      // Validate Age against Category limits
+      const catObj = (ev.categories || []).find(c => String(c.id) === String(catId));
+      if (catObj && age > 0) {
+        const min = parseInt(catObj.ageMin) || 0;
+        const max = parseInt(catObj.ageMax) || 999;
+        if (age < min || age > max) {
+          const maxText = max === 999 ? 'above' : max;
+          showToast(
+            "Age Not Eligible",
+            `You are not eligible for category "${catObj.name}". Your age is ${age}, but this category requires age between ${min} and ${maxText}.`,
+            "⚠️"
+          );
+          return;
+        }
+      }
+
+      const email = document.getElementById("suEmail").value.trim();
+      const password = document.getElementById("suPass").value;
+
+      // Generate ID using random 2-letter, 4-digit unique code
+      const s = syncEngine.getData();
+      const allParticipants = s.participants || [];
+      const newId = syncEngine.generateUniqueParticipantId();
+
+      const newP = {
+        id: newId, name, phone: phone || '—', age, gender,
+        email: email || '', password: password || '',
+        eventId: eventId, formAnswers: formData,
+        catId, venueId, round: "audition",
+        stageStatus: "waiting", present: false,
+        isPublic: true, isVerified: true, scores: {},
+        regDate: new Date().toISOString()
+      };
+
+      // Auto-signup the user in Supabase Auth if online (REMOVED AS PER REQUEST)
+      /*
+      if (syncEngine.supabase && email && password) {
+        syncEngine.signUp(email, password, name, 'member')
+          .then((res) => {
+            if (res.success) {
+              console.log('[Supabase] Auth user created successfully for participant');
+            } else {
+              console.error('[Supabase] Error signing up participant auth user:', res.error);
+            }
+          });
+      }
+      */
+
+      // Utilize the proper sync pipeline for auto-sync with database
+      if (syncEngine.supabase) {
+        syncEngine.createParticipant(newP).then((success) => {
+          if (!success) {
+            console.error('[Supabase] Error auto-syncing participant to database');
+          } else {
+            console.log('[Supabase] Participant auto-synced successfully');
+          }
+        });
+      } else {
+        allParticipants.push(newP);
+        syncEngine.updateState({ participants: allParticipants });
+      }
+
+      const updatedNxtId = { ...(s.nxtId || { reg: 1 }) };
+      updatedNxtId.reg = (updatedNxtId.reg || 1) + 1;
+      syncEngine.updateState({ nxtId: updatedNxtId });
+
+      // Store details for download
+      window.lastRegDetails = {
+        id: newId,
+        name: name,
+        event: ev ? ev.name : "Unknown Event",
+        date: ev ? ev.disp : "---",
+        venue: ev ? ev.venue : "---",
+        eventCategory: ev ? (ev.cat || ev.category) : "General",
+        category: (catEl && catEl.value) ? catEl.options[catEl.selectedIndex].text : "General",
+        timestamp: Date.now()
+      };
+
+      // Show Success Modal
+      document.getElementById("successRegId").textContent = newId;
+      document.getElementById("successEventDate").textContent = ev ? ev.disp : "---";
+      document.getElementById("successEventVenue").textContent = ev ? ev.venue : "---";
+      const uName = (name || "").split(" ")[0] || "User";
+      const uEl = document.getElementById("successRegUser");
+      if (uEl) uEl.textContent = uName;
+      const pEl = document.getElementById("successRegPass");
+      if (pEl) pEl.textContent = newId;
+      document.getElementById("regSuccessModal").classList.remove("hidden");
+      hideAuth();
+    }
+
+    function openDonationForm(name, color) {
+      selectedDonation = { name, color };
+      document.getElementById("donationFormTitle").textContent = "Support Our Mission";
+      document.getElementById("selectedPurposeBadge").textContent = name;
+      document.getElementById("selectedPurposeBadge").style.color = color;
+      document.getElementById("selectedPurposeBadge").style.borderColor = color;
+      document.getElementById("selectedPurposeBadge").style.backgroundColor = color + "15";
+      document.getElementById("donationForm").classList.remove("hidden");
+
+      // Direct scroll to form
+      navigateTo('donate');
+
+      donationAmount = 0;
+      document.getElementById("donationAmount").value = "";
+      document.querySelectorAll(".donAmtBtn").forEach(b => b.classList.remove("on"));
+    }
+
+    function closeDonationForm() {
+      document.getElementById("donationForm").classList.add("hidden");
+    }
+
+    function handleCustomDonationAmount() {
+      const val = document.getElementById("donationAmount").value;
+      donationAmount = val ? parseInt(val) : 0;
+      document.querySelectorAll(".donAmtBtn").forEach(b => b.classList.remove("on"));
+    }
+
+    function setDonationAmountBtn(event) {
+      const amount = event.target.getAttribute("data-amount");
+      donationAmount = parseInt(amount);
+      document.getElementById("donationAmount").value = donationAmount;
+
+      // Update button styles
+      document.querySelectorAll(".donAmtBtn").forEach(b => b.classList.remove("on"));
+      event.target.classList.add("on");
+    }
+
+    function processDonation() {
+      const amount = parseInt(document.getElementById("donationAmount").value);
+      const name = document.getElementById("donorName").value;
+      const email = document.getElementById("donorEmail").value;
+      const phone = document.getElementById("donorPhone").value;
+      const address = document.getElementById("donorAddress").value;
+      const pan = document.getElementById("donorPAN").value;
+
+      if (!amount || amount < 100) {
+        showToast("Invalid Amount", "Please enter a valid amount (minimum ₹100)", "⚠️");
+        return;
+      }
+      if (!name) {
+        showToast("Name Required", "Please enter your name", "⚠️");
+        return;
+      }
+      if (!email) {
+        showToast("Email Required", "Please enter your email", "⚠️");
+        return;
+      }
+
+      // Initialize Razorpay Frontend Demo (Test Mode)
+      const options = {
+        "key": "rzp_test_xxxxxx_mock_key", // Dummy test key for demo
+        "amount": amount * 100, // Amount is in currency subunits (paise)
+        "currency": "INR",
+        "name": "KNSDC",
+        "description": "Donation for " + (selectedDonation ? selectedDonation.name : "Event"),
+        "image": "https://kalikapurnabinsanghaclub.org/logo.png",
+        "handler": function (response) {
+          // On Payment Success Callback
+          showToast("Payment Successful!", `Razorpay Payment ID: ${response.razorpay_payment_id}`, "✅");
+          
+          if (window.syncEngine && selectedDonation) {
+            window.syncEngine.setData(state => {
+              const updatedDonations = (state.donations || []).map(d => {
+                if (d.name === selectedDonation.name) {
+                  return { ...d, raised: (d.raised || 0) + amount };
+                }
+                return d;
+              });
+              return { ...state, donations: updatedDonations };
+            });
+          }
+
+          document.getElementById("successMsg").classList.remove("hidden");
+
+          if (amount >= 2000) {
+            setTimeout(() => {
+              generateDonationCertificate(name, amount, email, phone, address, pan);
+              closeDonationForm();
+              document.getElementById("successMsg").classList.add("hidden");
+            }, 1500);
+          } else {
+            showToast("Thank You!", `Thank you for your donation of ₹${amount}! A receipt has been sent to ${email}`, "💖");
+            closeDonationForm();
+            document.getElementById("successMsg").classList.add("hidden");
+          }
+        },
+        "prefill": {
+          "name": name,
+          "email": email,
+          "contact": phone
+        },
+        "theme": {
+          "color": "#E91E8C"
+        }
+      };
+
+      const rzp = new Razorpay(options);
+      rzp.on('payment.failed', function (response){
+        showToast("Payment Failed", response.error.description, "❌");
+      });
+      
+      // Open the Razorpay checkout overlay
+      rzp.open();
+    }
+
+    function processRegistrationPaymentDemo() {
+      // Initialize Razorpay Frontend Demo (Test Mode)
+      const options = {
+        "key": "rzp_test_xxxxxx_mock_key", // Dummy test key for demo
+        "amount": 500 * 100, // Demo amount: ₹500
+        "currency": "INR",
+        "name": "KNSDC Event Registration",
+        "description": "Registration Fee Payment",
+        "image": "https://kalikapurnabinsanghaclub.org/logo.png",
+        "handler": function (response) {
+          showToast("Payment Successful!", `Razorpay Payment ID: ${response.razorpay_payment_id}`, "✅");
+          // Mark the button as paid
+          const btn = document.querySelector('.btn-p');
+          if (btn) {
+            btn.innerHTML = '✅ Payment Received';
+            btn.style.background = '#059669';
+            btn.disabled = true;
+          }
+        },
+        "theme": {
+          "color": "#4f46e5"
+        }
+      };
+
+      const rzp = new Razorpay(options);
+      rzp.on('payment.failed', function (response){
+        showToast("Payment Failed", response.error.description, "❌");
+      });
+      rzp.open();
+    }
+
+    function generateDonationCertificate(name, amount, email, phone, address, pan) {
+      const today = new Date();
+      const certNum = 'KNSDC' + today.getFullYear() + '-' + String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+
+      document.getElementById("certNumber").textContent = `Certificate #${certNum}`;
+      document.getElementById("certName").textContent = name;
+      document.getElementById("certAmount").textContent = `₹${amount.toLocaleString('en-IN')}`;
+      document.getElementById("certDate").textContent = today.toLocaleDateString('en-IN');
+      document.getElementById("certPAN").textContent = pan || "Provided separately";
+      document.getElementById("certAddress").textContent = address || "---";
+      document.getElementById("issueDate").textContent = today.toLocaleDateString('en-IN');
+
+      document.getElementById("certificateModal").classList.remove("hidden");
+    }
+
+    function closeCertificate() {
+      document.getElementById("certificateModal").classList.add("hidden");
+    }
+
+    async function setRating(rating) {
+      currentRating = rating;
+      document.getElementById("starRating").textContent = "⭐".repeat(rating);
+      const success = await syncEngine.submitRating(rating);
+      if (success) { showToast("Success", "Thank you for rating us!", "⭐"); }
+      else { showToast("Error", "Error submitting rating.", "❌"); }
+    }
+
+    async function submitContactForm() {
+      const name = document.getElementById("contact-name").value.trim();
+      const email = document.getElementById("contact-email").value.trim();
+      const subject = document.getElementById("contact-subject").value.trim();
+      const message = document.getElementById("contact-message").value.trim();
+      
+      if (!name || !email || !message) { 
+        showToast("Missing Info", "Name, email, and message are required!", "⚠️"); 
+        return; 
+      }
+      
+      showToast("Sending", "Sending your message...", "📧");
+      const success = await syncEngine.submitContactMessage({ name, email, subject, message });
+      
+      if (success) {
+        showToast("Sent!", "Message sent successfully!", "✅");
+        document.getElementById("contact-name").value = "";
+        document.getElementById("contact-email").value = "";
+        document.getElementById("contact-subject").value = "";
+        document.getElementById("contact-message").value = "";
+      } else {
+        showToast("Error", "Failed to send message. Please try again.", "❌");
+      }
+    }
+
+    // Network Connection Loader Logic
+    function setLoaderState(show, text = 'LOADING') {
+      const pl = document.getElementById("pageLoader");
+      if (!pl) return;
+      if (show) {
+        pl.style.visibility = 'visible';
+        pl.style.opacity = '1';
+        pl.querySelectorAll('.text span').forEach(el => el.textContent = text);
+      } else {
+        pl.style.opacity = '0';
+        setTimeout(() => pl.style.visibility = 'hidden', 800);
+        setTimeout(() => {
+          pl.querySelectorAll('.text span').forEach(el => el.textContent = 'LOADING');
+        }, 800);
+      }
+    }
+
+    // Register loader events and fallbacks immediately
+    window.addEventListener('offline', () => setLoaderState(true, 'OFFLINE'));
+    window.addEventListener('online', () => setLoaderState(false));
+    window.addEventListener('load', () => setLoaderState(false));
+    setTimeout(() => setLoaderState(false), 3000); // 3 seconds fallback freeze prevention
+
+    // Initialize the Public Portal
+    try {
+      setupSync();
+    } catch (e) {
+      console.error('[Sync Setup Error] Failed to setupSync:', e);
+    }
+
+    try {
+      init();
+      window.addEventListener('load', init);
+    } catch (e) {
+      console.error('[Init Error] Failed to run init:', e);
+      setLoaderState(false); // Ensure loader is dismissed on error
+    }
+
+    // ════════════ DOWNLOAD REGISTRATION FORM ════════════
+    function downloadReg(format) {
+      if (!window.lastRegDetails) {
+        alert("Registration details not found. Please try again.");
+        return;
+      }
+      
+      const details = window.lastRegDetails;
+      
+      const div = document.createElement('div');
+      div.style.cssText = 'position:absolute; left:-9999px; top:-9999px; width:600px; background:#ffffff; padding:40px; font-family:"Nunito", sans-serif; color:#0f172a; border-radius:0; box-sizing:border-box;';
+      
+      div.innerHTML = `
+        <div style="background: linear-gradient(135deg, #1A237E, #7B2D8B); padding: 25px; border-radius: 16px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; color: white;">
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <div style="width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: #FFD23F; display: flex; align-items: center; justify-content: center;">
+              <img src="logo.jpg" style="width: 100%; height: 100%; object-fit: cover;" crossorigin="anonymous" />
+            </div>
+            <div>
+              <div style="font-size: 20px; font-weight: 800; text-transform: uppercase;">Registration Confirmed</div>
+              <div style="font-size: 14px; color: rgba(255,255,255,0.8); margin-top: 4px;">Kalikapur Nabin Sangha DC</div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 12px; color: rgba(255,255,255,0.7); text-transform: uppercase; font-weight: 800; letter-spacing: 1px; margin-bottom: 4px;">PARTICIPANT ID</div>
+            <div style="font-size: 28px; font-weight: 900; color: #FFD23F; font-family: 'Cinzel Decorative', serif;">${details.id}</div>
           </div>
         </div>
         
-        <div style="display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;">
-          ${judgeSigHtml}
-          <div>
-            <div style="font-size:0.65rem; color:#777; margin-bottom:5px; font-weight:600;">Certificate No: ${certNo}</div>
-            <div style="background:linear-gradient(135deg, #1A237E, #3949AB); color:#fff; padding:5px 14px; font-size:0.75rem; font-weight:800; border-radius:6px; letter-spacing:1.5px; box-shadow:0 2px 4px rgba(0,0,0,0.15);">KNSDC OFFICIAL</div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; margin-bottom: 25px;">
+          <div style="background: #f8fafc; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; font-weight: 800; font-size: 16px; color: #334155;">Participant Details</div>
+          <div style="padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Full Name</div>
+              <div style="font-size: 16px; font-weight: 700; color: #0f172a;">${details.name}</div>
+            </div>
+            <div>
+              <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Participant Category</div>
+              <div style="font-size: 16px; font-weight: 700; color: #0f172a;">${details.category}</div>
+            </div>
           </div>
         </div>
-      </div>
-      
-      <!-- Power By Footer -->
-      <div style="margin-top:25px; font-size:0.65rem; color:#9ca3af; text-transform:uppercase; letter-spacing:2px; font-weight:700;">
-        Powered by Kalikapur Nabin Sangha
-      </div>
-      
-      <!-- Logo Watermark -->
-      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:15rem; opacity:0.02; pointer-events:none; font-weight:900;">KNS</div>
-    </div>
-  `;
-
-  const win = window.open('', '', 'height=800,width=1200');
-  if (!win) {
-    toast("⚠️ Please allow popups to view and print your certificate.");
-    return;
-  }
-  
-  win.document.write(`
-    <html>
-      <head>
-        <title>KNSDC Certificate</title>
-        <style>
-          @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); 
-          body { margin:0; padding:20px; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #e2e8f0; }
-          #cert-wrapper { width: 1056px; height: 750px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; }
-          #controls { display: flex; gap: 15px; margin-bottom: 20px; }
-          .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; display: flex; align-items: center; gap: 8px; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s; }
-          .btn:active { opacity: 0.8; }
-          .btn-print { background: #7c3aed; }
-          .btn-jpg { background: #ea580c; }
-          @media print {
-            @page { size: landscape; margin: 0; }
-            body { padding: 0; background: white; align-items: flex-start; justify-content: flex-start; }
-            #controls { display: none !important; }
-            #cert-wrapper { width: 100%; height: 100%; box-shadow: none; margin: 0; }
-          }
-        </style>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
-      </head>
-      <body>
-        <div id="controls">
-          <button class="btn btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
-          <button class="btn btn-jpg" onclick="downloadJPG()">🖼️ Download JPG</button>
+        
+        <div style="border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; margin-bottom: 25px;">
+          <div style="background: #f8fafc; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; font-weight: 800; font-size: 16px; color: #334155;">Event Details</div>
+          <div style="padding: 20px; display: grid; grid-template-columns: 1fr; gap: 15px;">
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="font-size: 20px;">🏆</div>
+              <div>
+                <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">Event Name</div>
+                <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">${details.event}</div>
+                <div style="font-size: 12px; font-weight: 600; color: #3b82f6;">${details.eventCategory}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="font-size: 20px;">📅</div>
+              <div>
+                <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">Date</div>
+                <div style="font-size: 15px; font-weight: 700; color: #0f172a;">${details.date}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start;">
+              <div style="font-size: 20px;">📍</div>
+              <div>
+                <div style="font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">Venue</div>
+                <div style="font-size: 15px; font-weight: 700; color: #0f172a;">${details.venue}</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div id="cert-wrapper">
-          ${content}
+        
+        <div style="border: 1px dashed #3b82f6; border-radius: 16px; overflow: hidden; margin-bottom: 25px;">
+          <div style="background: rgba(59, 130, 246, 0.05); padding: 15px 20px; border-bottom: 1px dashed rgba(59, 130, 246, 0.2); font-weight: 800; font-size: 16px; color: #1e3a8a;">Participant Portal Login</div>
+          <div style="padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: rgba(59, 130, 246, 0.02);">
+            <div>
+              <div style="font-size: 12px; color: #3b82f6; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Username</div>
+              <div style="font-size: 18px; font-weight: 900; color: #1e3a8a;">${(details.name || 'User').split(' ')[0]}</div>
+            </div>
+            <div>
+              <div style="font-size: 12px; color: #3b82f6; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Password</div>
+              <div style="font-size: 18px; font-weight: 900; color: #1e3a8a;">${details.id}</div>
+            </div>
+          </div>
         </div>
-        <script>
-          function downloadJPG() {
-            const btn = document.querySelector('.btn-jpg');
-            btn.textContent = 'Generating...';
-            btn.disabled = true;
-            
-            html2canvas(document.getElementById('cert-wrapper'), { scale: 2, useCORS: true }).then(canvas => {
-              const link = document.createElement('a');
-              link.download = '${(p.name || 'Participant').replace(/\s+/g,'_')}_Certificate.jpg';
-              link.href = canvas.toDataURL('image/jpeg', 0.95);
-              link.click();
-              
-              btn.textContent = '🖼️ Download JPG';
-              btn.disabled = false;
-            }).catch(err => {
-              alert('Failed to generate JPG.');
-              btn.textContent = '🖼️ Download JPG';
-              btn.disabled = false;
-            });
-          }
-        <\/script>
-      </body>
-    </html>
-  `);
-  win.document.close();
-  
-  toast("📥 Popup opened! You can Print/PDF or Download JPG.");
-}
-
-// 4. Save Updates (Auto-Lock)
-document.getElementById('participant-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const btn = document.getElementById('save-btn');
-  if (btn.disabled) return;
-  
-  btn.disabled = true;
-  btn.textContent = 'Saving...';
-  
-  const state = window.syncEngine.getData() || {};
-  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
-  
-  const formFields = window.participantFormFields || [];
-  let payload = { formAnswers: { ...(p.formAnswers || {}) }, formLocked: true };
-  
-  for (let i = 0; i < formFields.length; i++) {
-    const f = formFields[i];
-    const fieldId = `dyn-field-${i}`;
-    const el = document.getElementById(fieldId);
-    let val = '';
-
-    if (f.type === 'radio') {
-      const checked = document.querySelector(`input[name="${fieldId}"]:checked`);
-      val = checked ? checked.value : '';
-    } else if (f.type === 'checkbox') {
-      const checked = Array.from(document.querySelectorAll(`input[name="${fieldId}"]:checked`)).map(c => c.value);
-      val = checked;
-    } else if (f.type === 'tc') {
-      val = el ? el.checked : false;
-    } else if (el) {
-      val = el.value.trim ? el.value.trim() : el.value;
-    }
-
-    if (f.required && (!val || (Array.isArray(val) && val.length === 0))) {
-      toast(`Please fill required field: ${f.label}`);
-      btn.disabled = false;
-      btn.textContent = 'Save Updates';
-      return;
-    }
-
-    payload.formAnswers[f.label] = val;
-
-    // Map to standard properties
-    const lbl = f.label.toUpperCase();
-    if (lbl.includes('NAME')) payload.name = val;
-    else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) payload.phone = val;
-    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) payload.age = val;
-    else if (f.type === 'category') payload.catId = val;
-    else if (f.type === 'venue') payload.venueId = val;
-  }
-  
-  try {
-    await window.syncEngine.updateParticipant(CURRENT_USER, payload);
-    toast('✅ Your form updated successfully!');
-    // Render will naturally lock the UI because we pushed formLocked:true
-  } catch(err) {
-    console.error(err);
-    toast('Error saving updates');
-    btn.disabled = false;
-    btn.textContent = 'Save Updates';
-  }
-});
-
-// Reactively re-render if Monitor unlocks them while they are logged in!
-if (window.syncEngine) {
-  window.syncEngine.subscribe(() => {
-    if (CURRENT_USER && document.getElementById('dashboard-view').style.display === 'block') {
-      const state = window.syncEngine.getData() || {};
-      const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
-      
-      const formLocked = p.formLocked === true;
-      const btn = document.getElementById('save-btn');
-      const isCurrentlyLocked = btn && btn.disabled;
-      
-      // If form was just locked remotely, force re-render immediately
-      if (formLocked && !isCurrentlyLocked) {
-        renderDashboard();
-        return;
-      }
-      
-      // If form was unlocked remotely, force re-render immediately
-      if (!formLocked && isCurrentlyLocked) {
-        renderDashboard();
-        return;
-      }
-
-      // Otherwise, only re-render if the user is not actively typing
-      const activeEl = document.activeElement;
-      const isTyping = activeEl && document.getElementById('participant-form').contains(activeEl);
-      
-      if (!isTyping) {
-        renderDashboard();
-      }
-    }
-  });
-}
-
-// 5-second auto-polling loop: only runs when participant is logged in and form is currently locked
-setInterval(async () => {
-  if (CURRENT_USER && window.syncEngine) {
-    const state = window.syncEngine.getData() || {};
-    const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-    if (p) {
-      const formLocked = p.formLocked === true;
-      if (formLocked) {
-        try {
-          await window.syncEngine.loadParticipants();
-        } catch(e) {
-          console.error('[Participant] Auto-poll status failed:', e);
-        }
-      }
-    }
-  }
-}, 5000);
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && window.syncEngine) {
-    window.syncEngine.loadParticipants().catch(e => console.error(e));
-  }
-});
-
-function renderDetailedResults(p) {
-  const container = document.getElementById('detailed-results-card');
-  if (!container) return;
-
-  const state = window.syncEngine.getData() || {};
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev ? ev.id : null] : state.switchStates) || {};
-  
-  if (!p.scores || Object.keys(p.scores).length === 0 || !eventSwitches['result-public']) {
-    container.style.display = 'none';
-    return;
-  }
-  
-  container.style.display = 'block';
-
-  const cat = ((ev && ev.categories) || []).find(c => String(c.id) === String(p.catId));
-  const catName = cat ? cat.name : 'Participant';
-
-  const totalScore = Object.values(p.scores || {}).reduce((a, b) => {
-    if (typeof b === 'object') return a + Object.values(b).reduce((x, y) => x + (Number(y) || 0), 0);
-    return a + (Number(b) || 0);
-  }, 0);
-  
-  const subjects = (ev && ev.subjects) || state.subjects || [];
-  
-  const scoredJudgeCount = Object.keys(p.scores).length || 1;
-  const maxTotalScore = scoredJudgeCount * subjects.reduce((a, s) => a + (Number(s.maxMarks) || 10), 0);
-
-  const allParticipants = state.participants || [];
-  const sameCatParticipants = allParticipants.filter(pp => String(pp.eventId) === String(p.eventId) && pp.catId === p.catId);
-  let catTotalScores = 0;
-  let catScoredCount = 0;
-  sameCatParticipants.forEach(pp => {
-    let ppTotal = 0;
-    Object.values(pp.scores || {}).forEach(jScores => {
-      if (typeof jScores === 'object') Object.values(jScores).forEach(v => ppTotal += (Number(v) || 0));
-      else ppTotal += (Number(jScores) || 0);
-    });
-    if (ppTotal > 0) { catTotalScores += ppTotal; catScoredCount++; }
-  });
-  const catAvg = catScoredCount > 0 ? (catTotalScores / catScoredCount).toFixed(1) : '0.0';
-
-  let subjectBreakdownHTML = '';
-  if (subjects.length > 0) {
-    const judges = state.judges || [];
-    const judgeAgreements = state.judgeAgreements || [];
-    
-    const getJudgeScores = (j) => {
-      const agr = judgeAgreements.find(a => 
-        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-      );
-      return (p.scores && p.scores[j.id]) || (agr && p.scores && p.scores[agr.id]) || null;
-    };
-
-    let scoredJudges = judges.filter(j => getJudgeScores(j) !== null);
-    
-    if (scoredJudges.length === 0) {
-      scoredJudges = Object.keys(p.scores).map(jid => {
-        return { id: jid, name: 'Judge ' + jid.substring(0, 4) };
-      });
-    }
-    
-    if (scoredJudges.length === 0) {
-      subjectBreakdownHTML = `
-        <div style="margin-top:16px; background:var(--bg2); border-radius:14px; padding:16px; border:1px solid var(--border);">
-          <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
-          <div style="font-size:0.8rem; color:var(--text-muted); font-style:italic;">Scores will appear here once submitted.</div>
-        </div>`;
-    } else {
-      subjectBreakdownHTML = `
-        <div style="margin-top:16px; background:var(--bg2); border-radius:14px; padding:16px; border:1px solid var(--border);">
-          <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
-          ${scoredJudges.map(judge => {
-            const jScores = getJudgeScores(judge) || p.scores[judge.id] || {};
-            let judgeTotal = 0;
-            let judgeMax = 0;
-            
-            subjects.forEach(s => {
-              judgeTotal += (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
-              judgeMax += (Number(s.maxMarks) || 10);
-            });
-
-            let judgeHtml = `
-              <div style="margin-bottom:12px; padding:12px; background:var(--bg); border-radius:10px; border:1px solid var(--border);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:4px;">
-                  <span style="font-size:0.8rem; font-weight:800; color:var(--text);">🧑‍⚖️ ${judge.name}</span>
-                  <span style="font-size:0.75rem; font-weight:800; color:var(--primary); background:rgba(124,58,237,0.1); padding:2px 8px; border-radius:10px;">${judgeTotal} / ${judgeMax} pts</span>
-                </div>`;
-            
-            subjects.forEach(s => {
-              let subScore = (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
-              const subMax = Number(s.maxMarks) || 10;
-              const pct = subMax > 0 ? Math.round(subScore / subMax * 100) : 0;
-              const barColor = pct >= 70 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
-              
-              judgeHtml += `
-                <div style="margin-bottom:8px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                    <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted);">${s.name || 'Subject'}</span>
-                    <span style="font-size:0.75rem; font-weight:700; color:${barColor};">${subScore} / ${subMax}</span>
-                  </div>
-                  <div style="height:4px; background:var(--border); border-radius:10px; overflow:hidden;">
-                    <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:10px; transition:width 0.6s ease;"></div>
-                  </div>
-                </div>
-              `;
-            });
-            // Get judge-specific comment for this round
-            const currentRound = p.round || 'audition';
-            const judgeComment = (p.roundComments && p.roundComments[currentRound] && p.roundComments[currentRound][judge.id]) || '';
-            if (judgeComment) {
-              judgeHtml += `<div style="padding:10px; margin-top:8px; background:var(--bg3); border-radius:8px; border-left:3px solid var(--primary); font-size:0.75rem; color:var(--text); font-style:italic; line-height:1.4;">
-                💬 "${judgeComment}"
-              </div>`;
-            }
-            
-            judgeHtml += `</div>`;
-            return judgeHtml;
-          }).join('')}
+        
+        <div style="text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px dashed #cbd5e1; padding-top: 15px; margin-top: 10px;">
+          Generated automatically on ${new Date().toLocaleString()}<br>Please bring this document (digital or printed) on the event day.
         </div>
       `;
-    }
-  }
-
-  container.innerHTML = `
-    <div style="padding:24px; border-radius:20px; border:2px solid rgba(124,58,237,0.2); text-align:left; background:var(--bg); box-shadow: 0 8px 24px rgba(124,58,237,0.08);">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
-        <div>
-          <h3 style="color:var(--text); font-size:1.4rem; font-weight:900; margin:4px 0;">${p.name}</h3>
-          <div style="color:var(--text-muted); font-size:0.85rem;">${catName} · Round: ${(p.round || 'audition').toUpperCase()}</div>
-        </div>
-      </div>
       
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px;">
-        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(124,58,237,0.1);">
-          <div style="font-size:0.65rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Your Score</div>
-          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${totalScore}</div>
-        </div>
-        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(234,88,12,0.1);">
-          <div style="font-size:0.65rem; color:#EA580C; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Max Score</div>
-          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${maxTotalScore}</div>
-        </div>
-        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(245,158,11,0.1);">
-          <div style="font-size:0.65rem; color:#D97706; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Cat. Avg</div>
-          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${catAvg}</div>
-        </div>
-      </div>
-
-      ${subjectBreakdownHTML}
-    </div>
-  `;
-}
-
-function renderPerformanceJourney(p) {
-  const container = document.getElementById('participant-stream-charts-container');
-  const card = document.getElementById('performance-journey-card');
-  if (!container || !card) return;
-
-  const state = window.syncEngine.getData() || {};
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev ? ev.id : null] : state.switchStates) || {};
-
-  const hasCurrentScores = p.scores && Object.keys(p.scores).length > 0;
-  const hasPastScores = p.roundScores && Object.keys(p.roundScores).length > 0;
-  
-  if ((!hasCurrentScores && !hasPastScores) || !eventSwitches['result-public']) {
-    card.style.display = 'none';
-    return;
-  }
-  
-  card.style.display = 'block';
-
-  if (typeof Chart === 'undefined') {
-    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">Chart library not loaded.</div>';
-    return;
-  }
-  
-  if (window.participantStreamChartInstance) {
-    window.participantStreamChartInstance.destroy();
-  }
-  
-  container.innerHTML = '<canvas id="stream-chart"></canvas>';
-  const canvasEl = document.getElementById('stream-chart');
-  
-  // Set height for the container
-  container.style.height = '250px';
-  
-  const ctx2d = canvasEl.getContext('2d');
-  
-  const subjects = state.subjects || [];
-  const participants = state.participants || [];
-  
-  const rounds = ['audition', 'qualified', 'semifinal', 'final'];
-  const roundLabels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
-  
-  // Calculate Global Averages
-  const globalAvgs = {};
-  rounds.forEach(r => {
-    globalAvgs[r] = {};
-    subjects.forEach(s => {
-      let total = 0, count = 0;
-      participants.forEach(part => {
-        let scores = null;
-        if (part.round === r && part.scores) scores = part.scores;
-        else if (part.roundScores && part.roundScores[r]) scores = part.roundScores[r];
-        if (scores) {
-          const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
-          if (jScores.length > 0) {
-            total += jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length;
-            count++;
-          }
-        }
-      });
-      globalAvgs[r][s.id] = count > 0 ? Number((total / count).toFixed(1)) : null;
-    });
-  });
-
-  const datasets = [];
-  
-  subjects.forEach((s, idx) => {
-    const pData = rounds.map(r => {
-      let scores = null;
-      if (p.round === r && p.scores) scores = p.scores;
-      else if (p.roundScores && p.roundScores[r]) scores = p.roundScores[r];
-      if (scores) {
-        const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
-        if (jScores.length > 0) return Number((jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length).toFixed(1));
-      }
-      return null;
-    });
-
-    const gradient = ctx2d.createLinearGradient(0, 0, 0, 250);
-    let colorStart, colorEnd, borderColor;
-    if (idx % 6 === 0) { colorStart = 'rgba(236, 72, 153, 0.85)'; colorEnd = 'rgba(244, 63, 94, 0.5)'; borderColor = '#f43f5e'; }
-    else if (idx % 6 === 1) { colorStart = 'rgba(168, 85, 247, 0.85)'; colorEnd = 'rgba(124, 58, 237, 0.5)'; borderColor = '#8b5cf6'; }
-    else if (idx % 6 === 2) { colorStart = 'rgba(56, 189, 248, 0.85)'; colorEnd = 'rgba(59, 130, 246, 0.5)'; borderColor = '#3b82f6'; }
-    else if (idx % 6 === 3) { colorStart = 'rgba(52, 211, 153, 0.85)'; colorEnd = 'rgba(16, 185, 129, 0.5)'; borderColor = '#10b981'; }
-    else if (idx % 6 === 4) { colorStart = 'rgba(250, 204, 21, 0.85)'; colorEnd = 'rgba(245, 158, 11, 0.5)'; borderColor = '#eab308'; }
-    else { colorStart = 'rgba(251, 146, 60, 0.85)'; colorEnd = 'rgba(234, 88, 12, 0.5)'; borderColor = '#f97316'; }
-
-    gradient.addColorStop(0, colorStart);
-    gradient.addColorStop(1, colorEnd);
-
-    datasets.push({
-      label: s.name,
-      data: pData,
-      fill: true,
-      backgroundColor: gradient,
-      borderColor: borderColor,
-      pointRadius: function(context) {
-        const dataset = context.dataset.data;
-        const validPoints = dataset.filter(val => val !== null).length;
-        return validPoints === 1 ? 4 : 0;
-      },
-      pointHoverRadius: 6,
-      borderWidth: 2,
-      tension: 0.5
-    });
-  });
-
-  const globalData = rounds.map(r => {
-    let total = 0;
-    let hasData = false;
-    subjects.forEach(s => { 
-      if (globalAvgs[r][s.id] !== null) {
-        total += globalAvgs[r][s.id]; 
-        hasData = true;
-      }
-    });
-    return hasData ? Number(total.toFixed(1)) : null;
-  });
-
-  datasets.push({
-    label: 'Global Average (Total)',
-    data: globalData,
-    type: 'line',
-    fill: false,
-    borderColor: 'rgba(148, 163, 184, 0.8)',
-    borderDash: [5, 5],
-    borderWidth: 2,
-    pointRadius: function(context) {
-      const dataset = context.dataset.data;
-      const validPoints = dataset.filter(val => val !== null).length;
-      return validPoints <= 1 ? 3 : 0;
-    },
-    pointHoverRadius: 5,
-    tension: 0.4
-  });
-
-  window.participantStreamChartInstance = new Chart(canvasEl, {
-    type: 'line',
-    data: {
-      labels: roundLabels,
-      datasets: datasets
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      spanGaps: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: 'rgba(15, 23, 42, 0.9)',
-          titleFont: { size: 11, weight: 'bold', family: "'Inter', sans-serif" },
-          bodyFont: { size: 10, family: "'Inter', sans-serif" },
-          padding: 10,
-          cornerRadius: 8,
-          boxPadding: 4,
-          usePointStyle: true
-        }
-      },
-      scales: {
-        y: { stacked: true, display: false, min: 0 },
-        x: {
-          ticks: { color: '#94a3b8', font: { size: 10, family: "'Inter', sans-serif", weight: 'bold' } },
-          grid: { display: false },
-          border: { display: false }
-        }
-      }
-    }
-  });
-}
-
-function renderGlobalEventStatistics(p) {
-  const container = document.getElementById('global-statistics-section');
-  if (!container) return;
-  container.style.display = 'block';
-
-  const state = window.syncEngine.getData() || {};
-  const participants = state.participants || [];
-  const judges = state.judges || [];
-  const subjects = state.subjects || [];
-  const categories = state.categories || [];
-  const activeEventId = p.eventId;
-
-  // Present Judges
-  const presentJudges = judges.filter(j => {
-    if (!j.present) return false;
-    const agreements = state.judgeAgreements || [];
-    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
-  });
-
-  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
-  const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
-
-  // Helpers
-  const getAllJudgeScores = (part, jId) => {
-    let allScores = [];
-    if (part.scores && part.scores[jId]) {
-      Object.values(part.scores[jId]).forEach(v => allScores.push(Number(v)));
-    }
-    if (part.roundScores) {
-      Object.keys(part.roundScores).forEach(rName => {
-        if (rName === part.round) return; 
-        const rScores = part.roundScores[rName];
-        if (rScores && rScores[jId]) {
-          Object.values(rScores[jId]).forEach(v => allScores.push(Number(v)));
-        }
-      });
-    }
-    return allScores;
-  };
-
-  const getSubjectScores = (jId, sId) => {
-    let allScores = [];
-    participants.forEach(part => {
-      if (part.scores && part.scores[jId] && part.scores[jId][sId]) {
-        allScores.push(Number(part.scores[jId][sId]));
-      }
-      if (part.roundScores) {
-        Object.values(part.roundScores).forEach(rScores => {
-          if (rScores && rScores[jId] && rScores[jId][sId]) {
-            allScores.push(Number(rScores[jId][sId]));
+      document.body.appendChild(div);
+      
+      // Allow DOM to render
+      setTimeout(() => {
+        if (typeof html2canvas === 'undefined') { alert('Library not loaded'); return; }
+        html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
+          if (format === 'jpg') {
+            const link = document.createElement('a');
+            link.download = `Registration_${details.id}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+            document.body.removeChild(div);
+          } else if (format === 'pdf') {
+            if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded'); return; }
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            pdf.addImage(imgData, 'JPEG', 0, 10, pdfWidth, pdfHeight);
+            pdf.save(`Registration_${details.id}.pdf`);
+            document.body.removeChild(div);
           }
         });
-      }
-    });
-    return allScores;
-  };
-
-  const resolveCatBorderColor = (catColorStr, index) => {
-    const classMap = {
-      'b-blue': '#3b82f6', 'b-green': '#10b981', 'b-amber': '#f59e0b',
-      'b-orange': '#ea580c', 'b-red': '#ef4444', 'b-purple': '#8b5cf6',
-      'b-pink': '#ec4899', 'b-teal': '#14b8a6', 'b-indigo': '#6366f1'
-    };
-    if (catColorStr && classMap[catColorStr]) return classMap[catColorStr];
-    if (catColorStr && catColorStr.startsWith('#')) return catColorStr;
-    const fallbackPalette = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
-    return fallbackPalette[index % fallbackPalette.length];
-  };
-
-  const hexToRgba = (hex, alpha) => {
-    let r = 0, g = 0, b = 0;
-    if (hex && hex.length === 4) { r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16); }
-    else if (hex && hex.length === 7) { r = parseInt(hex.slice(1, 3), 16); g = parseInt(hex.slice(3, 5), 16); b = parseInt(hex.slice(5, 7), 16); }
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
-
-  // 1. ROUND STATS CHART
-  const renderRoundChart = () => {
-    const ctx = document.getElementById('round-chart');
-    if (!ctx) return;
-    const activeEventCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
-    const datasets = [];
-    
-    activeEventCats.forEach((cat, catIdx) => {
-      const promotedData = [];
-      const stoppedData = [];
-      const borderColor = resolveCatBorderColor(cat.color, catIdx);
-  
-      roundsOrder.forEach((round, rIdx) => {
-        const catParts = participants.filter(p => String(p.catId) === String(cat.id) && (String(p.eventId) === String(activeEventId) || !p.eventId));
-        const presentInRound = catParts.filter(p => roundsOrder.indexOf(p.round) >= rIdx);
-        const promoted = presentInRound.filter(p => roundsOrder.indexOf(p.round) > rIdx);
-        const stopped = presentInRound.filter(p => roundsOrder.indexOf(p.round) === rIdx);
-  
-        promotedData.push(promoted.length);
-        stoppedData.push(stopped.length);
-      });
-  
-      datasets.push({
-        label: `${cat.name} (Promoted)`,
-        data: promotedData,
-        backgroundColor: hexToRgba(borderColor, 0.85),
-        borderColor: borderColor,
-        borderWidth: 2.5,
-        borderRadius: 4,
-        stack: `cat_${cat.id}`
-      });
-  
-      datasets.push({
-        label: `${cat.name} (Stopped Here)`,
-        data: stoppedData,
-        backgroundColor: hexToRgba(borderColor, 0.25),
-        borderColor: borderColor,
-        borderWidth: 2.5,
-        borderRadius: 4,
-        stack: `cat_${cat.id}`
-      });
-    });
-  
-    if(window.roundChartInstance) window.roundChartInstance.destroy();
-    window.roundChartInstance = new Chart(ctx, {
-      type:'bar',
-      data:{labels, datasets},
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        plugins:{
-          legend:{
-            display:true,
-            labels:{ color:'#8892a4', font:{size:10, family:"'Inter', sans-serif", weight:'bold'} }
-          },
-          tooltip: { mode: 'index', intersect: false }
-        },
-        scales:{
-          x:{ ticks:{color:'#8892a4'}, grid:{color:'rgba(34,36,54,0.15)'}, stacked: true },
-          y:{ ticks:{color:'#8892a4',stepSize:1}, grid:{color:'rgba(34,36,54,0.15)'}, stacked: true }
-        }
-      }
-    });
-  };
-
-  // 2. GENDER CHARTS
-  const renderGenderCharts = () => {
-    const container = document.getElementById('gender-charts-container');
-    if (!container) return;
-    container.innerHTML = '';
-    if (window.genderCharts) window.genderCharts.forEach(c => c.destroy());
-    window.genderCharts = [];
-  
-    roundsOrder.forEach((r, idx) => {
-      const reached = participants.filter(p => {
-        if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
-        return roundsOrder.indexOf(p.round || 'audition') >= idx;
-      });
-  
-      const males = reached.filter(p => p.gender && p.gender.toLowerCase() === 'male').length;
-      const females = reached.filter(p => p.gender && p.gender.toLowerCase() === 'female').length;
-      const total = males + females;
-      
-      const wrap = document.createElement('div');
-      wrap.style.textAlign = 'center';
-      wrap.innerHTML = `
-        <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;">${labels[idx]}</div>
-        <div style="position:relative;height:120px;display:flex;justify-content:center;">
-          <canvas id="gender-chart-${r}"></canvas>
-        </div>
-        <div style="font-size:11px;margin-top:10px;font-family:'Inter', sans-serif;display:flex;justify-content:center;gap:15px">
-          <span style="color:#f97316;font-weight:800">M: ${males}</span>
-          <span style="color:#a855f7;font-weight:800">F: ${females}</span>
-        </div>
-      `;
-      container.appendChild(wrap);
-  
-      const ctx = document.getElementById(`gender-chart-${r}`);
-      const chart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: ['Male', 'Female'],
-          datasets: [{
-            data: [males, females],
-            backgroundColor: ['#f97316', '#a855f7'],
-            borderWidth: 0,
-            hoverOffset: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '70%',
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  if(total === 0) return '0%';
-                  const percentage = Math.round((context.raw / total) * 100);
-                  return ` ${context.label}: ${context.raw} (${percentage}%)`;
-                }
-              }
-            }
-          }
-        },
-        plugins: [{
-          id: 'centerText',
-          beforeDraw: function(chart) {
-            const width = chart.width, height = chart.height, ctx = chart.ctx;
-            ctx.restore();
-            ctx.font = "bold 18px 'Inter', sans-serif";
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#64748b';
-            const text = total.toString();
-            const textX = Math.round((width - ctx.measureText(text).width) / 2);
-            const textY = height / 2;
-            ctx.fillText(text, textX, textY);
-            
-            ctx.font = "600 9px 'Inter', sans-serif";
-            ctx.fillStyle = '#94a3b8';
-            const subText = 'Total';
-            const subX = Math.round((width - ctx.measureText(subText).width) / 2);
-            ctx.fillText(subText, subX, textY + 14);
-            ctx.save();
-          }
-        }]
-      });
-      window.genderCharts.push(chart);
-    });
-  };
-
-  // 3. AGE CHARTS
-  const renderAgeCharts = () => {
-    const container = document.getElementById('age-charts-container');
-    if (!container) return;
-    container.innerHTML = '';
-    if (window.ageCharts) window.ageCharts.forEach(c => c.destroy());
-    window.ageCharts = [];
-  
-    const ageGroups = ['Below 6', '6 - 10', '11 - 20', '21 - 25', '26 - 32', '33+'];
-    const groupColors = ['#f43f5e', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#f59e0b'];
-  
-    roundsOrder.forEach((r, idx) => {
-      const reached = participants.filter(p => {
-        if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
-        return roundsOrder.indexOf(p.round || 'audition') >= idx;
-      });
-  
-      const bucketCounts = [0, 0, 0, 0, 0, 0];
-      reached.forEach(p => {
-        const ageStr = p.age ? String(p.age).replace(/[^0-9]/g, '') : '';
-        if (!ageStr) return;
-        const a = parseInt(ageStr, 10);
-        if (isNaN(a)) return;
-  
-        if (a < 6) bucketCounts[0]++;
-        else if (a >= 6 && a <= 10) bucketCounts[1]++;
-        else if (a >= 11 && a <= 20) bucketCounts[2]++;
-        else if (a >= 21 && a <= 25) bucketCounts[3]++;
-        else if (a >= 26 && a <= 32) bucketCounts[4]++;
-        else if (a >= 33) bucketCounts[5]++;
-      });
-  
-      const wrap = document.createElement('div');
-      wrap.style.textAlign = 'center';
-      wrap.innerHTML = `
-        <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;">${labels[idx]}</div>
-        <div style="position:relative;height:160px;display:flex;justify-content:center;">
-          <canvas id="age-chart-${r}"></canvas>
-        </div>
-      `;
-      container.appendChild(wrap);
-  
-      const ctx = document.getElementById(`age-chart-${r}`);
-      const chart = new Chart(ctx, {
-        type: 'polarArea',
-        data: {
-          labels: ageGroups,
-          datasets: [{
-            data: bucketCounts,
-            backgroundColor: groupColors.map(c => c + 'BB'),
-            borderColor: groupColors,
-            borderWidth: 1.5
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return ` ${context.label}: ${context.raw} Participants`;
-                }
-              }
-            }
-          },
-          scales: {
-            r: { ticks: { display: false }, grid: { color: 'rgba(0,0,0,0.05)' } }
-          }
-        }
-      });
-      window.ageCharts.push(chart);
-    });
-  };
-
-  // 4. JUDGE SCORE DISTRIBUTION
-  const renderJudgeDistChart = () => {
-    const ctx = document.getElementById('judge-chart');
-    if (!ctx) return;
-    if(window.judgeChartInstance) window.judgeChartInstance.destroy();
-    
-    const chartDatasets = presentJudges.map((j, i) => {
-      const scoreCounts = new Array(10).fill(0);
-      participants.forEach(p => {
-        const allVals = getAllJudgeScores(p, j.id);
-        allVals.forEach(val => {
-          const num = Math.round(val);
-          if (num >= 1 && num <= 10) scoreCounts[num - 1]++;
-        });
-      });
-  
-      const judgeColors = ['109,40,217', '37,99,235', '5,150,105', '217,119,6'];
-      const colorStr = judgeColors[i % judgeColors.length];
-  
-      return {
-        label: j.name.split(' ')[0],
-        data: scoreCounts,
-        backgroundColor: `rgba(${colorStr}, 0.15)`,
-        borderColor: `rgba(${colorStr}, 1)`,
-        borderWidth: 2.5,
-        pointBackgroundColor: `rgba(${colorStr}, 1)`,
-        pointBorderColor: '#fff',
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        fill: true,
-        tension: 0.4
-      };
-    });
-  
-    window.judgeChartInstance = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
-        datasets: chartDatasets
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: true,
-            labels: { color: '#8892a4', font: { size: 10, family: "'Inter', sans-serif", weight: 'bold' } }
-          },
-          tooltip: { mode: 'index', intersect: false }
-        },
-        scales: {
-          x: {
-            title: { display: true, text: 'Score Given', color: '#8892a4', font: { size: 10, weight: 'bold' } },
-            ticks: { color: '#8892a4' },
-            grid: { color: 'rgba(34,36,54,0.15)' }
-          },
-          y: {
-            title: { display: true, text: 'Frequency (Count)', color: '#8892a4', font: { size: 10, weight: 'bold' } },
-            ticks: { color: '#8892a4', stepSize: 1 },
-            grid: { color: 'rgba(34,36,54,0.15)' }
-          }
-        }
-      }
-    });
-  };
-
-  // 5. MAX & AVERAGE SCORES
-  const renderMaxAvg = () => {
-    const container = document.getElementById('judge-maxavg');
-    if(!container) return;
-    container.innerHTML = presentJudges.map(j=>{
-      let allJudgeScores = [];
-      participants.forEach(p => {
-        const pScores = getAllJudgeScores(p, j.id);
-        if(pScores.length) allJudgeScores.push(...pScores);
-      });
-      const max = allJudgeScores.length ? Math.max(...allJudgeScores) : 0;
-      const avg = allJudgeScores.length ? Math.round((allJudgeScores.reduce((a,b)=>a+b,0)/allJudgeScores.length)*10)/10 : 0;
-      const pct = subjects.length*10 > 0 ? Math.round(avg/(subjects.length*10)*100) : 0;
-      
-      const styles = {
-        row: 'display:flex; margin-bottom:12px; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:8px;',
-        avatar: `width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;margin-right:12px;background:${j.color}20;color:${j.color};border:1px solid ${j.color}50`,
-        barWrap: 'height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-top:6px;',
-        barFill: `height:100%; width:${pct}%; background:${j.color}; transition:width 0.5s ease`
-      };
-      
-      return `<div style="${styles.row}">
-        <div style="${styles.avatar}">${j.name[0]}</div>
-        <div style="flex:1">
-          <div style="font-weight:600;font-size:13px">${j.name}</div>
-          <div style="${styles.barWrap}"><div style="${styles.barFill}"></div></div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Avg: ${avg} · Max given: ${max}</div>
-        </div>
-      </div>`;
-    }).join('');
-  };
-
-  // 6. SUBJECT-WISE JUDGE ANALYSIS
-  const renderJudgeSubjectCharts = () => {
-    const container = document.getElementById('judge-subject-charts-container');
-    if (!container) return;
-    container.innerHTML = '';
-  
-    if (window.judgeSubjectCharts) window.judgeSubjectCharts.forEach(c => c.destroy());
-    window.judgeSubjectCharts = [];
-  
-    if (presentJudges.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No judges present for this event.</div>';
-      return;
+      }, 300);
     }
+    
+    window.downloadReg = downloadReg;
   
-    const subjectNames = subjects.map(s => s.name);
-  
-    presentJudges.forEach(j => {
-      const mins = [];
-      const avgs = [];
-      const maxs = [];
-  
-      subjects.forEach(s => {
-        const scores = getSubjectScores(j.id, s.id);
-        if (scores.length > 0) {
-          mins.push(Math.min(...scores));
-          maxs.push(Math.max(...scores));
-          avgs.push(Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10);
-        } else {
-          mins.push(0); maxs.push(0); avgs.push(0);
-        }
-      });
-  
-      const wrap = document.createElement('div');
-      wrap.style.textAlign = 'center';
-      wrap.innerHTML = `
-        <div style="font-size:13px;font-weight:800;margin-bottom:12px;color:${j.color};text-transform:uppercase;letter-spacing:1px;">${j.name}</div>
-        <div style="position:relative;height:240px;width:100%">
-          <canvas id="judge-subj-chart-${j.id}"></canvas>
-        </div>
-      `;
-      container.appendChild(wrap);
-  
-      const ctx = document.getElementById(`judge-subj-chart-${j.id}`);
-      const chart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: subjectNames,
-          datasets: [
-            { label: 'Min', data: mins, backgroundColor: '#fb7185', borderRadius: 2 },
-            { label: 'Avg', data: avgs, backgroundColor: '#60a5fa', borderRadius: 2 },
-            { label: 'Max', data: maxs, backgroundColor: '#34d399', borderRadius: 2 }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                usePointStyle: true,
-                boxWidth: 8,
-                font: { size: 11, family: "'Inter', sans-serif" }
-              }
-            }
-          },
-          scales: {
-            y: { min: 0, max: 10, grid: { color: 'rgba(0,0,0,0.05)' } },
-            x: { grid: { display: false }, ticks: { font: { size: 10 } } }
-          }
-        }
-      });
-      window.judgeSubjectCharts.push(chart);
-    });
-  };
-
-  // Execute all renderers
-  renderRoundChart();
-  renderGenderCharts();
-  renderAgeCharts();
-  renderJudgeDistChart();
-  renderMaxAvg();
-  renderJudgeSubjectCharts();
-}
-
-// ── ANTI-SCREENSHOT & SECURITY MEASURES ──
-document.addEventListener('contextmenu', e => e.preventDefault()); // Block right-click
-
-// Block PrintScreen key and standard screenshot shortcuts
-document.addEventListener('keyup', (e) => {
-  if (e.key === 'PrintScreen') {
-    navigator.clipboard.writeText(''); // Attempt to clear clipboard
-    showSecurityOverlay();
-  }
-});
-
-document.addEventListener('keydown', (e) => {
-  // Catch combinations like Win+Shift+S, Cmd+Shift+3/4/5
-  if ((e.metaKey && e.shiftKey) || (e.ctrlKey && e.shiftKey) || e.key === 'PrintScreen') {
-    showSecurityOverlay();
-  }
-});
-
-// Detect when window loses focus (snipping tool, alt-tab, etc)
-window.addEventListener('blur', () => {
-  const overlay = document.getElementById('anti-screenshot-overlay');
-  if (overlay) overlay.classList.add('active');
-});
-
-// When window regains focus
-window.addEventListener('focus', () => {
-  const overlay = document.getElementById('anti-screenshot-overlay');
-  if (overlay) overlay.classList.remove('active');
-});
-
-function showSecurityOverlay() {
-  const overlay = document.getElementById('anti-screenshot-overlay');
-  if (overlay) {
-    overlay.classList.add('active');
-    setTimeout(() => overlay.classList.remove('active'), 2500);
-  }
-}
-

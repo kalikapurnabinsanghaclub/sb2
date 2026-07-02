@@ -5639,105 +5639,6 @@
       }, 0);
       const rank = (window.LIVE_RESULTS || []).find(r => r.name === p.name)?.rank || 'N/A';
 
-      // Get scoring subjects and compute category-wise max and average
-      const subjects = window._KNSDC_SUBJECTS || ev?.subjects || state.subjects || [];
-      const numJudges = window._KNSDC_NUM_JUDGES || 1;
-      const maxTotalScore = window._KNSDC_MAX_SCORE || (numJudges * subjects.reduce((a, s) => a + (s.maxMarks || 10), 0));
-
-      // Compute category average (average score of all participants in same category)
-      const allParticipants = state.participants || [];
-      const sameCatParticipants = allParticipants.filter(pp => String(pp.eventId) === String(p.eventId) && pp.catId === p.catId);
-      let catTotalScores = 0;
-      let catScoredCount = 0;
-      sameCatParticipants.forEach(pp => {
-        let ppTotal = 0;
-        Object.values(pp.scores || {}).forEach(jScores => {
-          if (typeof jScores === 'object') Object.values(jScores).forEach(v => ppTotal += (Number(v) || 0));
-          else ppTotal += (Number(jScores) || 0);
-        });
-        if (ppTotal > 0) { catTotalScores += ppTotal; catScoredCount++; }
-      });
-      const catAvg = catScoredCount > 0 ? (catTotalScores / catScoredCount).toFixed(1) : '0.0';
-
-      // Build judge-wise breakdown
-      let subjectBreakdownHTML = '';
-      if (subjects.length > 0) {
-        const judges = state.judges || [];
-        const judgeAgreements = state.judgeAgreements || [];
-        
-        const getJudgeScores = (j) => {
-          const agr = judgeAgreements.find(a => 
-            (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-            (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-          );
-          return (p.scores && p.scores[j.id]) || (agr && p.scores && p.scores[agr.id]) || null;
-        };
-
-        const scoredJudges = judges.filter(j => getJudgeScores(j) !== null);
-        
-        if (scoredJudges.length === 0) {
-          subjectBreakdownHTML = `
-            <div style="margin-top:16px; background:#f8fafc; border-radius:14px; padding:16px; border:1px solid #e2e8f0;">
-              <div style="font-size:0.7rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
-              <div style="font-size:0.8rem; color:#64748b; font-style:italic;">Scores will appear here once submitted by the judges.</div>
-            </div>`;
-        } else {
-          subjectBreakdownHTML = `
-            <div style="margin-top:16px; background:#f8fafc; border-radius:14px; padding:16px; border:1px solid #e2e8f0;">
-              <div style="font-size:0.7rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
-              ${scoredJudges.map(judge => {
-                const jScores = getJudgeScores(judge) || {};
-                let judgeTotal = 0;
-                let judgeMax = 0;
-                
-                subjects.forEach(s => {
-                  judgeTotal += (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
-                  judgeMax += (s.maxMarks || 10);
-                });
-
-                let judgeHtml = `
-                  <div style="margin-bottom:12px; padding:12px; background:#fff; border-radius:10px; border:1px solid #e2e8f0;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">
-                      <span style="font-size:0.8rem; font-weight:800; color:#334155;">🧑‍⚖️ ${judge.name}</span>
-                      <span style="font-size:0.75rem; font-weight:800; color:#7C3AED; background:rgba(124,58,237,0.1); padding:2px 8px; border-radius:10px;">${judgeTotal} / ${judgeMax} pts</span>
-                    </div>`;
-                
-                subjects.forEach(s => {
-                  let subScore = (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
-                  const subMax = s.maxMarks || 10;
-                  const pct = subMax > 0 ? Math.round(subScore / subMax * 100) : 0;
-                  const barColor = pct >= 70 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
-                  
-                  judgeHtml += `
-                    <div style="margin-bottom:8px;">
-                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                        <span style="font-size:0.75rem; font-weight:600; color:#475569;">${s.name || 'Subject'}</span>
-                        <span style="font-size:0.75rem; font-weight:700; color:${barColor};">${subScore} / ${subMax}</span>
-                      </div>
-                      <div style="height:4px; background:#e2e8f0; border-radius:10px; overflow:hidden;">
-                        <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:10px; transition:width 0.6s ease;"></div>
-                      </div>
-                    </div>
-                  `;
-                });
-                
-                // Get judge-specific comment for this round
-                const currentRound = p.round || 'audition';
-                const judgeComment = (p.roundComments && p.roundComments[currentRound] && p.roundComments[currentRound][judge.id]) || '';
-                if (judgeComment) {
-                  judgeHtml += `<div style="padding:10px; margin-top:8px; background:#f1f5f9; border-radius:8px; border-left:3px solid #7C3AED; font-size:0.75rem; color:#334155; font-style:italic; line-height:1.4;">
-                    💬 "${judgeComment}"
-                  </div>`;
-                }
-
-                judgeHtml += `</div>`;
-                return judgeHtml;
-              }).join('')}
-            </div>
-          `;
-        }
-      }
-
       // Update "Your Score" stat card if it exists
       const yourScoreEl = document.getElementById('stat-your-score');
       if (yourScoreEl) yourScoreEl.textContent = totalScore;
@@ -5758,23 +5659,6 @@
               <div style="font-size:2rem; font-weight:900; color:#7C3AED;">#${rank}</div>
             </div>
           </div>
-          
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px;">
-            <div style="background:#ffffff; padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(124,58,237,0.1);">
-              <div style="font-size:0.65rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Your Score</div>
-              <div style="font-size:1.4rem; color:#1E293B; font-weight:900; margin-top:4px;">${totalScore}</div>
-            </div>
-            <div style="background:#ffffff; padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(234,88,12,0.1);">
-              <div style="font-size:0.65rem; color:#EA580C; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Max Score</div>
-              <div style="font-size:1.4rem; color:#1E293B; font-weight:900; margin-top:4px;">${maxTotalScore}</div>
-            </div>
-            <div style="background:#ffffff; padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(245,158,11,0.1);">
-              <div style="font-size:0.65rem; color:#D97706; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Cat. Avg</div>
-              <div style="font-size:1.4rem; color:#1E293B; font-weight:900; margin-top:4px;">${catAvg}</div>
-            </div>
-          </div>
-
-          ${subjectBreakdownHTML}
 
           <button class="btn btn-p" style="width:100%; justify-content:center; padding:14px; margin-top:16px; background:linear-gradient(135deg, #7C3AED, #6366F1); border:none; color:#fff; font-weight:900; border-radius:14px; font-size:0.95rem; cursor:pointer; box-shadow:0 6px 18px rgba(124,58,237,0.2);" onclick="window.generateParticipantCertificate(JSON.parse(decodeURIComponent(escape(atob('${pEncoded}')))))"> 
             🎓 View & Download Official Certificate
