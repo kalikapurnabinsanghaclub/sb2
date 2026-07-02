@@ -138,6 +138,9 @@
       </form>
     </div>
 
+    <!-- DETAILED RESULTS CARD -->
+    <div id="detailed-results-card" style="margin-top: 20px; display: none;"></div>
+
     <!-- NEW CARD FOR PERFORMANCE JOURNEY -->
     <div class="card" id="performance-journey-card" style="margin-top: 20px; display: none;">
       <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Your Performance Journey</div>
@@ -498,6 +501,8 @@ function renderDashboard() {
     banner.style.display = 'none';
   }
   
+  // Render Detailed Results
+  renderDetailedResults(p);
   // Render Performance Journey Chart
   renderPerformanceJourney(p);
   // Render Global Stats Charts
@@ -815,6 +820,150 @@ document.addEventListener('visibilitychange', () => {
     window.syncEngine.loadParticipants().catch(e => console.error(e));
   }
 });
+
+function renderDetailedResults(p) {
+  const container = document.getElementById('detailed-results-card');
+  if (!container) return;
+
+  const state = window.syncEngine.getData() || {};
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  
+  if (!p.scores || Object.keys(p.scores).length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  container.style.display = 'block';
+
+  const cat = (ev?.categories || []).find(c => String(c.id) === String(p.catId));
+  const catName = cat ? cat.name : 'Participant';
+
+  const totalScore = Object.values(p.scores || {}).reduce((a, b) => {
+    if (typeof b === 'object') return a + Object.values(b).reduce((x, y) => x + (Number(y) || 0), 0);
+    return a + (Number(b) || 0);
+  }, 0);
+  
+  const subjects = ev?.subjects || state.subjects || [];
+  
+  const scoredJudgeCount = Object.keys(p.scores).length || 1;
+  const maxTotalScore = scoredJudgeCount * subjects.reduce((a, s) => a + (Number(s.maxMarks) || 10), 0);
+
+  const allParticipants = state.participants || [];
+  const sameCatParticipants = allParticipants.filter(pp => String(pp.eventId) === String(p.eventId) && pp.catId === p.catId);
+  let catTotalScores = 0;
+  let catScoredCount = 0;
+  sameCatParticipants.forEach(pp => {
+    let ppTotal = 0;
+    Object.values(pp.scores || {}).forEach(jScores => {
+      if (typeof jScores === 'object') Object.values(jScores).forEach(v => ppTotal += (Number(v) || 0));
+      else ppTotal += (Number(jScores) || 0);
+    });
+    if (ppTotal > 0) { catTotalScores += ppTotal; catScoredCount++; }
+  });
+  const catAvg = catScoredCount > 0 ? (catTotalScores / catScoredCount).toFixed(1) : '0.0';
+
+  let subjectBreakdownHTML = '';
+  if (subjects.length > 0) {
+    const judges = state.judges || [];
+    const judgeAgreements = state.judgeAgreements || [];
+    
+    const getJudgeScores = (j) => {
+      const agr = judgeAgreements.find(a => 
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      );
+      return (p.scores && p.scores[j.id]) || (agr && p.scores && p.scores[agr.id]) || null;
+    };
+
+    let scoredJudges = judges.filter(j => getJudgeScores(j) !== null);
+    
+    if (scoredJudges.length === 0) {
+      scoredJudges = Object.keys(p.scores).map(jid => {
+        return { id: jid, name: 'Judge ' + jid.substring(0, 4) };
+      });
+    }
+    
+    if (scoredJudges.length === 0) {
+      subjectBreakdownHTML = `
+        <div style="margin-top:16px; background:var(--bg2); border-radius:14px; padding:16px; border:1px solid var(--border);">
+          <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
+          <div style="font-size:0.8rem; color:var(--text-muted); font-style:italic;">Scores will appear here once submitted.</div>
+        </div>`;
+    } else {
+      subjectBreakdownHTML = `
+        <div style="margin-top:16px; background:var(--bg2); border-radius:14px; padding:16px; border:1px solid var(--border);">
+          <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
+          ${scoredJudges.map(judge => {
+            const jScores = getJudgeScores(judge) || p.scores[judge.id] || {};
+            let judgeTotal = 0;
+            let judgeMax = 0;
+            
+            subjects.forEach(s => {
+              judgeTotal += (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
+              judgeMax += (Number(s.maxMarks) || 10);
+            });
+
+            let judgeHtml = `
+              <div style="margin-bottom:12px; padding:12px; background:var(--bg); border-radius:10px; border:1px solid var(--border);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:4px;">
+                  <span style="font-size:0.8rem; font-weight:800; color:var(--text);">🧑‍⚖️ ${judge.name}</span>
+                  <span style="font-size:0.75rem; font-weight:800; color:var(--primary); background:rgba(124,58,237,0.1); padding:2px 8px; border-radius:10px;">${judgeTotal} / ${judgeMax} pts</span>
+                </div>`;
+            
+            subjects.forEach(s => {
+              let subScore = (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
+              const subMax = Number(s.maxMarks) || 10;
+              const pct = subMax > 0 ? Math.round(subScore / subMax * 100) : 0;
+              const barColor = pct >= 70 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
+              
+              judgeHtml += `
+                <div style="margin-bottom:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted);">${s.name || 'Subject'}</span>
+                    <span style="font-size:0.75rem; font-weight:700; color:${barColor};">${subScore} / ${subMax}</span>
+                  </div>
+                  <div style="height:4px; background:var(--border); border-radius:10px; overflow:hidden;">
+                    <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:10px; transition:width 0.6s ease;"></div>
+                  </div>
+                </div>
+              `;
+            });
+            judgeHtml += `</div>`;
+            return judgeHtml;
+          }).join('')}
+        </div>
+      `;
+    }
+  }
+
+  container.innerHTML = `
+    <div style="padding:24px; border-radius:20px; border:2px solid rgba(124,58,237,0.2); text-align:left; background:var(--bg); box-shadow: 0 8px 24px rgba(124,58,237,0.08);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+        <div>
+          <h3 style="color:var(--text); font-size:1.4rem; font-weight:900; margin:4px 0;">${p.name}</h3>
+          <div style="color:var(--text-muted); font-size:0.85rem;">${catName} · Round: ${(p.round || 'audition').toUpperCase()}</div>
+        </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px;">
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(124,58,237,0.1);">
+          <div style="font-size:0.65rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Your Score</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${totalScore}</div>
+        </div>
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(234,88,12,0.1);">
+          <div style="font-size:0.65rem; color:#EA580C; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Max Score</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${maxTotalScore}</div>
+        </div>
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(245,158,11,0.1);">
+          <div style="font-size:0.65rem; color:#D97706; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Cat. Avg</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${catAvg}</div>
+        </div>
+      </div>
+
+      ${subjectBreakdownHTML}
+    </div>
+  `;
+}
 
 function renderPerformanceJourney(p) {
   const container = document.getElementById('participant-stream-charts-container');
