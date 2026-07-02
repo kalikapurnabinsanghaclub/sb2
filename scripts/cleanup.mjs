@@ -17,12 +17,10 @@ async function cleanupFiles() {
   console.log(`Starting cleanup job for bucket '${BUCKET_NAME}' inside folder '${FOLDER_PREFIX}'...`);
   
   try {
-    // List all files in the participants/ folder
-    // Note: The Supabase storage list api doesn't return full recursive results without `search` but prefix works for flat directories
     const { data: files, error: listError } = await supabase
       .storage
       .from(BUCKET_NAME)
-      .list(FOLDER_PREFIX, {
+      .list(FOLDER_PREFIX.replace(/\/$/, ''), { // Remove trailing slash for list()
         limit: 1000,
         offset: 0,
         sortBy: { column: 'created_at', order: 'asc' }
@@ -40,8 +38,6 @@ async function cleanupFiles() {
     const now = new Date();
     const expirationMs = EXPIRATION_HOURS * 60 * 60 * 1000;
     
-    // Filter files older than EXPIRATION_HOURS
-    // Note: Supabase list returns a placeholder `.emptyFolderPlaceholder` file sometimes, we filter it out.
     const expiredFiles = files.filter(file => {
       if (file.name === '.emptyFolderPlaceholder' || !file.created_at) return false;
       const fileDate = new Date(file.created_at);
@@ -54,23 +50,32 @@ async function cleanupFiles() {
       return;
     }
 
-    console.log(`Found ${expiredFiles.length} expired file(s). Deleting...`);
+    console.log(`Found ${expiredFiles.length} expired file(s). Deleting in batches...`);
     
-    // The remove API requires the full path including the prefix
-    const pathsToDelete = expiredFiles.map(file => `${FOLDER_PREFIX}${file.name}`);
+    // Ensure folder prefix has trailing slash for path construction
+    const prefixWithSlash = FOLDER_PREFIX.endsWith('/') ? FOLDER_PREFIX : `${FOLDER_PREFIX}/`;
+    const pathsToDelete = expiredFiles.map(file => `${prefixWithSlash}${file.name}`);
     
-    // Batch delete
-    const { data: deleteData, error: deleteError } = await supabase
-      .storage
-      .from(BUCKET_NAME)
-      .remove(pathsToDelete);
+    // Supabase remove() has a limit of 100 files per request. We must chunk the array.
+    const chunkSize = 100;
+    for (let i = 0; i < pathsToDelete.length; i += chunkSize) {
+      const batch = pathsToDelete.slice(i, i + chunkSize);
+      
+      const { data: deleteData, error: deleteError } = await supabase
+        .storage
+        .from(BUCKET_NAME)
+        .remove(batch);
 
-    if (deleteError) {
-      throw deleteError;
+      if (deleteError) {
+        console.error(`Error deleting batch ${i / chunkSize + 1}:`, deleteError.message);
+        throw deleteError;
+      }
+      
+      if (deleteData) {
+        deleteData.forEach(d => console.log(`- Deleted: ${d.name}`));
+      }
     }
 
-    console.log('Successfully deleted the following files:');
-    deleteData.forEach(d => console.log(`- ${d.name}`));
     console.log('Cleanup job completed successfully.');
     
   } catch (error) {
