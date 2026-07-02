@@ -119,6 +119,11 @@
     </form>
   </div>
 
+  <!-- STOP VIBRATION BANNER -->
+  <div id="stop-vibration-banner" onclick="stopVibration()" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:999999; background:var(--red); color:white; padding:15px 30px; border-radius:30px; font-weight:800; font-size:16px; box-shadow:0 10px 30px rgba(239,68,68,0.4); display:none; cursor:pointer; align-items:center; gap:10px;">
+    <span>🛑 Stop Vibration</span>
+  </div>
+
   <!-- DASHBOARD VIEW -->
   <div id="dashboard-view">
     <div style="text-align:center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid rgba(124,58,237,0.1);">
@@ -127,6 +132,19 @@
       <div style="font-size: 0.75rem; color: var(--primary); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 6px;">Powered by Kalikapur Nabin Sangha</div>
     </div>
     
+    <!-- LOCATION AND PHONE & READY BUTTON -->
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:15px; margin-bottom:20px; box-shadow:var(--shadow); text-align:center;">
+      <div style="font-size:14px; font-weight:700; margin-bottom:8px;">📍 <a href="https://maps.app.goo.gl/n1LYiH7RsGHt7Dji9" target="_blank" style="color:var(--accent); text-decoration:none;">Venue Location</a></div>
+      <div style="font-size:13px; color:var(--text-muted); display:flex; justify-content:center; gap:15px; flex-wrap:wrap;">
+        <span>📞 <a href="tel:+917001371959" style="color:var(--text); text-decoration:none; font-weight:600;">+91 7001371959</a></span>
+        <span>📞 <a href="tel:+918001129978" style="color:var(--text); text-decoration:none; font-weight:600;">+91 8001129978</a></span>
+      </div>
+    </div>
+    
+    <button id="ready-btn" onclick="markParticipantReady()" style="position:sticky; top:10px; z-index:100; width:100%; padding:15px; border-radius:12px; font-size:16px; font-weight:800; cursor:pointer; text-align:center; border:none; color:#fff; background:linear-gradient(135deg, #FF0080, #FF8C00); box-shadow:0 6px 20px rgba(255,0,128,0.3); transition:all 0.3s; margin-bottom:25px; outline:none;">
+      🔥 I am Ready for Performance
+    </button>
+
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
       <h1 style="margin:0; text-align:left;">Registration Details</h1>
       <button onclick="logout()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-weight:700; text-decoration:underline;">Logout</button>
@@ -252,6 +270,34 @@
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
 let CURRENT_USER = null;
+let lastStageStatus = null;
+let vibrationInterval = null;
+
+function markParticipantReady() {
+  if (!CURRENT_USER || !window.syncEngine) return;
+  window.syncEngine.updateParticipant(CURRENT_USER, { isReady: true })
+    .then(() => {
+      const btn = document.getElementById('ready-btn');
+      if (btn) {
+        btn.innerHTML = '✅ Ready (Notified Monitor)';
+        btn.style.background = 'var(--green)';
+        btn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.3)';
+        btn.style.cursor = 'default';
+        btn.disabled = true;
+      }
+      toast('✅ Organizer notified that you are ready!');
+    })
+    .catch(e => console.error(e));
+}
+
+function stopVibration() {
+  if (vibrationInterval) {
+    clearInterval(vibrationInterval);
+    vibrationInterval = null;
+  }
+  if ('vibrate' in navigator) navigator.vibrate(0);
+  document.getElementById('stop-vibration-banner').style.display = 'none';
+}
 
 function toast(msg) {
   const c = document.getElementById('toast-container');
@@ -779,6 +825,35 @@ if (window.syncEngine) {
       const state = window.syncEngine.getData() || {};
       const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
       
+      // --- VIBRATION & READY RESET LOGIC ---
+      if (p.stageStatus) {
+        if (lastStageStatus !== 'queue' && p.stageStatus === 'queue') {
+          // Added to queue! Vibrate for 15 seconds.
+          if ('vibrate' in navigator) {
+            navigator.vibrate([1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000]);
+            document.getElementById('stop-vibration-banner').style.display = 'flex';
+            setTimeout(() => { stopVibration(); }, 15000);
+          }
+        }
+        
+        // If they are moved OUT of queue/stage, reset their ready status
+        if (p.stageStatus !== 'queue' && p.stageStatus !== 'on-stage') {
+          if (p.isReady) {
+            window.syncEngine.updateParticipant(CURRENT_USER, { isReady: false }).catch(e => console.error(e));
+          }
+          const btn = document.getElementById('ready-btn');
+          if (btn) {
+            btn.innerHTML = '🔥 I am Ready for Performance';
+            btn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
+            btn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
+            btn.style.cursor = 'pointer';
+            btn.disabled = false;
+          }
+        }
+        lastStageStatus = p.stageStatus;
+      }
+      // --- END LOGIC ---
+
       const formLocked = p.formLocked === true;
       const btn = document.getElementById('save-btn');
       const isCurrentlyLocked = btn && btn.disabled;
