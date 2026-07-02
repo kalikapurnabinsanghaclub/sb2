@@ -7177,15 +7177,23 @@ function statsTab(tab, el){
 
 function renderFeedbacks() {
   const fbs = [];
+  const now = Date.now();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  
   participants.forEach(p => {
     if (p.formAnswers && p.formAnswers._feedback) {
-      fbs.push({
-        participantId: p.id,
-        name: p.name || 'Unknown Participant',
-        rating: p.formAnswers._feedback.rating,
-        text: p.formAnswers._feedback.text,
-        timestamp: p.formAnswers._feedback.timestamp
-      });
+      if (now - p.formAnswers._feedback.timestamp > sevenDaysMs) {
+        // Quietly delete old feedback (will be saved to DB on next syncAll)
+        delete p.formAnswers._feedback;
+      } else {
+        fbs.push({
+          participantId: p.id,
+          name: p.name || 'Unknown Participant',
+          rating: p.formAnswers._feedback.rating,
+          text: p.formAnswers._feedback.text,
+          timestamp: p.formAnswers._feedback.timestamp
+        });
+      }
     }
   });
   
