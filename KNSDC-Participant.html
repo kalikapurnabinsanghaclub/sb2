@@ -275,17 +275,27 @@ let vibrationInterval = null;
 
 function markParticipantReady() {
   if (!CURRENT_USER || !window.syncEngine) return;
-  window.syncEngine.updateParticipant(CURRENT_USER, { isReady: true })
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (!p) return;
+
+  const newState = !p.isReady;
+  
+  window.syncEngine.updateParticipant(CURRENT_USER, { isReady: newState })
     .then(() => {
       const btn = document.getElementById('ready-btn');
       if (btn) {
-        btn.innerHTML = '✅ Ready (Notified Monitor)';
-        btn.style.background = 'var(--green)';
-        btn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.3)';
-        btn.style.cursor = 'default';
-        btn.disabled = true;
+        if (newState) {
+          btn.innerHTML = '✅ Ready Alert Sent (Click to Cancel)';
+          btn.style.background = 'var(--green)';
+          btn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+        } else {
+          btn.innerHTML = '🔥 I am Ready for Performance';
+          btn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
+          btn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
+        }
       }
-      toast('✅ Organizer notified that you are ready!');
+      toast(newState ? '✅ Organizer notified that you are ready!' : 'Ready alert cancelled.');
     })
     .catch(e => console.error(e));
 }
@@ -836,13 +846,16 @@ if (window.syncEngine) {
           }
         }
         
-        // If they are moved OUT of queue/stage, reset their ready status
-        if (p.stageStatus !== 'queue' && p.stageStatus !== 'on-stage') {
+        // Sync button UI with current state if loaded
+        const btn = document.getElementById('ready-btn');
+        if (btn) {
           if (p.isReady) {
-            window.syncEngine.updateParticipant(CURRENT_USER, { isReady: false }).catch(e => console.error(e));
-          }
-          const btn = document.getElementById('ready-btn');
-          if (btn) {
+            btn.innerHTML = '✅ Ready Alert Sent (Click to Cancel)';
+            btn.style.background = 'var(--green)';
+            btn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+            btn.style.cursor = 'pointer';
+            btn.disabled = false;
+          } else {
             btn.innerHTML = '🔥 I am Ready for Performance';
             btn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
             btn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
@@ -850,6 +863,7 @@ if (window.syncEngine) {
             btn.disabled = false;
           }
         }
+        
         lastStageStatus = p.stageStatus;
       }
       // --- END LOGIC ---
