@@ -4780,20 +4780,66 @@
 
     function printCert() {
       const content = document.getElementById('certContent').innerHTML;
-      const win = window.open('', '', 'height=700,width=900');
+      const win = window.open('', '', 'height=800,width=1200');
       if (!win) {
         showToast("Popup Blocked", "Please allow popups to view and print your certificate.", "⚠️");
         return;
       }
-      win.document.write('<html><head><title>KNSDC Certificate</title>');
-      win.document.write('<style>@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); body{margin:0; padding:20px;}</style>');
-      win.document.write('</head><body>');
-      win.document.write(content);
-      win.document.write('</body></html>');
+      win.document.write(`
+        <html>
+          <head>
+            <title>KNSDC Certificate</title>
+            <style>
+              @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); 
+              body { margin:0; padding:20px; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #e2e8f0; }
+              #cert-wrapper { width: 1056px; height: 750px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; }
+              #controls { display: flex; gap: 15px; margin-bottom: 20px; }
+              .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; display: flex; align-items: center; gap: 8px; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s; }
+              .btn:active { opacity: 0.8; }
+              .btn-print { background: #7c3aed; }
+              .btn-jpg { background: #ea580c; }
+              @media print {
+                @page { size: landscape; margin: 0; }
+                body { padding: 0; background: white; align-items: flex-start; justify-content: flex-start; }
+                #controls { display: none !important; }
+                #cert-wrapper { width: 100%; height: 100%; box-shadow: none; margin: 0; }
+              }
+            </style>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+          </head>
+          <body>
+            <div id="controls">
+              <button class="btn btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+              <button class="btn btn-jpg" onclick="downloadJPG()">🖼️ Download JPG</button>
+            </div>
+            <div id="cert-wrapper">
+              ${content}
+            </div>
+            <script>
+              function downloadJPG() {
+                const btn = document.querySelector('.btn-jpg');
+                btn.textContent = 'Generating...';
+                btn.disabled = true;
+                
+                html2canvas(document.getElementById('cert-wrapper'), { scale: 2, useCORS: true }).then(canvas => {
+                  const link = document.createElement('a');
+                  link.download = 'Participant_Certificate.jpg';
+                  link.href = canvas.toDataURL('image/jpeg', 0.95);
+                  link.click();
+                  
+                  btn.textContent = '🖼️ Download JPG';
+                  btn.disabled = false;
+                }).catch(err => {
+                  alert('Failed to generate JPG.');
+                  btn.textContent = '🖼️ Download JPG';
+                  btn.disabled = false;
+                });
+              }
+            </script>
+          </body>
+        </html>
+      `);
       win.document.close();
-      setTimeout(() => {
-        win.print();
-      }, 500);
     }
 
     function downloadData(type) {
