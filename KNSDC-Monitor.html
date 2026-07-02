@@ -7160,7 +7160,19 @@ function statsTab(tab, el){
 }
 
 function renderFeedbacks() {
-  const fbs = window.syncEngine.getData().feedbacks || [];
+  const fbs = [];
+  participants.forEach(p => {
+    if (p.formAnswers && p.formAnswers._feedback) {
+      fbs.push({
+        participantId: p.id,
+        name: p.name || 'Unknown Participant',
+        rating: p.formAnswers._feedback.rating,
+        text: p.formAnswers._feedback.text,
+        timestamp: p.formAnswers._feedback.timestamp
+      });
+    }
+  });
+  
   const container = document.getElementById('feedbacks-container');
   if (fbs.length === 0) {
     container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text-muted);">No feedbacks yet.</div>`;
@@ -7168,18 +7180,16 @@ function renderFeedbacks() {
   }
   
   // Sort by newest first
-  const sorted = [...fbs].sort((a,b) => b.timestamp - a.timestamp);
+  const sorted = fbs.sort((a,b) => b.timestamp - a.timestamp);
   
   container.innerHTML = sorted.map(fb => {
-    const p = participants.find(x => String(x.id) === String(fb.participantId));
-    const pName = p ? p.name : 'Unknown Participant';
     const stars = '⭐'.repeat(fb.rating) + '☆'.repeat(5 - fb.rating);
     const dateStr = new Date(fb.timestamp).toLocaleString();
     
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div>
-          <div style="font-weight:700;color:var(--primary);">${pName}</div>
+          <div style="font-weight:700;color:var(--primary);">${fb.name}</div>
           <div style="font-size:11px;color:var(--text-muted);">${dateStr}</div>
         </div>
         <div style="font-size:14px;letter-spacing:2px;" title="${fb.rating} Stars">${stars}</div>
