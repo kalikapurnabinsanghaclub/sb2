@@ -7594,13 +7594,9 @@ function renderParticipantStreamCharts() {
   window.participantStreamCharts = [];
   container.innerHTML = '';
 
-  const targetParticipants = participants.filter(p => {
-    const hasCurrentScores = p.scores && Object.keys(p.scores).length > 0;
-    const hasPastScores = p.roundScores && Object.keys(p.roundScores).length > 0;
-    return hasCurrentScores || hasPastScores;
-  });
+  const targetParticipants = participants;
   if (targetParticipants.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No participants have been scored yet.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No participants available.</div>';
     return;
   }
 
@@ -7631,6 +7627,80 @@ function renderParticipantStreamCharts() {
   });
 
   targetParticipants.forEach(p => {
+    // Generate Judge-wise breakdown HTML
+    let subjectBreakdownHTML = '';
+    if (subjects.length > 0) {
+      const judgesArr = judges || [];
+      const judgeAgreements = window.syncEngine.getData().judgeAgreements || [];
+      
+      const getJudgeScores = (j) => {
+        const agr = judgeAgreements.find(a => 
+          (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+          (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+        );
+        return (p.scores && p.scores[j.id]) || (agr && p.scores && p.scores[agr.id]) || null;
+      };
+
+      let scoredJudges = judgesArr.filter(j => getJudgeScores(j) !== null);
+      if (scoredJudges.length === 0 && p.scores) {
+        scoredJudges = Object.keys(p.scores).map(jid => {
+          return { id: jid, name: 'Judge ' + jid.substring(0, 4) };
+        });
+      }
+      
+      if (scoredJudges.length === 0) {
+        subjectBreakdownHTML = `
+          <div style="margin-top:16px; background:var(--surface2); border-radius:14px; padding:16px; border:1px solid var(--border); text-align:left;">
+            <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Breakdown</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); font-style:italic;">No scores submitted yet.</div>
+          </div>`;
+      } else {
+        subjectBreakdownHTML = `
+          <div style="margin-top:16px; background:var(--surface2); border-radius:14px; padding:16px; border:1px solid var(--border); text-align:left;">
+            <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Breakdown</div>
+            ${scoredJudges.map(judge => {
+              const jScores = getJudgeScores(judge) || (p.scores && p.scores[judge.id]) || {};
+              let judgeTotal = 0;
+              let judgeMax = 0;
+              
+              subjects.forEach(s => {
+                judgeTotal += (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
+                judgeMax += (Number(s.maxMarks) || 10);
+              });
+
+              let judgeHtml = `
+                <div style="margin-bottom:12px; padding:12px; background:var(--surface); border-radius:10px; border:1px solid var(--border);">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:4px;">
+                    <span style="font-size:0.8rem; font-weight:800; color:var(--text);">🧑‍⚖️ ${judge.name}</span>
+                    <span style="font-size:0.75rem; font-weight:800; color:var(--primary); background:rgba(124,58,237,0.1); padding:2px 8px; border-radius:10px;">${judgeTotal} / ${judgeMax} pts</span>
+                  </div>`;
+              
+              subjects.forEach(s => {
+                let subScore = (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
+                const subMax = Number(s.maxMarks) || 10;
+                const pct = subMax > 0 ? Math.round(subScore / subMax * 100) : 0;
+                const barColor = pct >= 70 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
+                
+                judgeHtml += `
+                  <div style="margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted);">${s.name || 'Subject'}</span>
+                      <span style="font-size:0.75rem; font-weight:700; color:${barColor};">${subScore} / ${subMax}</span>
+                    </div>
+                    <div style="height:4px; background:var(--border); border-radius:10px; overflow:hidden;">
+                      <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:10px; transition:width 0.6s ease;"></div>
+                    </div>
+                  </div>
+                `;
+              });
+              judgeHtml += `</div>`;
+              return judgeHtml;
+            }).join('')}
+          </div>
+        `;
+      }
+    }
+
     const wrap = document.createElement('div');
     wrap.style.textAlign = 'center';
     wrap.style.border = '1px solid var(--border)';
@@ -7643,6 +7713,7 @@ function renderParticipantStreamCharts() {
       <div style="position:relative;height:200px;width:100%">
         <canvas id="stream-chart-${p.id}"></canvas>
       </div>
+      ${subjectBreakdownHTML}
     `;
     container.appendChild(wrap);
 
