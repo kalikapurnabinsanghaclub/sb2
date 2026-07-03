@@ -744,6 +744,16 @@
   .cmsg.in { background: var(--surface); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 4px; color: var(--text); }
   .cmsg.mentioned { background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important; }
   .cmsg.sos { color: var(--red); font-weight: 800; animation: blink 1s infinite; }
+  /* Role-based sender colors */
+  .cmsg.role-monitor  { background: rgba(37,99,235,0.10);  border-color: rgba(37,99,235,0.35); }
+  .cmsg.role-judge    { background: rgba(5,150,105,0.10);  border-color: rgba(5,150,105,0.35); }
+  .cmsg.role-host     { background: rgba(124,58,237,0.10); border-color: rgba(124,58,237,0.35); }
+  .cmsg.role-admin    { background: rgba(220,38,38,0.08);  border-color: rgba(220,38,38,0.25); }
+  /* Mention-target highlight — message visibly stands out */
+  .cmsg.mention-monitor { background: rgba(245,158,11,0.18) !important; border: 1.5px solid rgba(245,158,11,0.8) !important; }
+  .cmsg.mention-judge   { background: rgba(5,150,105,0.20) !important; border: 1.5px solid rgba(5,150,105,0.8) !important; }
+  .cmsg.mention-host    { background: rgba(124,58,237,0.20) !important; border: 1.5px solid rgba(124,58,237,0.8) !important; }
+  .cmsg.mention-all     { background: rgba(220,38,38,0.15) !important; border: 1.5px solid rgba(220,38,38,0.7) !important; }
   .cmsg .cmeta { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-family: var(--fm); font-weight: 700; }
   .chat-mention-bar { display: flex; gap: 6px; padding: 10px 20px; background: var(--surface2); border-top: 1px solid var(--border); flex-wrap: wrap; }
   .mchip { padding: 5px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); transition: all 0.2s; font-family: var(--fb); font-weight: 700; }
@@ -9846,25 +9856,37 @@ function escapeHTML(str) {
 }
 
 function buildMsgEl(msg){
-  const d=document.createElement('div');
-  const type = (msg.role === 'monitor') ? 'out' : 'in';
-  const isMentioned = msg.text && /@(monitor|judge|admin|host)/i.test(msg.text);
-  
-  let inlineStyle = '';
-  if (msg.sos) inlineStyle = 'color:var(--red)';
-  // Highlighted mentions get a vivid green background so monitor can spot them instantly
-  const isMentionedForMonitor = msg.text && /@(monitor|organizer|help|kalikapur|all)/i.test(msg.text);
-  
-  d.className=`cmsg ${type}${msg.sos?' sos':''}${isMentionedForMonitor?' mentioned':''}`;
-  d.style.cssText = inlineStyle;
-  
+  const d = document.createElement('div');
+  const senderRole = (msg.role || '').toLowerCase(); // 'monitor','judge','host','admin'
+  const type = senderRole === 'monitor' ? 'out' : 'in';
+  const txt = msg.text || '';
+
+  // Determine which role is being mentioned in this message
+  let mentionClass = '';
+  if (/@(monitor|organizer|help|kalikapur)/i.test(txt)) mentionClass = 'mention-monitor';
+  else if (/@judge/i.test(txt))  mentionClass = 'mention-judge';
+  else if (/@host/i.test(txt))   mentionClass = 'mention-host';
+  else if (/@(all|admin)/i.test(txt)) mentionClass = 'mention-all';
+
+  // Role color class for the sender
+  const roleClass = senderRole ? `role-${senderRole}` : '';
+
+  d.className = `cmsg ${type}${msg.sos ? ' sos' : ''} ${roleClass} ${mentionClass}`.trim();
+  if (msg.sos) d.style.cssText = 'color:var(--red)';
+
   const dispFrom = (msg.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
   const parts = dispFrom.split(' · ');
   const rolePart = escapeHTML(parts[0]);
   const namePart = escapeHTML(parts.slice(1).join(' · '));
-  const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
 
-  d.innerHTML=`<div class="cmeta">${styledFrom} · ${escapeHTML(msg.time)} ${msg.eventId && msg.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${escapeHTML(msg.eventId)})</span>` : ''}</div><div style="word-wrap:break-word">${parseMentions(escapeHTML(msg.text))}</div>`;
+  // Color the sender name by role
+  const roleColors = { monitor:'#2563eb', judge:'#059669', host:'#7c3aed', admin:'#dc2626' };
+  const nameColor = roleColors[senderRole] || 'var(--accent)';
+  const styledFrom = namePart
+    ? `<span style="font-weight:800;color:${nameColor}">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted)">&bull; ${namePart}</span>`
+    : `<span style="font-weight:800;color:${nameColor}">${rolePart}</span>`;
+
+  d.innerHTML = `<div class="cmeta">${styledFrom} · ${escapeHTML(msg.time)}</div><div style="word-wrap:break-word">${parseMentions(escapeHTML(txt))}</div>`;
   return d;
 }
 
@@ -11321,7 +11343,7 @@ setInterval(() => {
     <span class="mchip" onclick="insMention('@admin')">👤 @admin</span>
     <span class="mchip" onclick="insMention('@host')">🎤 @host</span>
     <span class="mchip" onclick="insMention('@all')" style="border-color:rgba(220,38,38,0.3);color:var(--red);">📢 @all</span>
-    <span class="mchip" onclick="insMention('@monitor')" style="border-color:rgba(245,158,11,0.3);color:#d97706;">⭐ @monitor</span>
+    <span class="mchip" onclick="insMention('@monitor')">⭐ @monitor</span>
   </div>
 
   <!-- Input -->
