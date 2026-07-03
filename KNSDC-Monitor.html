@@ -9830,7 +9830,7 @@ function insPageMention(m){
 
 function parseMentions(txt){
   if (!txt) return '';
-  return txt.replace(/@(monitor|judge|admin|host|organizer|help)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
+  return txt.replace(/@(monitor|judge|admin|host|organizer|help|kalikapur|all)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
 }
 
 function getMyName() {
@@ -9851,10 +9851,11 @@ function buildMsgEl(msg){
   const isMentioned = msg.text && /@(monitor|judge|admin|host)/i.test(msg.text);
   
   let inlineStyle = '';
-  if (msg.sos) inlineStyle = 'color:var(--rose)';
-  if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
-
-  d.className=`cmsg ${type}${msg.sos?' sos':''}`;
+  if (msg.sos) inlineStyle = 'color:var(--red)';
+  // Highlighted mentions get a vivid green background so monitor can spot them instantly
+  const isMentionedForMonitor = msg.text && /@(monitor|organizer|help|kalikapur|all)/i.test(msg.text);
+  
+  d.className=`cmsg ${type}${msg.sos?' sos':''}${isMentionedForMonitor?' mentioned':''}`;
   d.style.cssText = inlineStyle;
   
   const dispFrom = (msg.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
@@ -9897,7 +9898,7 @@ function renderGlobalChat() {
       if (!last.from.includes('Monitor')) {
         if (window.staffAudio) staffAudio.playChime();
         
-        if (last.text && /@(monitor|organizer|help|all)/i.test(last.text)) {
+        if (last.text && /@(monitor|organizer|help|kalikapur|all)/i.test(last.text)) {
           // Auto-open floating chatbox so monitor can respond immediately
           if (!chatOpen) {
             chatOpen = true;
@@ -11284,5 +11285,55 @@ setInterval(() => {
 }, 1000);
 
 </script>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- FLOATING STAFF CHAT (Staff only - fixed)  -->
+<!-- ══════════════════════════════════════════ -->
+
+<!-- Floating Chat Button (always visible) -->
+<button class="chat-fab" onclick="toggleFloatChat()" title="Staff Chat" id="staff-chat-fab">
+  💬
+  <div class="unread-dot" id="chat-unread-dot"></div>
+</button>
+
+<!-- Floating Chat Panel -->
+<div class="chat-float hidden" id="float-chat-panel">
+  <!-- Header -->
+  <div class="chat-hd">
+    <div>
+      <div class="chat-hd-title">💬 Staff Comms</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:2px;font-family:var(--fm);">Real-time · Staff only</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button id="float-sos-btn" class="sos-btn-float" onclick="triggerSOS()" title="SOS Broadcast">🚨</button>
+      <button id="float-stop-sos" class="sos-btn-float" onclick="stopSOS()" style="display:none;background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:#059669;">■</button>
+      <button onclick="toggleFloatChat()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;padding:4px;border-radius:8px;line-height:1;">&times;</button>
+    </div>
+  </div>
+
+  <!-- Online staff list -->
+  <div id="chat-online-list" style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface2);max-height:80px;overflow-y:auto;"></div>
+
+  <!-- Messages -->
+  <div class="chat-msgs" id="float-chat-msgs"></div>
+
+  <!-- @Mention chips -->
+  <div class="chat-mention-bar">
+    <span style="font-size:11px;color:var(--text-muted);font-weight:700;align-self:center;">TAG:</span>
+    <span class="mchip" onclick="insMention('@judge')">🧑‍⚖️ @judge</span>
+    <span class="mchip" onclick="insMention('@admin')">👤 @admin</span>
+    <span class="mchip" onclick="insMention('@host')">🎤 @host</span>
+    <span class="mchip" onclick="insMention('@all')" style="border-color:rgba(220,38,38,0.3);color:var(--red);">📢 @all</span>
+    <span class="mchip" onclick="insMention('@monitor')" style="border-color:rgba(245,158,11,0.3);color:#d97706;">⭐ @monitor</span>
+  </div>
+
+  <!-- Input -->
+  <div class="chat-input-row">
+    <input type="text" id="float-chat-inp" placeholder="Message staff…" onkeydown="if(event.key==='Enter')sendFloatMsg()"/>
+    <button class="send-btn-chat" onclick="sendFloatMsg()">➤</button>
+  </div>
+</div>
+
 </body>
+
 </html>
