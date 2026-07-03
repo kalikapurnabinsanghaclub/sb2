@@ -554,7 +554,7 @@ function selectFrame(frame) {
   const c = (ev.categories || []).find(x => String(x.id) === String(p.catId));
   const catName = c ? c.name.toUpperCase() : 'OPEN CATEGORY';
 
-  let scoreText = 'OFFICIAL PARTICIPANT';
+  let scoreText = null;
   if (p.stageStatus === 'done' && p.scores && Object.keys(p.scores).length > 0) {
     let totalScore = 0;
     Object.values(p.scores).forEach(s => totalScore += (Number(s.total) || 0));
@@ -620,17 +620,17 @@ function drawPosterOnCanvas(frame, pData) {
     }
 
     // Gradient overlays for text readability
-    const topGrad = ctx.createLinearGradient(0, 0, 0, H * 0.45);
+    const topGrad = ctx.createLinearGradient(0, 0, 0, H * 0.28);
     topGrad.addColorStop(0, 'rgba(0,0,0,0.9)');
     topGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = topGrad;
-    ctx.fillRect(0, 0, W, H * 0.45);
+    ctx.fillRect(0, 0, W, H * 0.28);
 
-    const btmGrad = ctx.createLinearGradient(0, H * 0.55, 0, H);
+    const btmGrad = ctx.createLinearGradient(0, H * 0.72, 0, H);
     btmGrad.addColorStop(0, 'rgba(0,0,0,0)');
     btmGrad.addColorStop(1, 'rgba(0,0,0,0.95)');
     ctx.fillStyle = btmGrad;
-    ctx.fillRect(0, H * 0.55, W, H * 0.45);
+    ctx.fillRect(0, H * 0.72, W, H * 0.28);
 
     // Frame border glow
     const pad = W * 0.03;
@@ -642,8 +642,8 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.shadowBlur = 0;
 
     // ---- TOP SECTION ----
-    const logoSize = W * 0.16;
-    const logoY = H * 0.10;
+    const logoSize = W * 0.12;
+    const logoY = H * 0.07;
     
     if (logoImg) {
       ctx.save();
@@ -660,7 +660,7 @@ function drawPosterOnCanvas(frame, pData) {
       ctx.stroke();
     }
 
-    const topY = logoY + logoSize / 2 + H * 0.04;
+    const topY = logoY + logoSize / 2 + H * 0.03;
     ctx.textAlign = 'center';
 
     // Club name
@@ -674,56 +674,62 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.font = `900 ${W * 0.095}px 'Outfit', sans-serif`;
     ctx.fillStyle = '#ffffff';
     ctx.shadowBlur = 12;
-    ctx.fillText('DANCE IGNITION 5', W / 2, topY + H * 0.06);
+    ctx.fillText('DANCE IGNITION 5', W / 2, topY + H * 0.05);
 
     ctx.shadowBlur = 0;
 
     // ---- BOTTOM SECTION ----
-    const nameY = H * 0.72;
+    let currentY = H * 0.81;
 
     // Name
     ctx.font = `900 ${W * 0.13}px 'Outfit', sans-serif`;
     ctx.fillStyle = '#ffffff';
     ctx.shadowColor = 'rgba(0,0,0,0.9)';
     ctx.shadowBlur = 15;
-    ctx.fillText(pData.name, W / 2, nameY);
+    ctx.fillText(pData.name, W / 2, currentY);
+    
+    currentY += H * 0.025;
 
     // Category pill
     const catW = W * 0.6;
-    const catH = H * 0.055;
+    const catH = H * 0.05;
     const catX = (W - catW) / 2;
-    const catY = nameY + H * 0.03;
     ctx.fillStyle = f.accent;
     ctx.beginPath();
-    ctx.roundRect(catX, catY, catW, catH, catH / 2);
+    ctx.roundRect(catX, currentY, catW, catH, catH / 2);
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.font = `800 ${W * 0.055}px 'Outfit', sans-serif`;
     ctx.fillStyle = '#000000';
-    ctx.fillText(pData.catName, W / 2, catY + catH * 0.72);
+    ctx.fillText(pData.catName, W / 2, currentY + catH * 0.72);
+    
+    currentY += catH + H * 0.02;
 
-    // Score box
-    const scoreY = catY + catH + H * 0.025;
-    const scoreW = W * 0.75;
-    const scoreH = H * 0.055;
-    const scoreX = (W - scoreW) / 2;
-    ctx.strokeStyle = f.accent;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 6]);
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.beginPath();
-    ctx.roundRect(scoreX, scoreY, scoreW, scoreH, 12);
-    ctx.fill();
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.font = `800 ${W * 0.05}px 'Outfit', sans-serif`;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(pData.scoreText, W / 2, scoreY + scoreH * 0.72);
+    // Score box (ONLY if there is a score)
+    if (pData.scoreText) {
+      const scoreW = W * 0.75;
+      const scoreH = H * 0.05;
+      const scoreX = (W - scoreW) / 2;
+      ctx.strokeStyle = f.accent;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(scoreX, currentY, scoreW, scoreH, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = `800 ${W * 0.05}px 'Outfit', sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(pData.scoreText, W / 2, currentY + scoreH * 0.72);
+      
+      currentY += scoreH + H * 0.02;
+    }
 
     // Footer
     ctx.font = `600 ${W * 0.04}px 'Outfit', sans-serif`;
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.fillText('Watch me perform at knsdc.in', W / 2, H * 0.955);
+    ctx.fillText('Watch me perform at knsdc.in', W / 2, currentY + H * 0.02);
 
     // Save the final canvas reference for download/share
     _posterCanvas = canvas;
