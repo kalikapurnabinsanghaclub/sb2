@@ -3401,7 +3401,8 @@ function hydrate() {
   nxtId = s.nxtId || nxtId;
   agreements = s.judgeAgreements || s.agreements || [];
   hostAssignments = s.hostAssignments || [];
-  chatHistory = s.chatMessages || [];
+  // Only load STAFF chat messages (those WITHOUT a participantId field, which is used exclusively by Helpdesk)
+  chatHistory = (s.chatMessages || []).filter(m => !m.participantId);
   sosActive = s.sosActive || false;
   sosHistory = s.sosHistory || [];
   
@@ -3547,7 +3548,9 @@ function syncAll() {
     newState.participants = [...participants];
     if (!newState.publicVotes) newState.publicVotes = {};
     newState.judges = [...judges];
-    newState.chatMessages = [...chatHistory];
+    // Merge: keep helpdesk messages (with participantId) from current state, and replace staff messages with chatHistory
+    const existingHelpdeskMsgs = (newState.chatMessages || []).filter(m => m.participantId);
+    newState.chatMessages = [...chatHistory, ...existingHelpdeskMsgs];
     newState.judgeAgreements = [...agreements];
     newState.hostAssignments = [...hostAssignments];
     newState.sosActive = sosActive;
@@ -9869,7 +9872,11 @@ function renderGlobalChat() {
   if (fb) fb.innerHTML = '';
   if (pb) pb.innerHTML = '';
   
-  const filteredChat = chatHistory.filter(m => m.eventId === activeEventId || m.role === 'admin');
+  const filteredChat = chatHistory.filter(m => {
+    // Only show staff messages (no participantId) and match the event
+    if (m.participantId) return false;
+    return m.eventId === activeEventId || m.role === 'admin';
+  });
   
   filteredChat.forEach(m => {
     const el = buildMsgEl(m);
