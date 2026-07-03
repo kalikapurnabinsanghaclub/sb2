@@ -749,11 +749,8 @@
   .cmsg.role-judge    { background: rgba(5,150,105,0.10);  border-color: rgba(5,150,105,0.35); }
   .cmsg.role-host     { background: rgba(124,58,237,0.10); border-color: rgba(124,58,237,0.35); }
   .cmsg.role-admin    { background: rgba(220,38,38,0.08);  border-color: rgba(220,38,38,0.25); }
-  /* Mention-target highlight — message visibly stands out */
-  .cmsg.mention-monitor { background: rgba(245,158,11,0.18) !important; border: 1.5px solid rgba(245,158,11,0.8) !important; }
-  .cmsg.mention-judge   { background: rgba(5,150,105,0.20) !important; border: 1.5px solid rgba(5,150,105,0.8) !important; }
-  .cmsg.mention-host    { background: rgba(124,58,237,0.20) !important; border: 1.5px solid rgba(124,58,237,0.8) !important; }
-  .cmsg.mention-all     { background: rgba(220,38,38,0.15) !important; border: 1.5px solid rgba(220,38,38,0.7) !important; }
+  /* Highlight when THIS user is mentioned */
+  .cmsg.mentioned     { background: rgba(16, 185, 129, 0.25) !important; border: 1.5px solid rgba(16, 185, 129, 0.8) !important; }
   .cmsg .cmeta { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-family: var(--fm); font-weight: 700; }
   .chat-mention-bar { display: flex; gap: 6px; padding: 10px 20px; background: var(--surface2); border-top: 1px solid var(--border); flex-wrap: wrap; }
   .mchip { padding: 5px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); transition: all 0.2s; font-family: var(--fb); font-weight: 700; }
@@ -9861,17 +9858,13 @@ function buildMsgEl(msg){
   const type = senderRole === 'monitor' ? 'out' : 'in';
   const txt = msg.text || '';
 
-  // Determine which role is being mentioned in this message
-  let mentionClass = '';
-  if (/@(monitor|organizer|help|kalikapur)/i.test(txt)) mentionClass = 'mention-monitor';
-  else if (/@judge/i.test(txt))  mentionClass = 'mention-judge';
-  else if (/@host/i.test(txt))   mentionClass = 'mention-host';
-  else if (/@(all|admin)/i.test(txt)) mentionClass = 'mention-all';
+  // Only highlight if it's an INCOMING message that mentions THIS role
+  const isMentioned = (type === 'in' && /@(monitor|organizer|help|kalikapur|all)/i.test(txt));
 
-  // Role color class for the sender
+  // Role color class for the sender background
   const roleClass = senderRole ? `role-${senderRole}` : '';
 
-  d.className = `cmsg ${type}${msg.sos ? ' sos' : ''} ${roleClass} ${mentionClass}`.trim();
+  d.className = `cmsg ${type}${msg.sos ? ' sos' : ''} ${roleClass} ${isMentioned ? 'mentioned' : ''}`.trim();
   if (msg.sos) d.style.cssText = 'color:var(--red)';
 
   const dispFrom = (msg.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');

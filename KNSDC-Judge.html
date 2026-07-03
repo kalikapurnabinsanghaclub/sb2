@@ -646,17 +646,13 @@
   .cmsg { padding: 12px 16px; border-radius: 16px; font-size: 13px; line-height: 1.5; max-width: 85%; animation: fadeUp 0.25s ease-out; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
   .cmsg.out { background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.1); align-self: flex-end; color: var(--text); border-bottom-right-radius: 4px; }
   .cmsg.in { background: var(--surface); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 4px; color: var(--text); }
-  .cmsg.sos { color: var(--red); font-weight: 800; animation: blink 1s infinite; }
   /* Role-based sender colors */
   .cmsg.role-monitor  { background: rgba(37,99,235,0.10);  border-color: rgba(37,99,235,0.35); }
   .cmsg.role-judge    { background: rgba(5,150,105,0.10);  border-color: rgba(5,150,105,0.35); }
   .cmsg.role-host     { background: rgba(124,58,237,0.10); border-color: rgba(124,58,237,0.35); }
   .cmsg.role-admin    { background: rgba(220,38,38,0.08);  border-color: rgba(220,38,38,0.25); }
-  /* Mention-target highlight — message visibly stands out */
-  .cmsg.mention-monitor { background: rgba(245,158,11,0.18) !important; border: 1.5px solid rgba(245,158,11,0.8) !important; }
-  .cmsg.mention-judge   { background: rgba(5,150,105,0.20) !important; border: 1.5px solid rgba(5,150,105,0.8) !important; }
-  .cmsg.mention-host    { background: rgba(124,58,237,0.20) !important; border: 1.5px solid rgba(124,58,237,0.8) !important; }
-  .cmsg.mention-all     { background: rgba(220,38,38,0.15) !important; border: 1.5px solid rgba(220,38,38,0.7) !important; }
+  /* Highlight when THIS user is mentioned */
+  .cmsg.mentioned     { background: rgba(16, 185, 129, 0.25) !important; border: 1.5px solid rgba(16, 185, 129, 0.8) !important; }
   .cmsg .cmeta { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-family: var(--fm); font-weight: 700; }
   .chat-float .chat-input-row { display: flex; gap: 10px; padding: 16px; border-top: 1px solid var(--border); background: var(--surface2); }
   .chat-float .chat-input-row input { flex: 1; background: var(--surface)!important; border: 1px solid var(--border)!important; color: var(--text)!important; border-radius: 12px!important; padding: 10px 16px!important; font-size: 13px!important; }
@@ -3682,14 +3678,8 @@ function addMsg(from, text, type='out', sos=false) {
   const timeStr = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
   const txt = text || '';
   
-  let mentionClass = '';
-  if (/@(monitor|organizer|help|kalikapur)/i.test(txt)) mentionClass = 'mention-monitor';
-  else if (/@judge/i.test(txt))  mentionClass = 'mention-judge';
-  else if (/@host/i.test(txt))   mentionClass = 'mention-host';
-  else if (/@(all|admin)/i.test(txt)) mentionClass = 'mention-all';
-
   const roleClass = 'role-judge';
-  const className = `cmsg ${type}${sos ? ' sos' : ''} ${roleClass} ${mentionClass}`.trim();
+  const className = `cmsg ${type}${sos ? ' sos' : ''} ${roleClass}`.trim();
   let inlineStyle = sos ? 'color:var(--red)' : '';
 
   const el = document.createElement('div');
@@ -4099,14 +4089,10 @@ syncEngine.subscribe((state) => {
       const type = (senderRole === 'judge') ? 'out' : 'in';
       const txt = m.text || '';
       
-      let mentionClass = '';
-      if (/@(monitor|organizer|help|kalikapur)/i.test(txt)) mentionClass = 'mention-monitor';
-      else if (/@judge/i.test(txt))  mentionClass = 'mention-judge';
-      else if (/@host/i.test(txt))   mentionClass = 'mention-host';
-      else if (/@(all|admin)/i.test(txt)) mentionClass = 'mention-all';
+      const isMentioned = (type === 'in' && /@(judge|all)/i.test(txt));
 
       const roleClass = senderRole ? `role-${senderRole}` : '';
-      const className = `cmsg ${type}${m.sos ? ' sos' : ''} ${roleClass} ${mentionClass}`.trim();
+      const className = `cmsg ${type}${m.sos ? ' sos' : ''} ${roleClass} ${isMentioned ? 'mentioned' : ''}`.trim();
       let inlineStyle = m.sos ? 'color:var(--red)' : '';
 
       const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
