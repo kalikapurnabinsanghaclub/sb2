@@ -589,7 +589,7 @@ function drawPosterOnCanvas(frame, pData) {
 
   const f = POSTER_FRAMES[frame] || POSTER_FRAMES.neon;
 
-  const doRender = (photoImg) => {
+  const doRender = (photoImg, logoImg) => {
     // Background gradient
     const grad = ctx.createLinearGradient(0, 0, W, H);
     grad.addColorStop(0, f.gradient[0]);
@@ -635,7 +635,25 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.shadowBlur = 0;
 
     // ---- TOP SECTION ----
-    const topY = H * 0.07;
+    const logoSize = W * 0.16;
+    const logoY = H * 0.10;
+    
+    if (logoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(W / 2, logoY, logoSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(logoImg, W / 2 - logoSize / 2, logoY - logoSize / 2, logoSize, logoSize);
+      ctx.restore();
+      
+      ctx.beginPath();
+      ctx.arc(W / 2, logoY, logoSize / 2, 0, Math.PI * 2);
+      ctx.strokeStyle = f.accent;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    const topY = logoY + logoSize / 2 + H * 0.04;
     ctx.textAlign = 'center';
 
     // Club name
@@ -649,7 +667,7 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.font = `900 ${W * 0.095}px 'Outfit', sans-serif`;
     ctx.fillStyle = '#ffffff';
     ctx.shadowBlur = 12;
-    ctx.fillText('DANCE IGNITION 5', W / 2, topY + H * 0.1);
+    ctx.fillText('DANCE IGNITION 5', W / 2, topY + H * 0.06);
 
     ctx.shadowBlur = 0;
 
@@ -704,14 +722,32 @@ function drawPosterOnCanvas(frame, pData) {
     _posterCanvas = canvas;
   };
 
+  // Load images
+  let photoImg = null;
+  let logoImg = null;
+  let loadedCount = 0;
+  
+  const checkDone = () => {
+    loadedCount++;
+    if (loadedCount === 2) {
+      doRender(photoImg, logoImg);
+    }
+  };
+
+  const lImg = new Image();
+  lImg.crossOrigin = 'anonymous';
+  lImg.onload = () => { logoImg = lImg; checkDone(); };
+  lImg.onerror = () => { checkDone(); };
+  lImg.src = 'logo.png';
+
   if (pData.photoUrl) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => doRender(img);
-    img.onerror = () => doRender(null);
-    img.src = pData.photoUrl;
+    const pImg = new Image();
+    pImg.crossOrigin = 'anonymous';
+    pImg.onload = () => { photoImg = pImg; checkDone(); };
+    pImg.onerror = () => { checkDone(); };
+    pImg.src = pData.photoUrl;
   } else {
-    doRender(null);
+    checkDone();
   }
 }
 
