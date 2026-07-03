@@ -233,6 +233,43 @@
       </div>
     </div>
 
+    <!-- SHARE CARD SECTION -->
+    <div class="card" style="margin-top: 30px; text-align: center; border: 2px solid var(--primary); background: linear-gradient(135deg, rgba(124,58,237,0.05), rgba(124,58,237,0.15));">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; color: var(--primary);">📸 Share on Social Media</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Generate a beautiful poster with your rank/score and share it directly to WhatsApp or Instagram! Let your friends know!</div>
+      <button class="btn" onclick="openShareModal()" style="background:linear-gradient(135deg, #10B981, #059669);color:white;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:bold;padding:12px 20px; width:100%; border-radius:12px; font-size:16px; box-shadow:0 6px 15px rgba(16,185,129,0.3); border:none; cursor:pointer;">
+        <span>🔥</span> Share Your Poster Now!
+      </button>
+    </div>
+
+    <!-- SHARE MODAL -->
+    <div id="share-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.9); z-index:999999; flex-direction:column; padding:20px; box-sizing:border-box; overflow-y:auto; align-items:center;">
+      <div style="background:var(--surface); width:100%; max-width:400px; border-radius:24px; padding:20px; box-shadow:0 25px 50px rgba(0,0,0,0.5); position:relative;">
+        <button onclick="closeShareModal()" style="position:absolute; top:15px; right:15px; background:rgba(255,255,255,0.1); border:none; color:var(--text); font-size:24px; cursor:pointer; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;">&times;</button>
+        <h2 style="margin:0 0 15px 0; font-size:1.4rem; color:var(--text); text-align:center;">Choose a Frame</h2>
+        
+        <!-- Frame Carousel / Selection -->
+        <div style="display:flex; gap:10px; overflow-x:auto; padding-bottom:15px; margin-bottom:15px; scroll-snap-type: x mandatory;">
+          <button onclick="selectFrame('neon')" class="frame-btn" style="flex:0 0 auto; width:80px; height:80px; border-radius:12px; background:linear-gradient(135deg, #7c3aed, #ec4899); border:3px solid transparent; cursor:pointer; scroll-snap-align: start; color:white; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center;">Neon</button>
+          <button onclick="selectFrame('gold')" class="frame-btn" style="flex:0 0 auto; width:80px; height:80px; border-radius:12px; background:linear-gradient(135deg, #eab308, #d97706); border:3px solid transparent; cursor:pointer; scroll-snap-align: start; color:white; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center;">Gold</button>
+          <button onclick="selectFrame('dark')" class="frame-btn" style="flex:0 0 auto; width:80px; height:80px; border-radius:12px; background:linear-gradient(135deg, #1e293b, #0f172a); border:3px solid transparent; cursor:pointer; scroll-snap-align: start; color:white; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center;">Dark</button>
+          <button onclick="selectFrame('vibrant')" class="frame-btn" style="flex:0 0 auto; width:80px; height:80px; border-radius:12px; background:linear-gradient(135deg, #10b981, #3b82f6); border:3px solid transparent; cursor:pointer; scroll-snap-align: start; color:white; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center;">Vibrant</button>
+        </div>
+
+        <!-- Poster Preview -->
+        <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; margin-bottom:20px;" id="poster-preview-container">
+          <div id="share-poster" style="width:1080px; height:1350px; transform: scale(0.25); transform-origin: top left; position:absolute; top:0; left:0; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:80px; box-sizing:border-box;">
+            <!-- Content will be injected dynamically -->
+          </div>
+        </div>
+
+        <button onclick="sharePoster()" class="btn" style="background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; width:100%; padding:15px; border-radius:12px; font-weight:800; font-size:16px; border:none; cursor:pointer; box-shadow:0 6px 15px rgba(59,130,246,0.3);">
+          📲 Share Now
+        </button>
+        <div id="share-loading" style="display:none; text-align:center; color:var(--text-muted); font-size:12px; margin-top:10px;">Generating high-quality poster... Please wait.</div>
+      </div>
+    </div>
+
     <!-- FEEDBACK FORM -->
     <div class="card" id="feedback-card" style="margin-top: 30px; display: none;">
       <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Leave Feedback</div>
@@ -1811,7 +1848,182 @@ function showSecurityOverlay() {
     overlay.classList.add('active');
     setTimeout(() => overlay.classList.remove('active'), 2500);
   }
+}// ==========================================
+// SHARE POSTER LOGIC
+// ==========================================
+let currentShareFrame = 'neon';
+
+function openShareModal() {
+  document.getElementById('share-modal').style.display = 'flex';
+  selectFrame(currentShareFrame);
 }
+
+function closeShareModal() {
+  document.getElementById('share-modal').style.display = 'none';
+}
+
+function selectFrame(frame) {
+  currentShareFrame = frame;
+  
+  // Highlight selected button
+  document.querySelectorAll('.frame-btn').forEach(btn => btn.style.border = '3px solid transparent');
+  const activeBtn = document.querySelector(`.frame-btn[onclick="selectFrame('${frame}')"]`);
+  if (activeBtn) activeBtn.style.border = '3px solid white';
+  
+  // Build poster HTML
+  const p = (window.syncEngine.getData().participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  const ev = window.eventData;
+  if (!p || !ev) return;
+  
+  const c = (ev.categories || []).find(x => String(x.id) === String(p.catId));
+  const catName = c ? c.name : '';
+  
+  const photoField = (ev.formFields || []).find(f => f.type === 'photo');
+  const photoUrl = photoField && p.formAnswers && p.formAnswers[photoField.id] ? p.formAnswers[photoField.id] : 'logo.jpg';
+  
+  let scoreText = 'Official Participant';
+  if (p.stageStatus === 'done' && p.scores && Object.keys(p.scores).length > 0) {
+     let totalScore = 0;
+     Object.values(p.scores).forEach(s => totalScore += (Number(s.total)||0));
+     scoreText = `Total Score: ${totalScore.toFixed(1)}`;
+  }
+  
+  // Frame Definitions
+  const frames = {
+    neon: {
+      bg: 'linear-gradient(135deg, #0f172a, #312e81)',
+      border: '4px solid #c084fc',
+      boxShadow: '0 0 40px #c084fc, inset 0 0 40px #c084fc',
+      textColor: '#ffffff',
+      accentColor: '#f472b6',
+      font: "'Inter', sans-serif"
+    },
+    gold: {
+      bg: 'linear-gradient(135deg, #422006, #1c1917)',
+      border: '4px solid #facc15',
+      boxShadow: '0 0 40px #facc15, inset 0 0 40px #eab308',
+      textColor: '#fefce8',
+      accentColor: '#fde047',
+      font: "'Outfit', sans-serif"
+    },
+    dark: {
+      bg: '#000000',
+      border: '2px solid #333',
+      boxShadow: 'none',
+      textColor: '#ffffff',
+      accentColor: '#9ca3af',
+      font: "'monospace'"
+    },
+    vibrant: {
+      bg: 'linear-gradient(135deg, #3b82f6, #10b981)',
+      border: '4px solid #ffffff',
+      boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+      textColor: '#ffffff',
+      accentColor: '#ffffff',
+      font: "'Outfit', sans-serif"
+    }
+  };
+  
+  const f = frames[frame];
+  
+  const html = `
+    <div style="width:100%; height:100%; background:${f.bg}; border:${f.border}; box-shadow:${f.boxShadow}; border-radius:40px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:80px; box-sizing:border-box; color:${f.textColor}; font-family:${f.font}; text-align:center; position:relative; overflow:hidden;">
+      <!-- Top -->
+      <div style="z-index:10; display:flex; flex-direction:column; align-items:center;">
+        <img src="logo.jpg" style="width:180px; height:180px; border-radius:50%; border:6px solid ${f.accentColor}; margin-bottom:20px; object-fit:cover;" crossorigin="anonymous">
+        <h2 style="margin:0; font-size:48px; font-weight:900; letter-spacing:2px; text-transform:uppercase;">Dance Ignition Season 5</h2>
+        <div style="font-size:24px; color:${f.accentColor}; font-weight:700; margin-top:10px; letter-spacing:4px; text-transform:uppercase;">Kalikapur Nabin Sangha</div>
+      </div>
+      
+      <!-- Middle -->
+      <div style="z-index:10; display:flex; flex-direction:column; align-items:center;">
+        <div style="width:350px; height:350px; border-radius:50%; padding:10px; background:linear-gradient(135deg, ${f.accentColor}, transparent); margin-bottom:40px;">
+          <img src="${photoUrl}" style="width:100%; height:100%; border-radius:50%; object-fit:cover; background:#222;" crossorigin="anonymous" onerror="this.src='logo.jpg'">
+        </div>
+        <div style="font-size:80px; font-weight:900; line-height:1.1; margin-bottom:10px;">${p.name}</div>
+        <div style="background:${f.accentColor}; color:#000; padding:10px 30px; border-radius:30px; font-size:32px; font-weight:800; text-transform:uppercase; letter-spacing:2px; display:inline-block;">${catName}</div>
+      </div>
+      
+      <!-- Achievement -->
+      <div style="z-index:10; font-size:42px; font-weight:800; padding:20px 40px; border:3px dashed ${f.accentColor}; border-radius:20px; text-transform:uppercase;">
+        ${scoreText}
+      </div>
+      
+      <!-- Footer -->
+      <div style="z-index:10; font-size:28px; font-weight:700; opacity:0.9; margin-top:30px;">
+        Watch me perform at <span style="color:${f.accentColor};">knsdc.in</span>
+      </div>
+    </div>
+  `;
+  
+  document.getElementById('share-poster').innerHTML = html;
+}
+
+function sharePoster() {
+  const container = document.getElementById('share-poster');
+  const btn = document.querySelector('#share-modal .btn');
+  const loading = document.getElementById('share-loading');
+  
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  loading.style.display = 'block';
+  
+  // Make sure to unscale it for rendering, then scale back
+  const originalTransform = container.style.transform;
+  container.style.transform = 'scale(1)';
+  
+  html2canvas(container, { 
+    scale: 2, 
+    useCORS: true,
+    backgroundColor: null 
+  }).then(canvas => {
+    container.style.transform = originalTransform;
+    
+    canvas.toBlob(async (blob) => {
+      const file = new File([blob], 'knsdc-poster.jpg', { type: 'image/jpeg' });
+      
+      // Try Web Share API with File
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            title: 'KNSDC Performance',
+            text: 'Check out my official poster for Dance Ignition Season 5 by Kalikapur Nabin Sangha!',
+            files: [file]
+          });
+        } catch (e) {
+          console.error('Share failed', e);
+          downloadBlob(blob, 'knsdc-poster.jpg');
+        }
+      } else {
+        // Fallback to Download
+        downloadBlob(blob, 'knsdc-poster.jpg');
+      }
+      
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      loading.style.display = 'none';
+    }, 'image/jpeg', 0.9);
+  }).catch(err => {
+    console.error(err);
+    container.style.transform = originalTransform;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    loading.style.display = 'none';
+    toast('Error generating poster!');
+  });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 </script>
 </body>
 </html>
