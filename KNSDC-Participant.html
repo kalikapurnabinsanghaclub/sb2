@@ -257,11 +257,16 @@
         </div>
 
         <!-- Poster Preview -->
-        <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; margin-bottom:20px;" id="poster-preview-container">
+        <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; margin-bottom:15px;" id="poster-preview-container">
           <div id="share-poster" style="width:1080px; height:1350px; transform: scale(0.25); transform-origin: top left; position:absolute; top:0; left:0; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:80px; box-sizing:border-box;">
             <!-- Content will be injected dynamically -->
           </div>
         </div>
+
+        <label for="selfie-upload" class="btn" style="background:var(--surface); color:var(--text); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border-radius:12px; font-weight:700; font-size:14px; cursor:pointer; margin-bottom:20px; width:100%; box-sizing:border-box; box-shadow:0 4px 10px rgba(0,0,0,0.05);">
+          📸 Snap a Selfie for your Poster
+        </label>
+        <input type="file" id="selfie-upload" accept="image/*" capture="user" style="display:none;" onchange="handleSelfieUpload(this)">
 
         <button onclick="sharePoster()" class="btn" style="background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; width:100%; padding:15px; border-radius:12px; font-weight:800; font-size:16px; border:none; cursor:pointer; box-shadow:0 6px 15px rgba(59,130,246,0.3);">
           📲 Share Now
@@ -1857,6 +1862,7 @@ function showSecurityOverlay() {
 // SHARE POSTER LOGIC
 // ==========================================
 let currentShareFrame = 'neon';
+let temporarySelfieUrl = null;
 
 function openShareModal() {
   document.getElementById('share-modal').style.display = 'flex';
@@ -1865,6 +1871,17 @@ function openShareModal() {
 
 function closeShareModal() {
   document.getElementById('share-modal').style.display = 'none';
+}
+
+function handleSelfieUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  if (temporarySelfieUrl) {
+    URL.revokeObjectURL(temporarySelfieUrl);
+  }
+  temporarySelfieUrl = URL.createObjectURL(file);
+  selectFrame(currentShareFrame);
 }
 
 function selectFrame(frame) {
@@ -1886,7 +1903,9 @@ function selectFrame(frame) {
   const photoField = (ev.formFields || []).find(f => f.type === 'photo');
   let photoUrl = 'logo.jpg';
   
-  if (photoField) {
+  if (temporarySelfieUrl) {
+    photoUrl = temporarySelfieUrl;
+  } else if (photoField) {
     const inputEl = document.getElementById(photoField.id);
     if (inputEl && inputEl.value) {
       photoUrl = inputEl.value; // Use unsaved newly uploaded photo
