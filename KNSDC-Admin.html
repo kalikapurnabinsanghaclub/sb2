@@ -680,14 +680,8 @@
   .cmsg { padding: 12px 16px; border-radius: 16px; font-size: 13px; line-height: 1.5; max-width: 85%; animation: fadeUp 0.25s ease-out; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
   .cmsg.out { background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.1); align-self: flex-end; color: #0f172a; border-bottom-right-radius: 4px; }
   .cmsg.in { background: #fff; border: 1px solid rgba(226, 232, 240, 0.8); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .cmsg.mentioned { background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important; }
   .cmsg.sos { color: var(--red); font-weight: 800; animation: blink 1s infinite; }
-  /* Role-based sender colors */
-  .cmsg.role-monitor  { background: rgba(37,99,235,0.10);  border-color: rgba(37,99,235,0.35); }
-  .cmsg.role-judge    { background: rgba(5,150,105,0.10);  border-color: rgba(5,150,105,0.35); }
-  .cmsg.role-host     { background: rgba(124,58,237,0.10); border-color: rgba(124,58,237,0.35); }
-  .cmsg.role-admin    { background: rgba(220,38,38,0.08);  border-color: rgba(220,38,38,0.25); }
-  /* Highlight when THIS user is mentioned */
-  .cmsg.mentioned     { background: rgba(16, 185, 129, 0.25) !important; border: 1.5px solid rgba(16, 185, 129, 0.8) !important; }
   .cmsg .cmeta { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-family: var(--fm); font-weight: 700; }
   .chat-mention-bar { display: flex; gap: 6px; padding: 10px 20px; background: rgba(248, 250, 252, 0.6); border-top: 1px solid rgba(226, 232, 240, 0.8); flex-wrap: wrap; }
   .mchip { padding: 5px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; background: #fff; border: 1px solid rgba(226, 232, 240, 0.8); color: var(--text-dim); transition: all 0.2s; font-family: var(--fb); font-weight: 700; }
@@ -2966,7 +2960,7 @@ function insMention(m) {
 
 function hydrateChat() {
   const state = syncEngine.getData();
-  chatHistory = (state.chatMessages || []).filter(m => !m.participantId);
+  chatHistory = state.chatMessages || [];
   sosActive = state.sosActive || false;
   
   const fb = document.getElementById('chat-msgs');
@@ -2978,32 +2972,22 @@ function hydrateChat() {
       const n = JSON.parse(localStorage.getItem('kns_user')).name;
       if (n && n !== 'undefined' && n !== 'null') myName = n;
     } catch(e){}
-    
-    const senderRole = (m.role || '').toLowerCase();
-    const type = (senderRole === 'admin') ? 'out' : 'in';
-    const txt = m.text || '';
-    
-    const isMentioned = (type === 'in' && /@(admin|all)/i.test(txt));
-
-    const roleClass = senderRole ? `role-${senderRole}` : '';
-    const className = `cmsg ${type} ${m.sos ? 'sos' : ''} ${roleClass} ${isMentioned ? 'mentioned' : ''}`.trim();
-    let inlineStyle = m.sos ? 'color:var(--red)' : '';
-    
+    const type = (m.role === 'admin') ? 'out' : 'in';
+    const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
     const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
     const parts = dispFrom.split(' · ');
-    const rolePart = escapeHTML(parts[0]);
-    const namePart = escapeHTML(parts.slice(1).join(' · '));
+    const rolePart = parts[0];
+    const namePart = parts.slice(1).join(' · ');
+    const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
     
-    const roleColors = { monitor:'#2563eb', judge:'#059669', host:'#7c3aed', admin:'#dc2626' };
-    const nameColor = roleColors[senderRole] || 'var(--accent)';
-    const styledFrom = namePart 
-      ? `<span style="font-weight:800;color:${nameColor}">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` 
-      : `<span style="font-weight:800;color:${nameColor}">${rolePart}</span>`;
-    
+    let inlineStyle = '';
+    if (m.sos) inlineStyle = 'color:var(--rose)';
+    if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+
     return `
-    <div class="${className}" style="${inlineStyle}">
+    <div class="cmsg ${type} ${m.sos ? 'sos' : ''}" style="${inlineStyle}">
       <div class="cmeta">${styledFrom} · ${m.time} ${m.eventId ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
-      <div>${typeof parseMentions === 'function' ? parseMentions(txt) : txt}</div>
+      <div>${typeof parseMentions === 'function' ? parseMentions(m.text) : m.text}</div>
     </div>
   `;
   }).join('');
