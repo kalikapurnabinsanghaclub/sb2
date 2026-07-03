@@ -444,6 +444,11 @@ window.uploadParticipantFileToCloud = async function(input, targetId) {
   if (url) {
     document.getElementById(targetId).value = url;
     toast("✅ File uploaded successfully!");
+    const imgPreview = document.getElementById(targetId + '-preview');
+    if (imgPreview) {
+      imgPreview.src = url;
+      imgPreview.style.display = 'block';
+    }
   } else {
     toast("❌ Failed to upload file.");
     input.value = "";
@@ -572,7 +577,7 @@ function renderDashboard() {
       html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
         <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
         <input type="hidden" id="${fieldId}" value="${val}">
-        ${val ? `<div style="font-size:12px;color:green;margin-top:4px;">File uploaded: <a href="${val}" target="_blank">View File</a></div>` : ''}
+        ${f.type === 'photo' ? `<img id="${fieldId}-preview" src="${val}" style="max-width:150px; border-radius:8px; border:2px solid var(--primary); display:${val ? 'block' : 'none'}; box-shadow:0 4px 10px rgba(0,0,0,0.1); margin-top:5px;" crossorigin="anonymous">` : `<div style="font-size:12px;color:green;margin-top:4px;display:${val ? 'block' : 'none'};">File uploaded: <a href="${val}" target="_blank">View File</a></div>`}
       </div>`;
     } else {
       html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
@@ -1879,7 +1884,16 @@ function selectFrame(frame) {
   const catName = c ? c.name : '';
   
   const photoField = (ev.formFields || []).find(f => f.type === 'photo');
-  const photoUrl = photoField && p.formAnswers && p.formAnswers[photoField.id] ? p.formAnswers[photoField.id] : 'logo.jpg';
+  let photoUrl = 'logo.jpg';
+  
+  if (photoField) {
+    const inputEl = document.getElementById(photoField.id);
+    if (inputEl && inputEl.value) {
+      photoUrl = inputEl.value; // Use unsaved newly uploaded photo
+    } else if (p.formAnswers && p.formAnswers[photoField.id]) {
+      photoUrl = p.formAnswers[photoField.id];
+    }
+  }
   
   let scoreText = 'Official Participant';
   if (p.stageStatus === 'done' && p.scores && Object.keys(p.scores).length > 0) {
