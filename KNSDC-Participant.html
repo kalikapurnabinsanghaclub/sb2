@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>KNSDC — Participant Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <style>
   :root {
     --primary: #FF6B35;
@@ -178,51 +179,6 @@
     <!-- DETAILED RESULTS CARD -->
     <div id="detailed-results-card" style="margin-top: 20px; display: none;"></div>
 
-    <!-- SERVICES (FOOD & TRANSPORT) SECTION -->
-    <div id="services-section" style="margin-top: 20px; display: none;">
-      <!-- Food Delivery Service -->
-      <div class="card" style="margin-bottom: 20px; border-left: 5px solid #10B981;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:15px;">
-          <h3 style="font-size:18px; font-weight:800; color:#10B981; display:flex; align-items:center; gap:8px; margin:0;">
-            🍔 Food Delivery Service
-          </h3>
-          <span style="background:rgba(16,185,129,0.1); color:#10B981; font-size:11px; font-weight:800; padding:4px 8px; border-radius:12px;">Active</span>
-        </div>
-        <div style="font-size:12px; color:var(--text-muted); margin-bottom:15px;">Order hot meals directly to your designated venue seat or waiting lounge. Delivery partners will bring it to you.</div>
-        
-        <!-- Active orders list -->
-        <div id="active-food-orders" style="display:none; margin-bottom:15px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px;">
-          <div style="font-weight:800; font-size:12px; color:#15803d; margin-bottom:6px;">📦 Active Orders:</div>
-          <div id="food-orders-list" style="font-size:12px; display:flex; flex-direction:column; gap:6px;"></div>
-        </div>
-
-        <button onclick="openFoodOrderModal()" class="btn" style="background:#10B981; box-shadow:0 4px 12px rgba(16,185,129,0.3); border:none; display:flex; align-items:center; justify-content:center; gap:8px;">
-          🛒 Order Food Now
-        </button>
-      </div>
-
-      <!-- Rapido-style Transport Booking -->
-      <div class="card" style="margin-bottom: 20px; border-left: 5px solid #3B82F6;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:15px;">
-          <h3 style="font-size:18px; font-weight:800; color:#3B82F6; display:flex; align-items:center; gap:8px; margin:0;">
-            🏍️ Rapido Transport Ride
-          </h3>
-          <span style="background:rgba(59,130,246,0.1); color:#3B82F6; font-size:11px; font-weight:800; padding:4px 8px; border-radius:12px;">Active</span>
-        </div>
-        <div style="font-size:12px; color:var(--text-muted); margin-bottom:15px;">Book a fast ride to or from the venue. Official KNS transport partners will pick you up within minutes.</div>
-        
-        <!-- Active booking list -->
-        <div id="active-ride-bookings" style="display:none; margin-bottom:15px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px;">
-          <div style="font-weight:800; font-size:12px; color:#1d4ed8; margin-bottom:6px;">🏍️ Active Bookings:</div>
-          <div id="ride-bookings-list" style="font-size:12px; display:flex; flex-direction:column; gap:6px;"></div>
-        </div>
-
-        <button onclick="openRideBookingModal()" class="btn" style="background:#3B82F6; box-shadow:0 4px 12px rgba(59,130,246,0.3); border:none; display:flex; align-items:center; justify-content:center; gap:8px;">
-          🏍️ Book a Ride
-        </button>
-      </div>
-    </div>
-
     <!-- Food Order Modal -->
     <div id="food-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999999; justify-content:center; align-items:center; padding:15px;">
       <div class="card" style="width:100%; max-width:420px; max-height:90vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.25s;">
@@ -249,35 +205,59 @@
 
     <!-- Transport Booking Modal -->
     <div id="ride-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999999; justify-content:center; align-items:center; padding:15px;">
-      <div class="card" style="width:100%; max-width:420px; max-height:90vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.25s;">
+      <div class="card" style="width:100%; max-width:460px; max-height:95vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.25s; padding: 20px;">
         <button onclick="closeRideModal()" style="position:absolute; top:15px; right:15px; background:none; border:none; color:var(--text); font-size:24px; cursor:pointer;">&times;</button>
-        <h3 style="font-size:18px; font-weight:800; margin-bottom:15px; color:#3B82F6;">🏍️ Book Transport Ride</h3>
+        <h3 style="font-size:18px; font-weight:800; margin-bottom:12px; color:#3B82F6;">🏍️ Book Transport Ride</h3>
         
-        <div class="fg" style="margin-bottom:15px;">
-          <label>Pickup Location</label>
-          <input type="text" id="ride-pickup-loc" placeholder="e.g. Kalikapur Gate No. 1" required>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Click on the map to set 🔵 <strong>Pickup</strong> and 🔴 <strong>Drop</strong> points.</p>
+        
+        <div id="booking-map" style="width: 100%; height: 200px; border-radius: 12px; border: 1.5px solid var(--border); margin-bottom: 15px; z-index: 1;"></div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+          <div class="fg" style="flex: 1; margin-bottom: 0;">
+            <label style="font-size: 11px;">Pickup Coordinates</label>
+            <input type="text" id="ride-pickup-loc" placeholder="Click Map for Pickup" readonly style="font-size: 12px; padding: 8px; background: #f1f5f9;">
+          </div>
+          <div class="fg" style="flex: 1; margin-bottom: 0;">
+            <label style="font-size: 11px;">Drop Coordinates</label>
+            <input type="text" id="ride-drop-loc" placeholder="Click Map for Drop" readonly style="font-size: 12px; padding: 8px; background: #f1f5f9;">
+          </div>
         </div>
 
         <div class="fg" style="margin-bottom:15px;">
-          <label>Drop Location</label>
-          <input type="text" id="ride-drop-loc" placeholder="e.g. Venue Lounge Stage" required>
-        </div>
-
-        <div class="fg" style="margin-bottom:20px;">
-          <label>Choose Ride Type</label>
-          <select id="ride-vehicle-type" onchange="updateEstimatedFare()">
-            <option value="bike">🏍️ Bike Taxi (Fastest) — ₹40</option>
-            <option value="auto">🛺 Auto Rickshaw — ₹70</option>
-            <option value="cab">🚗 Mini Cab — ₹120</option>
+          <label>Ride Type</label>
+          <select id="ride-vehicle-type" onchange="updateEstimatedFare()" style="padding: 10px;">
+            <option value="bike">🏍️ Bike Taxi — ₹12/km + fees</option>
+            <option value="auto">🛺 Auto Rickshaw — ₹15/km + fees</option>
+            <option value="cab">🚗 Mini Cab — ₹20/km + fees</option>
           </select>
         </div>
 
-        <div style="font-size:14px; font-weight:800; display:flex; justify-content:space-between; margin-bottom:20px; padding-top:10px; border-top:1px solid var(--border);">
-          <span>Estimated Fare:</span>
-          <span id="ride-estimated-fare">₹40</span>
+        <div style="background: rgba(0,0,0,0.02); padding: 12px; border-radius: 10px; font-size: 12px; border: 1px solid var(--border); margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Distance:</span>
+            <span id="ride-calculated-distance" style="font-weight: 700; color: var(--accent);">0.00 km</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Base Fare (₹12/km):</span>
+            <span id="ride-base-fare">₹0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Platform Fee (₹0.5/km):</span>
+            <span id="ride-platform-fee">₹0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; color: var(--red); display: none;" id="ride-night-premium-row">
+            <span>🌙 Night Premium (₹5/km 10PM+):</span>
+            <span id="ride-night-premium">₹0.00</span>
+          </div>
+          <hr style="border: none; border-top: 1px solid var(--border); margin: 6px 0;">
+          <div style="font-size:14px; font-weight:900; display:flex; justify-content:space-between;">
+            <span>Total Fare:</span>
+            <span id="ride-estimated-fare" style="color: var(--green);">₹0.00</span>
+          </div>
         </div>
 
-        <button onclick="submitRideBooking()" class="btn" style="background:#3B82F6; border:none;">Confirm Booking</button>
+        <button onclick="submitRideBooking()" class="btn" style="background:#3B82F6; border:none; width: 100%;">Confirm Booking</button>
       </div>
     </div>
 
@@ -434,6 +414,27 @@
         <div style="font-size: 40px; margin-bottom: 10px;">💖</div>
         <h3 style="color: var(--green); margin-bottom: 5px;">Thank You!</h3>
         <p style="color: var(--text-muted); font-size: 14px;">Your feedback is most valuable for the KNSDC team.</p>
+      </div>
+    </div>
+
+    <!-- SERVICES SECTION -->
+    <div class="card" id="services-section" style="margin-top: 30px; display: none;">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Food &amp; Transport Services</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Order refreshments or book a transport ride directly from the venue.</div>
+      
+      <div style="display:flex; gap:12px; margin-bottom:20px;">
+        <button onclick="openFoodOrderModal()" class="btn" style="flex:1; background:#10B981; border:none; display:flex; align-items:center; justify-content:center; gap:8px;">🍔 Order Food</button>
+        <button onclick="openRideBookingModal()" class="btn" style="flex:1; background:#3B82F6; border:none; display:flex; align-items:center; justify-content:center; gap:8px;">🏍️ Book Ride</button>
+      </div>
+
+      <div id="active-food-orders" style="display:none; margin-bottom:15px;">
+        <h4 style="font-size:14px; font-weight:800; color:#10B981; margin-bottom:8px;">🍔 Active Food Orders</h4>
+        <div id="food-orders-list"></div>
+      </div>
+
+      <div id="active-ride-bookings" style="display:none;">
+        <h4 style="font-size:14px; font-weight:800; color:#3B82F6; margin-bottom:8px;">🏍️ Active Ride Bookings</h4>
+        <div id="ride-bookings-list" style="display:flex; flex-direction:column; gap:12px;"></div>
       </div>
     </div>
   </div>
@@ -2819,32 +2820,170 @@ window.submitFoodOrder = async function() {
   closeFoodModal();
 };
 
+let bookingMap = null;
+let pickupMarker = null;
+let dropMarker = null;
+let pickupCoords = null;
+let dropCoords = null;
+let calculatedDistanceKm = 0;
+
 window.openRideBookingModal = function() {
   document.getElementById('ride-pickup-loc').value = '';
-  document.getElementById('ride-drop-loc').value = 'Kalikapur Event Venue';
-  document.getElementById('ride-vehicle-type').value = 'bike';
-  updateEstimatedFare();
+  document.getElementById('ride-drop-loc').value = '';
+  document.getElementById('ride-calculated-distance').innerText = '0.00 km';
+  document.getElementById('ride-base-fare').innerText = '₹0.00';
+  document.getElementById('ride-platform-fee').innerText = '₹0.00';
+  document.getElementById('ride-night-premium-row').style.display = 'none';
+  document.getElementById('ride-estimated-fare').innerText = '₹0.00';
+  
+  pickupCoords = null;
+  dropCoords = null;
+  calculatedDistanceKm = 0;
+
   document.getElementById('ride-modal').style.display = 'flex';
+
+  setTimeout(() => {
+    if (!bookingMap) {
+      // Initialize map centered at Kalikapur event area
+      bookingMap = L.map('booking-map').setView([22.5126, 88.3986], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+      }).addTo(bookingMap);
+
+      bookingMap.on('click', function(e) {
+        const latlng = e.latlng;
+        if (!pickupCoords) {
+          pickupCoords = latlng;
+          document.getElementById('ride-pickup-loc').value = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+          pickupMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Pickup Location</b>").openPopup();
+        } else if (!dropCoords) {
+          dropCoords = latlng;
+          document.getElementById('ride-drop-loc').value = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+          dropMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Drop Location</b>").openPopup();
+          
+          // Calculate distance via Haversine formula
+          calculatedDistanceKm = getDistance(pickupCoords.lat, pickupCoords.lng, dropCoords.lat, dropCoords.lng);
+          document.getElementById('ride-calculated-distance').innerText = `${calculatedDistanceKm.toFixed(2)} km`;
+          updateEstimatedFare();
+        } else {
+          // Reset
+          if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+          if (dropMarker) bookingMap.removeLayer(dropMarker);
+          pickupMarker = null;
+          dropMarker = null;
+          pickupCoords = latlng;
+          dropCoords = null;
+          document.getElementById('ride-pickup-loc').value = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+          document.getElementById('ride-drop-loc').value = '';
+          document.getElementById('ride-calculated-distance').innerText = '0.00 km';
+          document.getElementById('ride-base-fare').innerText = '₹0.00';
+          document.getElementById('ride-platform-fee').innerText = '₹0.00';
+          document.getElementById('ride-night-premium-row').style.display = 'none';
+          document.getElementById('ride-estimated-fare').innerText = '₹0.00';
+          
+          pickupMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Pickup Location</b>").openPopup();
+        }
+      });
+    } else {
+      bookingMap.invalidateSize();
+      if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+      if (dropMarker) bookingMap.removeLayer(dropMarker);
+      pickupMarker = null;
+      dropMarker = null;
+    }
+  }, 300);
 };
+
+// Haversine distance formula in KM
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2-lat1);
+  const dLon = deg2rad(lon2-lon1); 
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+    ; 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c; // Distance in km
+}
+
+function deg2rad(deg) {
+  return deg * (Math.PI/180);
+}
 
 window.closeRideModal = function() {
   document.getElementById('ride-modal').style.display = 'none';
 };
 
 window.updateEstimatedFare = function() {
-  const type = document.getElementById('ride-vehicle-type').value;
-  const fareMap = { bike: 40, auto: 70, cab: 120 };
-  document.getElementById('ride-estimated-fare').innerText = `₹${fareMap[type] || 40}`;
+  if (calculatedDistanceKm <= 0) return;
+  const vehicle = document.getElementById('ride-vehicle-type').value;
+  
+  // Custom Dynamic Base Fares per km
+  const baseRateMap = { bike: 12, auto: 15, cab: 20 };
+  const ratePerKm = baseRateMap[vehicle] || 12;
+
+  const baseFare = calculatedDistanceKm * ratePerKm;
+  const platformFee = calculatedDistanceKm * 0.5;
+
+  // Check late night premium (10 PM to 6 AM)
+  const currentHour = new Date().getHours();
+  const isNight = currentHour >= 22 || currentHour < 6;
+  const nightPremium = isNight ? (calculatedDistanceKm * 5) : 0;
+
+  document.getElementById('ride-base-fare').innerText = `₹${baseFare.toFixed(2)}`;
+  document.getElementById('ride-platform-fee').innerText = `₹${platformFee.toFixed(2)}`;
+  
+  const nightPremiumRow = document.getElementById('ride-night-premium-row');
+  if (nightPremiumRow) {
+    if (isNight) {
+      nightPremiumRow.style.display = 'flex';
+      document.getElementById('ride-night-premium').innerText = `₹${nightPremium.toFixed(2)}`;
+    } else {
+      nightPremiumRow.style.display = 'none';
+    }
+  }
+
+  const totalFare = baseFare + platformFee + nightPremium;
+  document.getElementById('ride-estimated-fare').innerText = `₹${totalFare.toFixed(2)}`;
 };
 
 window.submitRideBooking = async function() {
-  const pickup = document.getElementById('ride-pickup-loc').value.trim();
-  const drop = document.getElementById('ride-drop-loc').value.trim();
-  if (!pickup || !drop) return toast('⚠️ Please enter pickup & drop locations.');
+  if (!pickupCoords || !dropCoords) {
+    return toast('⚠️ Please select both pickup and drop coordinates on the map.');
+  }
 
   const vehicle = document.getElementById('ride-vehicle-type').value;
-  const fareMap = { bike: 40, auto: 70, cab: 120 };
-  const fare = fareMap[vehicle] || 40;
+  const rawFare = document.getElementById('ride-estimated-fare').innerText.replace('₹', '');
+  const fare = parseFloat(rawFare) || 40;
 
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
@@ -2856,13 +2995,20 @@ window.submitRideBooking = async function() {
     participantId: CURRENT_USER,
     participantName: p.name,
     participantPhone: p.phone || '',
-    pickup,
-    drop,
+    pickup: `${pickupCoords.lat.toFixed(5)}, ${pickupCoords.lng.toFixed(5)}`,
+    pickupLat: pickupCoords.lat,
+    pickupLng: pickupCoords.lng,
+    drop: `${dropCoords.lat.toFixed(5)}, ${dropCoords.lng.toFixed(5)}`,
+    dropLat: dropCoords.lat,
+    dropLng: dropCoords.lng,
+    distanceKm: calculatedDistanceKm,
     vehicle,
-    fare,
+    fare: fare.toFixed(2),
     status: 'finding', // finding, assigned, completed
     driverName: '',
     driverPhone: '',
+    driverLat: null,
+    driverLng: null,
     timestamp: Date.now()
   };
 
@@ -2882,6 +3028,14 @@ window.renderActiveServicesData = function(p) {
   const orders = (state.foodOrders || []).filter(o => String(o.participantId) === String(p.id));
   const bookings = (state.rideBookings || []).filter(b => String(b.participantId) === String(p.id));
 
+// Global registry to store active tracking map instances for riders
+let trackingMaps = {};
+
+window.renderActiveServicesData = function(p) {
+  const state = window.syncEngine.getData() || {};
+  const orders = (state.foodOrders || []).filter(o => String(o.participantId) === String(p.id));
+  const bookings = (state.rideBookings || []).filter(b => String(b.participantId) === String(p.id));
+
   // Render food orders
   const foodWrap = document.getElementById('active-food-orders');
   const foodList = document.getElementById('food-orders-list');
@@ -2894,7 +3048,7 @@ window.renderActiveServicesData = function(p) {
         if (o.status === 'delivered') statusBadge = `<span style="color:#10b981; font-weight:bold;">✅ Delivered</span>`;
         
         const itemsStr = o.items.map(i => `${i.qty}x ${i.name}`).join(', ');
-        return `<div style="border-bottom:1.5px solid #e2e8f0; padding-bottom:4px; margin-bottom:4px;">
+        return `<div style="border-bottom:1.5px solid #e2e8f0; padding-bottom:8px; margin-bottom:8px;">
           <div><strong>ID:</strong> ${o.id} | ${statusBadge}</div>
           <div style="font-size:11px; color:#475569;">${itemsStr}</div>
           <div style="font-size:11px; color:#64748b;">📍 Loc: ${o.location}</div>
@@ -2911,25 +3065,129 @@ window.renderActiveServicesData = function(p) {
   if (rideWrap && rideList) {
     if (bookings.length > 0) {
       rideWrap.style.display = 'block';
-      rideList.innerHTML = bookings.map(b => {
-        let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">🔍 Finding Partner...</span>`;
-        if (b.status === 'assigned') statusBadge = `<span style="color:#10b981; font-weight:bold;">🏍️ driver Assigned</span>`;
-        if (b.status === 'completed') statusBadge = `<span style="color:#64748b; font-weight:bold;">🏁 Arrived</span>`;
+      
+      // Determine if list changed to avoid rebuilding Leaflet elements repeatedly
+      const prevHtml = rideList.getAttribute('data-hash') || '';
+      const currentHash = JSON.stringify(bookings.map(b => ({id: b.id, status: b.status, lat: b.driverLat, lng: b.driverLng})));
+      
+      if (prevHtml !== currentHash) {
+        rideList.setAttribute('data-hash', currentHash);
         
-        let driverStr = '';
-        if (b.driverName) {
-          driverStr = `<div style="font-size:11px; color:#15803d;"><strong>Driver:</strong> ${b.driverName} (${b.driverPhone})</div>`;
+        rideList.innerHTML = bookings.map(b => {
+          let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">🔍 Finding Partner...</span>`;
+          if (b.status === 'assigned') statusBadge = `<span style="color:#10b981; font-weight:bold;">🏍️ Driver Assigned</span>`;
+          if (b.status === 'completed') statusBadge = `<span style="color:#64748b; font-weight:bold;">🏁 Arrived</span>`;
+          
+          let driverStr = '';
+          if (b.driverName) {
+            driverStr = `<div style="font-size:12px; color:#15803d; margin-top: 4px; font-weight: bold;"><strong>Driver:</strong> ${b.driverName} (${b.driverPhone})</div>`;
+          }
+
+          let mapContainerHtml = '';
+          if (b.status === 'assigned') {
+            mapContainerHtml = `<div id="tracking-map-${b.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 8px; z-index: 1;"></div>`;
+          }
+
+          return `
+            <div class="glass-card" style="border:1.5px solid var(--border); padding:12px; border-radius:12px; background:#f8fafc; margin-bottom:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <strong style="color:var(--accent); font-family:var(--fm);">${b.id}</strong>
+                ${statusBadge}
+              </div>
+              <div style="font-size:12px; color:#475569;">
+                <div><strong>Fare:</strong> ₹${b.fare} | <strong>Vehicle:</strong> ${b.vehicle.toUpperCase()} (${(b.distanceKm || 0).toFixed(2)} km)</div>
+                <div style="margin-top: 2px;">📍 From: <span style="font-family:monospace; color:#3b82f6;">${b.pickup}</span></div>
+                <div>📍 To: <span style="font-family:monospace; color:#ef4444;">${b.drop}</span></div>
+              </div>
+              ${driverStr}
+              ${mapContainerHtml}
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Initialize or update Leaflet instances for assigned bookings
+      bookings.forEach(b => {
+        if (b.status !== 'assigned') {
+          if (trackingMaps[b.id]) {
+            delete trackingMaps[b.id];
+          }
+          return;
         }
 
-        return `<div style="border-bottom:1.5px solid #e2e8f0; padding-bottom:4px; margin-bottom:4px;">
-          <div><strong>ID:</strong> ${b.id} | ${statusBadge}</div>
-          <div style="font-size:11px; color:#475569;">${b.vehicle.toUpperCase()} fare ₹${b.fare}</div>
-          <div style="font-size:11px; color:#64748b;">📍 From: ${b.pickup} ➔ To: ${b.drop}</div>
-          ${driverStr}
-        </div>`;
-      }).join('');
+        const mapId = `tracking-map-${b.id}`;
+        const mapEl = document.getElementById(mapId);
+        if (!mapEl) return;
+
+        setTimeout(() => {
+          let mapData = trackingMaps[b.id];
+          const driverLatLng = (b.driverLat && b.driverLng) ? [b.driverLat, b.driverLng] : null;
+
+          if (!mapData) {
+            // Init tracking map
+            const mapInstance = L.map(mapId, { attributionControl: false }).setView([b.pickupLat || 22.5126, b.pickupLng || 88.3986], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+            // Add static pickup and drop markers
+            if (b.pickupLat && b.pickupLng) {
+              L.marker([b.pickupLat, b.pickupLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Pickup");
+            }
+            if (b.dropLat && b.dropLng) {
+              L.marker([b.dropLat, b.dropLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Drop");
+            }
+
+            // Driver marker
+            let dMarker = null;
+            if (driverLatLng) {
+              dMarker = L.marker(driverLatLng, {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                  iconSize: [24, 38],
+                  iconAnchor: [12, 38]
+                })
+              }).addTo(mapInstance).bindPopup("Driver Location");
+            }
+
+            trackingMaps[b.id] = {
+              map: mapInstance,
+              driverMarker: dMarker
+            };
+          } else {
+            // Map already exists, update driver location marker dynamically
+            mapData.map.invalidateSize();
+            if (driverLatLng) {
+              if (mapData.driverMarker) {
+                mapData.driverMarker.setLatLng(driverLatLng);
+              } else {
+                mapData.driverMarker = L.marker(driverLatLng, {
+                  icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                    iconSize: [24, 38],
+                    iconAnchor: [12, 38]
+                  })
+                }).addTo(mapData.map).bindPopup("Driver Location");
+              }
+              // Pan to driver location smoothly
+              mapData.map.panTo(driverLatLng);
+            }
+          }
+        }, 100);
+      });
     } else {
       rideWrap.style.display = 'none';
+      rideList.removeAttribute('data-hash');
     }
   }
 };
@@ -2939,5 +3197,7 @@ window.renderActiveServicesData = function(p) {
 // ==========================================
 // (Protection Removed per User Request)
 </script>
+<!-- Leaflet Map Script -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </body>
 </html>

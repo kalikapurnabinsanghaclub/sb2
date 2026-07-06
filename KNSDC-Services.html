@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>KNSDC — Food & Ride Partner Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <style>
   :root {
     --bg: #0f172a;
@@ -326,13 +327,17 @@ function renderData() {
             <span class="order-id">${b.id}</span>
             <span class="badge badge-pending">Finding Partner</span>
           </div>
-          <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 From ${b.pickup} ➔ To ${b.drop}</div>
-          <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;"><strong>Rider:</strong> ${b.participantName} | <strong>Fare:</strong> ₹${b.fare} (${b.vehicle})</div>
+          <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 Pickup Coords: ${b.pickup}</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+            <strong>Fare:</strong> ₹${b.fare} | <strong>Vehicle:</strong> ${b.vehicle.toUpperCase()} (${(b.distanceKm || 0).toFixed(2)} km)
+          </div>
           
+          <p style="font-size: 11px; color: var(--red); background: rgba(239,68,68,0.1); padding: 6px; border-radius: 6px; margin-bottom: 10px;">
+            ⚠️ Passenger contact phone number is hidden until you accept this booking.
+          </p>
+
           <div style="display:flex; flex-direction:column; gap:8px;">
-            <input type="text" id="driver-name-${b.id}" class="input-field" placeholder="Driver Name (e.g. Raju)">
-            <input type="text" id="driver-phone-${b.id}" class="input-field" placeholder="Driver Phone Number">
-            <button onclick="acceptRideBooking('${b.id}')" class="action-btn" style="background:var(--blue); color:white; margin-top:0;">🏍️ Accept Booking &amp; Assign</button>
+            <button onclick="acceptRideBooking('${b.id}')" class="action-btn" style="background:var(--blue); color:white; margin-top:0; font-weight:800;">🏍️ Accept Booking &amp; Start Live Tracking</button>
           </div>
         </div>
       `).join('');
@@ -340,27 +345,124 @@ function renderData() {
 
     if (assigned.length === 0) {
       assignedContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active rides assigned.</div>`;
+      assignedContainer.removeAttribute('data-hash');
     } else {
-      assignedContainer.innerHTML = assigned.map(b => {
-        const isAssigned = b.status === 'assigned';
-        const actionHtml = isAssigned ? `
-          <button onclick="updateRideStatus('${b.id}', 'completed')" class="action-btn" style="background:var(--green); color:white;">🏁 Mark as Arrived / Completed</button>
-        ` : `<div style="color:var(--green); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">✅ Trip Completed</div>`;
+      // Determine if list changed to avoid rebuilding Leaflet elements repeatedly
+      const prevHtml = assignedContainer.getAttribute('data-hash') || '';
+      const currentHash = JSON.stringify(assigned.map(b => ({id: b.id, status: b.status, lat: b.driverLat, lng: b.driverLng})));
+      
+      if (prevHtml !== currentHash) {
+        assignedContainer.setAttribute('data-hash', currentHash);
 
-        return `
-          <div class="order-card" style="border-color:${isAssigned ? 'var(--blue)' : 'var(--green)'};">
-            <div class="order-header">
-              <span class="order-id">${b.id}</span>
-              <span class="badge badge-${b.status}">${b.status}</span>
+        assignedContainer.innerHTML = assigned.map(b => {
+          const isAssigned = b.status === 'assigned';
+          
+          // Secure layout details: only show rider info if the logged in partner accepted it
+          const isMyRide = loggedInPartner && (b.driverName === loggedInPartner.name || b.driverEmail === loggedInPartner.email);
+          const riderName = isMyRide ? b.participantName : '🔒 Hidden Rider';
+          const riderPhone = isMyRide ? b.participantPhone : '🔒 Hidden Phone';
+          
+          const actionHtml = isAssigned ? `
+            <button onclick="updateRideStatus('${b.id}', 'completed')" class="action-btn" style="background:var(--green); color:white; font-weight:800;">🏁 Mark as Arrived / Completed</button>
+          ` : `<div style="color:var(--green); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">✅ Trip Completed</div>`;
+
+          let mapContainerHtml = '';
+          if (isAssigned && isMyRide) {
+            mapContainerHtml = `
+              <div style="font-size: 11px; color: var(--primary); margin-top: 8px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+                <span>📡 Sharing Your Geolocation Coords Live</span>
+                <span id="geo-status-${b.id}" style="color: var(--green);">⚡ Active</span>
+              </div>
+              <div id="service-map-${b.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid var(--border); margin-top: 8px; z-index: 1;"></div>
+            `;
+          }
+
+          return `
+            <div class="order-card" style="border-color:${isAssigned ? 'var(--blue)' : 'var(--green)'};">
+              <div class="order-header">
+                <span class="order-id">${b.id}</span>
+                <span class="badge badge-${b.status}">${b.status}</span>
+              </div>
+              <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 From ${b.pickup} ➔ To ${b.drop}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Rider Name:</strong> ${riderName}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Rider Phone:</strong> ${riderPhone}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Vehicle:</strong> ${b.vehicle.toUpperCase()} | <strong>Fare:</strong> ₹${b.fare}</div>
+              <div style="font-size:12px; color:var(--green); font-weight:bold;">🏍️ Driver: ${b.driverName} (${b.driverPhone})</div>
+              ${mapContainerHtml}
+              ${actionHtml}
             </div>
-            <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 From ${b.pickup} ➔ To ${b.drop}</div>
-            <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Rider:</strong> ${b.participantName} (${b.participantPhone})</div>
-            <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Vehicle:</strong> ${b.vehicle.toUpperCase()} | <strong>Fare:</strong> ₹${b.fare}</div>
-            <div style="font-size:12px; color:var(--green); font-weight:bold;">🏍️ Driver: ${b.driverName} (${b.driverPhone})</div>
-            ${actionHtml}
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
+      }
+
+      // Initialize maps for assigned rides
+      assigned.forEach(b => {
+        if (b.status !== 'assigned') return;
+        const isMyRide = loggedInPartner && (b.driverName === loggedInPartner.name || b.driverEmail === loggedInPartner.email);
+        if (!isMyRide) return;
+
+        const mapId = `service-map-${b.id}`;
+        const mapEl = document.getElementById(mapId);
+        if (!mapEl) return;
+
+        setTimeout(() => {
+          if (!trackingMaps[b.id]) {
+            const mapInstance = L.map(mapId, { attributionControl: false }).setView([b.pickupLat || 22.5126, b.pickupLng || 88.3986], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+            if (b.pickupLat && b.pickupLng) {
+              L.marker([b.pickupLat, b.pickupLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Pickup");
+            }
+            if (b.dropLat && b.dropLng) {
+              L.marker([b.dropLat, b.dropLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Drop");
+            }
+
+            let dMarker = null;
+            if (b.driverLat && b.driverLng) {
+              dMarker = L.marker([b.driverLat, b.driverLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                  iconSize: [24, 38],
+                  iconAnchor: [12, 38]
+                })
+              }).addTo(mapInstance).bindPopup("Your Location");
+            }
+
+            trackingMaps[b.id] = {
+              map: mapInstance,
+              driverMarker: dMarker
+            };
+          } else {
+            trackingMaps[b.id].map.invalidateSize();
+            if (b.driverLat && b.driverLng) {
+              const driverLatLng = [b.driverLat, b.driverLng];
+              if (trackingMaps[b.id].driverMarker) {
+                trackingMaps[b.id].driverMarker.setLatLng(driverLatLng);
+              } else {
+                trackingMaps[b.id].driverMarker = L.marker(driverLatLng, {
+                  icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                    iconSize: [24, 38],
+                    iconAnchor: [12, 38]
+                  })
+                }).addTo(trackingMaps[b.id].map).bindPopup("Your Location");
+              }
+            }
+          }
+        }, 100);
+      });
     }
   }
 }
@@ -377,13 +479,18 @@ async function updateFoodStatus(orderId, newStatus) {
   await window.syncEngine.forceSaveStateToSupabase();
 }
 
+// Registry for active driver geolocation tracking intervals
+let geoIntervals = {};
+let trackingMaps = {};
+
 async function acceptRideBooking(bookingId) {
-  const driverName = document.getElementById(`driver-name-${bookingId}`).value.trim();
-  const driverPhone = document.getElementById(`driver-phone-${bookingId}`).value.trim();
-  if (!driverName || !driverPhone) {
-    alert('Please enter Driver Name & Phone Number.');
+  if (!loggedInPartner) {
+    alert('Please login as a service partner to accept bookings.');
     return;
   }
+
+  const driverName = loggedInPartner.name || 'Service Partner';
+  const driverPhone = loggedInPartner.phone || '9999999999';
 
   window.syncEngine.setData(s => {
     const bookings = s.rideBookings || [];
@@ -392,13 +499,56 @@ async function acceptRideBooking(bookingId) {
       bookings[idx].status = 'assigned';
       bookings[idx].driverName = driverName;
       bookings[idx].driverPhone = driverPhone;
+      bookings[idx].driverEmail = loggedInPartner.email;
     }
     return { ...s, rideBookings: bookings };
   });
   await window.syncEngine.forceSaveStateToSupabase();
+  startDriverGeoTracking(bookingId);
+}
+
+function startDriverGeoTracking(bookingId) {
+  if (geoIntervals[bookingId]) return;
+
+  const trackLocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        window.syncEngine.setData(s => {
+          const bookings = s.rideBookings || [];
+          const idx = bookings.findIndex(b => String(b.id) === String(bookingId));
+          if (idx !== -1 && bookings[idx].status === 'assigned') {
+            bookings[idx].driverLat = latitude;
+            bookings[idx].driverLng = longitude;
+          }
+          return { ...s, rideBookings: bookings };
+        });
+        window.syncEngine.forceSaveStateToSupabase();
+      },
+      (error) => {
+        console.warn('Geolocation sharing error:', error.message);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
+  // Run immediately and then poll every 6 seconds
+  trackLocation();
+  geoIntervals[bookingId] = setInterval(trackLocation, 6000);
+}
+
+function stopDriverGeoTracking(bookingId) {
+  if (geoIntervals[bookingId]) {
+    clearInterval(geoIntervals[bookingId]);
+    delete geoIntervals[bookingId];
+  }
 }
 
 async function updateRideStatus(bookingId, newStatus) {
+  if (newStatus === 'completed') {
+    stopDriverGeoTracking(bookingId);
+  }
   window.syncEngine.setData(s => {
     const bookings = s.rideBookings || [];
     const idx = bookings.findIndex(b => String(b.id) === String(bookingId));
@@ -410,5 +560,7 @@ async function updateRideStatus(bookingId, newStatus) {
   await window.syncEngine.forceSaveStateToSupabase();
 }
 </script>
+<!-- Leaflet Map Script -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </body>
 </html>
