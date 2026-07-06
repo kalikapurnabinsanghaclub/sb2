@@ -204,27 +204,34 @@
     </div>
 
     <!-- Transport Booking Modal -->
-    <div id="ride-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999999; justify-content:center; align-items:center; padding:15px;">
-      <div class="card" style="width:100%; max-width:460px; max-height:95vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.25s; padding: 20px;">
-        <button onclick="closeRideModal()" style="position:absolute; top:15px; right:15px; background:none; border:none; color:var(--text); font-size:24px; cursor:pointer;">&times;</button>
-        <h3 style="font-size:18px; font-weight:800; margin-bottom:12px; color:#3B82F6;">🏍️ Book Transport Ride</h3>
+    <div id="ride-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999999; justify-content:center; align-items:flex-end; padding:0;">
+      <div class="card" style="width:100%; max-width:500px; max-height:95vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); padding: 25px 20px; border-radius: 24px 24px 0 0; background: #ffffff;">
+        <button onclick="closeRideModal()" style="position:absolute; top:15px; right:15px; background:#f1f5f9; border:none; color:var(--text); font-size:24px; cursor:pointer; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">&times;</button>
+        <h3 style="font-size:22px; font-weight:900; margin-bottom:4px; color:#FACC15; display: flex; align-items: center; gap: 8px;">
+          <span style="background: #000; padding: 4px 8px; border-radius: 6px; color: #fff; font-size: 14px;">KNSDC-TNSPT</span>
+        </h3>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px; font-weight: 600;">Fast & Reliable Rides</p>
         
-        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Choose location via Map click or use current GPS location.</p>
-        
-        <div style="margin-bottom: 12px; display: flex; gap: 8px;">
-          <button onclick="useCurrentLocationAsPickup()" type="button" class="btn btn-sm" style="flex: 1; font-size: 12px; padding: 8px; background: var(--accent); color: white; border: none; border-radius: 8px;">📍 Use Current Location</button>
+        <div style="margin-bottom: 16px; display: flex; gap: 8px;">
+          <button onclick="useCurrentLocationAsPickup()" type="button" class="btn btn-sm" style="flex: 1; font-size: 13px; font-weight: bold; padding: 10px; background: #000; color: #FACC15; border: none; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">📍 Use Current GPS Location</button>
         </div>
 
-        <div id="booking-map" style="width: 100%; height: 200px; border-radius: 12px; border: 1.5px solid var(--border); margin-bottom: 15px; z-index: 1;"></div>
+        <div id="booking-map" style="width: 100%; height: 220px; border-radius: 16px; border: 2px solid #e2e8f0; margin-bottom: 15px; z-index: 1;"></div>
 
-        <div class="fg" style="margin-bottom: 12px;">
-          <label style="font-size: 11px;">Pickup Location Address / LatLng</label>
-          <input type="text" id="ride-pickup-loc" placeholder="Pickup Address (e.g. Kalikapur Gate 1)" style="font-size: 13px; padding: 10px;" onchange="updateFareOnAddressChange()">
+        <div class="fg" style="margin-bottom: 12px; position: relative;">
+          <label style="font-size: 12px; font-weight: 800; color: #334155;">🔵 Pickup Location</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="ride-pickup-loc" placeholder="Search Pickup Address..." style="flex:1; font-size: 14px; padding: 12px; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #f8fafc; font-weight: 600;" onchange="updateFareOnAddressChange()">
+            <button type="button" onclick="searchAddress('pickup')" style="background: #3b82f6; color: white; border: none; border-radius: 12px; padding: 0 16px; font-weight: bold; cursor: pointer;">Search</button>
+          </div>
         </div>
 
-        <div class="fg" style="margin-bottom: 12px;">
-          <label style="font-size: 11px;">Drop Location Address / LatLng</label>
-          <input type="text" id="ride-drop-loc" placeholder="Drop Address (e.g. Venue Lounge)" style="font-size: 13px; padding: 10px;" onchange="updateFareOnAddressChange()">
+        <div class="fg" style="margin-bottom: 16px; position: relative;">
+          <label style="font-size: 12px; font-weight: 800; color: #334155;">🔴 Drop Location</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="ride-drop-loc" placeholder="Search Drop Address..." style="flex:1; font-size: 14px; padding: 12px; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #f8fafc; font-weight: 600;" onchange="updateFareOnAddressChange()">
+            <button type="button" onclick="searchAddress('drop')" style="background: #ef4444; color: white; border: none; border-radius: 12px; padding: 0 16px; font-weight: bold; cursor: pointer;">Search</button>
+          </div>
         </div>
 
         <div class="fg" style="margin-bottom:15px;">
@@ -2991,6 +2998,75 @@ window.updateFareOnAddressChange = function() {
     document.getElementById('ride-estimated-fare').innerText = '₹50.00* (Est.)'; 
     document.getElementById('ride-base-fare').innerText = '-';
     document.getElementById('ride-platform-fee').innerText = '-';
+  }
+};
+
+window.searchAddress = async function(type) {
+  const inputId = type === 'pickup' ? 'ride-pickup-loc' : 'ride-drop-loc';
+  const query = document.getElementById(inputId).value.trim();
+  if (!query) {
+    return toast(`Please enter a ${type} address to search.`);
+  }
+
+  toast('🔍 Searching address...');
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+    const data = await res.json();
+    if (data && data.length > 0) {
+      const lat = parseFloat(data[0].lat);
+      const lng = parseFloat(data[0].lon);
+      const latlng = L.latLng(lat, lng);
+
+      if (type === 'pickup') {
+        pickupCoords = latlng;
+        if (bookingMap) {
+          if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+          pickupMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Pickup:</b> " + data[0].display_name).openPopup();
+          bookingMap.setView(latlng, 14);
+        }
+      } else {
+        dropCoords = latlng;
+        if (bookingMap) {
+          if (dropMarker) bookingMap.removeLayer(dropMarker);
+          dropMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Drop:</b> " + data[0].display_name).openPopup();
+          
+          if (pickupCoords) {
+            const bounds = L.latLngBounds(pickupCoords, dropCoords);
+            bookingMap.fitBounds(bounds, { padding: [30, 30] });
+          } else {
+            bookingMap.setView(latlng, 14);
+          }
+        }
+      }
+
+      document.getElementById(inputId).value = data[0].display_name;
+      toast('✅ Location found!');
+
+      if (pickupCoords && dropCoords) {
+        calculatedDistanceKm = getDistance(pickupCoords.lat, pickupCoords.lng, dropCoords.lat, dropCoords.lng);
+        document.getElementById('ride-calculated-distance').innerText = `${calculatedDistanceKm.toFixed(2)} km`;
+        updateEstimatedFare();
+      }
+    } else {
+      toast('❌ Address not found. Try being more specific.');
+    }
+  } catch (err) {
+    console.error(err);
+    toast('Error searching address. Try again later.');
   }
 };
 
