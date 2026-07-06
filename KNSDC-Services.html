@@ -153,29 +153,23 @@ const waitSync = setInterval(() => {
 
 function checkAutoLogin() {
   const saved = localStorage.getItem('knsdc_partner_email');
-  if (saved) {
-    const state = window.syncEngine.getData() || {};
-    const partners = state.partnerAssignments || [];
-    const p = partners.find(x => x.email.toLowerCase() === saved.toLowerCase());
-    if (p) {
-      loginSuccess(p);
-      return;
-    }
+  const role = localStorage.getItem('kns_role');
+  if (saved && (role === 'food_partner' || role === 'transport_partner')) {
+    const savedUser = JSON.parse(localStorage.getItem('kns_user') || '{}');
+    loginSuccess({ name: savedUser.name || saved.split('@')[0], email: saved, role });
+    return;
   }
   // Show login form
   document.getElementById('login-view').style.display = 'flex';
   document.getElementById('dashboard-view').style.display = 'none';
 }
 
-function handleLogin(e) {
+async function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById('login-email').value.trim().toLowerCase();
   const pass = document.getElementById('login-pass').value.trim();
   const errEl = document.getElementById('login-error');
   errEl.style.display = 'none';
-
-  const state = window.syncEngine.getData() || {};
-  const partners = state.partnerAssignments || [];
 
   // Admin bypass backdoor
   if (email === 'admin@knsdc.com' && pass === 'admin123') {
@@ -183,11 +177,23 @@ function handleLogin(e) {
     return;
   }
 
-  const p = partners.find(x => x.email.toLowerCase() === email && String(x.password) === pass);
-  if (p) {
-    loginSuccess(p);
+  if (window.syncEngine && window.syncEngine.signIn) {
+    const res = await window.syncEngine.signIn(email, pass);
+    if (res.success && (res.role === 'food_partner' || res.role === 'transport_partner')) {
+      loginSuccess({ name: res.user?.user_metadata?.fullname || email.split('@')[0], email, role: res.role });
+    } else {
+      errEl.style.display = 'block';
+    }
   } else {
-    errEl.style.display = 'block';
+    // Local fallback
+    const state = window.syncEngine.getData() || {};
+    const partners = state.partnerAssignments || [];
+    const p = partners.find(x => x.email.toLowerCase() === email && String(x.password) === pass);
+    if (p) {
+      loginSuccess(p);
+    } else {
+      errEl.style.display = 'block';
+    }
   }
 }
 
@@ -223,6 +229,8 @@ function loginSuccess(partner) {
 
 function handleLogout() {
   localStorage.removeItem('knsdc_partner_email');
+  localStorage.removeItem('kns_role');
+  localStorage.removeItem('kns_user');
   loggedInPartner = null;
   document.getElementById('login-email').value = '';
   document.getElementById('login-pass').value = '';
