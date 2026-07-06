@@ -2363,11 +2363,19 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
       <div style="font-size:14px; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;">Host Management</div>
       <div style="display:flex; gap:10px;">
-        <button class="btn btn-sm" onclick="syncEngine.fetchSupabaseState(); toast('Reloading from server...')" style="background:#3b82f6;color:white;border:none">🔄 Reload from Server</button>
+        <button class="btn btn-sm" onclick="syncEngine.fetchSupabaseState(); toast('Reloading...')" style="background:#3b82f6;color:white;border:none">🔄 Reload Hosts</button>
         <button class="btn btn-amber" onclick="openHostModal()">+ Assign Host</button>
       </div>
     </div>
-    <div class="g1" id="host-list"></div>
+    <div class="g1" id="host-list" style="margin-bottom: 40px;"></div>
+
+    <hr style="border:none; border-top:1.5px dashed var(--border); margin:30px 0 20px;"/>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <div style="font-size:14px; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;">🚗 Partner Service Accounts (Delivery/Transport)</div>
+      <button class="btn btn-amber" onclick="openPartnerModal()">+ Assign Service Partner</button>
+    </div>
+    <div class="g1" id="partner-list"></div>
   </div>
 
   <!-- ════════════════ SETTINGS ════════════════ -->
@@ -2679,6 +2687,29 @@
       <div class="fg"><label class="fl">Email (Login ID)</label><input type="email" id="host-email" placeholder="host@example.com" autocomplete="off"/></div>
       <div class="fg"><label class="fl">Password</label><input type="text" id="host-pass" placeholder="Password" autocomplete="new-password"/></div>
       <button class="btn btn-amber" style="width:100%;margin-top:10px" onclick="saveHost()">Save Host</button>
+    </div>
+  </div>
+</div>
+
+<!-- PARTNER ASSIGN MODAL -->
+<div class="modal-overlay" id="partner-modal" style="display:none" onclick="closeOnBg(event,'partner-modal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Assign Service Partner</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeM('partner-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label class="fl">Service Role</label>
+        <select id="partner-role" style="background:rgba(255,255,255,0.95);border:1px solid #cbd5e1;padding:12px;border-radius:10px;width:100%;font-size:14px;color:#1e293b">
+          <option value="food_partner">🍔 Food Delivery Partner</option>
+          <option value="transport_partner">🏍️ Ride / Transport Partner</option>
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Partner Name</label><input type="text" id="partner-name" placeholder="e.g. Swiggy Chef / Rapido Rider" autocomplete="off"/></div>
+      <div class="fg"><label class="fl">Email (Login ID)</label><input type="email" id="partner-email" placeholder="partner@knsdc.com" autocomplete="off"/></div>
+      <div class="fg"><label class="fl">Password</label><input type="text" id="partner-pass" placeholder="Password" autocomplete="new-password"/></div>
+      <button class="btn btn-amber" style="width:100%;margin-top:10px" onclick="savePartner()">Save Partner</button>
     </div>
   </div>
 </div>
@@ -3412,6 +3443,7 @@ function hydrate() {
   nxtId = s.nxtId || nxtId;
   agreements = s.judgeAgreements || s.agreements || [];
   hostAssignments = s.hostAssignments || [];
+  partnerAssignments = s.partnerAssignments || [];
   // Only load STAFF chat messages (those WITHOUT a participantId field, which is used exclusively by Helpdesk)
   chatHistory = (s.chatMessages || []).filter(m => !m.participantId);
   sosActive = s.sosActive || false;
@@ -3471,6 +3503,8 @@ function hydrate() {
   renderSwitches();
   updateNbadges();
   updateSOSUI();
+  if (typeof renderHostAssign === 'function') renderHostAssign();
+  if (typeof renderPartnerAssign === 'function') renderPartnerAssign();
   
   // Sync system Live/Offline status
   const isOffline = s.systemStatus === 'offline';
@@ -10199,6 +10233,118 @@ window.saveHost = async function() {
     }
   }
 };
+
+// 🚗 PARTNER ASSIGNMENT MANAGEMENT 🚗
+let partnerAssignments = [];
+function openPartnerModal() {
+  ['partner-name', 'partner-email', 'partner-pass'].forEach(id => document.getElementById(id).value = '');
+  openM('partner-modal');
+}
+
+let savePartnerInProgress = false;
+window.savePartner = async function() {
+  if (savePartnerInProgress) return;
+  const name = document.getElementById('partner-name').value.trim();
+  const email = document.getElementById('partner-email').value.trim();
+  const pass = document.getElementById('partner-pass').value.trim();
+  const role = document.getElementById('partner-role').value;
+
+  if (!name || !email || !pass) {
+    toast('All fields are required!');
+    return;
+  }
+
+  savePartnerInProgress = true;
+  const btn = document.querySelector('#partner-modal .btn-amber');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+  }
+
+  try {
+    const newPartner = {
+      id: Date.now().toString(),
+      eventId: activeEventId,
+      name,
+      email,
+      password: pass,
+      role
+    };
+
+    const exists = partnerAssignments.some(p => p.email.toLowerCase() === email.toLowerCase());
+    if (!exists) {
+      partnerAssignments.push(newPartner);
+    } else {
+      partnerAssignments = partnerAssignments.map(p =>
+        p.email.toLowerCase() === email.toLowerCase()
+          ? { ...p, eventId: activeEventId, name, password: pass, role }
+          : p
+      );
+    }
+    syncEngine.updateState({ partnerAssignments });
+
+    // Sync credentials to staff DB so they can login
+    if (syncEngine.addStaffMember) {
+      await syncEngine.addStaffMember(email, pass, name, role);
+    }
+
+    closeM('partner-modal');
+    renderPartnerAssign();
+    toast('Service Partner assigned successfully!');
+  } catch (err) {
+    console.error(err);
+    toast('Error saving service partner!');
+  } finally {
+    savePartnerInProgress = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Save Partner';
+    }
+  }
+};
+
+window.deletePartner = async function(id) {
+  if (!confirm('Delete this service partner?')) return;
+  const partner = (partnerAssignments || []).find(p => String(p.id) === String(id));
+  if (partner && partner.email) {
+    if (syncEngine.deleteStaffMember) {
+      await syncEngine.deleteStaffMember(partner.email);
+    }
+  }
+  partnerAssignments = partnerAssignments.filter(p => String(p.id) !== String(id));
+  syncEngine.updateState({ partnerAssignments });
+  renderPartnerAssign();
+};
+
+function renderPartnerAssign() {
+  const container = document.getElementById('partner-list');
+  if (!container) return;
+
+  const activePartners = partnerAssignments.filter(p => String(p.eventId) === String(activeEventId));
+  if (activePartners.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px">No service partners assigned for this event.</div>';
+    return;
+  }
+
+  container.innerHTML = activePartners.map(p => `
+    <div class="card glass-card" style="padding:16px;border-left:4px solid var(--green)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">${p.name}</div>
+          <div style="font-size:12px;color:var(--text-muted)">Role: ${p.role === 'food_partner' ? '🍔 Food Partner' : '🏍️ Ride Partner'}</div>
+        </div>
+        <div class="badge" style="background:rgba(16,185,129,0.1); color:var(--green); border:1px solid rgba(16,185,129,0.2);">Assigned</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.03);padding:10px;border-radius:8px;font-size:12px;margin-bottom:12px">
+        <div style="margin-bottom:4px"><strong>Login ID:</strong> <span style="color:var(--blue)">${p.email}</span></div>
+        <div><strong>Password:</strong> <span style="font-family:monospace">${p.password}</span></div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-sm btn-ghost" style="color:var(--red);border-color:rgba(220,38,38,0.2)" onclick="deletePartner('${p.id}')">🗑️ Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
 
 window.deleteHost = async function(id) {
   if (!confirm('Delete this host?')) return;

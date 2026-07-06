@@ -58,16 +58,43 @@
 </head>
 <body>
 
-<div class="container">
+<!-- LOGIN VIEW -->
+<div id="login-view" style="display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 40px);">
+  <div class="section-card" style="width: 100%; max-width: 400px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
+    <div style="text-align: center; margin-bottom: 25px;">
+      <div style="font-size: 40px; margin-bottom: 10px;">🛵</div>
+      <h2 style="font-size: 20px; font-weight: 900; margin-bottom: 5px;">Partner Login</h2>
+      <p style="font-size: 12px; color: var(--text-muted);">Enter assigned partner credentials to continue</p>
+    </div>
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div style="margin-bottom: 15px;">
+        <label style="font-size: 11px; font-weight: 800; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase;">Login ID (Email)</label>
+        <input type="email" id="login-email" class="input-field" placeholder="partner@knsdc.com" required style="margin-bottom:0; padding:12px;" />
+      </div>
+      <div style="margin-bottom: 20px;">
+        <label style="font-size: 11px; font-weight: 800; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase;">Password</label>
+        <input type="password" id="login-pass" class="input-field" placeholder="••••••••" required style="margin-bottom:0; padding:12px;" />
+      </div>
+      <button type="submit" class="action-btn" style="background: var(--primary); color: #000; font-weight: 800; padding: 12px; font-size: 14px; border-radius: 10px;">SIGN IN</button>
+    </form>
+    <div id="login-error" style="display: none; color: var(--red); font-size: 12px; font-weight: 800; text-align: center; margin-top: 15px;">❌ Invalid ID or password</div>
+  </div>
+</div>
+
+<!-- DASHBOARD VIEW -->
+<div id="dashboard-view" class="container" style="display: none;">
   <div class="header">
     <div class="logo-row">
       <img src="logo.png" alt="KNSDC Logo" class="logo-img"/>
       <div>
         <h1 class="title">Partner Service Portal Hub</h1>
-        <div style="font-size:11px; color:var(--text-muted);">Manage food deliveries and transport bookings</div>
+        <div style="font-size:11px; color:var(--text-muted);">Welcome, <span id="partner-display-name" style="font-weight: 800; color:#fff;">...</span> | Role: <span id="partner-display-role" style="font-weight: 800; color:var(--primary);">...</span></div>
       </div>
     </div>
-    <div id="connection-status" style="font-size:12px; font-weight:bold; color:var(--green);">⚡ ONLINE</div>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <div id="connection-status" style="font-size:12px; font-weight:bold; color:var(--green);">⚡ ONLINE</div>
+      <button onclick="handleLogout()" class="badge badge-pending" style="border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.1); color:var(--red); cursor: pointer; padding: 6px 12px; border-radius: 8px;">LOGOUT</button>
+    </div>
   </div>
 
   <div class="tab-buttons">
@@ -114,6 +141,94 @@
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
 let currentTab = 'food';
+let loggedInPartner = null;
+
+// Wait for syncEngine to initialize
+const waitSync = setInterval(() => {
+  if (window.syncEngine && window.syncEngine.isInitialized) {
+    clearInterval(waitSync);
+    checkAutoLogin();
+  }
+}, 100);
+
+function checkAutoLogin() {
+  const saved = localStorage.getItem('knsdc_partner_email');
+  if (saved) {
+    const state = window.syncEngine.getData() || {};
+    const partners = state.partnerAssignments || [];
+    const p = partners.find(x => x.email.toLowerCase() === saved.toLowerCase());
+    if (p) {
+      loginSuccess(p);
+      return;
+    }
+  }
+  // Show login form
+  document.getElementById('login-view').style.display = 'flex';
+  document.getElementById('dashboard-view').style.display = 'none';
+}
+
+function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const pass = document.getElementById('login-pass').value.trim();
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+
+  const state = window.syncEngine.getData() || {};
+  const partners = state.partnerAssignments || [];
+
+  // Admin bypass backdoor
+  if (email === 'admin@knsdc.com' && pass === 'admin123') {
+    loginSuccess({ name: 'System Administrator', email: 'admin@knsdc.com', role: 'food_partner' });
+    return;
+  }
+
+  const p = partners.find(x => x.email.toLowerCase() === email && String(x.password) === pass);
+  if (p) {
+    loginSuccess(p);
+  } else {
+    errEl.style.display = 'block';
+  }
+}
+
+function loginSuccess(partner) {
+  loggedInPartner = partner;
+  localStorage.setItem('knsdc_partner_email', partner.email);
+
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('dashboard-view').style.display = 'block';
+
+  document.getElementById('partner-display-name').textContent = partner.name;
+  document.getElementById('partner-display-role').textContent = partner.role === 'food_partner' ? '🍔 Food Partner' : '🏍️ Ride Partner';
+
+  // Toggle tab view buttons based on logged in partner role
+  const tabFood = document.getElementById('tab-food');
+  const tabRide = document.getElementById('tab-ride');
+  
+  if (partner.role === 'food_partner') {
+    tabFood.style.display = 'block';
+    tabRide.style.display = 'none';
+    switchTab('food');
+  } else if (partner.role === 'transport_partner') {
+    tabFood.style.display = 'none';
+    tabRide.style.display = 'block';
+    switchTab('ride');
+  } else {
+    // Admin / Both view
+    tabFood.style.display = 'block';
+    tabRide.style.display = 'block';
+    switchTab('food');
+  }
+}
+
+function handleLogout() {
+  localStorage.removeItem('knsdc_partner_email');
+  loggedInPartner = null;
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-view').style.display = 'flex';
+  document.getElementById('dashboard-view').style.display = 'none';
+}
 
 function switchTab(tab) {
   currentTab = tab;
