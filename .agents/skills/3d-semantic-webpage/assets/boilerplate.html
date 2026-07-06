@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Replace with a specific page title</title>
+<meta name="description" content="Replace with a one-to-two sentence description of this page.">
+<meta property="og:title" content="Replace with page title">
+<meta property="og:description" content="Replace with page description">
+<meta property="og:image" content="poster.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Replace with page name",
+  "description": "Replace with page description"
+}
+</script>
+<style>
+  :root { --accent: #7c5cff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  .skip-link { position: absolute; left: -999px; top: 0; background: #000; color: #fff; padding: 0.75rem 1rem; z-index: 100; }
+  .skip-link:focus { left: 0; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .scene-container { position: relative; width: 100%; height: 70vh; background: linear-gradient(160deg,#1a1a2e,#0f0f1a); }
+  .scene-container canvas { display: block; width: 100%; height: 100%; }
+  .scene-container.static-fallback { background: linear-gradient(160deg,#3a2a6e,#1a1a2e); }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header>
+    <nav aria-label="Primary">
+      <!-- primary navigation -->
+    </nav>
+  </header>
+
+  <main id="main">
+    <section aria-labelledby="hero-heading">
+      <h1 id="hero-heading">Replace with the real headline</h1>
+      <p>Replace with supporting copy that stands on its own if the 3D scene never loads.</p>
+      <div class="scene-container" id="scene-container" role="img" aria-label="Replace with a description of what the 3D scene depicts">
+        <canvas id="webgl-canvas"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Replace with footer content.</p>
+  </footer>
+
+  <script type="module">
+    function webglAvailable() {
+      try {
+        const canvas = document.createElement('canvas');
+        return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+      } catch (e) { return false; }
+    }
+
+    const container = document.getElementById('scene-container');
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!webglAvailable()) {
+      container.classList.add('static-fallback');
+    } else {
+      import('three').then((THREE) => {
+        const canvas = document.getElementById('webgl-canvas');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(0, 1, 5);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(container.clientWidth, container.clientHeight);
+
+        const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
+        light1.position.set(3, 4, 5);
+        scene.add(light1);
+        scene.add(new THREE.AmbientLight(0x404060, 1.5));
+
+        const geometry = new THREE.IcosahedronGeometry(1.4, 0);
+        const material = new THREE.MeshStandardMaterial({ color: 0x7c5cff, roughness: 0.3, metalness: 0.4 });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        const resizeObserver = new ResizeObserver(entries => {
+          const { width, height } = entries[0].contentRect;
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+          renderer.setSize(width, height);
+        });
+        resizeObserver.observe(container);
+
+        let isVisible = true;
+        new IntersectionObserver(([entry]) => { isVisible = entry.isIntersecting; }, { threshold: 0.01 }).observe(container);
+        document.addEventListener('visibilitychange', () => { isVisible = isVisible && !document.hidden; });
+
+        let rafId;
+        function animate() {
+          rafId = requestAnimationFrame(animate);
+          if (!isVisible) return;
+          if (!prefersReducedMotion) {
+            mesh.rotation.y += 0.006;
+            mesh.rotation.x += 0.002;
+          }
+          renderer.render(scene, camera);
+        }
+        animate();
+      });
+    }
+  </script>
+</body>
+</html>
