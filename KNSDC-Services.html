@@ -105,6 +105,14 @@
 
   <!-- FOOD DELIVERY PARTNER SECTION -->
   <div id="food-delivery-panel" class="grid">
+    <div class="section-card" style="grid-column: 1 / -1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; display: flex; justify-content: space-between; align-items: center; padding: 20px 30px;">
+      <div>
+        <h2 style="margin: 0; font-size: 16px; opacity: 0.9;">🍔 Total Food Sales</h2>
+        <div id="food-total-earnings" style="font-size: 32px; font-weight: 900; margin-top: 4px;">₹0.00</div>
+      </div>
+      <div style="font-size: 40px; opacity: 0.2;">📈</div>
+    </div>
+
     <div class="section-card" style="grid-column: 1 / -1; background: #f8fafc; border: 2px dashed #cbd5e1;">
       <h2 class="section-title" style="color: var(--primary); font-weight: 800;">📝 Menu Management</h2>
       <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap;">
@@ -134,6 +142,14 @@
 
   <!-- TRANSPORT RIDE PARTNER SECTION -->
   <div id="transport-ride-panel" class="grid" style="display: none;">
+    <div class="section-card" style="grid-column: 1 / -1; background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; display: flex; justify-content: space-between; align-items: center; padding: 20px 30px;">
+      <div>
+        <h2 style="margin: 0; font-size: 16px; opacity: 0.9;">🏍️ Your Total Ride Earnings</h2>
+        <div id="ride-total-earnings" style="font-size: 32px; font-weight: 900; margin-top: 4px;">₹0.00</div>
+      </div>
+      <div style="font-size: 40px; opacity: 0.2;">💸</div>
+    </div>
+
     <div class="section-card">
       <h2 class="section-title" style="color: var(--blue);">🔍 Incoming Ride Requests</h2>
       <div id="incoming-ride-bookings">
@@ -304,6 +320,15 @@ function renderData() {
     const pending = orders.filter(o => o.status === 'pending');
     const completed = orders.filter(o => o.status === 'preparing' || o.status === 'delivered' || o.status === 'rejected');
 
+    let totalFoodSales = 0;
+    completed.forEach(o => {
+      if (o.status !== 'rejected') {
+        o.items.forEach(i => totalFoodSales += (i.price * i.qty));
+      }
+    });
+    const foodEarningsEl = document.getElementById('food-total-earnings');
+    if (foodEarningsEl) foodEarningsEl.innerText = `₹${totalFoodSales.toFixed(2)}`;
+
     if (pending.length === 0) {
       pendingContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No pending orders. Good job!</div>`;
     } else {
@@ -358,6 +383,16 @@ function renderData() {
 
     const requests = bookings.filter(b => b.status === 'finding');
     const assigned = bookings.filter(b => b.status === 'assigned' || b.status === 'completed');
+
+    let totalRideSales = 0;
+    assigned.forEach(b => {
+      const isMyRide = loggedInPartner && (b.driverName === loggedInPartner.name || b.driverEmail === loggedInPartner.email);
+      if (b.status === 'completed' && isMyRide) {
+        totalRideSales += parseFloat(b.fare) || 0;
+      }
+    });
+    const rideEarningsEl = document.getElementById('ride-total-earnings');
+    if (rideEarningsEl) rideEarningsEl.innerText = `₹${totalRideSales.toFixed(2)}`;
 
     if (requests.length === 0) {
       requestContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No ride requests available.</div>`;
