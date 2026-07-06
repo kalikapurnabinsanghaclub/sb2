@@ -175,22 +175,6 @@
       </form>
     </div>
 
-    <!-- INLINE CHAT SECTION (below Registration Details) -->
-    <div id="inline-chat-section">
-      <div class="chat-header">
-        <span style="font-size:18px;">🎧</span>
-        <h3>Helpdesk Chat</h3>
-        <div id="chat-unread-badge" class="unread-dot">0</div>
-      </div>
-      <div id="chat-messages-container">
-        <div style="text-align:center; color:var(--text-muted); font-size:13px; margin:auto; padding:20px 0;">Welcome to Helpdesk! Ask us anything 👋</div>
-      </div>
-      <div class="chat-footer">
-        <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChatMessage()">
-        <button id="chat-send-btn" onclick="sendChatMessage()">➤</button>
-      </div>
-    </div>
-
     <!-- DETAILED RESULTS CARD -->
     <div id="detailed-results-card" style="margin-top: 20px; display: none;"></div>
 
@@ -353,57 +337,66 @@
 </div>
 
 <style>
-  /* Inline chat styles */
-  #inline-chat-section {
-    background: var(--surface);
-    border-radius: 16px;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow);
-    overflow: hidden;
-    margin-bottom: 24px;
-  }
-  #inline-chat-section .chat-header {
+  /* Floating Chat FAB */
+  #chat-fab {
+    position: fixed;
+    bottom: 28px;
+    right: 20px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
     background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-    padding: 14px 18px;
+    border: none;
+    box-shadow: 0 8px 25px rgba(59,130,246,0.45);
     color: white;
+    font-size: 26px;
+    cursor: pointer;
+    z-index: 999998;
     display: flex;
     align-items: center;
-    gap: 10px;
-  }
-  #inline-chat-section .chat-header h3 {
-    margin: 0;
-    font-size: 15px;
-    flex: 1;
-  }
-  #inline-chat-section .chat-header .unread-dot {
-    background: #ef4444;
-    color: white;
-    font-size: 11px;
-    font-weight: 800;
-    border-radius: 50%;
-    min-width: 20px;
-    height: 20px;
-    display: none;
-    align-items: center;
     justify-content: center;
-    padding: 0 4px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
+  #chat-fab:active { transform: scale(0.92); }
+  #chat-fab:hover { box-shadow: 0 12px 30px rgba(59,130,246,0.6); transform: scale(1.05); }
+
+  /* Chat Modal */
+  #chat-modal {
+    display: none;
+    position: fixed;
+    bottom: 98px;
+    right: 20px;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    height: 460px;
+    max-height: 65vh;
+    background: var(--surface);
+    border-radius: 20px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    z-index: 999999;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    animation: chatSlideUp 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes chatSlideUp {
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @media (max-width: 600px) {
+    #chat-fab  { bottom: 20px; right: 15px; }
+    #chat-modal { bottom: 88px; right: 10px; left: 10px; width: auto; max-width: none; }
+  }
+
+  /* Chat inner parts */
   #chat-messages-container {
-    height: 280px;
+    flex: 1;
     overflow-y: auto;
-    padding: 15px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     background: #f8fafc;
-  }
-  #inline-chat-section .chat-footer {
-    padding: 12px 15px;
-    border-top: 1px solid var(--border);
-    background: var(--surface);
-    display: flex;
-    gap: 10px;
-    align-items: center;
   }
   #chat-input {
     flex: 1;
@@ -435,6 +428,31 @@
   }
   #chat-send-btn:active { transform: scale(0.92); }
 </style>
+
+<!-- Floating Chat Button -->
+<button onclick="toggleChatModal()" id="chat-fab" aria-label="Open Helpdesk Chat">
+  💬
+  <div id="chat-unread-badge" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:white; font-size:11px; font-weight:800; border-radius:50%; min-width:20px; height:20px; align-items:center; justify-content:center; padding:0 3px;">0</div>
+</button>
+
+<!-- Chat Modal -->
+<div id="chat-modal">
+  <div style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); padding:14px 18px; color:white; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="font-size:20px;">🎧</span>
+      <div>
+        <div style="font-size:15px; font-weight:800; margin:0;">Helpdesk Chat</div>
+        <div style="font-size:11px; opacity:0.85;">We reply as fast as possible</div>
+      </div>
+    </div>
+    <button onclick="toggleChatModal()" style="background:rgba(255,255,255,0.15); border:none; color:white; font-size:20px; cursor:pointer; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; line-height:1;">&times;</button>
+  </div>
+  <div id="chat-messages-container"></div>
+  <div style="padding:12px 14px; border-top:1px solid var(--border); background:var(--surface); display:flex; gap:10px; align-items:center; flex-shrink:0;">
+    <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChatMessage()">
+    <button id="chat-send-btn" onclick="sendChatMessage()">➤</button>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
@@ -2459,18 +2477,26 @@ function renderGlobalEventStatistics(p) {
 // ==========================================
 // CHAT / HELPDESK
 // ==========================================
-// Chat is now inline — no modal toggle needed
-// Mark as read automatically when participant scrolls to chat
-function initInlineChatReadTracking() {
-  const chatSection = document.getElementById('inline-chat-section');
-  if (!chatSection) return;
-  const observer = new IntersectionObserver((entries) => {
-    if (entries[0].isIntersecting && CURRENT_USER && window.syncEngine) {
+function toggleChatModal() {
+  const modal = document.getElementById('chat-modal');
+  const isOpen = modal.style.display === 'flex';
+  if (isOpen) {
+    modal.style.display = 'none';
+  } else {
+    modal.style.display = 'flex';
+    renderChatMessages();
+    if (CURRENT_USER && window.syncEngine) {
       window.syncEngine.markMessagesAsRead(CURRENT_USER, 'participant');
     }
-  }, { threshold: 0.5 });
-  observer.observe(chatSection);
+    setTimeout(() => {
+      const cont = document.getElementById('chat-messages-container');
+      if (cont) cont.scrollTop = cont.scrollHeight;
+    }, 60);
+  }
 }
+
+// dummy — no longer needed for inline mode
+function initInlineChatReadTracking() {}
 
 async function sendChatMessage() {
   if (!CURRENT_USER || !window.syncEngine) return;
@@ -2548,27 +2574,22 @@ function renderChatMessages() {
   
   container.innerHTML = html;
   
-  // Update unread badge
+  // Update unread badge on FAB
   const badge = document.getElementById('chat-unread-badge');
+  const modal = document.getElementById('chat-modal');
+  const isModalOpen = modal && modal.style.display === 'flex';
   if (badge) {
-    if (unreadCount > 0) {
+    if (unreadCount > 0 && !isModalOpen) {
       badge.style.display = 'flex';
       badge.innerText = unreadCount;
     } else {
       badge.style.display = 'none';
     }
   }
-  
-  // Auto-mark as read if chat is visible on screen
-  if (unreadCount > 0 && window.syncEngine) {
-    const chatEl = document.getElementById('inline-chat-section');
-    if (chatEl) {
-      const rect = chatEl.getBoundingClientRect();
-      const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
-      if (isVisible) {
-        window.syncEngine.markMessagesAsRead(CURRENT_USER, 'participant');
-      }
-    }
+
+  // Auto-mark as read if modal is open
+  if (unreadCount > 0 && isModalOpen && window.syncEngine && CURRENT_USER) {
+    window.syncEngine.markMessagesAsRead(CURRENT_USER, 'participant');
   }
   
   if (wasScrolledToBottom) {
