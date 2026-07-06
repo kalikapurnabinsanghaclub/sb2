@@ -2737,18 +2737,21 @@ function renderChatMessages() {
 // ==========================================
 // FOOD & TRANSPORT SERVICES LOGIC
 // ==========================================
-const FOOD_MENU = [
-  { id: 'item1', name: 'Veg Sandwich', price: 60, icon: '🥪' },
-  { id: 'item2', name: 'Chicken Burger', price: 90, icon: '🍔' },
-  { id: 'item3', name: 'French Fries', price: 50, icon: '🍟' },
-  { id: 'item4', name: 'Coffee / Tea', price: 20, icon: '☕' },
-  { id: 'item5', name: 'Cold Soft Drink', price: 30, icon: '🥤' }
-];
+function getFoodMenu() {
+  const state = window.syncEngine.getData() || {};
+  return state.foodMenu || [
+    { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+    { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+    { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+    { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+  ];
+}
 
 window.openFoodOrderModal = function() {
   const container = document.getElementById('menu-items-container');
   if (container) {
-    container.innerHTML = FOOD_MENU.map(item => `
+    const foodMenu = getFoodMenu();
+    container.innerHTML = foodMenu.map(item => `
       <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0;">
         <span style="font-size:14px; font-weight:700;">${item.icon} ${item.name} (₹${item.price})</span>
         <div style="display:flex; align-items:center; gap:8px;">
@@ -2783,7 +2786,8 @@ window.changeQty = function(itemId, amount) {
 
 function updateFoodTotalPrice() {
   let total = 0;
-  FOOD_MENU.forEach(item => {
+  const foodMenu = getFoodMenu();
+  foodMenu.forEach(item => {
     const qty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
     total += qty * item.price;
   });
@@ -2795,7 +2799,8 @@ window.submitFoodOrder = async function() {
   if (!loc) return toast('⚠️ Please enter delivery seat / lounge code.');
   
   let orderedItems = [];
-  FOOD_MENU.forEach(item => {
+  const foodMenu = getFoodMenu();
+  foodMenu.forEach(item => {
     const qty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
     if (qty > 0) {
       orderedItems.push({ name: item.name, qty, price: item.price });
@@ -2815,7 +2820,7 @@ window.submitFoodOrder = async function() {
     participantName: p.name,
     items: orderedItems,
     location: loc,
-    status: 'pending', // pending, preparing, delivered
+    status: 'pending', // pending, preparing, delivered, rejected
     timestamp: Date.now()
   };
 
@@ -3171,12 +3176,14 @@ window.renderActiveServicesData = function(p) {
         let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">Pending</span>`;
         if (o.status === 'preparing') statusBadge = `<span style="color:#3b82f6; font-weight:bold;">🍳 Preparing</span>`;
         if (o.status === 'delivered') statusBadge = `<span style="color:#10b981; font-weight:bold;">✅ Delivered</span>`;
+        if (o.status === 'rejected') statusBadge = `<span style="color:#ef4444; font-weight:bold;">❌ Rejected / Cancelled</span>`;
         
         const itemsStr = o.items.map(i => `${i.qty}x ${i.name}`).join(', ');
         return `<div style="border-bottom:1.5px solid #e2e8f0; padding-bottom:8px; margin-bottom:8px;">
           <div><strong>ID:</strong> ${o.id} | ${statusBadge}</div>
           <div style="font-size:11px; color:#475569;">${itemsStr}</div>
           <div style="font-size:11px; color:#64748b;">📍 Loc: ${o.location}</div>
+          ${o.status === 'rejected' ? `<div style="font-size:11px; color:#ef4444; font-weight:bold; margin-top:4px;">No payment required. Order was rejected.</div>` : ''}
         </div>`;
       }).join('');
     } else {

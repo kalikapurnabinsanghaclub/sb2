@@ -105,6 +105,19 @@
 
   <!-- FOOD DELIVERY PARTNER SECTION -->
   <div id="food-delivery-panel" class="grid">
+    <div class="section-card" style="grid-column: 1 / -1; background: #f8fafc; border: 2px dashed #cbd5e1;">
+      <h2 class="section-title" style="color: var(--primary); font-weight: 800;">📝 Menu Management</h2>
+      <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap;">
+        <input type="text" id="new-menu-emoji" placeholder="Emoji (🍔)" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; width:80px; font-size:16px; text-align:center;">
+        <input type="text" id="new-menu-name" placeholder="Item Name (e.g. Burger)" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:150px; font-weight:bold;">
+        <input type="number" id="new-menu-price" placeholder="Price (₹)" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; width:100px; font-weight:bold;">
+        <button onclick="addMenuItem()" class="action-btn" style="background:var(--primary); color:white; width:auto; padding:0 20px; font-weight:bold;">+ Add Item</button>
+      </div>
+      <div id="menu-management-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:10px;">
+        <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px; grid-column:1/-1;">Loading menu...</div>
+      </div>
+    </div>
+    
     <div class="section-card">
       <h2 class="section-title" style="color: var(--primary);">📥 New &amp; Pending Orders</h2>
       <div id="pending-food-orders">
@@ -112,7 +125,7 @@
       </div>
     </div>
     <div class="section-card">
-      <h2 class="section-title" style="color: var(--green);">🍳 preparing &amp; Completed</h2>
+      <h2 class="section-title" style="color: var(--green);">🍳 Preparing &amp; Completed</h2>
       <div id="completed-food-orders">
         <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No processed orders yet.</div>
       </div>
@@ -262,9 +275,34 @@ function renderData() {
   if (currentTab === 'food') {
     const pendingContainer = document.getElementById('pending-food-orders');
     const completedContainer = document.getElementById('completed-food-orders');
+    const menuContainer = document.getElementById('menu-management-list');
+
+    // Menu rendering
+    const foodMenu = state.foodMenu || [
+      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+    ];
+
+    menuContainer.innerHTML = foodMenu.map(m => `
+      <div style="background:white; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:24px;">${m.icon}</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">${m.name}</div>
+            <div style="color:var(--green); font-size:12px; font-weight:800;">₹${m.price}</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <button onclick="editMenuPrice('${m.id}', ${m.price})" style="background:#f1f5f9; border:none; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Edit Price</button>
+          <button onclick="deleteMenuItem('${m.id}')" style="background:#fee2e2; color:#ef4444; border:none; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🗑️ Delete</button>
+        </div>
+      </div>
+    `).join('');
 
     const pending = orders.filter(o => o.status === 'pending');
-    const completed = orders.filter(o => o.status === 'preparing' || o.status === 'delivered');
+    const completed = orders.filter(o => o.status === 'preparing' || o.status === 'delivered' || o.status === 'rejected');
 
     if (pending.length === 0) {
       pendingContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No pending orders. Good job!</div>`;
@@ -280,7 +318,10 @@ function renderData() {
           <div style="font-size:12px; color:var(--text-muted);">
             <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
           </div>
-          <button onclick="updateFoodStatus('${o.id}', 'preparing')" class="action-btn" style="background:var(--blue); color:white;">🍳 Accept &amp; Start Preparing</button>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button onclick="updateFoodStatus('${o.id}', 'preparing')" class="action-btn" style="flex:2; background:var(--blue); color:white; margin:0;">🍳 Accept &amp; Start Preparing</button>
+            <button onclick="updateFoodStatus('${o.id}', 'rejected')" class="action-btn" style="flex:1; background:#fee2e2; color:#ef4444; margin:0; padding:8px;">❌ Reject</button>
+          </div>
         </div>
       `).join('');
     }
@@ -476,6 +517,58 @@ function renderData() {
       });
     }
   }
+}
+
+async function addMenuItem() {
+  const emoji = document.getElementById('new-menu-emoji').value.trim() || '🍽️';
+  const name = document.getElementById('new-menu-name').value.trim();
+  const price = parseFloat(document.getElementById('new-menu-price').value.trim());
+
+  if (!name || isNaN(price)) {
+    return alert('Please enter a valid item name and price.');
+  }
+
+  const id = 'f' + Date.now();
+  window.syncEngine.setData(s => {
+    const foodMenu = s.foodMenu || [
+      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+    ];
+    foodMenu.push({ id, name, price, icon: emoji });
+    return { ...s, foodMenu };
+  });
+
+  document.getElementById('new-menu-emoji').value = '';
+  document.getElementById('new-menu-name').value = '';
+  document.getElementById('new-menu-price').value = '';
+
+  await window.syncEngine.forceSaveStateToSupabase();
+}
+
+async function editMenuPrice(id, currentPrice) {
+  const newPrice = prompt(`Enter new price for this item:`, currentPrice);
+  if (newPrice === null) return;
+  const price = parseFloat(newPrice);
+  if (isNaN(price)) return alert('Invalid price entered.');
+
+  window.syncEngine.setData(s => {
+    const foodMenu = s.foodMenu || [];
+    const idx = foodMenu.findIndex(m => String(m.id) === String(id));
+    if (idx !== -1) foodMenu[idx].price = price;
+    return { ...s, foodMenu };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
+}
+
+async function deleteMenuItem(id) {
+  if (!confirm('Are you sure you want to delete this menu item?')) return;
+  window.syncEngine.setData(s => {
+    const foodMenu = s.foodMenu || [];
+    return { ...s, foodMenu: foodMenu.filter(m => String(m.id) !== String(id)) };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
 }
 
 async function updateFoodStatus(orderId, newStatus) {
