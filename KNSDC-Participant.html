@@ -330,6 +330,46 @@
   </div>
 </div>
 
+<style>
+  #chat-fab {
+    position: fixed; bottom: 30px; right: 20px; width: 60px; height: 60px; border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6); border: none; box-shadow: 0 10px 25px rgba(59,130,246,0.4);
+    color: white; font-size: 24px; cursor: pointer; z-index: 999998; display: flex; align-items: center; justify-content: center;
+  }
+  #chat-modal {
+    display: none; position: fixed; bottom: 100px; right: 20px; width: 350px; max-width: calc(100% - 40px);
+    height: 450px; max-height: 60vh; background: var(--surface); border-radius: 16px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.5); z-index: 999999; flex-direction: column; border: 1px solid var(--border); overflow: hidden;
+  }
+  @media (max-width: 600px) {
+    #chat-fab { bottom: 20px; right: 15px; }
+    #chat-modal { bottom: 90px; right: 15px; left: 15px; width: auto; max-width: none; max-height: 65vh; }
+  }
+</style>
+
+<!-- Floating Chat Button -->
+<button onclick="toggleChatModal()" id="chat-fab">
+  💬
+  <div id="chat-unread-badge" style="display:none; position:absolute; top:-5px; right:-5px; background:#ef4444; color:white; font-size:12px; font-weight:bold; border-radius:50%; width:24px; height:24px; align-items:center; justify-content:center;">0</div>
+</button>
+
+<!-- Chat Modal -->
+<div id="chat-modal">
+  <div style="background:linear-gradient(135deg, #3b82f6, #8b5cf6); padding:15px; color:white; display:flex; justify-content:space-between; align-items:center;">
+    <h3 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;">🎧 Helpdesk</h3>
+    <button onclick="toggleChatModal()" style="background:none; border:none; color:white; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+  </div>
+  <div id="chat-messages-container" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:12px; background:var(--bg3);">
+    <div style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:20px;">Welcome to Helpdesk. Ask us anything!</div>
+  </div>
+  <div style="padding:15px; border-top:1px solid var(--border); background:var(--surface); display:flex; gap:10px;">
+    <input type="text" id="chat-input" placeholder="Type a message..." style="flex:1; padding:10px 15px; border-radius:24px; border:1px solid var(--border); background:var(--bg3); color:var(--text); outline:none; font-family:var(--fb);" onkeypress="if(event.key === 'Enter') sendChatMessage()">
+    <button onclick="sendChatMessage()" style="background:var(--blue); color:white; border:none; border-radius:50%; width:42px; height:42px; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(59,130,246,0.3); flex-shrink:0;">
+      ➤
+    </button>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
 <script src="lib/localSync-v4.js?v=4"></script>
@@ -1455,9 +1495,13 @@ if (window.syncEngine) {
         }
         
         lastStageStatus = p.stageStatus;
+        window.syncEngine.notify();
         initialSyncFired = true;
       }
       // --- END LOGIC ---
+      
+      // Update Chat
+      renderChatMessages();
 
       const formLocked = p.formLocked === true;
       const btn = document.getElementById('save-btn');
@@ -2322,6 +2366,94 @@ function renderGlobalEventStatistics(p) {
   renderJudgeSubjectCharts();
 }
 
+
+// ==========================================
+// CHAT / HELPDESK
+// ==========================================
+function toggleChatModal() {
+  const modal = document.getElementById('chat-modal');
+  if (modal.style.display === 'none') {
+    modal.style.display = 'flex';
+    // Mark messages as read when opening
+    if (window.syncEngine && CURRENT_USER) {
+      window.syncEngine.markMessagesAsRead(CURRENT_USER, 'participant');
+    }
+    setTimeout(() => {
+      const cont = document.getElementById('chat-messages-container');
+      cont.scrollTop = cont.scrollHeight;
+    }, 50);
+  } else {
+    modal.style.display = 'none';
+  }
+}
+
+async function sendChatMessage() {
+  if (!CURRENT_USER || !window.syncEngine) return;
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  
+  input.value = '';
+  await window.syncEngine.addChatMessage(text, CURRENT_USER, 'participant');
+  
+  // Instantly render
+  renderChatMessages();
+  setTimeout(() => {
+    const cont = document.getElementById('chat-messages-container');
+    cont.scrollTop = cont.scrollHeight;
+  }, 50);
+}
+
+function renderChatMessages() {
+  if (!CURRENT_USER || !window.syncEngine) return;
+  const state = window.syncEngine.getData() || {};
+  const msgs = (state.chatMessages || []).filter(m => String(m.participantId) === String(CURRENT_USER));
+  
+  const container = document.getElementById('chat-messages-container');
+  if (!container) return;
+  
+  const wasScrolledToBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 20;
+  
+  let unreadCount = 0;
+  let html = `<div style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:10px; margin-bottom:10px;">End of history</div>`;
+  
+  msgs.sort((a, b) => a.timestamp - b.timestamp).forEach(m => {
+    const isMe = m.senderRole === 'participant';
+    if (!isMe && !m.read) unreadCount++;
+    
+    html += `
+      <div style="display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};">
+        <div style="max-width:85%; padding:10px 14px; border-radius:16px; background:${isMe ? 'var(--blue)' : 'var(--surface)'}; color:${isMe ? '#fff' : 'var(--text)'}; border:${isMe ? 'none' : '1px solid var(--border)'}; font-size:14px; box-shadow:0 2px 5px rgba(0,0,0,0.1); word-wrap:break-word; word-break:break-word; text-align:left;">
+          ${m.text}
+        </div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:4px; margin-${isMe ? 'right' : 'left'}:4px;">
+          ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+        </div>
+      </div>
+    `;
+  });
+  
+  container.innerHTML = html;
+  
+  // Update badge
+  const badge = document.getElementById('chat-unread-badge');
+  const modal = document.getElementById('chat-modal');
+  if (badge) {
+    if (unreadCount > 0 && modal.style.display === 'none') {
+      badge.style.display = 'flex';
+      badge.innerText = unreadCount;
+    } else {
+      badge.style.display = 'none';
+      if (unreadCount > 0 && modal.style.display !== 'none') {
+        window.syncEngine.markMessagesAsRead(CURRENT_USER, 'participant');
+      }
+    }
+  }
+  
+  if (wasScrolledToBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
 
 // ==========================================
 // ANTI-SCREENSHOT & CONTENT PROTECTION
