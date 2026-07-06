@@ -1037,6 +1037,14 @@ function renderDashboard() {
     }
   }
 
+  if (!formFields || formFields.length === 0) {
+    formFields = [
+      { type: 'text', label: 'Full Name', required: true, placeholder: 'As per ID proof' },
+      { type: 'radio', label: 'Gender', required: true, options: ['Male', 'Female', 'Other'] },
+      { type: 'number', label: 'Phone Number', required: true, placeholder: '98XXXXXXXX' }
+    ];
+  }
+
   const container = document.getElementById('dynamic-form-container');
   let html = '';
 
@@ -1495,7 +1503,6 @@ if (window.syncEngine) {
         }
         
         lastStageStatus = p.stageStatus;
-        window.syncEngine.notify();
         initialSyncFired = true;
       }
       // --- END LOGIC ---
@@ -2421,10 +2428,37 @@ function renderChatMessages() {
     const isMe = m.senderRole === 'participant';
     if (!isMe && !m.read) unreadCount++;
     
+    let bubbleColor = isMe ? 'var(--blue)' : 'var(--surface)';
+    let textColor = isMe ? '#fff' : 'var(--text)';
+    let borderColor = isMe ? 'none' : '1px solid var(--border)';
+    let senderName = isMe ? 'You' : (m.senderRole || 'Monitor').toUpperCase();
+
+    if (!isMe) {
+      if (m.senderRole === 'judge') {
+        bubbleColor = 'rgba(16, 185, 129, 0.1)';
+        borderColor = '1px solid var(--green)';
+      } else if (m.senderRole === 'admin' || m.senderRole === 'organizer') {
+        bubbleColor = 'rgba(225, 29, 72, 0.1)';
+        borderColor = '1px solid #e11d48';
+      } else if (m.senderRole === 'monitor') {
+        bubbleColor = 'rgba(217, 119, 6, 0.1)';
+        borderColor = '1px solid #d97706';
+      }
+    }
+
+    let formattedText = m.text;
+    const mentionRegex = /@(monitor|help|organizer|kalikapur|all|judge)/gi;
+    if (mentionRegex.test(formattedText)) {
+      formattedText = formattedText.replace(mentionRegex, '<strong style="background:#f59e0b;color:#fff;padding:2px 4px;border-radius:4px;white-space:nowrap;">$&</strong>');
+    }
+    
     html += `
-      <div style="display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};">
-        <div style="max-width:85%; padding:10px 14px; border-radius:16px; background:${isMe ? 'var(--blue)' : 'var(--surface)'}; color:${isMe ? '#fff' : 'var(--text)'}; border:${isMe ? 'none' : '1px solid var(--border)'}; font-size:14px; box-shadow:0 2px 5px rgba(0,0,0,0.1); word-wrap:break-word; word-break:break-word; text-align:left;">
-          ${m.text}
+      <div style="display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'}; margin-bottom:12px;">
+        <div style="font-size:10px; font-weight:700; color:var(--text-muted); margin-bottom:4px; margin-${isMe ? 'right' : 'left'}:4px;">
+          ${senderName}
+        </div>
+        <div style="max-width:85%; padding:10px 14px; border-radius:16px; background:${bubbleColor}; color:${textColor}; border:${borderColor}; font-size:14px; box-shadow:0 2px 5px rgba(0,0,0,0.05); word-wrap:break-word; word-break:break-word; text-align:left;">
+          ${formattedText}
         </div>
         <div style="font-size:10px; color:var(--text-muted); margin-top:4px; margin-${isMe ? 'right' : 'left'}:4px;">
           ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
