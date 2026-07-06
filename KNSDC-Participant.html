@@ -209,19 +209,22 @@
         <button onclick="closeRideModal()" style="position:absolute; top:15px; right:15px; background:none; border:none; color:var(--text); font-size:24px; cursor:pointer;">&times;</button>
         <h3 style="font-size:18px; font-weight:800; margin-bottom:12px; color:#3B82F6;">🏍️ Book Transport Ride</h3>
         
-        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Click on the map to set 🔵 <strong>Pickup</strong> and 🔴 <strong>Drop</strong> points.</p>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Choose location via Map click or use current GPS location.</p>
         
+        <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+          <button onclick="useCurrentLocationAsPickup()" type="button" class="btn btn-sm" style="flex: 1; font-size: 12px; padding: 8px; background: var(--accent); color: white; border: none; border-radius: 8px;">📍 Use Current Location</button>
+        </div>
+
         <div id="booking-map" style="width: 100%; height: 200px; border-radius: 12px; border: 1.5px solid var(--border); margin-bottom: 15px; z-index: 1;"></div>
 
-        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-          <div class="fg" style="flex: 1; margin-bottom: 0;">
-            <label style="font-size: 11px;">Pickup Coordinates</label>
-            <input type="text" id="ride-pickup-loc" placeholder="Click Map for Pickup" readonly style="font-size: 12px; padding: 8px; background: #f1f5f9;">
-          </div>
-          <div class="fg" style="flex: 1; margin-bottom: 0;">
-            <label style="font-size: 11px;">Drop Coordinates</label>
-            <input type="text" id="ride-drop-loc" placeholder="Click Map for Drop" readonly style="font-size: 12px; padding: 8px; background: #f1f5f9;">
-          </div>
+        <div class="fg" style="margin-bottom: 12px;">
+          <label style="font-size: 11px;">Pickup Location Address / LatLng</label>
+          <input type="text" id="ride-pickup-loc" placeholder="Pickup Address (e.g. Kalikapur Gate 1)" style="font-size: 13px; padding: 10px;" onchange="updateFareOnAddressChange()">
+        </div>
+
+        <div class="fg" style="margin-bottom: 12px;">
+          <label style="font-size: 11px;">Drop Location Address / LatLng</label>
+          <input type="text" id="ride-drop-loc" placeholder="Drop Address (e.g. Venue Lounge)" style="font-size: 13px; padding: 10px;" onchange="updateFareOnAddressChange()">
         </div>
 
         <div class="fg" style="margin-bottom:15px;">
@@ -2943,6 +2946,54 @@ window.closeRideModal = function() {
   document.getElementById('ride-modal').style.display = 'none';
 };
 
+window.useCurrentLocationAsPickup = function() {
+  if (!navigator.geolocation) {
+    toast('Geolocation is not supported by your browser.');
+    return;
+  }
+  toast('Fetching your location...');
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const latlng = L.latLng(lat, lng);
+    pickupCoords = latlng;
+    document.getElementById('ride-pickup-loc').value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    
+    if (bookingMap) {
+      if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+      pickupMarker = L.marker(latlng, {
+        icon: L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        })
+      }).addTo(bookingMap).bindPopup("<b>Pickup Location</b>").openPopup();
+      bookingMap.setView(latlng, 15);
+    }
+    
+    if (dropCoords) {
+      calculatedDistanceKm = getDistance(pickupCoords.lat, pickupCoords.lng, dropCoords.lat, dropCoords.lng);
+      document.getElementById('ride-calculated-distance').innerText = `${calculatedDistanceKm.toFixed(2)} km`;
+      updateEstimatedFare();
+    }
+  }, (err) => {
+    toast('Failed to get location. Please allow location permissions.');
+  });
+};
+
+window.updateFareOnAddressChange = function() {
+  if (!pickupCoords || !dropCoords) {
+    calculatedDistanceKm = 0;
+    document.getElementById('ride-calculated-distance').innerText = 'Unknown (Manual Address)';
+    document.getElementById('ride-estimated-fare').innerText = '₹50.00* (Est.)'; 
+    document.getElementById('ride-base-fare').innerText = '-';
+    document.getElementById('ride-platform-fee').innerText = '-';
+  }
+};
+
 window.updateEstimatedFare = function() {
   if (calculatedDistanceKm <= 0) return;
   const vehicle = document.getElementById('ride-vehicle-type').value;
@@ -2977,13 +3028,16 @@ window.updateEstimatedFare = function() {
 };
 
 window.submitRideBooking = async function() {
-  if (!pickupCoords || !dropCoords) {
-    return toast('⚠️ Please select both pickup and drop coordinates on the map.');
+  const pickupText = document.getElementById('ride-pickup-loc').value.trim();
+  const dropText = document.getElementById('ride-drop-loc').value.trim();
+
+  if (!pickupText || !dropText) {
+    return toast('⚠️ Please provide both pickup and drop locations (text or map).');
   }
 
   const vehicle = document.getElementById('ride-vehicle-type').value;
-  const rawFare = document.getElementById('ride-estimated-fare').innerText.replace('₹', '');
-  const fare = parseFloat(rawFare) || 40;
+  let rawFare = document.getElementById('ride-estimated-fare').innerText.replace('₹', '').replace('* (Est.)', '');
+  let fare = parseFloat(rawFare) || 50.00;
 
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
@@ -2995,12 +3049,12 @@ window.submitRideBooking = async function() {
     participantId: CURRENT_USER,
     participantName: p.name,
     participantPhone: p.phone || '',
-    pickup: `${pickupCoords.lat.toFixed(5)}, ${pickupCoords.lng.toFixed(5)}`,
-    pickupLat: pickupCoords.lat,
-    pickupLng: pickupCoords.lng,
-    drop: `${dropCoords.lat.toFixed(5)}, ${dropCoords.lng.toFixed(5)}`,
-    dropLat: dropCoords.lat,
-    dropLng: dropCoords.lng,
+    pickup: pickupText,
+    pickupLat: pickupCoords ? pickupCoords.lat : null,
+    pickupLng: pickupCoords ? pickupCoords.lng : null,
+    drop: dropText,
+    dropLat: dropCoords ? dropCoords.lat : null,
+    dropLng: dropCoords ? dropCoords.lng : null,
     distanceKm: calculatedDistanceKm,
     vehicle,
     fare: fare.toFixed(2),
