@@ -6,16 +6,24 @@
 <title>KNSDC — Participant Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
 <style>
   :root {
     --primary: #FF6B35;
     --accent: #2563eb;
-    --bg: #f8fafc;
-    --surface: #ffffff;
+    --bg: transparent;
+    --surface: rgba(255, 255, 255, 0.7);
     --text: #0f172a;
-    --text-muted: #64748b;
-    --border: #e2e8f0;
-    --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    --text-muted: #475569;
+    --border: rgba(255, 255, 255, 0.5);
+    --shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
     --green: #10b981;
     --red: #ef4444;
   }
@@ -62,17 +70,40 @@
   .toast { background: var(--text); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); animation: toastIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275) forwards; }
   @keyframes toastIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-  .container { max-width: 600px; margin: 40px auto; padding: 0 20px; }
-  .card { background: var(--surface); border-radius: 16px; padding: 30px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+  .container { max-width: 600px; margin: 40px auto; padding: 0 20px; position: relative; z-index: 10; }
+  .card { background: var(--surface); border-radius: 16px; padding: 30px; box-shadow: var(--shadow); border: 1px solid var(--border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  
+  /* Skip link for accessibility */
+  .skip-link {
+    position: absolute;
+    top: -40px; left: 0;
+    background: var(--primary);
+    color: white; padding: 8px; z-index: 100000;
+    transition: top 0.2s;
+  }
+  .skip-link:focus { top: 0; }
+  
+  /* Scene container for 3D background */
+  .scene-container {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    z-index: -1;
+    background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%);
+    overflow: hidden;
+  }
+  .scene-container canvas {
+    display: block;
+    width: 100%; height: 100%;
+  }
   
   h1 { font-size: 24px; font-weight: 800; text-align: center; margin-bottom: 24px; color: var(--primary); }
   h2 { font-size: 18px; font-weight: 700; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
   
   .fg { margin-bottom: 16px; }
   label { display: block; font-size: 13px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-  input, select, textarea { width: 100%; padding: 12px 14px; border-radius: 8px; border: 2px solid var(--border); font-size: 15px; font-family: inherit; transition: all 0.2s; background: #fff; }
-  input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
-  input:disabled, select:disabled, textarea:disabled { background: #f1f5f9; cursor: not-allowed; opacity: 0.8; }
+  input, select, textarea { width: 100%; padding: 12px 14px; border-radius: 8px; border: 2px solid var(--border); font-size: 15px; font-family: inherit; transition: all 0.2s; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); background: rgba(255, 255, 255, 0.9); }
+  input:disabled, select:disabled, textarea:disabled { background: rgba(241, 245, 249, 0.6); cursor: not-allowed; opacity: 0.8; }
   
   .btn { display: block; width: 100%; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; text-align: center; border: none; transition: 0.2s; color: #fff; }
   .btn-primary { background: var(--accent); }
@@ -87,6 +118,11 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="scene-container" role="img" aria-label="Animated bright abstract 3D background">
+  <canvas id="webgl-canvas"></canvas>
+</div>
 
 <div id="anti-screenshot-overlay">
   <div style="font-size: 48px; margin-bottom: 20px;">🛡️</div>
@@ -99,9 +135,9 @@
 <!-- Dynamic Identity Watermark -->
 <div id="identity-watermark" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 999998; opacity: 0.04; background-repeat: repeat;"></div>
 
-<div id="toast-container"></div>
+<div id="toast-container" aria-live="polite"></div>
 
-<div class="container">
+<main id="main" class="container">
   
   <!-- LOGIN VIEW -->
   <div id="login-view" class="card">
@@ -127,11 +163,11 @@
 
   <!-- DASHBOARD VIEW -->
   <div id="dashboard-view">
-    <div style="text-align:center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid rgba(124,58,237,0.1);">
+    <header style="text-align:center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid rgba(37,99,235,0.1);">
       <img src="logo.png" alt="KNSDC Logo" style="height: 80px; width: 80px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary); box-shadow: 0 6px 15px rgba(124,58,237,0.15); margin-bottom: 12px;">
-      <h2 style="margin:0; font-size: 1.6rem; color: var(--text); font-weight: 900; letter-spacing: -0.5px;">KNSDC Participant Portal</h2>
+      <h1 style="margin:0; font-size: 1.6rem; color: var(--text); font-weight: 900; letter-spacing: -0.5px;" id="hero-heading">KNSDC Participant Portal</h1>
       <div style="font-size: 0.75rem; color: var(--primary); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 6px;">Powered by Kalikapur Nabin Sangha</div>
-    </div>
+    </header>
     
     <!-- LOCATION AND PHONE & READY BUTTON -->
     <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:15px; margin-bottom:20px; box-shadow:var(--shadow); text-align:center;">
@@ -154,9 +190,9 @@
     </div>
 
     <!-- Form Box -->
-    <div style="background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 100%); border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(59, 130, 246, 0.15); margin-bottom:20px; position:relative; border: 1px solid #bfdbfe;">
+    <section aria-labelledby="form-heading" style="background: rgba(255, 255, 255, 0.7); border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(59, 130, 246, 0.15); margin-bottom:20px; position:relative; border: 1px solid rgba(255,255,255,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom: 15px; border-bottom: 1px dashed rgba(59, 130, 246, 0.3);">
-        <h2 style="font-size:18px; color:#1e3a8a; font-weight:800; display:flex; align-items:center; gap:8px;">
+        <h2 id="form-heading" style="font-size:18px; color:#1e3a8a; font-weight:800; display:flex; align-items:center; gap:8px;">
           <span style="font-size: 22px;">📋</span> Registration Details
         </h2>
         <button type="button" onclick="logout()" style="background:#ef4444; border:none; color:#fff; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:700; font-size:13px; box-shadow:0 4px 10px rgba(239,68,68,0.3); transition:transform 0.2s ease, box-shadow 0.2s ease; display:flex; align-items:center; gap:6px; position:relative; z-index:10;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
@@ -174,7 +210,7 @@
         
         <button type="submit" id="save-btn" class="btn" style="margin-top:24px; width:100%; background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); border: none; color: white;">Save Updates</button>
       </form>
-    </div>
+    </section>
 
     <!-- DETAILED RESULTS CARD -->
     <div id="detailed-results-card" style="margin-top: 20px; display: none;"></div>
@@ -448,7 +484,7 @@
       </div>
     </div>
   </div>
-</div>
+</main>
 
 <style>
   /* Floating Chat FAB */
@@ -3331,5 +3367,99 @@ window.renderActiveServicesData = function(p) {
 </script>
 <!-- Leaflet Map Script -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Three.js Semantic WebGL Background -->
+<script type="module">
+  import * as THREE from 'three';
+
+  const container = document.querySelector('.scene-container');
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (prefersReducedMotion) {
+    container.style.background = 'linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%)';
+  } else {
+    const scene = new THREE.Scene();
+    // Light bright fog for depth
+    scene.fog = new THREE.FogExp2(0xf0fdf4, 0.0015);
+
+    const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 2000);
+    camera.position.set(0, 50, 400);
+
+    const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('#webgl-canvas'), antialias: true, alpha: true });
+    // Cap DPR to 2 to prevent mobile GPUs from overheating/lagging
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(container.clientWidth, container.clientHeight);
+
+    // Light Theme Particles
+    const geometry = new THREE.BufferGeometry();
+    const vertices = [];
+    const colors = [];
+    const colorChoices = [new THREE.Color('#3b82f6'), new THREE.Color('#10b981'), new THREE.Color('#f59e0b')];
+    
+    for (let i = 0; i < 2000; i++) {
+      const x = (Math.random() - 0.5) * 2000;
+      const y = (Math.random() - 0.5) * 2000;
+      const z = (Math.random() - 0.5) * 2000;
+      vertices.push(x, y, z);
+      
+      const color = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+      colors.push(color.r, color.g, color.b);
+    }
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+    const material = new THREE.PointsMaterial({
+      size: 6,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.6,
+      sizeAttenuation: true
+    });
+
+    const particles = new THREE.Points(geometry, material);
+    scene.add(particles);
+
+    // Resize Handling
+    const resizeObserver = new ResizeObserver(entries => {
+      if (!entries || !entries[0]) return;
+      const { width, height } = entries[0].contentRect;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    });
+    resizeObserver.observe(container);
+
+    // Optimization: Pause when off-screen or tab hidden
+    let isVisible = true;
+    new IntersectionObserver(([entry]) => { isVisible = entry.isIntersecting; }, { threshold: 0.01 }).observe(container);
+    document.addEventListener('visibilitychange', () => { isVisible = isVisible && !document.hidden; });
+
+    // Interactive parallax on hover/touch
+    let mouseX = 0;
+    let mouseY = 0;
+    const windowHalfX = window.innerWidth / 2;
+    const windowHalfY = window.innerHeight / 2;
+    document.addEventListener('pointermove', (e) => {
+      mouseX = (e.clientX - windowHalfX) * 0.1;
+      mouseY = (e.clientY - windowHalfY) * 0.1;
+    });
+
+    let rafId;
+    function animate() {
+      rafId = requestAnimationFrame(animate);
+      if (!isVisible) return;
+
+      // Gentle rotation and parallax
+      camera.position.x += (mouseX - camera.position.x) * 0.02;
+      camera.position.y += (-mouseY - camera.position.y) * 0.02;
+      camera.lookAt(scene.position);
+
+      particles.rotation.x += 0.0003;
+      particles.rotation.y += 0.0005;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  }
+</script>
 </body>
 </html>
