@@ -1123,6 +1123,10 @@ function markParticipantReady() {
   if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
     Notification.requestPermission();
   }
+  
+  // Unlock audio engine
+  if (typeof initAudio === 'function') initAudio();
+
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
   if (!p) return;
@@ -1148,7 +1152,61 @@ function markParticipantReady() {
     .catch(e => console.error(e));
 }
 
+let queueAudioCtx = null;
+let queueOscillators = [];
+let queueAudioInterval = null;
+
+function initAudio() {
+  if (!queueAudioCtx) {
+    try { queueAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (queueAudioCtx && queueAudioCtx.state === 'suspended') {
+    queueAudioCtx.resume();
+  }
+}
+
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('touchstart', initAudio, { once: true });
+
+function playRingTone() {
+  try {
+    initAudio();
+    if (!queueAudioCtx) return;
+    
+    const playBeep = () => {
+      const osc1 = queueAudioCtx.createOscillator();
+      const osc2 = queueAudioCtx.createOscillator();
+      const gain = queueAudioCtx.createGain();
+      
+      osc1.type = 'sine'; osc1.frequency.value = 440;
+      osc2.type = 'sine'; osc2.frequency.value = 480;
+      
+      gain.gain.setValueAtTime(0, queueAudioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.5, queueAudioCtx.currentTime + 0.05);
+      gain.gain.setValueAtTime(0.5, queueAudioCtx.currentTime + 1.2);
+      gain.gain.linearRampToValueAtTime(0, queueAudioCtx.currentTime + 1.3);
+      
+      osc1.connect(gain); osc2.connect(gain); gain.connect(queueAudioCtx.destination);
+      
+      osc1.start(queueAudioCtx.currentTime); osc2.start(queueAudioCtx.currentTime);
+      osc1.stop(queueAudioCtx.currentTime + 1.3); osc2.stop(queueAudioCtx.currentTime + 1.3);
+      queueOscillators.push(osc1, osc2);
+    };
+    
+    playBeep();
+    queueAudioInterval = setInterval(playBeep, 2000);
+  } catch(e) { console.error('Audio api error:', e); }
+}
+
+function stopRingTone() {
+  if (queueAudioInterval) { clearInterval(queueAudioInterval); queueAudioInterval = null; }
+  queueOscillators.forEach(osc => { try { osc.stop(); } catch(e){} });
+  queueOscillators = [];
+  if (queueAudioCtx && queueAudioCtx.state === 'running') queueAudioCtx.suspend();
+}
+
 function stopVibration() {
+  stopRingTone();
   if (vibrationInterval) {
     clearInterval(vibrationInterval);
     vibrationInterval = null;
@@ -1735,6 +1793,7 @@ if (window.syncEngine) {
           if ('vibrate' in navigator) {
             navigator.vibrate([1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000]);
           }
+          playRingTone();
           if ('Notification' in window && Notification.permission === 'granted') {
              try {
                new Notification('🚨 YOU ARE UP NEXT!', {
