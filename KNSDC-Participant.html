@@ -3298,6 +3298,7 @@ window.renderActiveServicesData = function(p) {
           let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">🔍 Finding Partner...</span>`;
           if (b.status === 'assigned') statusBadge = `<span style="color:#10b981; font-weight:bold;">🏍️ Driver Assigned</span>`;
           if (b.status === 'completed') statusBadge = `<span style="color:#64748b; font-weight:bold;">🏁 Arrived</span>`;
+          if (b.status === 'cancelled') statusBadge = `<span style="color:#ef4444; font-weight:bold;">❌ Cancelled</span>`;
           
           let driverStr = '';
           if (b.driverName) {
@@ -3322,6 +3323,7 @@ window.renderActiveServicesData = function(p) {
               </div>
               ${driverStr}
               ${mapContainerHtml}
+              ${(b.status === 'pending' || b.status === 'assigned') ? `<button onclick="cancelRide('${b.id}')" class="btn" style="width:100%; margin-top:10px; background:#ef4444; color:#fff; border:none; padding:8px; border-radius:8px;">Cancel Ride</button>` : ''}
             </div>
           `;
         }).join('');
@@ -3411,6 +3413,25 @@ window.renderActiveServicesData = function(p) {
       rideList.removeAttribute('data-hash');
     }
   }
+};
+
+window.cancelRide = async function(id) {
+  if (!confirm('Are you sure you want to cancel this ride?')) return;
+  window.syncEngine.updateState(s => {
+    const bookings = s.rideBookings || [];
+    const idx = bookings.findIndex(b => b.id === id);
+    if (idx !== -1) bookings[idx].status = 'cancelled';
+    return { ...s, rideBookings: bookings };
+  });
+  if (window.syncEngine.forceSaveStateToSupabase) {
+    await window.syncEngine.forceSaveStateToSupabase();
+  }
+  toast('Ride cancelled.');
+  
+  // Re-render
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (p) window.renderActiveServicesData(p);
 };
 
 // ==========================================
