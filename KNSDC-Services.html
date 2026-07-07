@@ -469,21 +469,126 @@ function renderData() {
     if (ongoingFoodContainer) {
        if (myFoodDeliveries.length === 0) {
          ongoingFoodContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active food deliveries.</div>`;
+         ongoingFoodContainer.removeAttribute('data-hash-food');
        } else {
-         ongoingFoodContainer.innerHTML = myFoodDeliveries.map(o => `
-           <div class="order-card" style="border-color:var(--blue);">
-             <div class="order-header">
-               <span class="order-id">${o.id}</span>
-               <span class="badge badge-active">Out for Delivery</span>
+         const currentHash = JSON.stringify(myFoodDeliveries.map(o => ({id: o.id, status: o.status, lat: o.driverLat, lng: o.driverLng})));
+         const prevHash = ongoingFoodContainer.getAttribute('data-hash-food') || '';
+         
+         if (prevHash !== currentHash) {
+           ongoingFoodContainer.setAttribute('data-hash-food', currentHash);
+           ongoingFoodContainer.innerHTML = myFoodDeliveries.map(o => {
+             let mapContainerHtml = '';
+             let navHtml = '';
+             let distanceHtml = '';
+             
+             if (o.location && o.location.startsWith('GPS: ')) {
+               const parts = o.location.replace('GPS: ', '').split(', ');
+               if (parts.length === 2) {
+                 const pLat = parseFloat(parts[0]);
+                 const pLng = parseFloat(parts[1]);
+                 
+                 if (o.driverLat && o.driverLng) {
+                   const R = 6371;
+                   const dLat = (pLat - o.driverLat) * Math.PI / 180;
+                   const dLng = (pLng - o.driverLng) * Math.PI / 180;
+                   const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(o.driverLat*Math.PI/180)*Math.cos(pLat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+                   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                   const distKm = (R * c).toFixed(2);
+                   distanceHtml = `<div style="font-size:13px; font-weight:800; color:var(--amber); margin-top:5px; background:rgba(245,158,11,0.1); padding:6px; border-radius:6px; text-align:center;">📏 Distance to Participant: ${distKm} km</div>`;
+                 }
+
+                 navHtml = `
+                   <div style="margin-top:10px;">
+                     <a href="https://www.google.com/maps/dir/?api=1&destination=${pLat},${pLng}" target="_blank" style="display:block; background:#4285F4; color:white; padding:8px; border-radius:8px; text-align:center; text-decoration:none; font-size:12px; font-weight:bold;">📍 Open Google Maps Navigation</a>
+                   </div>
+                 `;
+                 mapContainerHtml = `
+                   <div style="font-size: 11px; color: var(--primary); margin-top: 8px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+                     <span>📡 Sharing Your Geolocation Coords Live</span>
+                     <span id="geo-status-food-${o.id}" style="color: var(--green);">⚡ Active</span>
+                   </div>
+                   <div id="food-service-map-${o.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid var(--border); margin-top: 8px; z-index: 1;"></div>
+                 `;
+               }
+             }
+             
+             return `
+             <div class="order-card" style="border-color:var(--blue);">
+               <div class="order-header">
+                 <span class="order-id">${o.id}</span>
+                 <span class="badge badge-active">Out for Delivery</span>
+               </div>
+               <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 To: ${o.location}</div>
+               <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Customer:</strong> ${o.participantName}</div>
+               <div style="font-size:12px; color:var(--text-muted);">
+                 <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+               </div>
+               ${distanceHtml}
+               ${mapContainerHtml}
+               ${navHtml}
+               <button onclick="updateFoodStatus('${o.id}', 'delivered')" class="action-btn" style="background:var(--green); color:white; margin-top:10px; font-weight:800;">✅ Mark as Delivered</button>
              </div>
-             <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 To: ${o.location}</div>
-             <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Customer:</strong> ${o.participantName}</div>
-             <div style="font-size:12px; color:var(--text-muted);">
-               <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
-             </div>
-             <button onclick="updateFoodStatus('${o.id}', 'delivered')" class="action-btn" style="background:var(--green); color:white; margin-top:10px; font-weight:800;">✅ Mark as Delivered</button>
-           </div>
-         `).join('');
+             `;
+           }).join('');
+         }
+
+         // Initialize food maps
+         myFoodDeliveries.forEach(o => {
+           if (!o.location || !o.location.startsWith('GPS: ')) return;
+           const parts = o.location.replace('GPS: ', '').split(', ');
+           if (parts.length !== 2) return;
+           const pLat = parseFloat(parts[0]);
+           const pLng = parseFloat(parts[1]);
+
+           const mapId = `food-service-map-${o.id}`;
+           const mapEl = document.getElementById(mapId);
+           if (!mapEl) return;
+
+           setTimeout(() => {
+             const trackKey = 'food_' + o.id;
+             if (!trackingMaps[trackKey]) {
+               const mapInstance = L.map(mapId, { attributionControl: false }).setView([pLat, pLng], 15);
+               L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+               L.marker([pLat, pLng], {
+                 icon: L.icon({
+                   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                   iconSize: [20, 32],
+                   iconAnchor: [10, 32]
+                 })
+               }).addTo(mapInstance).bindPopup("Participant Location");
+
+               let dMarker = null;
+               if (o.driverLat && o.driverLng) {
+                 dMarker = L.marker([o.driverLat, o.driverLng], {
+                   icon: L.icon({
+                     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                     iconSize: [24, 38],
+                     iconAnchor: [12, 38]
+                   })
+                 }).addTo(mapInstance).bindPopup("Your Location");
+               }
+
+               trackingMaps[trackKey] = { map: mapInstance, driverMarker: dMarker };
+             } else {
+               trackingMaps[trackKey].map.invalidateSize();
+               if (o.driverLat && o.driverLng) {
+                 const driverLatLng = [o.driverLat, o.driverLng];
+                 if (trackingMaps[trackKey].driverMarker) {
+                   trackingMaps[trackKey].driverMarker.setLatLng(driverLatLng);
+                 } else {
+                   trackingMaps[trackKey].driverMarker = L.marker(driverLatLng, {
+                     icon: L.icon({
+                       iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                       iconSize: [24, 38],
+                       iconAnchor: [12, 38]
+                     })
+                   }).addTo(trackingMaps[trackKey].map).bindPopup("Your Location");
+                 }
+               }
+             }
+           }, 100);
+         });
        }
     }
 
@@ -684,6 +789,9 @@ async function deleteMenuItem(id) {
 }
 
 async function updateFoodStatus(orderId, newStatus) {
+  if (newStatus === 'delivered' || newStatus === 'rejected') {
+    stopFoodGeoTracking(orderId);
+  }
   window.syncEngine.setData(s => {
     const orders = s.foodOrders || [];
     const idx = orders.findIndex(o => String(o.id) === String(orderId));
@@ -708,6 +816,42 @@ async function acceptFoodDelivery(orderId) {
     return { ...s, foodOrders: orders };
   });
   await window.syncEngine.forceSaveStateToSupabase();
+  startFoodGeoTracking(orderId);
+}
+
+function startFoodGeoTracking(orderId) {
+  if (geoIntervals['food_'+orderId]) return;
+
+  const trackLocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        window.syncEngine.setData(s => {
+          const orders = s.foodOrders || [];
+          const idx = orders.findIndex(o => String(o.id) === String(orderId));
+          if (idx !== -1 && orders[idx].status === 'out_for_delivery') {
+            orders[idx].driverLat = latitude;
+            orders[idx].driverLng = longitude;
+          }
+          return { ...s, foodOrders: orders };
+        });
+        window.syncEngine.forceSaveStateToSupabase();
+      },
+      (error) => console.warn('Geolocation sharing error:', error.message),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
+  trackLocation();
+  geoIntervals['food_'+orderId] = setInterval(trackLocation, 6000);
+}
+
+function stopFoodGeoTracking(orderId) {
+  if (geoIntervals['food_'+orderId]) {
+    clearInterval(geoIntervals['food_'+orderId]);
+    delete geoIntervals['food_'+orderId];
+  }
 }
 
 // Registry for active driver geolocation tracking intervals

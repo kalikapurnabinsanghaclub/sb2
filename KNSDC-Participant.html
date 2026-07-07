@@ -3261,20 +3261,104 @@ window.renderActiveServicesData = function(p) {
   if (foodWrap && foodList) {
     if (orders.length > 0) {
       foodWrap.style.display = 'block';
-      foodList.innerHTML = orders.map(o => {
-        let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">Pending</span>`;
-        if (o.status === 'preparing') statusBadge = `<span style="color:#3b82f6; font-weight:bold;">🍳 Preparing</span>`;
-        if (o.status === 'delivered') statusBadge = `<span style="color:#10b981; font-weight:bold;">✅ Delivered</span>`;
-        if (o.status === 'rejected') statusBadge = `<span style="color:#ef4444; font-weight:bold;">❌ Rejected / Cancelled</span>`;
-        
-        const itemsStr = o.items.map(i => `${i.qty}x ${i.name}`).join(', ');
-        return `<div style="border-bottom:1.5px solid #e2e8f0; padding-bottom:8px; margin-bottom:8px;">
-          <div><strong>ID:</strong> ${o.id} | ${statusBadge}</div>
-          <div style="font-size:11px; color:#475569;">${itemsStr}</div>
-          <div style="font-size:11px; color:#64748b;">📍 Loc: ${o.location}</div>
-          ${o.status === 'rejected' ? `<div style="font-size:11px; color:#ef4444; font-weight:bold; margin-top:4px;">No payment required. Order was rejected.</div>` : ''}
-        </div>`;
-      }).join('');
+      const currentHash = JSON.stringify(orders.map(o => ({id: o.id, status: o.status, lat: o.driverLat, lng: o.driverLng})));
+      const prevHash = foodList.getAttribute('data-hash') || '';
+      
+      if (prevHash !== currentHash) {
+        foodList.setAttribute('data-hash', currentHash);
+        foodList.innerHTML = orders.map(o => {
+          let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">Pending</span>`;
+          if (o.status === 'preparing') statusBadge = `<span style="color:#3b82f6; font-weight:bold;">🍳 Preparing</span>`;
+          if (o.status === 'out_for_delivery') statusBadge = `<span style="color:#10b981; font-weight:bold;">🏍️ Out for Delivery</span>`;
+          if (o.status === 'delivered') statusBadge = `<span style="color:#10b981; font-weight:bold;">✅ Delivered</span>`;
+          if (o.status === 'rejected') statusBadge = `<span style="color:#ef4444; font-weight:bold;">❌ Rejected / Cancelled</span>`;
+          
+          let partnerStr = '';
+          if (o.deliveryPartnerName) {
+            partnerStr = `<div style="font-size:12px; color:#15803d; margin-top: 4px; font-weight: bold;"><strong>Partner:</strong> ${o.deliveryPartnerName}</div>`;
+          }
+
+          let mapContainerHtml = '';
+          if (o.status === 'out_for_delivery') {
+            mapContainerHtml = `<div id="part-food-map-${o.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 8px; z-index: 1;"></div>`;
+          }
+          
+          const itemsStr = o.items.map(i => `${i.qty}x ${i.name}`).join(', ');
+          return `<div style="border-bottom:1.5px solid #e2e8f0; padding-bottom:8px; margin-bottom:8px;">
+            <div><strong>ID:</strong> ${o.id} | ${statusBadge}</div>
+            <div style="font-size:11px; color:#475569;">${itemsStr}</div>
+            <div style="font-size:11px; color:#64748b;">📍 Loc: ${o.location}</div>
+            ${o.status === 'rejected' ? `<div style="font-size:11px; color:#ef4444; font-weight:bold; margin-top:4px;">No payment required. Order was rejected.</div>` : ''}
+            ${partnerStr}
+            ${mapContainerHtml}
+          </div>`;
+        }).join('');
+      }
+
+      // Initialize or update maps
+      orders.forEach(o => {
+        if (o.status !== 'out_for_delivery') {
+          if (trackingMaps['part_food_'+o.id]) delete trackingMaps['part_food_'+o.id];
+          return;
+        }
+
+        const mapId = `part-food-map-${o.id}`;
+        const mapEl = document.getElementById(mapId);
+        if (!mapEl) return;
+
+        setTimeout(() => {
+          let mapData = trackingMaps['part_food_'+o.id];
+          const driverLatLng = (o.driverLat && o.driverLng) ? [o.driverLat, o.driverLng] : null;
+
+          if (!mapData) {
+            let pLat = 22.5126; let pLng = 88.3986;
+            if (o.location && o.location.startsWith('GPS: ')) {
+              const parts = o.location.replace('GPS: ', '').split(', ');
+              if (parts.length === 2) { pLat = parseFloat(parts[0]); pLng = parseFloat(parts[1]); }
+            }
+
+            const mapInstance = L.map(mapId, { attributionControl: false }).setView([pLat, pLng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+            L.marker([pLat, pLng], {
+              icon: L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                iconSize: [20, 32],
+                iconAnchor: [10, 32]
+              })
+            }).addTo(mapInstance).bindPopup("Delivery Location");
+
+            let dMarker = null;
+            if (driverLatLng) {
+              dMarker = L.marker(driverLatLng, {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                  iconSize: [24, 38],
+                  iconAnchor: [12, 38]
+                })
+              }).addTo(mapInstance).bindPopup("Partner Location");
+            }
+
+            trackingMaps['part_food_'+o.id] = { map: mapInstance, driverMarker: dMarker };
+          } else {
+            mapData.map.invalidateSize();
+            if (driverLatLng) {
+              if (mapData.driverMarker) {
+                mapData.driverMarker.setLatLng(driverLatLng);
+              } else {
+                mapData.driverMarker = L.marker(driverLatLng, {
+                  icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                    iconSize: [24, 38],
+                    iconAnchor: [12, 38]
+                  })
+                }).addTo(mapData.map).bindPopup("Partner Location");
+              }
+              mapData.map.panTo(driverLatLng);
+            }
+          }
+        }, 100);
+      });
     } else {
       foodWrap.style.display = 'none';
     }
