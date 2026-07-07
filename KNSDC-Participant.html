@@ -1118,6 +1118,11 @@ function triggerDownload(blob) {
 
 function markParticipantReady() {
   if (!CURRENT_USER || !window.syncEngine) return;
+  
+  // Request native background notification permissions on interaction
+  if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+    Notification.requestPermission();
+  }
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
   if (!p) return;
@@ -1717,15 +1722,29 @@ if (window.syncEngine) {
       const state = window.syncEngine.getData() || {};
       const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
       
+      // Prevent ringing on initial page load if already in queue
+      if (!initialSyncFired) {
+        lastStageStatus = p.stageStatus;
+        initialSyncFired = true;
+      }
+
       // --- VIBRATION & READY RESET LOGIC ---
       if (p.stageStatus) {
-        if (initialSyncFired && lastStageStatus !== 'queue' && p.stageStatus === 'queue') {
-          // Added to queue! Vibrate for 15 seconds.
+        if (lastStageStatus !== 'queue' && p.stageStatus === 'queue') {
+          // Added to queue! Vibrate and ring for 15 seconds.
           if ('vibrate' in navigator) {
             navigator.vibrate([1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000]);
-            document.getElementById('stop-vibration-banner').style.display = 'flex';
-            setTimeout(() => { stopVibration(); }, 15000);
           }
+          if ('Notification' in window && Notification.permission === 'granted') {
+             try {
+               new Notification('🚨 YOU ARE UP NEXT!', {
+                 body: 'You have been added to the queue! Please head to the stage immediately.',
+                 requireInteraction: true
+               });
+             } catch(e) { console.error('Notification error', e); }
+          }
+          document.getElementById('stop-vibration-banner').style.display = 'flex';
+          setTimeout(() => { stopVibration(); }, 15000);
         }
         
         // Sync button UI with current state if loaded
@@ -1784,7 +1803,6 @@ if (window.syncEngine) {
         }
         
         lastStageStatus = p.stageStatus;
-        initialSyncFired = true;
       }
       // --- END LOGIC ---
       
