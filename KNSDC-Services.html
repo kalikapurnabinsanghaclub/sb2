@@ -231,7 +231,10 @@ async function handleLogin(e) {
 
 function loginSuccess(partner) {
   loggedInPartner = partner;
+  // Persist role and user info so auto-login works on page reload
   localStorage.setItem('knsdc_partner_email', partner.email);
+  localStorage.setItem('kns_role', partner.role);
+  localStorage.setItem('kns_user', JSON.stringify({ name: partner.name, email: partner.email, role: partner.role }));
 
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('dashboard-view').style.display = 'block';
@@ -252,11 +255,14 @@ function loginSuccess(partner) {
     tabRide.style.display = 'block';
     switchTab('ride');
   } else {
-    // Admin / Both view
+    // Admin / Both view — show both tabs
     tabFood.style.display = 'block';
     tabRide.style.display = 'block';
     switchTab('food');
   }
+
+  // Trigger initial data render after login
+  renderData();
 }
 
 function handleLogout() {
@@ -381,8 +387,17 @@ function renderData() {
     const requestContainer = document.getElementById('incoming-ride-bookings');
     const assignedContainer = document.getElementById('completed-ride-bookings');
 
+    const myEmail = loggedInPartner ? (loggedInPartner.email || '').toLowerCase() : '';
+    const myName  = loggedInPartner ? (loggedInPartner.name  || '').toLowerCase() : '';
+
+    // Show only unassigned requests (any partner can pick these up)
     const requests = bookings.filter(b => b.status === 'finding');
-    const assigned = bookings.filter(b => b.status === 'assigned' || b.status === 'completed');
+    // Show only rides this logged-in partner has accepted
+    const assigned = bookings.filter(b =>
+      (b.status === 'assigned' || b.status === 'completed') &&
+      ((b.driverEmail && b.driverEmail.toLowerCase() === myEmail) ||
+       (b.driverName  && b.driverName.toLowerCase()  === myName))
+    );
 
     let totalRideSales = 0;
     assigned.forEach(b => {
@@ -613,8 +628,6 @@ async function deleteMenuItem(id) {
     ];
     return { ...s, foodMenu: foodMenu.filter(m => String(m.id) !== String(id)) };
   });
-  await window.syncEngine.forceSaveStateToSupabase();
-}
   await window.syncEngine.forceSaveStateToSupabase();
 }
 
