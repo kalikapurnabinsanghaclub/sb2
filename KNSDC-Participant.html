@@ -1206,16 +1206,10 @@ document.getElementById('login-form').addEventListener('submit', (e) => {
 });
 
 function autoLogin(id) {
-  const state = window.syncEngine.getData() || {};
-  const participants = state.participants || [];
-  const p = participants.find(part => String(part.id) === String(id));
-  if (p) {
-    CURRENT_USER = p.id;
-    renderDashboard();
-  } else {
-    localStorage.removeItem('knsdc_participant_id');
-    document.getElementById('login-view').style.display = 'block';
-  }
+  // We trust the stored ID. The actual participant data might still be loading async via syncEngine.
+  // We will set the CURRENT_USER and let the subscription handle rendering when data arrives.
+  CURRENT_USER = id;
+  renderDashboard();
 }
 
 function logout() {
@@ -1265,7 +1259,11 @@ function renderDashboard() {
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
   
-  if (!p) { logout(); return; }
+  if (!p) {
+    // If the participant isn't in the state yet (due to async loading), just wait.
+    // The subscription will call renderDashboard again once data arrives.
+    return; 
+  }
   
   // Set Dynamic Identity Watermark
   const watermarkText = `${p.name || 'Participant'} - ${p.id} - ${new Date().toLocaleString()}`;
