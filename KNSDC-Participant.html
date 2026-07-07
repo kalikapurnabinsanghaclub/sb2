@@ -1813,6 +1813,12 @@ if (window.syncEngine) {
       if (!isTyping) {
         debouncedRenderDashboard();
       }
+      
+      // Update food menu in real-time if open
+      const foodModal = document.getElementById('food-modal');
+      if (foodModal && foodModal.style.display === 'flex' && window.renderFoodMenuUI) {
+        window.renderFoodMenuUI();
+      }
     }
   });
 }
@@ -2802,24 +2808,30 @@ function getFoodMenu() {
   ];
 }
 
-window.openFoodOrderModal = function() {
+window.renderFoodMenuUI = function() {
   const container = document.getElementById('menu-items-container');
   if (container) {
     const foodMenu = getFoodMenu();
-    container.innerHTML = foodMenu.map(item => `
+    container.innerHTML = foodMenu.map(item => {
+      const currentQty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
+      return `
       <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0;">
         <span style="font-size:14px; font-weight:700;">${item.icon} ${item.name} (₹${item.price})</span>
         <div style="display:flex; align-items:center; gap:8px;">
           <button type="button" onclick="changeQty('${item.id}', -1)" style="width:24px; height:24px; border-radius:50%; border:1px solid #cbd5e1; background:#fff; font-weight:bold; cursor:pointer;">-</button>
-          <span id="qty-${item.id}" style="font-weight:bold; font-size:14px; min-width:14px; text-align:center;">0</span>
+          <span id="qty-${item.id}" style="font-weight:bold; font-size:14px; min-width:14px; text-align:center;">${currentQty}</span>
           <button type="button" onclick="changeQty('${item.id}', 1)" style="width:24px; height:24px; border-radius:50%; border:1px solid #cbd5e1; background:#fff; font-weight:bold; cursor:pointer;">+</button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   }
+  updateFoodTotalPrice();
+};
+
+window.openFoodOrderModal = function() {
   window._foodQuantities = {};
   document.getElementById('food-delivery-loc').value = '';
-  updateFoodTotalPrice();
+  window.renderFoodMenuUI();
   document.getElementById('food-modal').style.display = 'flex';
 };
 
