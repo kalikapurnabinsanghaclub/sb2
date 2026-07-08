@@ -2718,13 +2718,14 @@ function downloadEventReportExcel() {
 }
 
 function renderDashboard() {
-  // Calc totals
+  // Calc totals — always read from roundScores[round] for accuracy
   const judgeId = JUDGE.id;
   let totalMarks = 0, scoredCount = 0, pendingCount = 0;
-  const maxPerParticipant = SUBJECTS.reduce((a,s)=>a+s.maxMarks,0);
+  const maxPerParticipant = SUBJECTS.reduce((a,s)=>a+(s.maxMarks||0),0);
 
   participants.forEach(p => {
-    const myScores = p.scores[judgeId] || {};
+    const currentRoundScores = (p.roundScores && p.roundScores[p.round]) || {};
+    const myScores = currentRoundScores[judgeId] || {};
     const hasScored = SUBJECTS.some(s => myScores[s.id] > 0);
     if(hasScored) { scoredCount++; SUBJECTS.forEach(s => { totalMarks += myScores[s.id]||0; }); }
     else if(p.stageStatus==='done') pendingCount++;
@@ -2753,17 +2754,26 @@ function renderDashboard() {
 
   // Subject stats
   const subjectStats = document.getElementById('subject-stats-list');
-  const scoredParts = participants.filter(p=>p.scores[judgeId] && Object.keys(p.scores[judgeId]).length > 0);
+  // Use roundScores[round] for accurate subject stats
+  const scoredParts = participants.filter(p => {
+    const rsc = (p.roundScores && p.roundScores[p.round]) || {};
+    const ms = rsc[judgeId] || {};
+    return Object.keys(ms).length > 0;
+  });
   subjectStats.innerHTML = SUBJECTS.map(s => {
-    const vals = scoredParts.map(p=>(p.scores[judgeId]||{})[s.id]||0);
+    const vals = scoredParts.map(p => {
+      const rsc = (p.roundScores && p.roundScores[p.round]) || {};
+      return ((rsc[judgeId])||{})[s.id]||0;
+    });
     const avg = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*10)/10 : 0;
     const top = vals.length ? Math.max(...vals) : 0;
-    const pct = Math.round(avg/s.maxMarks*100);
+    const maxM = s.maxMarks || 1; // guard divide-by-zero
+    const pct = Math.round(avg/maxM*100);
     const color = pct>=70?'var(--green2)':pct>=50?'var(--gold2)':'var(--red2)';
     return `<div class="sbar-wrap">
       <div class="sbar-top">
         <span style="font-weight:600">${s.name}</span>
-        <span style="font-family:var(--fm);font-size:11px">Avg <strong style="color:${color}">${avg}</strong> · Top <strong style="color:var(--gold2)">${top}</strong> / ${s.maxMarks}</span>
+        <span style="font-family:var(--fm);font-size:11px">Avg <strong style="color:${color}">${avg}</strong> · Top <strong style="color:var(--gold2)">${top}</strong> / ${s.maxMarks||0}</span>
       </div>
       <div class="sbar"><div class="sbar-fill" style="width:${pct}%;background:linear-gradient(90deg,${color},${color}aa)"></div></div>
     </div>`;
@@ -2773,16 +2783,22 @@ function renderDashboard() {
   const catGrid = document.getElementById('cat-breakdown');
   let totalParts = 0;
   catGrid.innerHTML = CATEGORIES.map(c => {
-    const count = participants.filter(p=>String(p.catId)===String(c.id)).length;
-    const scored = participants.filter(p=>String(p.catId)===String(c.id) && p.scores[judgeId] && Object.keys(p.scores[judgeId]).length > 0).length;
+    const catParts = participants.filter(p=>String(p.catId)===String(c.id));
+    const count = catParts.length;
+    // Use roundScores[round] for accurate scored count per category
+    const scored = catParts.filter(p => {
+      const rsc = (p.roundScores && p.roundScores[p.round]) || {};
+      const ms = rsc[judgeId] || {};
+      return Object.keys(ms).length > 0;
+    }).length;
     totalParts += count;
     const pct = count>0?Math.round(scored/count*100):0;
     return `<div class="cat-stat-block">
       <span class="badge ${c.color}" style="margin-bottom:8px">${c.name}</span>
       <div style="font-family:var(--fh);font-size:28px;font-weight:800;line-height:1">${count}</div>
-      <div style="font-size:10px;color:var(--tmuted);margin-top:2px;font-family:var(--fm)">participants</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:2px;font-family:var(--fm)">participants</div>
       <div class="sbar" style="margin-top:6px"><div class="sbar-fill" style="width:${pct}%;background:var(--gold2)"></div></div>
-      <div style="font-size:10px;color:var(--tdim);margin-top:3px">${scored}/${count} scored</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${scored}/${count} scored</div>
     </div>`;
   }).join('');
   document.getElementById('ds-total-parts').textContent = `${totalParts} total`;
@@ -2797,9 +2813,9 @@ function renderDashboard() {
     const isDone = count > 0 && done === count;
     return `<div class="pipe-step">
       <div class="pipe-box ${isDone?'done':isActive?'active':'locked'}">
-        <div class="pipe-num" style="color:${isDone?'var(--green2)':isActive?'var(--gold2)':'var(--tmuted)'}">${count}</div>
+        <div class="pipe-num" style="color:${isDone?'var(--green2)':isActive?'var(--gold2)':'var(--text-muted)'}">${count}</div>
         <div class="pipe-lbl">${roundLabels[r]}</div>
-        ${count>0?`<div style="font-size:10px;color:var(--tdim);margin-top:2px;font-family:var(--fm)">${done} done</div>`:''}
+        ${count>0?`<div style="font-size:10px;color:var(--text-dim);margin-top:2px;font-family:var(--fm)">${done} done</div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -2817,10 +2833,10 @@ function renderDashboard() {
           <span class="badge ${roundBadge(r)}">${r.toUpperCase()}</span>
           <span style="font-size:12px;font-weight:600">${roundParts.length} participants</span>
         </div>
-        <span style="font-size:12px;color:var(--tdim);font-family:var(--fm)">${completed}/${roundParts.length} completed · ${pct}%</span>
+        <span style="font-size:12px;color:var(--text-dim);font-family:var(--fm)">${completed}/${roundParts.length} completed · ${pct}%</span>
       </div>
       <div class="sbar" style="height:8px">
-        <div class="sbar-fill" style="width:${pct}%;background:linear-gradient(90deg,${pct===100?'var(--green2)':'var(--gold2)'},${pct===100?'var(--green2)':'var(--gold3)'})"></div>
+        <div class="sbar-fill" style="width:${pct}%;background:linear-gradient(90deg,${pct===100?'var(--green2)':'var(--gold2)'},${pct===100?'var(--green2)':'var(--gold2)'})"></div>
       </div>
     </div>`;
   }).join('');
@@ -4171,7 +4187,7 @@ syncEngine.subscribe((state) => {
   // Re-render active view
   if (currentPage === 'dashboard') {
     renderDashboard();
-    renderParticipantsTable();
+    // Note: renderParticipantsTable() targets scoring-page DOM elements and must NOT be called here
   }
   if (currentPage === 'scoring') {
     renderOnStage();
