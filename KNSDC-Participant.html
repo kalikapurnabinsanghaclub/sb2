@@ -438,6 +438,14 @@
           <button onclick="selectFrame('emerald')" class="frame-btn" style="flex:0 0 auto; width:80px; height:80px; border-radius:12px; background:linear-gradient(135deg, #059669, #34d399); border:3px solid transparent; cursor:pointer; scroll-snap-align: start; color:white; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center;">Emerald</button>
           <button onclick="selectFrame('ruby')" class="frame-btn" style="flex:0 0 auto; width:80px; height:80px; border-radius:12px; background:linear-gradient(135deg, #9f1239, #f43f5e); border:3px solid transparent; cursor:pointer; scroll-snap-align: start; color:white; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center;">Ruby</button>
         </div>
+ 
+        <!-- Border Style Selection -->
+        <h3 style="margin: 10px 0 10px 0; font-size:1.1rem; color:var(--text); text-align:center; font-weight: 800;">Border Style</h3>
+        <div style="display:flex; gap:8px; margin-bottom:15px; justify-content: center;">
+          <button onclick="selectBorder('greek')" id="border-btn-greek" style="flex:1; padding: 10px; font-size: 13px; font-weight:700; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s;">🏛️ Greek Key</button>
+          <button onclick="selectBorder('line')" id="border-btn-line" style="flex:1; padding: 10px; font-size: 13px; font-weight:700; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s;">➖ Thin Line</button>
+          <button onclick="selectBorder('none')" id="border-btn-none" style="flex:1; padding: 10px; font-size: 13px; font-weight:700; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s;">🔲 Borderless</button>
+        </div>
 
         <!-- Poster Preview (Canvas) -->
         <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); margin-bottom:15px;" id="poster-preview-container">
@@ -656,6 +664,7 @@ let vibrationInterval = null;
 // SHARE POSTER LOGIC (Canvas-Based)
 // ==========================================
 let currentShareFrame = 'neon';
+let currentBorderStyle = 'greek';
 let temporarySelfieUrl = null;
 let cameraStream = null;
 let _posterCanvas = null;
@@ -770,8 +779,30 @@ const POSTER_FRAMES = {
 
 function openShareModal() {
   document.getElementById('share-modal').style.display = 'flex';
-  selectFrame(currentShareFrame);
+  selectBorder(currentBorderStyle);
   openCamera(); // Automatically launch selfie camera inside the frame
+}
+
+function selectBorder(style) {
+  currentBorderStyle = style;
+  
+  const btnIds = ['greek', 'line', 'none'];
+  btnIds.forEach(id => {
+    const btn = document.getElementById(`border-btn-${id}`);
+    if (btn) {
+      if (id === style) {
+        btn.style.background = 'var(--accent)';
+        btn.style.color = '#ffffff';
+        btn.style.borderColor = 'var(--accent)';
+      } else {
+        btn.style.background = 'rgba(255,255,255,0.06)';
+        btn.style.color = 'var(--text)';
+        btn.style.borderColor = 'rgba(255,255,255,0.1)';
+      }
+    }
+  });
+
+  selectFrame(currentShareFrame);
 }
 
 function closeShareModal() {
@@ -1021,9 +1052,33 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.fillStyle = btmGrad;
     ctx.fillRect(0, H * 0.72, W, H * 0.28);
 
-    // Draw repeating Greek Key meander border in matching accent color
+    // Draw chosen border style in matching accent color
     const padOuter = W * 0.035;
-    drawGreekKeyBorder(ctx, W, H, padOuter, f.border, f.shadow);
+    if (currentBorderStyle === 'greek') {
+      drawGreekKeyBorder(ctx, W, H, padOuter, f.border, f.shadow);
+    } else if (currentBorderStyle === 'line') {
+      ctx.save();
+      ctx.strokeStyle = f.border;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = f.shadow;
+      ctx.shadowBlur = 15;
+      ctx.strokeRect(padOuter, padOuter, W - padOuter * 2, H - padOuter * 2);
+      
+      // Decorative corner brackets for line border
+      ctx.strokeStyle = f.accent;
+      ctx.lineWidth = 3;
+      const len = W * 0.05;
+      // Top-Left
+      ctx.beginPath(); ctx.moveTo(padOuter, padOuter + len); ctx.lineTo(padOuter, padOuter); ctx.lineTo(padOuter + len, padOuter); ctx.stroke();
+      // Top-Right
+      ctx.beginPath(); ctx.moveTo(W - padOuter - len, padOuter); ctx.lineTo(W - padOuter, padOuter); ctx.lineTo(W - padOuter, padOuter + len); ctx.stroke();
+      // Bottom-Left
+      ctx.beginPath(); ctx.moveTo(padOuter, H - padOuter - len); ctx.lineTo(padOuter, H - padOuter); ctx.lineTo(padOuter + len, H - padOuter); ctx.stroke();
+      // Bottom-Right
+      ctx.beginPath(); ctx.moveTo(W - padOuter - len, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter - len); ctx.stroke();
+      
+      ctx.restore();
+    }
 
     // ---- TOP SECTION ----
     const logoSize = W * 0.12;
