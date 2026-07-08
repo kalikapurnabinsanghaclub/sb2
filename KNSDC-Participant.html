@@ -134,6 +134,21 @@
   #login-view, #dashboard-view { display: none; }
   
   .banner { background: #fefce8; border: 1px solid #fef08a; color: #a16207; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  
+  /* Premium Frame Selection Thumbnail Buttons */
+  .frame-btn {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    position: relative;
+    outline: none;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  }
+  .frame-btn:hover {
+    transform: translateY(-4px) scale(1.08);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+  .frame-btn:active {
+    transform: translateY(-1px) scale(1.02);
+  }
 </style>
 </head>
 <body>
@@ -838,9 +853,16 @@ function stopCamera() {
 function selectFrame(frame) {
   currentShareFrame = frame;
 
-  document.querySelectorAll('.frame-btn').forEach(btn => btn.style.border = '3px solid transparent');
+  document.querySelectorAll('.frame-btn').forEach(btn => {
+    btn.style.border = '3px solid transparent';
+    btn.style.boxShadow = 'none';
+  });
   const activeBtn = document.querySelector(`.frame-btn[onclick="selectFrame('${frame}')"]`);
-  if (activeBtn) activeBtn.style.border = '3px solid white';
+  if (activeBtn) {
+    const f = POSTER_FRAMES[frame] || POSTER_FRAMES.neon;
+    activeBtn.style.border = `3px solid ${f.accent || '#ffffff'}`;
+    activeBtn.style.boxShadow = `0 0 15px ${f.shadow || 'rgba(255,255,255,0.8)'}`;
+  }
 
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
@@ -931,14 +953,34 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.fillStyle = btmGrad;
     ctx.fillRect(0, H * 0.72, W, H * 0.28);
 
-    // Frame border glow
-    const pad = W * 0.03;
+    // Outer glowing border
+    const padOuter = W * 0.035;
     ctx.strokeStyle = f.border;
     ctx.lineWidth = 3;
     ctx.shadowColor = f.shadow;
     ctx.shadowBlur = 20;
-    ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
+    ctx.strokeRect(padOuter, padOuter, W - padOuter * 2, H - padOuter * 2);
     ctx.shadowBlur = 0;
+
+    // Thin inner elegant border
+    const padInner = W * 0.048;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(padInner, padInner, W - padInner * 2, H - padInner * 2);
+
+    // Decorative corner brackets
+    ctx.strokeStyle = f.accent;
+    ctx.lineWidth = 3;
+    const len = W * 0.06;
+    
+    // Top-Left
+    ctx.beginPath(); ctx.moveTo(padOuter, padOuter + len); ctx.lineTo(padOuter, padOuter); ctx.lineTo(padOuter + len, padOuter); ctx.stroke();
+    // Top-Right
+    ctx.beginPath(); ctx.moveTo(W - padOuter - len, padOuter); ctx.lineTo(W - padOuter, padOuter); ctx.lineTo(W - padOuter, padOuter + len); ctx.stroke();
+    // Bottom-Left
+    ctx.beginPath(); ctx.moveTo(padOuter, H - padOuter - len); ctx.lineTo(padOuter, H - padOuter); ctx.lineTo(padOuter + len, H - padOuter); ctx.stroke();
+    // Bottom-Right
+    ctx.beginPath(); ctx.moveTo(W - padOuter - len, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter - len); ctx.stroke();
 
     // ---- TOP SECTION ----
     const logoSize = W * 0.12;
@@ -974,8 +1016,15 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.fillStyle = '#ffffff';
     ctx.shadowBlur = 12;
     ctx.fillText(pData.eventName, W / 2, topY + H * 0.055);
-
     ctx.shadowBlur = 0;
+
+    // Stylized Event Accent Line
+    ctx.strokeStyle = f.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - W * 0.15, topY + H * 0.072);
+    ctx.lineTo(W / 2 + W * 0.15, topY + H * 0.072);
+    ctx.stroke();
 
     // ---- BOTTOM SECTION ----
     let currentY = H * 0.82;
@@ -987,19 +1036,22 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.shadowBlur = 15;
     ctx.fillText(pData.name, W / 2, currentY);
     
-    currentY += H * 0.02;
+    currentY += H * 0.025;
 
-    // Category pill
-    const catW = W * 0.55;
-    const catH = H * 0.04;
+    // Category pill (Premium Glassmorphic style)
+    const catW = W * 0.62;
+    const catH = H * 0.042;
     const catX = (W - catW) / 2;
-    ctx.fillStyle = f.accent;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.beginPath();
     ctx.roundRect(catX, currentY, catW, catH, catH / 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.font = `800 ${W * 0.042}px 'Outfit', sans-serif`;
-    ctx.fillStyle = '#000000';
+    ctx.strokeStyle = f.accent;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    ctx.font = `800 ${W * 0.038}px 'Outfit', sans-serif`;
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(pData.catName, W / 2, currentY + catH * 0.68);
     
     currentY += catH + H * 0.015;
