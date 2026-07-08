@@ -901,6 +901,74 @@ function selectFrame(frame) {
   drawPosterOnCanvas(frame, pData);
 }
 
+function drawGreekKeyBorder(ctx, W, H, pad, color, shadowColor) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = 15;
+  ctx.lineCap = 'square';
+  ctx.lineJoin = 'miter';
+ 
+  const S = 18;
+  const D = 9;
+ 
+  const drawHorizontalKey = (startX, endX, y, isBottom) => {
+    ctx.beginPath();
+    const direction = startX < endX ? 1 : -1;
+    const absStep = S * direction;
+    const absDepth = D * (isBottom ? -1 : 1);
+    
+    let currentX = startX;
+    ctx.moveTo(currentX, y);
+ 
+    while ((direction === 1 && currentX + S <= endX) || (direction === -1 && currentX - S >= endX)) {
+      ctx.lineTo(currentX + absStep * 0.75, y);
+      ctx.lineTo(currentX + absStep * 0.75, y + absDepth);
+      ctx.lineTo(currentX + absStep * 0.25, y + absDepth);
+      ctx.lineTo(currentX + absStep * 0.25, y + absDepth * 0.4);
+      ctx.lineTo(currentX + absStep * 0.5, y + absDepth * 0.4);
+      ctx.lineTo(currentX + absStep * 0.5, y + absDepth * 0.7);
+      ctx.lineTo(currentX + absStep * 0.38, y + absDepth * 0.7);
+      ctx.lineTo(currentX + absStep, y + absDepth * 0.7);
+      ctx.lineTo(currentX + absStep, y);
+      currentX += absStep;
+    }
+    ctx.stroke();
+  };
+ 
+  const drawVerticalKey = (startX, yStart, yEnd, isRight) => {
+    ctx.beginPath();
+    const direction = yStart < yEnd ? 1 : -1;
+    const absStep = S * direction;
+    const absDepth = D * (isRight ? -1 : 1);
+ 
+    let currentY = yStart;
+    ctx.moveTo(startX, currentY);
+ 
+    while ((direction === 1 && currentY + S <= yEnd) || (direction === -1 && currentY - S >= yEnd)) {
+      ctx.lineTo(startX, currentY + absStep * 0.75);
+      ctx.lineTo(startX + absDepth, currentY + absStep * 0.75);
+      ctx.lineTo(startX + absDepth, currentY + absStep * 0.25);
+      ctx.lineTo(startX + absDepth * 0.4, currentY + absStep * 0.25);
+      ctx.lineTo(startX + absDepth * 0.4, currentY + absStep * 0.5);
+      ctx.lineTo(startX + absDepth * 0.7, currentY + absStep * 0.5);
+      ctx.lineTo(startX + absDepth * 0.7, currentY + absStep * 0.38);
+      ctx.lineTo(startX + absDepth * 0.7, currentY + absStep);
+      ctx.lineTo(startX, currentY + absStep);
+      currentY += absStep;
+    }
+    ctx.stroke();
+  };
+ 
+  drawHorizontalKey(pad, W - pad, pad, false);
+  drawHorizontalKey(pad, W - pad, H - pad, true);
+  drawVerticalKey(pad, pad, H - pad, false);
+  drawVerticalKey(W - pad, pad, H - pad, true);
+ 
+  ctx.restore();
+}
+
 function drawPosterOnCanvas(frame, pData) {
   const container = document.getElementById('poster-preview-container');
   const canvas = document.getElementById('poster-canvas');
@@ -953,34 +1021,9 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.fillStyle = btmGrad;
     ctx.fillRect(0, H * 0.72, W, H * 0.28);
 
-    // Outer glowing border
+    // Draw repeating Greek Key meander border in matching accent color
     const padOuter = W * 0.035;
-    ctx.strokeStyle = f.border;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = f.shadow;
-    ctx.shadowBlur = 20;
-    ctx.strokeRect(padOuter, padOuter, W - padOuter * 2, H - padOuter * 2);
-    ctx.shadowBlur = 0;
-
-    // Thin inner elegant border
-    const padInner = W * 0.048;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(padInner, padInner, W - padInner * 2, H - padInner * 2);
-
-    // Decorative corner brackets
-    ctx.strokeStyle = f.accent;
-    ctx.lineWidth = 3;
-    const len = W * 0.06;
-    
-    // Top-Left
-    ctx.beginPath(); ctx.moveTo(padOuter, padOuter + len); ctx.lineTo(padOuter, padOuter); ctx.lineTo(padOuter + len, padOuter); ctx.stroke();
-    // Top-Right
-    ctx.beginPath(); ctx.moveTo(W - padOuter - len, padOuter); ctx.lineTo(W - padOuter, padOuter); ctx.lineTo(W - padOuter, padOuter + len); ctx.stroke();
-    // Bottom-Left
-    ctx.beginPath(); ctx.moveTo(padOuter, H - padOuter - len); ctx.lineTo(padOuter, H - padOuter); ctx.lineTo(padOuter + len, H - padOuter); ctx.stroke();
-    // Bottom-Right
-    ctx.beginPath(); ctx.moveTo(W - padOuter - len, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter - len); ctx.stroke();
+    drawGreekKeyBorder(ctx, W, H, padOuter, f.border, f.shadow);
 
     // ---- TOP SECTION ----
     const logoSize = W * 0.12;
