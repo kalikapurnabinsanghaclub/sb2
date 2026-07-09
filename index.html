@@ -2798,14 +2798,24 @@
             <div style="font-weight:700; color:#1e293b; font-size:1.2rem; display:flex; align-items:center; gap:8px;" id="epv-date">--</div>
           </div>
           
+          <div id="epv-duration-container" style="display:none; margin-bottom:24px;">
+            <div style="font-size:0.85rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Duration</div>
+            <div style="font-weight:700; color:#1e293b; font-size:1.2rem; display:flex; align-items:center; gap:8px;" id="epv-duration">--</div>
+          </div>
+
           <div style="margin-bottom:24px;">
             <div style="font-size:0.85rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Venue</div>
             <div style="font-weight:700; color:#1e293b; font-size:1.2rem; display:flex; align-items:center; gap:8px;" id="epv-venue">--</div>
           </div>
           
-          <div style="margin-bottom:32px;">
+          <div style="margin-bottom:24px;">
             <div style="font-size:0.85rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Organizer</div>
             <div style="font-weight:700; color:#1e293b; font-size:1.2rem; display:flex; align-items:center; gap:8px;" id="epv-org">--</div>
+          </div>
+
+          <div id="epv-capacity-container" style="display:none; margin-bottom:32px;">
+            <div style="font-size:0.85rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Expected Participants</div>
+            <div style="font-weight:700; color:#1e293b; font-size:1.2rem; display:flex; align-items:center; gap:8px;" id="epv-capacity">--</div>
           </div>
 
           <div style="display:flex; flex-direction:column; gap:16px;">
@@ -7963,9 +7973,45 @@
       
       document.getElementById('epv-cat').textContent = ev.cat || 'Event';
       document.getElementById('epv-title').textContent = ev.name || 'Unknown Event';
-      document.getElementById('epv-date').textContent = ev.disp || '--';
+      
+      // Map Start Date & Start Time
+      const dateText = ev.disp + (ev.startTime ? ' @ ' + ev.startTime : '');
+      document.getElementById('epv-date').textContent = dateText || '--';
+
+      // Map End Date / Duration if different
+      let displayEndDate = '';
+      if (ev.endDate && ev.endDate !== ev.startDate) {
+        const ymdMatch = ev.endDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const dmyMatch = ev.endDate.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (ymdMatch) {
+          displayEndDate = `${ymdMatch[3]}/${ymdMatch[2]}/${ymdMatch[1]}`;
+        } else if (dmyMatch) {
+          displayEndDate = `${dmyMatch[1]}/${dmyMatch[2]}/${dmyMatch[3]}`;
+        } else {
+          displayEndDate = ev.endDate.replace(/-/g, '/');
+        }
+      }
+
+      const durContainer = document.getElementById('epv-duration-container');
+      if (displayEndDate) {
+        document.getElementById('epv-duration').textContent = `${ev.disp} to ${displayEndDate}${ev.startTime ? ' (' + ev.startTime + ')' : ''}`;
+        if (durContainer) durContainer.style.display = 'block';
+      } else {
+        if (durContainer) durContainer.style.display = 'none';
+      }
+
       document.getElementById('epv-venue').textContent = ev.venue || '--';
       document.getElementById('epv-org').textContent = ev.org || 'KNSDC';
+
+      // Map Expected Participants / capacity
+      const capContainer = document.getElementById('epv-capacity-container');
+      if (ev.capacity && ev.capacity > 0) {
+        document.getElementById('epv-capacity').textContent = ev.capacity;
+        if (capContainer) capContainer.style.display = 'block';
+      } else {
+        if (capContainer) capContainer.style.display = 'none';
+      }
+
       document.getElementById('epv-desc').textContent = ev.description || 'No description provided.';
       
       const schedCont = document.getElementById('epv-schedule-container');
