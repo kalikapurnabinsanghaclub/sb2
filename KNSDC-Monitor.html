@@ -3355,6 +3355,7 @@ function setRoundPresent(p, round, isPresent) {
 }
 
 let lastRenderedStateHash = '';
+let lastHydratedEventId = null; // Track which event was last loaded in hydrate(), to protect formFields from resetting on participant deletes
 function hydrate() {
   const s = syncEngine.getData();
   if (!s) return;
@@ -3459,20 +3460,31 @@ function hydrate() {
     switchStates = { ...switchStates, ...s.eventSwitches[activeEventId] };
   }
 
+  // ── Guard: only reload formFields when the active event actually changes ──
+  // Participant deletions / score updates call setData() which triggers hydrate().
+  // Without this guard, formFields would be wiped and the Form Builder would reset
+  // every time a participant is deleted, even though the event didn't change.
+  const eventDidChange = String(activeEventId) !== String(lastHydratedEventId);
+
   if (activeEventId && activeEv) {
     subjects = (activeEv.subjects && activeEv.subjects.length > 0) ? activeEv.subjects : (s.subjects || []).filter(sub => sub.eventId && String(sub.eventId) === String(activeEventId));
     categories = (activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (s.categories || []).filter(c => c.eventId && String(c.eventId) === String(activeEventId));
     venues = (activeEv.venues && activeEv.venues.length > 0) ? activeEv.venues : (s.venues || []).filter(v => v.eventId && String(v.eventId) === String(activeEventId));
-    if (s && s.eventFormFields && s.eventFormFields[activeEventId]) {
-      formFields = [...s.eventFormFields[activeEventId]];
-    } else {
-      formFields = (activeEv.formFields && activeEv.formFields.length > 0) ? activeEv.formFields : (s.formFields || []);
+    // Only reload formFields from state if the event changed OR formFields is currently empty
+    if (eventDidChange || !formFields || formFields.length === 0) {
+      if (s && s.eventFormFields && s.eventFormFields[activeEventId]) {
+        formFields = [...s.eventFormFields[activeEventId]];
+      } else {
+        formFields = (activeEv.formFields && activeEv.formFields.length > 0) ? activeEv.formFields : (s.formFields || []);
+      }
     }
   } else if (activeEventId) {
     subjects = (s.subjects || []).filter(sub => sub.eventId && String(sub.eventId) === String(activeEventId));
     categories = (s.categories || []).filter(c => c.eventId && String(c.eventId) === String(activeEventId));
     venues = (s.venues || []).filter(v => v.eventId && String(v.eventId) === String(activeEventId));
-    formFields = s.formFields || [];
+    if (eventDidChange || !formFields || formFields.length === 0) {
+      formFields = s.formFields || [];
+    }
   } else {
     subjects = [];
     categories = [];
@@ -3488,6 +3500,9 @@ function hydrate() {
       { type: 'number', label: 'Phone Number', required: true, placeholder: '98XXXXXXXX' }
     ];
   }
+
+  // Mark the current event as loaded so future hydrate() calls preserve formFields
+  lastHydratedEventId = activeEventId;
 
   const queueParts = participants.filter(p => p.stageStatus === 'queue' && String(p.eventId) === String(activeEventId));
   stageQueue = sortQueue(queueParts).map(p => p.id);
