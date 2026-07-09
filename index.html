@@ -3832,19 +3832,33 @@
             venues: eventVens
           };
         });
+        // Helper to parse dates formatted as dd-mm-yyyy or yyyy-mm-dd safely
+        function parseCustomDate(dateStr, timeStr = '23:59') {
+          if (!dateStr) return null;
+          let normalizedDate = dateStr;
+          // Check if format is dd-mm-yyyy
+          const ddmmyyyyRegex = /^(\d{2})[-/](\d{2})[-/](\d{4})$/;
+          const match = dateStr.match(ddmmyyyyRegex);
+          if (match) {
+            normalizedDate = `${match[3]}-${match[2]}-${match[1]}`; // Convert to yyyy-mm-dd
+          }
+          const parsed = new Date(normalizedDate.replace(/-/g, '/') + ' ' + timeStr + ':00');
+          return isNaN(parsed.getTime()) ? null : parsed;
+        }
+
         const activeEvents = mapped.filter(ev => {
           const ed = ev.endDate || ev.startDate || '';
           const et = ev.endTime || '23:59';
           if (!ed) return true;
-          const evEndObj = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
-          return isNaN(evEndObj.getTime()) ? true : evEndObj >= today;
+          const evEndObj = parseCustomDate(ed, et);
+          return evEndObj === null ? true : evEndObj >= today;
         });
         const pastEvents = mapped.filter(ev => {
           const ed = ev.endDate || ev.startDate || '';
           const et = ev.endTime || '23:59';
           if (!ed) return false;
-          const evEndObj = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
-          return isNaN(evEndObj.getTime()) ? false : evEndObj < today;
+          const evEndObj = parseCustomDate(ed, et);
+          return evEndObj === null ? false : evEndObj < today;
         });
         if (activeEvents.length > 0) {
           EVENTS = activeEvents;
@@ -4066,17 +4080,27 @@
               venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
             };
           });
-        } else if (rawEvents.length > 0) {
-          // EVENTS is empty (fetchEventsDirectly hasn't resolved yet) — populate from state.events as fallback
-          // This prevents blank events on reload when syncEngine loads before direct fetch
+          // Helper to parse dates formatted as dd-mm-yyyy or yyyy-mm-dd safely
+          const parseCustomDateLocal = (dateStr, timeStr = '23:59') => {
+            if (!dateStr) return null;
+            let normalizedDate = dateStr;
+            const ddmmyyyyRegex = /^(\d{2})[-/](\d{2})[-/](\d{4})$/;
+            const match = dateStr.match(ddmmyyyyRegex);
+            if (match) {
+              normalizedDate = `${match[3]}-${match[2]}-${match[1]}`;
+            }
+            const parsed = new Date(normalizedDate.replace(/-/g, '/') + ' ' + timeStr + ':00');
+            return isNaN(parsed.getTime()) ? null : parsed;
+          };
+
           const today2 = new Date();
           EVENTS = rawEvents
             .filter(ev => {
               const ed = ev.endDate || ev.startDate || ev.date || '';
               const et = ev.endTime || '23:59';
               if (!ed) return true;
-              const evEnd = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
-              return isNaN(evEnd.getTime()) ? true : evEnd >= today2;
+              const evEnd = parseCustomDateLocal(ed, et);
+              return evEnd === null ? true : evEnd >= today2;
             })
             .map(ev => {
               const dictSwitches = (state.eventSwitches && state.eventSwitches[ev.id]) ? state.eventSwitches[ev.id] : {};
