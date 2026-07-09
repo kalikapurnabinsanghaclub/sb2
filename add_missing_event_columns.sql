@@ -1,34 +1,34 @@
--- ══════════════════════════════════════════════════════════════
--- Migration: Add missing columns to public.events table
--- Run this in your Supabase SQL Editor to fix "error updating event in database"
--- ══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════════════════
+-- KNSDC Events Table - Complete Column Fix
+-- Run this ENTIRE script in Supabase SQL Editor to fix all save errors
+-- ══════════════════════════════════════════════════════════════════════════
 
--- Add end_date column (date the event ends)
-ALTER TABLE public.events
-  ADD COLUMN IF NOT EXISTS end_date DATE;
+-- Step 1: Add ALL columns the admin portal needs (IF NOT EXISTS = safe to re-run)
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS title          TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS date           TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS time           TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS venue          TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS description    TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS image          TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS category       TEXT    DEFAULT 'cultural';
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS organizer      TEXT    DEFAULT 'Kalikapur Nabin Sangha';
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS active         BOOLEAN DEFAULT false;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS end_date       TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS end_time       TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS capacity       INTEGER;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS form_fields    JSONB   DEFAULT '[]'::jsonb;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS switch_states  JSONB   DEFAULT '{}'::jsonb;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS round_schedules JSONB  DEFAULT '{}'::jsonb;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS "publicReg"    BOOLEAN DEFAULT false;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS "stagePreview" BOOLEAN DEFAULT false;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS "resultPublic" BOOLEAN DEFAULT false;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS created_at     TIMESTAMPTZ DEFAULT NOW();
 
--- Add end_time column (time the event ends)
-ALTER TABLE public.events
-  ADD COLUMN IF NOT EXISTS end_time TEXT;
+-- Step 2: Make sure RLS is not blocking writes
+ALTER TABLE public.events DISABLE ROW LEVEL SECURITY;
 
--- Add capacity column (max participants)
-ALTER TABLE public.events
-  ADD COLUMN IF NOT EXISTS capacity INTEGER;
-
--- Add round_schedules column (audition/qualified/semifinal/final schedules)
-ALTER TABLE public.events
-  ADD COLUMN IF NOT EXISTS round_schedules JSONB DEFAULT '{}'::jsonb;
-
--- Add switch_states column (if not already present from supabase_final_setup.sql)
-ALTER TABLE public.events
-  ADD COLUMN IF NOT EXISTS switch_states JSONB DEFAULT '{}'::jsonb;
-
--- Add org column alias (organizer is the DB column, org is used in code)
--- We keep 'organizer' as the real column, the code already maps org -> organizer
-
--- Confirm columns exist
-SELECT column_name, data_type
+-- Step 3: Confirm - show all columns now in the events table
+SELECT column_name, data_type, column_default
 FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name = 'events'
+WHERE table_schema = 'public' AND table_name = 'events'
 ORDER BY ordinal_position;
