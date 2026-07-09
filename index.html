@@ -4025,15 +4025,34 @@
         
         // Merge lists, prioritizing rawEvents (master records with switchStates) over simplified lists
         const allEventSource = [...rawUpcoming, ...rawPast, ...rawEvents];
-        
-        // Apply real-time dictionary toggles to the existing EVENTS array (fetched via fetchEventsDirectly)
+
+        // Build a lookup map of fresh event data from state.events (from syncEngine/Supabase)
+        const stateEventsMap = {};
+        rawEvents.forEach(ev => { stateEventsMap[String(ev.id)] = ev; });
+
+        // If EVENTS already loaded (via fetchEventsDirectly), merge ALL updated fields from state.events
+        // This ensures name, date, banner, description etc. are refreshed on every sync tick
         if (EVENTS && EVENTS.length > 0) {
           EVENTS = EVENTS.map(ev => {
+            const freshData = stateEventsMap[String(ev.id)] || {};
             const dictSwitches = (state.eventSwitches && state.eventSwitches[ev.id]) ? state.eventSwitches[ev.id] : {};
-            const merged = { ...ev.switchStates, ...dictSwitches };
+            const merged = { ...ev.switchStates, ...(freshData.switchStates || {}), ...dictSwitches };
             return {
               ...ev,
-              formFields: (state.eventFormFields && state.eventFormFields[ev.id] && state.eventFormFields[ev.id].length > 0) ? state.eventFormFields[ev.id] : (ev.formFields || null),
+              // Merge core fields from fresh DB data so admin updates appear immediately
+              name: freshData.name || ev.name,
+              date: freshData.startDate || freshData.date || ev.date,
+              startDate: freshData.startDate || freshData.date || ev.startDate,
+              startTime: freshData.startTime || ev.startTime,
+              endDate: freshData.endDate || ev.endDate,
+              endTime: freshData.endTime || ev.endTime,
+              disp: freshData.startDate || freshData.date || ev.disp,
+              cat: freshData.type || freshData.cat || ev.cat,
+              venue: freshData.venue || ev.venue,
+              banner: freshData.banner || ev.banner,
+              description: freshData.description || ev.description,
+              org: freshData.org || ev.org,
+              formFields: (state.eventFormFields && state.eventFormFields[ev.id] && state.eventFormFields[ev.id].length > 0) ? state.eventFormFields[ev.id] : (freshData.formFields || ev.formFields || null),
               switchStates: {
                 publicReg: merged.publicReg !== false,
                 stagePreview: merged.stagePreview !== false,
@@ -4047,6 +4066,54 @@
               venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
             };
           });
+        } else if (rawEvents.length > 0) {
+          // EVENTS is empty (fetchEventsDirectly hasn't resolved yet) — populate from state.events as fallback
+          // This prevents blank events on reload when syncEngine loads before direct fetch
+          const today2 = new Date();
+          EVENTS = rawEvents
+            .filter(ev => {
+              const ed = ev.endDate || ev.startDate || ev.date || '';
+              const et = ev.endTime || '23:59';
+              if (!ed) return true;
+              const evEnd = new Date(ed.replace(/-/g, '/') + ' ' + et + ':00');
+              return isNaN(evEnd.getTime()) ? true : evEnd >= today2;
+            })
+            .map(ev => {
+              const dictSwitches = (state.eventSwitches && state.eventSwitches[ev.id]) ? state.eventSwitches[ev.id] : {};
+              const merged = { ...(ev.switchStates || {}), ...dictSwitches };
+              const evType = ev.type || ev.cat || 'General';
+              return {
+                id: ev.id,
+                name: ev.name || 'Unknown Event',
+                date: ev.startDate || ev.date || '',
+                startDate: ev.startDate || ev.date || '',
+                startTime: ev.startTime || ev.time || '',
+                endDate: ev.endDate || '',
+                endTime: ev.endTime || '',
+                disp: ev.startDate || ev.date || '',
+                cat: evType,
+                venue: ev.venue || 'Kalikapur Community Hall',
+                banner: ev.banner || null,
+                description: ev.description || '',
+                org: ev.org || 'KNSDC',
+                roundSchedules: ev.roundSchedules || {},
+                staff: ev.staff || [],
+                formFields: (state.eventFormFields && state.eventFormFields[ev.id] && state.eventFormFields[ev.id].length > 0) ? state.eventFormFields[ev.id] : (ev.formFields || null),
+                switchStates: {
+                  publicReg: merged.publicReg !== false,
+                  stagePreview: merged.stagePreview !== false,
+                  resultPublic: merged.resultPublic !== false,
+                  promoPublic: merged.promoPublic !== false,
+                  downloadPublic: merged.downloadPublic !== false,
+                  publicVoting: merged.publicVoting === true,
+                  ...merged
+                },
+                icon: evType === 'Cultural' ? '💃' : evType === 'Sports' ? '⚽' : '📅',
+                col: evType === 'Cultural' ? '#E91E8C' : evType === 'Sports' ? '#0ea5e9' : '#8b5cf6',
+                categories: (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
+                venues: (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
+              };
+            });
         }
 
         renderEvents();
