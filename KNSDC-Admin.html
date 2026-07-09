@@ -1537,7 +1537,7 @@
       <div class="fg"><label class="fl">Expected Participants</label><input type="number" id="cev-capacity" placeholder="500"/></div>
       <div class="fg">
         <label class="fl">Upload Banner Image</label>
-        <input type="file" id="cev-banner-file" accept="image/*" onchange="handleBannerUpload(event, 'cev-banner')"/>
+        <input type="file" id="cev-banner-file" accept="image/*" multiple onchange="handleBannerUpload(event, 'cev-banner')"/>
         <input type="hidden" id="cev-banner"/>
         <div style="font-size:10px;color:var(--text-muted);margin-top:4px;font-family:var(--fm)">Tip: Upload an image file to preview as the banner</div>
       </div>
@@ -1906,7 +1906,7 @@
       <div class="fg"><label class="fl">Expected Participants</label><input type="number" id="edit-cev-capacity" placeholder="500"/></div>
       <div class="fg">
         <label class="fl">Upload Banner Image</label>
-        <input type="file" id="edit-cev-banner-file" accept="image/*" onchange="handleBannerUpload(event, 'edit-cev-banner')"/>
+        <input type="file" id="edit-cev-banner-file" accept="image/*" multiple onchange="handleBannerUpload(event, 'edit-cev-banner')"/>
         <input type="hidden" id="edit-cev-banner"/>
         <div id="edit-ev-banner-preview" style="width:100%;height:100px;border-radius:10px;margin-top:8px;overflow:hidden;display:none;border:1px solid var(--border)"><img id="edit-ev-banner-img" src="" alt="" style="width:100%;height:100%;object-fit:cover"/></div>
       </div>
@@ -1936,35 +1936,137 @@
 <script>
 // ── Banner Upload & Preview ──
 window.handleBannerUpload = async (evt, hiddenId) => {
-  const file = evt.target.files[0];
-  if (!file) { document.getElementById(hiddenId).value = ''; if (hiddenId === 'cev-banner') previewEventBanner(); return; }
-  if (window.syncEngine && window.syncEngine.uploadFile) {
-    toast('📤 Uploading banner...');
-    const url = await window.syncEngine.uploadFile(file);
-    if (url) {
-      document.getElementById(hiddenId).value = url;
-      toast('✅ Banner uploaded!');
-      if (hiddenId === 'cev-banner') previewEventBanner();
-      if (hiddenId === 'edit-cev-banner') { const p=document.getElementById('edit-ev-banner-preview'),i=document.getElementById('edit-ev-banner-img'); if(p&&i){i.src=url;p.style.display='block';} }
-      return;
+  const files = evt.target.files;
+  if (!files || files.length === 0) {
+    document.getElementById(hiddenId).value = '';
+    if (hiddenId === 'cev-banner') previewEventBanner();
+    if (hiddenId === 'edit-cev-banner') previewEditEventBanner();
+    return;
+  }
+  
+  toast(`📤 Uploading ${files.length} banner(s)...`);
+  const urls = [];
+  
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (window.syncEngine && window.syncEngine.uploadFile) {
+      const url = await window.syncEngine.uploadFile(file);
+      if (url) {
+        urls.push(url);
+      }
+    } else {
+      const p = new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          resolve(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      });
+      urls.push(await p);
     }
   }
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    document.getElementById(hiddenId).value = e.target.result;
+
+  if (urls.length > 0) {
+    const finalUrls = urls.join(',');
+    document.getElementById(hiddenId).value = finalUrls;
+    toast(`✅ ${urls.length} banner(s) uploaded!`);
     if (hiddenId === 'cev-banner') previewEventBanner();
-    if (hiddenId === 'edit-cev-banner') { const p=document.getElementById('edit-ev-banner-preview'),i=document.getElementById('edit-ev-banner-img'); if(p&&i){i.src=e.target.result;p.style.display='block';} }
-  };
-  reader.readAsDataURL(file);
+    if (hiddenId === 'edit-cev-banner') previewEditEventBanner();
+  }
 };
+
 window.previewEventBanner = () => {
-  const url = document.getElementById('cev-banner').value.trim();
+  const urlVal = document.getElementById('cev-banner').value.trim();
   const name = document.getElementById('cev-name').value.trim();
   const preview = document.getElementById('ev-banner-preview');
   const img = document.getElementById('ev-banner-img');
   const ph = document.getElementById('ev-banner-placeholder');
-  if (url) { img.src = url; img.style.display = 'block'; ph.style.display = 'none'; }
-  else { img.style.display = 'none'; ph.style.display = 'block'; ph.innerHTML = name ? '<div style="font-family:var(--fh);font-size:22px;font-weight:800;color:#fff;letter-spacing:1px">'+name.toUpperCase()+'</div>' : '<div style="font-size:36px">🎪</div><div style="font-size:12px;font-family:var(--fm);letter-spacing:2px;margin-top:6px;color:rgba(255,255,255,0.7)">EVENT BANNER</div>'; }
+  
+  const existingGrid = document.getElementById('ev-banner-grid-preview');
+  if (existingGrid) existingGrid.remove();
+  
+  if (urlVal) {
+    const urls = urlVal.split(',').filter(Boolean);
+    img.style.display = 'none';
+    ph.style.display = 'none';
+    const grid = document.createElement('div');
+    grid.id = 'ev-banner-grid-preview';
+    grid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:#000;z-index:5;overflow-y:auto;';
+    urls.forEach((url, idx) => {
+      const container = document.createElement('div');
+      container.style.cssText = 'position:relative;width:60px;height:60px;border-radius:4px;overflow:hidden;border:1px solid rgba(255,255,255,0.2);';
+      
+      const itemImg = document.createElement('img');
+      itemImg.src = url;
+      itemImg.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      
+      const delBtn = document.createElement('button');
+      delBtn.innerHTML = '&times;';
+      delBtn.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(239,68,68,0.9);color:white;border:none;border-radius:50%;width:16px;height:16px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:bold;line-height:1;';
+      delBtn.type = 'button';
+      delBtn.onclick = (e) => {
+        e.preventDefault();
+        const updatedUrls = urls.filter((_, i) => i !== idx);
+        document.getElementById('cev-banner').value = updatedUrls.join(',');
+        previewEventBanner();
+      };
+      
+      container.appendChild(itemImg);
+      container.appendChild(delBtn);
+      grid.appendChild(container);
+    });
+    preview.appendChild(grid);
+  } else {
+    img.style.display = 'none';
+    ph.style.display = 'block';
+    ph.innerHTML = name ? '<div style="font-family:var(--fh);font-size:22px;font-weight:800;color:#fff;letter-spacing:1px">'+name.toUpperCase()+'</div>' : '<div style="font-size:36px">🎪</div><div style="font-size:12px;font-family:var(--fm);letter-spacing:2px;margin-top:6px;color:rgba(255,255,255,0.7)">EVENT BANNER</div>';
+  }
+};
+
+window.previewEditEventBanner = () => {
+  const urlVal = document.getElementById('edit-cev-banner').value.trim();
+  const preview = document.getElementById('edit-ev-banner-preview');
+  const img = document.getElementById('edit-ev-banner-img');
+  
+  const existingGrid = document.getElementById('edit-ev-banner-grid-preview');
+  if (existingGrid) existingGrid.remove();
+  
+  if (urlVal) {
+    const urls = urlVal.split(',').filter(Boolean);
+    preview.style.display = 'block';
+    img.style.display = 'none';
+    const grid = document.createElement('div');
+    grid.id = 'edit-ev-banner-grid-preview';
+    grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:rgba(0,0,0,0.02);border-radius:8px;border:1px dashed var(--border);margin-top:8px;';
+    urls.forEach((url, idx) => {
+      const container = document.createElement('div');
+      container.style.cssText = 'position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 4px rgba(0,0,0,0.05);';
+      
+      const itemImg = document.createElement('img');
+      itemImg.src = url;
+      itemImg.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      
+      const delBtn = document.createElement('button');
+      delBtn.innerHTML = '&times;';
+      delBtn.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(239,68,68,0.9);color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:bold;line-height:1;box-shadow:0 1px 3px rgba(0,0,0,0.3);';
+      delBtn.title = 'Remove banner';
+      delBtn.type = 'button';
+      delBtn.onclick = (e) => {
+        e.preventDefault();
+        const updatedUrls = urls.filter((_, i) => i !== idx);
+        document.getElementById('edit-cev-banner').value = updatedUrls.join(',');
+        previewEditEventBanner();
+      };
+      
+      container.appendChild(itemImg);
+      container.appendChild(delBtn);
+      grid.appendChild(container);
+    });
+    preview.appendChild(grid);
+  } else {
+    img.src = '';
+    preview.style.display = 'none';
+  }
 };
 
 window.renderEventsPage = (state) => {
@@ -2647,6 +2749,7 @@ window.editEvent = (id) => {
     document.getElementById('edit-cev-endtime').value = ev.endTime || '';
     document.getElementById('edit-cev-capacity').value = ev.capacity || '';
     document.getElementById('edit-cev-banner').value = ev.banner || '';
+    if (typeof previewEditEventBanner === 'function') previewEditEventBanner();
     document.getElementById('edit-cev-desc').value = ev.description || '';
     
     // Set round schedules
