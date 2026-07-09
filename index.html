@@ -3741,8 +3741,19 @@
           "https://mmbtfbxxnprtzpzdklot.supabase.co",
           "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA"
         );
-        const { data, error } = await client.from('events').select('*').order('start_date', { ascending: true });
-        if (error || !data || data.length === 0) return;
+        const { data, error } = await client.from('events').select('*');
+        if (error) {
+          console.error('[DirectFetch] Error loading events:', error);
+          return;
+        }
+        if (!data || data.length === 0) return;
+        
+        // Sort data by date (or start_date if it ever exists)
+        data.sort((a, b) => {
+          const dateA = new Date(a.date || a.start_date || 0);
+          const dateB = new Date(b.date || b.start_date || 0);
+          return dateA - dateB;
+        });
         
         let catData = [];
         let venData = [];
@@ -3790,26 +3801,33 @@
               dates: Array.isArray(v.dates) ? v.dates : (v.dates ? [v.dates] : [])
             }));
 
+          const eventDate = dbEv.start_date || dbEv.date || '';
+          const eventTime = dbEv.start_time || dbEv.time || '';
+          const eventName = dbEv.name || dbEv.title || 'Unknown Event';
+          const eventBanner = dbEv.banner || dbEv.image || null;
+          const eventType = dbEv.type || dbEv.category || 'General';
+          const eventOrg = dbEv.org || dbEv.organizer || 'KNSDC';
+
           return {
             id: dbEv.id,
-            name: dbEv.name || 'Unknown Event',
-            date: dbEv.start_date || '',
-            startDate: dbEv.start_date || '',
-            startTime: dbEv.start_time || '',
-            endDate: dbEv.end_date || '',
+            name: eventName,
+            date: eventDate,
+            startDate: eventDate,
+            startTime: eventTime,
+            endDate: dbEv.end_date || eventDate || '',
             endTime: dbEv.end_time || '',
-            disp: dbEv.start_date || '',
-            cat: dbEv.type || 'General',
+            disp: eventDate,
+            cat: eventType,
             venue: dbEv.venue || 'Kalikapur Community Hall',
-            banner: dbEv.banner || null,
+            banner: eventBanner,
             description: dbEv.description || '',
-            org: dbEv.org || 'KNSDC',
+            org: eventOrg,
             roundSchedules: dbEv.round_schedules || {},
             staff: dbEv.staff || [],
             formFields: (syncState.eventFormFields && syncState.eventFormFields[dbEv.id] && syncState.eventFormFields[dbEv.id].length > 0) ? syncState.eventFormFields[dbEv.id] : (dbEv.form_fields || null),
             switchStates: evSwitches,
-            icon: dbEv.type === 'Cultural' ? '\u{1F483}' : dbEv.type === 'Sports' ? '\u26BD' : '\uD83D\uDCC5',
-            col: dbEv.type === 'Cultural' ? '#E91E8C' : dbEv.type === 'Sports' ? '#0ea5e9' : '#8b5cf6',
+            icon: eventType === 'Cultural' ? '💃' : eventType === 'Sports' ? '⚽' : '📅',
+            col: eventType === 'Cultural' ? '#E91E8C' : eventType === 'Sports' ? '#0ea5e9' : '#8b5cf6',
             categories: eventCats,
             venues: eventVens
           };
