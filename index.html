@@ -3813,6 +3813,15 @@
           if (vData) venData = vData;
         } catch(e) { console.error('Error loading venues directly:', e); }
 
+        let judgeData = [];
+        try {
+          const { data: jData } = await client
+            .from('judge_agreements')
+            .select('id, name, spec, event_id, status, submitted, photo_url')
+            .or('status.eq.confirmed,status.eq.verified,submitted.eq.true');
+          if (jData) judgeData = jData;
+        } catch(e) { console.error('Error loading judge agreements directly:', e); }
+
         const today = new Date();
         const syncState = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
         const mapped = data.map(dbEv => {
@@ -3857,6 +3866,16 @@
               eventId: v.event_id,
               capacity: Number(v.capacity) || 0,
               dates: Array.isArray(v.dates) ? v.dates : (v.dates ? [v.dates] : [])
+            }));
+
+          const eventJudges = judgeData
+            .filter(j => String(j.event_id) === String(dbEv.id))
+            .map(j => ({
+              id: Number(j.id),
+              name: j.name,
+              spec: j.spec,
+              photoUrl: j.photo_url,
+              eventId: j.event_id
             }));
 
           const eventDate = dbEv.start_date || dbEv.date || '';
@@ -3908,7 +3927,8 @@
             icon: eventType === 'Cultural' ? '💃' : eventType === 'Sports' ? '⚽' : '📅',
             col: eventType === 'Cultural' ? '#E91E8C' : eventType === 'Sports' ? '#0ea5e9' : '#8b5cf6',
             categories: eventCats,
-            venues: eventVens
+            venues: eventVens,
+            judges: eventJudges
           };
         });
         // Helper to parse dates formatted as dd-mm-yyyy or yyyy-mm-dd safely
@@ -8221,9 +8241,9 @@
       
       const state = syncEngine.getData();
       
-      // judgeAgreements is stripped from public sync for security. 
-      // We rely on state.judges which is populated when judges log into the Judge Portal.
-      const eventJudges = (state.judges || []).filter(j => String(j.eventId) === String(ev.id));
+      const eventJudges = ev.judges && ev.judges.length > 0 
+        ? ev.judges 
+        : (state.judges || []).filter(j => String(j.eventId) === String(ev.id));
       
       const judgesCont = document.getElementById('epv-judges-container');
       const judgesBody = document.getElementById('epv-judges');
