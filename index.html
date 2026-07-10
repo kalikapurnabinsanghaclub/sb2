@@ -3827,14 +3827,26 @@
           
           const eventCats = catData
             .filter(c => String(c.event_id) === String(dbEv.id))
-            .map(c => ({
-              id: Number(c.id),
-              name: c.name,
-              color: c.color,
-              ageMin: Number(c.age_min),
-              ageMax: Number(c.age_max),
-              eventId: c.event_id
-            }));
+            .map(c => {
+              let colorVal = c.color || 'b-amber';
+              let prizesVal = [];
+              if (colorVal && colorVal.startsWith('{') && colorVal.endsWith('}')) {
+                try {
+                  const parsed = JSON.parse(colorVal);
+                  colorVal = parsed.color || 'b-amber';
+                  prizesVal = parsed.prizes || [];
+                } catch(e) {}
+              }
+              return {
+                id: Number(c.id),
+                name: c.name,
+                color: colorVal,
+                prizes: prizesVal,
+                ageMin: Number(c.age_min),
+                ageMax: Number(c.age_max),
+                eventId: c.event_id
+              };
+            });
 
           const eventVens = venData
             .filter(v => String(v.event_id) === String(dbEv.id))
@@ -3867,6 +3879,12 @@
             }
           }
 
+          let rsObj = dbEv.round_schedules || {};
+          if (typeof rsObj === 'string') {
+            try { rsObj = JSON.parse(rsObj); } catch(e) { rsObj = {}; }
+          }
+          const otherPrizes = rsObj.otherPrizes || [];
+
           return {
             id: dbEv.id,
             name: eventName,
@@ -3881,7 +3899,8 @@
             banner: eventBanner,
             description: dbEv.description || '',
             org: eventOrg,
-            roundSchedules: dbEv.round_schedules || {},
+            roundSchedules: rsObj,
+            otherPrizes: otherPrizes,
             staff: dbEv.staff || [],
             formFields: (syncState.eventFormFields && syncState.eventFormFields[dbEv.id] && syncState.eventFormFields[dbEv.id].length > 0) ? syncState.eventFormFields[dbEv.id] : (dbEv.form_fields || null),
             capacity: dbEv.capacity || 0,
@@ -4152,7 +4171,8 @@
                 publicVoting: merged.publicVoting === true,
                 ...merged
               },
-              categories: (ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
+              categories: (freshData.categories && freshData.categories.length > 0) ? freshData.categories : ((ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id))),
+              otherPrizes: freshData.otherPrizes || ev.otherPrizes || [],
               venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
             };
           });
