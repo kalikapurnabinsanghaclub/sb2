@@ -4207,7 +4207,8 @@
               },
               categories: (freshData.categories && freshData.categories.length > 0) ? freshData.categories : ((ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id))),
               otherPrizes: freshData.otherPrizes || ev.otherPrizes || [],
-              venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
+              venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id)),
+              judges: ev.judges || (state.judges || []).filter(j => !j.eventId || String(j.eventId) === String(ev.id))
             };
           });
           // Helper to parse dates formatted as dd-mm-yyyy or yyyy-mm-dd safely
@@ -4280,7 +4281,8 @@
                 icon: evType === 'Cultural' ? '💃' : evType === 'Sports' ? '⚽' : '📅',
                 col: evType === 'Cultural' ? '#E91E8C' : evType === 'Sports' ? '#0ea5e9' : '#8b5cf6',
                 categories: (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
-                venues: (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id))
+                venues: (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id)),
+                judges: ev.judges || (state.judges || []).filter(j => !j.eventId || String(j.eventId) === String(ev.id))
               };
             });
         }
@@ -8281,6 +8283,47 @@
         judgesCont.style.display = 'block';
       } else {
         judgesCont.style.display = 'none';
+        
+        // Asynchronously fetch judges from Supabase if not loaded yet
+        if (window.supabase) {
+          const client = window.supabase.createClient(
+            "https://mmbtfbxxnprtzpzdklot.supabase.co",
+            "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA"
+          );
+          client.from('judge_agreements')
+            .select('id, name, spec, event_id, status, submitted, photo_url')
+            .or('status.eq.confirmed,status.eq.verified,submitted.eq.true')
+            .eq('event_id', ev.id)
+            .then(({ data, error }) => {
+              if (data && data.length > 0) {
+                const fetchedJudges = data.map(j => ({
+                  id: Number(j.id),
+                  name: j.name,
+                  spec: j.spec,
+                  photoUrl: j.photo_url,
+                  eventId: j.event_id
+                }));
+                ev.judges = fetchedJudges; // Cache on current event object
+                
+                let jHtml = '';
+                fetchedJudges.forEach(j => {
+                   const name = j.name || 'Unknown Judge';
+                   const spec = j.spec || j.specialization || j.category || 'Judge';
+                   const photo = j.photoUrl || j.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7B2D8B&color=fff&size=150`;
+                   
+                   jHtml += `
+                     <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:20px; text-align:center; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
+                       <img src="${photo}" alt="${name}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; margin-bottom:12px; border:3px solid #fff; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+                       <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px;">${name}</div>
+                       <div style="font-size:0.85rem; color:#E91E8C; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">${spec}</div>
+                     </div>
+                   `;
+                });
+                judgesBody.innerHTML = jHtml;
+                judgesCont.style.display = 'block';
+              }
+            });
+        }
       }
       
       // Public Favorites Logic
