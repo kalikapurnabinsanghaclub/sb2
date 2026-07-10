@@ -3981,10 +3981,24 @@
           }));
           if (typeof renderPrevEvents === 'function') renderPrevEvents();
         }
+
+        // Refresh open event detail page if currently viewed to update judges/prizes dynamically
+        const params = new URLSearchParams(window.location.search);
+        const eventId = params.get('event');
+        if (eventId && typeof showEventDetail === 'function') {
+          showEventDetail(eventId);
+        }
+
         if (!window._eventsRealtimeSubscribed) {
           window._eventsRealtimeSubscribed = true;
           client.channel('public:events-index')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+              fetchEventsDirectly();
+            })
+            .subscribe();
+
+          client.channel('public:judges-index')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'judge_agreements' }, () => {
               fetchEventsDirectly();
             })
             .subscribe();
