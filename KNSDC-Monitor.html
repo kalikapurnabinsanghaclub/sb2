@@ -7076,10 +7076,22 @@ function renderVenueParticipants(){
     if (audioItems.length > 0) {
       const audioStateHash = JSON.stringify(audioItems);
       if (audioContainer.dataset.audioState !== audioStateHash) {
-        audioContainer.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px; width:100%;">${audioItems.map(item =>
-          `<div style="display:flex; flex-direction:column; gap:2px;">
-            <span style="font-size:11px; color:#b0b0b0; font-weight:600; letter-spacing:0.3px;">🎵 Song ${item.num}: ${item.label}</span>
-            <audio controls controlsList="nodownload" src="${item.url}" style="height:32px; max-width:220px; outline:none; border-radius:20px;"></audio>
+        audioContainer.innerHTML = `<style>
+          @keyframes soundBounce { 0% { height: 5px; } 100% { height: 100%; } }
+          .sound-wave-active .sound-wave-bar { animation: soundBounce 0.4s infinite alternate ease-in-out; }
+        </style>
+        <div style="display:flex; flex-direction:column; gap:12px; width:100%;">${audioItems.map((item, idx) =>
+          `<div style="display:flex; flex-direction:column; gap:4px; background:rgba(0,0,0,0.4); padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; color:#b0b0b0; font-weight:600; letter-spacing:0.3px;">🎵 ${item.label}</span>
+              <span style="font-size:9px; color:#ec4899; font-weight:800; text-transform:uppercase;">Remote Enabled</span>
+            </div>
+            
+            <div id="monitor-sound-wave-${idx}" style="display:flex; align-items:flex-end; gap:3px; height:30px; margin:4px 0; opacity: 0.2; transition:opacity 0.3s">
+              ${Array.from({length: 30}).map((_, i) => `<div class="sound-wave-bar" style="animation-delay:-${Math.random()}s; height:5px; width:4px; background:linear-gradient(180deg, hsl(${i*12}, 100%, 60%) 0%, hsl(${i*12+30}, 100%, 50%) 100%); border-radius:4px; box-shadow:0 0 8px hsla(${i*12}, 100%, 50%, 0.6); transform-origin:bottom;"></div>`).join('')}
+            </div>
+
+            <audio id="monitor-audio-${item.url.replace(/[^a-zA-Z0-9]/g, '')}" controls controlsList="nodownload" src="${item.url}" style="height:32px; max-width:100%; outline:none; border-radius:20px;"></audio>
           </div>`
         ).join('')}</div>`;
         audioContainer.dataset.audioState = audioStateHash;
@@ -11240,6 +11252,49 @@ syncEngine.subscribe(state => {
       window.stopDanceTimeout = setTimeout(() => {
         dismissStopDanceEarly();
       }, 10000);
+    }
+  }
+});
+
+// Remote Audio Player Subscriber
+let lastRemoteAudioCommandTime = 0;
+syncEngine.subscribe(state => {
+  if (!state || !state.remoteAudioCommand) return;
+  const cmd = state.remoteAudioCommand;
+  
+  if (cmd.timestamp && cmd.timestamp !== lastRemoteAudioCommandTime) {
+    lastRemoteAudioCommandTime = cmd.timestamp;
+    
+    // Ignore stale commands
+    if (Date.now() - cmd.timestamp > 10000) return;
+
+    const audioId = "monitor-audio-" + cmd.url.replace(/[^a-zA-Z0-9]/g, '');
+    const audioEl = document.getElementById(audioId);
+    
+    if (audioEl) {
+      // Find the visualizer inside the same container
+      const waveEl = audioEl.parentElement.querySelector('[id^="monitor-sound-wave-"]');
+      
+      if (cmd.action === 'play') {
+        audioEl.currentTime = cmd.time;
+        const playPromise = audioEl.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(e => console.error("Monitor playback prevented", e));
+        }
+        if (waveEl) {
+          waveEl.classList.add('sound-wave-active');
+          waveEl.style.opacity = '1';
+        }
+      } else if (cmd.action === 'pause') {
+        audioEl.pause();
+        audioEl.currentTime = cmd.time;
+        if (waveEl) {
+          waveEl.classList.remove('sound-wave-active');
+          waveEl.style.opacity = '0.2';
+        }
+      } else if (cmd.action === 'seek') {
+        audioEl.currentTime = cmd.time;
+      }
     }
   }
 });
