@@ -7063,14 +7063,25 @@ function renderVenueParticipants(){
   const audioContainer = document.getElementById('venue-onstage-audio-container');
   if (audioContainer) {
     const audioItems = [];
-    if (onStage && onStage.formAnswers && typeof formFields !== 'undefined') {
-      const audioFields = formFields.filter(f => f.type === 'audio_link_or_file' || f.type === 'audio');
-      let songNum = 0;
-      for (const f of audioFields) {
-        if (onStage.formAnswers[f.label]) {
-          songNum++;
-          audioItems.push({ url: onStage.formAnswers[f.label], label: f.label, num: songNum });
+    if (onStage && onStage.formAnswers) {
+      if (typeof formFields !== 'undefined') {
+        const audioFields = formFields.filter(f => f.type === 'audio_link_or_file' || f.type === 'audio');
+        let songNum = 0;
+        for (const f of audioFields) {
+          if (onStage.formAnswers[f.label]) {
+            songNum++;
+            audioItems.push({ url: onStage.formAnswers[f.label], label: f.label, num: songNum });
+          }
         }
+      }
+
+      // Fallback: If formFields isn't available but they have a URL with /storage/.../ and .mp3/.m4a/.wav
+      if (audioItems.length === 0) {
+        Object.entries(onStage.formAnswers).forEach(([k, v]) => {
+          if (typeof v === 'string' && v.includes('/storage/') && (v.toLowerCase().endsWith('.mp3') || v.toLowerCase().endsWith('.wav') || v.toLowerCase().endsWith('.m4a'))) {
+            audioItems.push({ label: k, url: v });
+          }
+        });
       }
     }
     if (audioItems.length > 0) {
