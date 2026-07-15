@@ -7101,8 +7101,30 @@ function renderVenueParticipants(){
             <div id="monitor-sound-wave-${idx}" style="display:flex; align-items:flex-end; gap:3px; height:30px; margin:4px 0; opacity: 0.2; transition:opacity 0.3s">
               ${Array.from({length: 30}).map((_, i) => `<div class="sound-wave-bar" style="animation-delay:-${Math.random()}s; height:5px; width:4px; background:linear-gradient(180deg, hsl(${i*12}, 100%, 60%) 0%, hsl(${i*12+30}, 100%, 50%) 100%); border-radius:4px; box-shadow:0 0 8px hsla(${i*12}, 100%, 50%, 0.6); transform-origin:bottom;"></div>`).join('')}
             </div>
+            <!-- Custom Audio Player Layout -->
+            <div style="display:flex; align-items:center; gap:12px;">
+              <!-- Hidden MUTED audio element -->
+              <audio id="monitor-audio-${idx}" src="${item.url}" style="display:none;" ontimeupdate="updateCustomAudioUI('monitor', ${idx})" onloadedmetadata="updateCustomAudioUI('monitor', ${idx})"></audio>
+              
+              <!-- Custom Play/Pause Button -->
+              <button id="monitor-play-btn-${idx}" onclick="toggleCustomAudio('monitor', '${onStage.id}', '${item.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")}', ${idx})" style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg, #3b82f6, #4f46e5); color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(59,130,246,0.4); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
+                <svg id="monitor-play-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="margin-left:4px;"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="monitor-pause-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+              </button>
 
-            <audio id="monitor-audio-${item.url.replace(/[^a-zA-Z0-9]/g, '')}" controls controlsList="nodownload" src="${item.url}" style="height:32px; max-width:100%; outline:none; border-radius:20px;"></audio>
+              <!-- Custom Seek Bar -->
+              <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                <input type="range" id="monitor-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('monitor', ${idx})" onchange="seekCustomAudioEnd('monitor', '${onStage.id}', '${item.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")}', ${idx})" style="width:100%; cursor:pointer; height:6px; border-radius:3px; appearance:none; background:rgba(255,255,255,0.1); outline:none;">
+                <style>
+                  #monitor-seek-bar-${idx}::-webkit-slider-thumb { appearance:none; width:16px; height:16px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.6); cursor:pointer; transition:all 0.1s; }
+                  #monitor-seek-bar-${idx}::-webkit-slider-thumb:hover { transform:scale(1.2); }
+                </style>
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#b0b0b0; font-weight:700; font-family:monospace; letter-spacing:0.5px;">
+                  <span id="monitor-time-current-${idx}">0:00</span>
+                  <span id="monitor-time-total-${idx}">0:00</span>
+                </div>
+              </div>
+            </div>
           </div>`
         ).join('')}</div>`;
         audioContainer.dataset.audioState = audioStateHash;
@@ -11278,35 +11300,32 @@ syncEngine.subscribe(state => {
     
     // Ignore stale commands
     if (Date.now() - cmd.timestamp > 10000) return;
+    // Ignore commands we sent ourselves
+    if (cmd.source === 'monitor') return;
 
-    const audioId = "monitor-audio-" + cmd.url.replace(/[^a-zA-Z0-9]/g, '');
-    const audioEl = document.getElementById(audioId);
-    
-    if (audioEl) {
-      // Find the visualizer inside the same container
-      const waveEl = audioEl.parentElement.querySelector('[id^="monitor-sound-wave-"]');
-      
-      if (cmd.action === 'play') {
-        audioEl.currentTime = cmd.time;
-        const playPromise = audioEl.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(e => console.error("Monitor playback prevented", e));
+    const allAudios = document.querySelectorAll('audio[id^="monitor-audio-"]');
+    allAudios.forEach(audioEl => {
+      if (audioEl.src.includes(cmd.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")) || audioEl.src.includes(encodeURI(cmd.url))) {
+        const idxMatch = audioEl.id.match(/monitor-audio-(\d+)/);
+        if (idxMatch) {
+          const idx = idxMatch[1];
+          if (cmd.action === 'play') {
+            audioEl.currentTime = cmd.time;
+            const playPromise = audioEl.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(e => console.error("Monitor playback prevented", e));
+            }
+          } else if (cmd.action === 'pause') {
+            audioEl.pause();
+            audioEl.currentTime = cmd.time;
+          } else if (cmd.action === 'seek') {
+            audioEl.currentTime = cmd.time;
+          }
+          // Immediately update UI
+          updateCustomAudioUI('monitor', idx);
         }
-        if (waveEl) {
-          waveEl.classList.add('sound-wave-active');
-          waveEl.style.opacity = '1';
-        }
-      } else if (cmd.action === 'pause') {
-        audioEl.pause();
-        audioEl.currentTime = cmd.time;
-        if (waveEl) {
-          waveEl.classList.remove('sound-wave-active');
-          waveEl.style.opacity = '0.2';
-        }
-      } else if (cmd.action === 'seek') {
-        audioEl.currentTime = cmd.time;
       }
-    }
+    });
   }
 });
 
@@ -11904,6 +11923,100 @@ setInterval(() => {
     renderHelpdesk();
   }
 }, 1000);
+
+// --- CUSTOM AUDIO PLAYER UI FUNCTIONS ---
+window.toggleCustomAudio = function(source, participantId, url, idx) {
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  if (!audioEl) return;
+  if (audioEl.paused) {
+    audioEl.play().catch(e => console.error("Playback prevented", e));
+    dispatchRemoteAudioCommand(participantId, url, 'play', audioEl.currentTime, source);
+  } else {
+    audioEl.pause();
+    dispatchRemoteAudioCommand(participantId, url, 'pause', audioEl.currentTime, source);
+  }
+};
+
+window.seekCustomAudioDrag = function(source, idx) {
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
+  const currentSpan = document.getElementById(`${source}-time-current-${idx}`);
+  if (audioEl && seekBar && currentSpan && audioEl.duration) {
+    const time = (seekBar.value / 100) * audioEl.duration;
+    currentSpan.textContent = formatAudioTime(time);
+  }
+};
+
+window.seekCustomAudioEnd = function(source, participantId, url, idx) {
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
+  if (!audioEl || !seekBar || !audioEl.duration) return;
+  
+  const time = (seekBar.value / 100) * audioEl.duration;
+  audioEl.currentTime = time;
+  dispatchRemoteAudioCommand(participantId, url, 'seek', time, source);
+};
+
+window.updateCustomAudioUI = function(source, idx) {
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  const playIcon = document.getElementById(`${source}-play-icon-${idx}`);
+  const pauseIcon = document.getElementById(`${source}-pause-icon-${idx}`);
+  const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
+  const currentSpan = document.getElementById(`${source}-time-current-${idx}`);
+  const totalSpan = document.getElementById(`${source}-time-total-${idx}`);
+  const wave = document.getElementById(source === 'judge' ? `sound-wave-${idx}` : `monitor-sound-wave-${idx}`);
+
+  if (!audioEl) return;
+  
+  if (playIcon && pauseIcon) {
+    playIcon.style.display = audioEl.paused ? 'block' : 'none';
+    pauseIcon.style.display = audioEl.paused ? 'none' : 'block';
+  }
+  
+  if (wave) {
+    if (audioEl.paused) {
+      wave.classList.remove('sound-wave-active');
+      wave.style.opacity = '0.2';
+    } else {
+      wave.classList.add('sound-wave-active');
+      wave.style.opacity = '1';
+    }
+  }
+
+  if (audioEl.duration && !isNaN(audioEl.duration)) {
+    if (totalSpan) totalSpan.textContent = formatAudioTime(audioEl.duration);
+    if (currentSpan) currentSpan.textContent = formatAudioTime(audioEl.currentTime);
+    if (seekBar && document.activeElement !== seekBar) {
+      seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
+    }
+  }
+};
+
+window.dispatchRemoteAudioCommand = function(participantId, url, action, time, source) {
+  if (window.syncEngine) {
+    syncEngine.setData(state => {
+      return {
+        ...state,
+        remoteAudioCommand: {
+          participantId,
+          url,
+          action,
+          time,
+          timestamp: Date.now(),
+          source: source
+        }
+      };
+    });
+    syncEngine.forceSaveStateToSupabase();
+  }
+};
+
+function formatAudioTime(seconds) {
+  if (!seconds || isNaN(seconds)) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
 
 </script>
 

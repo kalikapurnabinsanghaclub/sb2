@@ -3158,12 +3158,27 @@ function renderOnStage() {
                 
                 <!-- Custom Audio Player Layout -->
                 <div style="display:flex; align-items:center; gap:12px;">
-                  <!-- MUTED audio element acts as a remote control -->
-                  <audio id="judge-audio-${idx}" controls controlsList="nodownload" src="${safeUrl}" muted style="flex:1; height:36px; outline:none; border-radius:10px;"
-                    onplay="handleRemoteAudioEvent('${p.id}', '${safeUrl}', 'play', this, ${idx})"
-                    onpause="handleRemoteAudioEvent('${p.id}', '${safeUrl}', 'pause', this, ${idx})"
-                    onseeked="handleRemoteAudioEvent('${p.id}', '${safeUrl}', 'seek', this, ${idx})"
-                  ></audio>
+                  <!-- Hidden MUTED audio element -->
+                  <audio id="judge-audio-${idx}" src="${safeUrl}" muted style="display:none;" ontimeupdate="updateCustomAudioUI('judge', ${idx})" onloadedmetadata="updateCustomAudioUI('judge', ${idx})"></audio>
+                  
+                  <!-- Custom Play/Pause Button -->
+                  <button id="judge-play-btn-${idx}" onclick="toggleCustomAudio('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg, #3b82f6, #4f46e5); color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(59,130,246,0.4); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
+                    <svg id="judge-play-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="margin-left:4px;"><path d="M8 5v14l11-7z"/></svg>
+                    <svg id="judge-pause-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                  </button>
+
+                  <!-- Custom Seek Bar -->
+                  <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                    <input type="range" id="judge-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('judge', ${idx})" onchange="seekCustomAudioEnd('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:100%; cursor:pointer; height:6px; border-radius:3px; appearance:none; background:rgba(255,255,255,0.1); outline:none;">
+                    <style>
+                      #judge-seek-bar-${idx}::-webkit-slider-thumb { appearance:none; width:16px; height:16px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.6); cursor:pointer; transition:all 0.1s; }
+                      #judge-seek-bar-${idx}::-webkit-slider-thumb:hover { transform:scale(1.2); }
+                    </style>
+                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#94a3b8; font-weight:700; font-family:monospace; letter-spacing:0.5px;">
+                      <span id="judge-time-current-${idx}">0:00</span>
+                      <span id="judge-time-total-${idx}">0:00</span>
+                    </div>
+                  </div>
                   <button onclick="markAudioTime('${p.id}', 'judge-audio-${idx}', ${idx})" style="background:linear-gradient(135deg, #ec4899, #f43f5e); border:none; color:white; padding:8px 14px; border-radius:10px; font-weight:800; font-size:11px; text-transform:uppercase; cursor:pointer; box-shadow:0 4px 12px rgba(236,72,153,0.3); transition:all 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
                     📌 Mark Error
                   </button>
@@ -3201,20 +3216,76 @@ function renderOnStage() {
 // --- AUDIO MARKER LOGIC ---
 window.judgeAudioMarks = window.judgeAudioMarks || {};
 
-window.handleRemoteAudioEvent = function(participantId, url, action, audioEl, idx) {
-  const wave = document.getElementById(`sound-wave-${idx}`);
+window.toggleCustomAudio = function(source, participantId, url, idx) {
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  if (!audioEl) return;
+  if (audioEl.paused) {
+    audioEl.play().catch(e => console.error("Playback prevented", e));
+    dispatchRemoteAudioCommand(participantId, url, 'play', audioEl.currentTime, source);
+  } else {
+    audioEl.pause();
+    dispatchRemoteAudioCommand(participantId, url, 'pause', audioEl.currentTime, source);
+  }
+};
+
+window.seekCustomAudioDrag = function(source, idx) {
+  // Just update UI while dragging, don't dispatch yet to avoid spamming
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
+  const currentSpan = document.getElementById(`${source}-time-current-${idx}`);
+  if (audioEl && seekBar && currentSpan && audioEl.duration) {
+    const time = (seekBar.value / 100) * audioEl.duration;
+    currentSpan.textContent = formatAudioTime(time);
+  }
+};
+
+window.seekCustomAudioEnd = function(source, participantId, url, idx) {
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
+  if (!audioEl || !seekBar || !audioEl.duration) return;
+  
+  const time = (seekBar.value / 100) * audioEl.duration;
+  audioEl.currentTime = time;
+  dispatchRemoteAudioCommand(participantId, url, 'seek', time, source);
+};
+
+window.updateCustomAudioUI = function(source, idx) {
+  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  const playIcon = document.getElementById(`${source}-play-icon-${idx}`);
+  const pauseIcon = document.getElementById(`${source}-pause-icon-${idx}`);
+  const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
+  const currentSpan = document.getElementById(`${source}-time-current-${idx}`);
+  const totalSpan = document.getElementById(`${source}-time-total-${idx}`);
+  const wave = document.getElementById(source === 'judge' ? `sound-wave-${idx}` : `monitor-sound-wave-${idx}`);
+
+  if (!audioEl) return;
+  
+  if (playIcon && pauseIcon) {
+    playIcon.style.display = audioEl.paused ? 'block' : 'none';
+    pauseIcon.style.display = audioEl.paused ? 'none' : 'block';
+  }
+  
   if (wave) {
-    if (action === 'play') {
-      wave.classList.add('sound-wave-active');
-      wave.style.opacity = '1';
-    } else if (action === 'pause') {
+    if (audioEl.paused) {
       wave.classList.remove('sound-wave-active');
       wave.style.opacity = '0.2';
+    } else {
+      wave.classList.add('sound-wave-active');
+      wave.style.opacity = '1';
     }
   }
 
+  if (audioEl.duration && !isNaN(audioEl.duration)) {
+    if (totalSpan) totalSpan.textContent = formatAudioTime(audioEl.duration);
+    if (currentSpan) currentSpan.textContent = formatAudioTime(audioEl.currentTime);
+    if (seekBar && document.activeElement !== seekBar) {
+      seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
+    }
+  }
+};
+
+window.dispatchRemoteAudioCommand = function(participantId, url, action, time, source) {
   if (window.syncEngine) {
-    const time = audioEl.currentTime;
     syncEngine.setData(state => {
       return {
         ...state,
@@ -3224,11 +3295,10 @@ window.handleRemoteAudioEvent = function(participantId, url, action, audioEl, id
           action,
           time,
           timestamp: Date.now(),
-          judgeId: window.JUDGE?.id || 'judge'
+          source: source
         }
       };
     });
-    // Optional: force sync immediately so it's super responsive, though localSync-v4 automatically queues it.
     syncEngine.forceSaveStateToSupabase();
   }
 };
@@ -4401,6 +4471,38 @@ syncEngine.subscribe((state) => {
   
   // Sync onstage timer
   handleJudgeTimerSync(state.onstageTimer);
+
+  // Handle remote audio commands from Monitor
+  if (state.remoteAudioCommand) {
+    const cmd = state.remoteAudioCommand;
+    if (cmd.timestamp && cmd.timestamp !== window.lastRemoteAudioCommandTime) {
+      window.lastRemoteAudioCommandTime = cmd.timestamp;
+      
+      // Ignore stale commands
+      if (Date.now() - cmd.timestamp < 10000 && cmd.source !== 'judge') {
+        const allAudios = document.querySelectorAll('audio[id^="judge-audio-"]');
+        allAudios.forEach(audioEl => {
+          if (audioEl.src.includes(cmd.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")) || audioEl.src.includes(encodeURI(cmd.url))) {
+            const idxMatch = audioEl.id.match(/judge-audio-(\d+)/);
+            if (idxMatch) {
+              const idx = idxMatch[1];
+              if (cmd.action === 'play') {
+                audioEl.currentTime = cmd.time;
+                audioEl.play().catch(e => {});
+              } else if (cmd.action === 'pause') {
+                audioEl.pause();
+                audioEl.currentTime = cmd.time;
+              } else if (cmd.action === 'seek') {
+                audioEl.currentTime = cmd.time;
+              }
+              // Immediately update UI
+              updateCustomAudioUI('judge', idx);
+            }
+          }
+        });
+      }
+    }
+  }
 });
 
 
