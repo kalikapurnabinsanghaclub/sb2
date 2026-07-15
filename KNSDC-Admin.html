@@ -1203,7 +1203,7 @@
           <div class="card-title">👥 Staff & Role Management</div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Add monitor, host, judge, admin accounts. Users log in from the main website.</div>
         </div>
-        <button class="btn btn-amber" onclick="openM('add-staff-modal')">＋ Add Staff Member</button>
+        <button class="btn btn-amber" onclick="openAddStaffModal()">＋ Add Staff Member</button>
       </div>
     </div>
     <div class="card" style="padding:0;overflow:hidden">
@@ -1290,6 +1290,12 @@
           <option value="host">🎤 Host</option>
           <option value="judge">⚖️ Judge</option>
           <option value="admin">🛡️ Admin</option>
+        </select>
+      </div>
+      <div class="fg" id="ns-event-group" style="display:none; margin-top:15px;">
+        <label class="fl">Assign Event (Locks staff to this event)</label>
+        <select id="ns-event">
+          <option value="">-- All Events / No Specific Event --</option>
         </select>
       </div>
       <div id="ns-error" style="color:var(--red);font-size:12px;display:none"></div>
@@ -2370,6 +2376,7 @@ window.saveNewStaff = async () => {
   const email = document.getElementById('ns-email').value.trim();
   const pass = document.getElementById('ns-pass').value.trim();
   const role = document.getElementById('ns-role').value;
+  const eventId = document.getElementById('ns-event') ? document.getElementById('ns-event').value : '';
   const errEl = document.getElementById('ns-error');
   
   if (!name || !email || !pass) {
@@ -2385,11 +2392,32 @@ window.saveNewStaff = async () => {
   try {
     const res = await window.syncEngine.addStaffMember(email, pass, name, role);
     if (res.success) {
+      if (eventId && window.syncEngine) {
+        const events = window.syncEngine.getData().events || [];
+        // First remove from all other events
+        for (const ev of events) {
+          if (ev.staff && ev.staff.map(s => s.toLowerCase()).includes(email.toLowerCase())) {
+            const updatedStaff = ev.staff.filter(s => s.toLowerCase() !== email.toLowerCase());
+            await window.syncEngine.updateEvent(ev.id, { staff: updatedStaff });
+          }
+        }
+        // Then add to selected event
+        const targetEvent = events.find(e => String(e.id) === eventId);
+        if (targetEvent) {
+          let staffArr = targetEvent.staff || [];
+          if (!staffArr.map(s => s.toLowerCase()).includes(email.toLowerCase())) {
+            staffArr.push(email.toLowerCase());
+            await window.syncEngine.updateEvent(targetEvent.id, { staff: staffArr });
+          }
+        }
+      }
+
       errEl.style.display = "none";
       closeM('add-staff-modal');
       document.getElementById('ns-name').value = '';
       document.getElementById('ns-email').value = '';
       document.getElementById('ns-pass').value = '';
+      if (document.getElementById('ns-event')) document.getElementById('ns-event').value = '';
       toast('✅ Staff member added!');
       window.refreshUI('staff');
     } else {
@@ -2400,6 +2428,31 @@ window.saveNewStaff = async () => {
     isSavingStaff = false;
     if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
   }
+};
+
+window.openAddStaffModal = () => {
+  const sel = document.getElementById('ns-event');
+  if (sel && window.syncEngine) {
+    const events = window.syncEngine.getData().events || [];
+    let opts = '<option value="">-- All Events / No Specific Event --</option>';
+    events.forEach(e => {
+      opts += `<option value="${e.id}">${e.name || e.title} (${e.venue || 'No Venue'})</option>`;
+    });
+    sel.innerHTML = opts;
+  }
+  
+  const roleSel = document.getElementById('ns-role');
+  const evGrp = document.getElementById('ns-event-group');
+  if (roleSel && evGrp) {
+    const updateEvGrp = () => {
+      if (roleSel.value === 'admin') evGrp.style.display = 'none';
+      else evGrp.style.display = 'block';
+    };
+    roleSel.onchange = updateEvGrp;
+    updateEvGrp();
+  }
+  
+  openM('add-staff-modal');
 };
 
 window.deleteStaff = async (email) => {
