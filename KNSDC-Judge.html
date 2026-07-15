@@ -3103,9 +3103,6 @@ function renderOnStage() {
   // --- JUDGE AUDIO PLAYER LOGIC ---
   const audioWrap = document.getElementById('judge-audio-wrap');
   if (audioWrap) {
-    audioWrap.style.display = 'none';
-    audioWrap.innerHTML = '';
-    
     if (p.formAnswers) {
       const s = syncEngine.getData();
       const evId = p.eventId || s.activeEventId;
@@ -3132,79 +3129,95 @@ function renderOnStage() {
 
       if (audioItems.length > 0) {
         audioWrap.style.display = 'block';
+        const audioStateHash = p.id + JSON.stringify(audioItems);
         
-        let html = `<div style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);">
-          <div style="font-size:12px; font-weight:800; color:#38bdf8; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-            Participant Audio Track
-          </div>`;
-        
-        audioItems.forEach((item, idx) => {
-          const safeUrl = item.url.replace(/"/g, '&quot;').replace(/'/g, "\\'");
-          html += `
-            <div style="margin-bottom:${idx < audioItems.length - 1 ? '16px' : '0'};">
-              <div style="font-size:11px; color:#94a3b8; font-weight:600; margin-bottom:6px;">${item.label} <span style="color:#ec4899;font-size:9px;text-transform:uppercase;margin-left:6px">(Plays on Monitor Device)</span></div>
-              
-              <!-- CSS SOUND WAVE VISUALIZER -->
-              <style>
-                @keyframes soundBounce { 0% { height: 5px; } 100% { height: 100%; } }
-                .sound-wave-active .sound-wave-bar { animation: soundBounce 0.4s infinite alternate ease-in-out; }
-              </style>
-              <div id="sound-wave-${idx}" style="display:flex; align-items:flex-end; justify-content:center; gap:4px; height:40px; margin-bottom:16px; opacity: 0.2; transition:opacity 0.3s">
-                ${Array.from({length: 40}).map((_, i) => `<div class="sound-wave-bar" style="animation-delay:-${Math.random()}s; height:5px; width:4px; background:linear-gradient(180deg, hsl(${i*9}, 100%, 60%) 0%, hsl(${i*9+30}, 100%, 50%) 100%); border-radius:4px; box-shadow:0 0 8px hsla(${i*9}, 100%, 50%, 0.6); transform-origin:bottom;"></div>`).join('')}
-              </div>
-
-              <div style="display:flex; flex-direction:column; gap:12px; background:rgba(255,255,255,0.03); padding:12px; border-radius:14px; border:1px solid rgba(255,255,255,0.05);">
+        if (audioWrap.dataset.audioState !== audioStateHash) {
+          let html = `<div style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-size:12px; font-weight:800; color:#38bdf8; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+              Participant Audio Track
+            </div>`;
+          
+          audioItems.forEach((item, idx) => {
+            const safeUrl = item.url.replace(/"/g, '&quot;').replace(/'/g, "\\'");
+            html += `
+              <div style="margin-bottom:${idx < audioItems.length - 1 ? '16px' : '0'};">
+                <div style="font-size:11px; color:#94a3b8; font-weight:600; margin-bottom:6px;">${item.label} <span style="color:#ec4899;font-size:9px;text-transform:uppercase;margin-left:6px">(Plays on Monitor Device)</span></div>
                 
-                <!-- Custom Audio Player Layout -->
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <!-- Hidden MUTED audio element -->
-                  <audio id="judge-audio-${idx}" src="${safeUrl}" muted style="display:none;" ontimeupdate="updateCustomAudioUI('judge', ${idx})" onloadedmetadata="updateCustomAudioUI('judge', ${idx})"></audio>
-                  
-                  <!-- Custom Play/Pause Button -->
-                  <button id="judge-play-btn-${idx}" onclick="toggleCustomAudio('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg, #3b82f6, #4f46e5); color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(59,130,246,0.4); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
-                    <svg id="judge-play-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="margin-left:4px;"><path d="M8 5v14l11-7z"/></svg>
-                    <svg id="judge-pause-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                  </button>
-
-                  <!-- Custom Seek Bar -->
-                  <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
-                    <input type="range" id="judge-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('judge', ${idx})" onchange="seekCustomAudioEnd('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:100%; cursor:pointer; height:6px; border-radius:3px; appearance:none; background:rgba(255,255,255,0.1); outline:none;">
-                    <style>
-                      #judge-seek-bar-${idx}::-webkit-slider-thumb { appearance:none; width:16px; height:16px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.6); cursor:pointer; transition:all 0.1s; }
-                      #judge-seek-bar-${idx}::-webkit-slider-thumb:hover { transform:scale(1.2); }
-                    </style>
-                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#94a3b8; font-weight:700; font-family:monospace; letter-spacing:0.5px;">
-                      <span id="judge-time-current-${idx}">0:00</span>
-                      <span id="judge-time-total-${idx}">0:00</span>
-                    </div>
-                  </div>
-                  <button onclick="markAudioTime('${p.id}', 'judge-audio-${idx}', ${idx})" style="background:linear-gradient(135deg, #ec4899, #f43f5e); border:none; color:white; padding:8px 14px; border-radius:10px; font-weight:800; font-size:11px; text-transform:uppercase; cursor:pointer; box-shadow:0 4px 12px rgba(236,72,153,0.3); transition:all 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
-                    📌 Mark Error
-                  </button>
+                <!-- CSS SOUND WAVE VISUALIZER -->
+                <style>
+                  @keyframes soundBounce { 0% { height: 5px; } 100% { height: 100%; } }
+                  .sound-wave-active .sound-wave-bar { animation: soundBounce 0.4s infinite alternate ease-in-out; }
+                </style>
+                <div id="sound-wave-${idx}" style="display:flex; align-items:flex-end; justify-content:center; gap:4px; height:40px; margin-bottom:16px; opacity: 0.2; transition:opacity 0.3s">
+                  ${Array.from({length: 40}).map((_, i) => `<div class="sound-wave-bar" style="animation-delay:-${Math.random()}s; height:5px; width:4px; background:linear-gradient(180deg, hsl(${i*9}, 100%, 60%) 0%, hsl(${i*9+30}, 100%, 50%) 100%); border-radius:4px; box-shadow:0 0 8px hsla(${i*9}, 100%, 50%, 0.6); transform-origin:bottom;"></div>`).join('')}
                 </div>
 
-                <!-- Marker Scratchpad -->
-                <div id="audio-marks-${p.id}-${idx}" style="display:flex; gap:8px; flex-wrap:wrap; min-height:24px;">
-                   <!-- Marks will be injected here -->
+                <div style="display:flex; flex-direction:column; gap:12px; background:rgba(255,255,255,0.03); padding:12px; border-radius:14px; border:1px solid rgba(255,255,255,0.05);">
+                  
+                  <!-- Custom Audio Player Layout -->
+                  <div style="display:flex; align-items:center; gap:12px;">
+                    <!-- Hidden MUTED audio element -->
+                    <audio id="judge-audio-${idx}" src="${safeUrl}" muted style="display:none;" ontimeupdate="updateCustomAudioUI('judge', ${idx})" onloadedmetadata="updateCustomAudioUI('judge', ${idx})"></audio>
+                    
+                    <!-- Custom Play/Pause Button -->
+                    <button id="judge-play-btn-${idx}" onclick="toggleCustomAudio('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg, #3b82f6, #4f46e5); color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(59,130,246,0.4); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
+                      <svg id="judge-play-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="margin-left:4px;"><path d="M8 5v14l11-7z"/></svg>
+                      <svg id="judge-pause-icon-${idx}" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    </button>
+
+                    <!-- Custom Seek Bar -->
+                    <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                      <input type="range" id="judge-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('judge', ${idx})" onchange="seekCustomAudioEnd('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:100%; cursor:pointer; height:6px; border-radius:3px; appearance:none; background:rgba(255,255,255,0.1); outline:none;">
+                      <style>
+                        #judge-seek-bar-${idx}::-webkit-slider-thumb { appearance:none; width:16px; height:16px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.6); cursor:pointer; transition:all 0.1s; }
+                        #judge-seek-bar-${idx}::-webkit-slider-thumb:hover { transform:scale(1.2); }
+                      </style>
+                      <div style="display:flex; justify-content:space-between; font-size:12px; color:#94a3b8; font-weight:700; font-family:monospace; letter-spacing:0.5px;">
+                        <span id="judge-time-current-${idx}">0:00</span>
+                        <span id="judge-time-total-${idx}">0:00</span>
+                      </div>
+                    </div>
+                    <button onclick="markAudioTime('${p.id}', 'judge-audio-${idx}', ${idx})" style="background:linear-gradient(135deg, #ec4899, #f43f5e); border:none; color:white; padding:8px 14px; border-radius:10px; font-weight:800; font-size:11px; text-transform:uppercase; cursor:pointer; box-shadow:0 4px 12px rgba(236,72,153,0.3); transition:all 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+                      📌 Comment Mark
+                    </button>
+                  </div>
+
+                  <!-- Marker Scratchpad -->
+                  <div id="audio-marks-${p.id}-${idx}" style="display:flex; gap:8px; flex-wrap:wrap; min-height:24px;">
+                     <!-- Marks will be injected here -->
+                  </div>
                 </div>
               </div>
-            </div>
-          `;
-        });
-        html += `</div>`;
-        audioWrap.innerHTML = html;
-        
-        // Render any existing marks for this participant
-        window.judgeAudioMarks = window.judgeAudioMarks || {};
-        window.judgeAudioMarks[p.id] = window.judgeAudioMarks[p.id] || [];
-        
-        // Call it async so it runs after innerHTML is fully parsed
-        setTimeout(() => {
-          if (typeof renderAudioMarks === 'function') {
-             audioItems.forEach((_, idx) => renderAudioMarks(p.id, idx));
-          }
-        }, 10);
+            `;
+          });
+          html += `</div>`;
+          audioWrap.innerHTML = html;
+          audioWrap.dataset.audioState = audioStateHash;
+          
+          // Render any existing marks for this participant
+          window.judgeAudioMarks = window.judgeAudioMarks || {};
+          window.judgeAudioMarks[p.id] = window.judgeAudioMarks[p.id] || [];
+          
+          // Call it async so it runs after innerHTML is fully parsed
+          setTimeout(() => {
+            if (typeof renderAudioMarks === 'function') {
+               audioItems.forEach((_, idx) => renderAudioMarks(p.id, idx));
+            }
+          }, 10);
+        }
+      } else {
+        if (audioWrap.dataset.audioState !== 'empty') {
+          audioWrap.style.display = 'none';
+          audioWrap.innerHTML = '';
+          audioWrap.dataset.audioState = 'empty';
+        }
+      }
+    } else {
+      if (audioWrap.dataset.audioState !== 'empty') {
+        audioWrap.style.display = 'none';
+        audioWrap.innerHTML = '';
+        audioWrap.dataset.audioState = 'empty';
       }
     }
   }
@@ -3285,7 +3298,29 @@ window.updateCustomAudioUI = function(source, idx) {
 };
 
 window.dispatchRemoteAudioCommand = function(participantId, url, action, time, source) {
-  if (window.syncEngine) {
+  if (window.syncEngine && window.syncEngine.broadcastChannel) {
+    const cmd = {
+      participantId,
+      url,
+      action,
+      time,
+      timestamp: Date.now(),
+      source: source
+    };
+    
+    // Broadcast purely over WebSockets for minimum delay (no database write)
+    window.syncEngine.broadcastChannel.send({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: { remoteAudioCommand: cmd }
+    }).catch(e => console.error("Fast broadcast failed:", e));
+    
+    // Also update local state memory so UI stays consistent
+    if (window.syncEngine.state) {
+      window.syncEngine.state.remoteAudioCommand = cmd;
+    }
+  } else if (window.syncEngine) {
+    // Fallback to slow DB sync if broadcast channel is dead
     syncEngine.setData(state => {
       return {
         ...state,
@@ -3299,7 +3334,6 @@ window.dispatchRemoteAudioCommand = function(participantId, url, action, time, s
         }
       };
     });
-    syncEngine.forceSaveStateToSupabase();
   }
 };
 
@@ -3322,12 +3356,16 @@ window.markAudioTime = function(participantId, audioElId, trackIdx) {
   // Format the time string
   const formattedTime = formatAudioTime(time);
   
-  // Create mark object
+  // Create mark object with distinct color (using golden angle hue shifting)
+  const numMarks = window.judgeAudioMarks[participantId].length;
+  const hue = (numMarks * 137.5) % 360;
+  
   const mark = {
     id: Date.now().toString(),
     trackIdx: trackIdx,
     time: time,
-    label: formattedTime
+    label: formattedTime,
+    hue: hue
   };
   
   window.judgeAudioMarks[participantId].push(mark);
@@ -3335,7 +3373,7 @@ window.markAudioTime = function(participantId, audioElId, trackIdx) {
   window.judgeAudioMarks[participantId].sort((a, b) => a.time - b.time);
   
   renderAudioMarks(participantId, trackIdx);
-  toast(`Marked at ${formattedTime}`, 'var(--pink)');
+  toast(`Comment Mark at ${formattedTime}`, 'var(--pink)');
 };
 
 window.seekAudioTime = function(audioElId, time) {
@@ -3362,13 +3400,13 @@ window.renderAudioMarks = function(participantId, trackIdx) {
   const trackMarks = marks.filter(m => m.trackIdx === trackIdx);
   
   if (trackMarks.length === 0) {
-    container.innerHTML = `<span style="font-size:10px; color:rgba(255,255,255,0.4); font-style:italic;">No marks yet. Click 'Mark Error' while playing.</span>`;
+    container.innerHTML = `<span style="font-size:10px; color:rgba(255,255,255,0.4); font-style:italic;">No marks yet. Click 'Comment Mark' while playing.</span>`;
     return;
   }
   
   container.innerHTML = trackMarks.map(m => `
-    <div onclick="seekAudioTime('judge-audio-${trackIdx}', ${m.time})" style="display:inline-flex; align-items:center; background:rgba(236, 72, 153, 0.15); border:1px solid rgba(236, 72, 153, 0.4); border-radius:8px; padding:4px 8px; cursor:pointer; color:#fbcfe8; font-size:11px; font-weight:700; transition:all 0.2s;" onmouseover="this.style.background='rgba(236, 72, 153, 0.3)'" onmouseout="this.style.background='rgba(236, 72, 153, 0.15)'">
-      <span style="margin-right:6px;">⏱️ ${m.label}</span>
+    <div onclick="seekAudioTime('judge-audio-${trackIdx}', ${m.time})" style="display:inline-flex; align-items:center; background:hsla(${m.hue || 330}, 80%, 60%, 0.15); border:1px solid hsla(${m.hue || 330}, 80%, 60%, 0.4); border-radius:8px; padding:4px 8px; cursor:pointer; color:hsla(${m.hue || 330}, 90%, 75%, 1); font-size:11px; font-weight:700; transition:all 0.2s;" onmouseover="this.style.background='hsla(${m.hue || 330}, 80%, 60%, 0.3)'" onmouseout="this.style.background='hsla(${m.hue || 330}, 80%, 60%, 0.15)'">
+      <span style="margin-right:6px;">📌 ${m.label}</span>
       <span onclick="deleteAudioMark('${participantId}', ${trackIdx}, '${m.id}', event)" style="color:#fda4af; padding:2px; border-radius:4px; font-size:10px; display:flex; align-items:center; justify-content:center;" onmouseover="this.style.background='rgba(255,0,0,0.2)'" onmouseout="this.style.background='transparent'">❌</span>
     </div>
   `).join('');
