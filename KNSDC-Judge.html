@@ -1384,6 +1384,9 @@
           </div>
         </div>
         
+        <!-- JUDGE AUDIO PLAYER -->
+        <div id="judge-audio-wrap" style="display:none;margin-bottom:20px;animation:fadeSlideUp 0.4s ease forwards;"></div>
+
         <!-- PREVIOUS ROUND SCORES -->
         <div id="prev-scores-wrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px dashed rgba(226,232,240,0.8)">
           <div style="font-size:11px;color:#64748b;font-family:var(--fh);letter-spacing:1.5px;text-transform:uppercase;font-weight:900;margin-bottom:12px;display:flex;align-items:center;gap:6px">
@@ -3097,9 +3100,162 @@ function renderOnStage() {
     document.getElementById('prev-scores-wrap').style.display = 'none';
   }
 
+  // --- JUDGE AUDIO PLAYER LOGIC ---
+  const audioWrap = document.getElementById('judge-audio-wrap');
+  if (audioWrap) {
+    audioWrap.style.display = 'none';
+    audioWrap.innerHTML = '';
+    
+    if (p.formAnswers) {
+      const s = syncEngine.getData();
+      const evId = p.eventId || s.activeEventId;
+      const formFields = s.eventFormFields ? (s.eventFormFields[evId] || []) : [];
+      
+      const audioItems = [];
+      formFields.forEach(f => {
+        if ((f.type === 'audio_link_or_file' || f.type === 'audio') && p.formAnswers[f.label]) {
+          let url = p.formAnswers[f.label];
+          if (typeof url === 'string') {
+              audioItems.push({ label: f.label, url: url });
+          }
+        }
+      });
+
+      // Fallback: If formFields isn't available but they have a URL with /storage/.../ and .mp3/.m4a/.wav
+      if (audioItems.length === 0) {
+        Object.entries(p.formAnswers).forEach(([k, v]) => {
+          if (typeof v === 'string' && v.includes('/storage/') && (v.toLowerCase().endsWith('.mp3') || v.toLowerCase().endsWith('.wav') || v.toLowerCase().endsWith('.m4a'))) {
+            audioItems.push({ label: k, url: v });
+          }
+        });
+      }
+
+      if (audioItems.length > 0) {
+        audioWrap.style.display = 'block';
+        
+        let html = `<div style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);">
+          <div style="font-size:12px; font-weight:800; color:#38bdf8; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+            Participant Audio Track
+          </div>`;
+        
+        audioItems.forEach((item, idx) => {
+          const safeUrl = item.url.replace(/"/g, '&quot;');
+          html += `
+            <div style="margin-bottom:${idx < audioItems.length - 1 ? '16px' : '0'};">
+              <div style="font-size:11px; color:#94a3b8; font-weight:600; margin-bottom:6px;">${item.label}</div>
+              <div style="display:flex; flex-direction:column; gap:12px; background:rgba(255,255,255,0.03); padding:12px; border-radius:14px; border:1px solid rgba(255,255,255,0.05);">
+                
+                <!-- Custom Audio Player Layout -->
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <audio id="judge-audio-${idx}" controls controlsList="nodownload" src="${safeUrl}" style="flex:1; height:36px; outline:none; border-radius:10px;"></audio>
+                  <button onclick="markAudioTime('${p.id}', 'judge-audio-${idx}', ${idx})" style="background:linear-gradient(135deg, #ec4899, #f43f5e); border:none; color:white; padding:8px 14px; border-radius:10px; font-weight:800; font-size:11px; text-transform:uppercase; cursor:pointer; box-shadow:0 4px 12px rgba(236,72,153,0.3); transition:all 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+                    📌 Mark Error
+                  </button>
+                </div>
+
+                <!-- Marker Scratchpad -->
+                <div id="audio-marks-${p.id}-${idx}" style="display:flex; gap:8px; flex-wrap:wrap; min-height:24px;">
+                   <!-- Marks will be injected here -->
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+        audioWrap.innerHTML = html;
+        
+        // Render any existing marks for this participant
+        window.judgeAudioMarks = window.judgeAudioMarks || {};
+        window.judgeAudioMarks[p.id] = window.judgeAudioMarks[p.id] || [];
+        
+        // Call it async so it runs after innerHTML is fully parsed
+        setTimeout(() => {
+          if (typeof renderAudioMarks === 'function') {
+             audioItems.forEach((_, idx) => renderAudioMarks(p.id, idx));
+          }
+        }, 10);
+      }
+    }
+  }
+
   // Load this participant into scoring
   loadScorePanel(p.id);
 }
+
+// --- AUDIO MARKER LOGIC ---
+window.judgeAudioMarks = window.judgeAudioMarks || {};
+
+function formatAudioTime(seconds) {
+  if (isNaN(seconds) || seconds < 0) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+window.markAudioTime = function(participantId, audioElId, trackIdx) {
+  const audioEl = document.getElementById(audioElId);
+  if (!audioEl) return;
+  const time = audioEl.currentTime;
+  
+  if (!window.judgeAudioMarks[participantId]) {
+    window.judgeAudioMarks[participantId] = [];
+  }
+  
+  // Format the time string
+  const formattedTime = formatAudioTime(time);
+  
+  // Create mark object
+  const mark = {
+    id: Date.now().toString(),
+    trackIdx: trackIdx,
+    time: time,
+    label: formattedTime
+  };
+  
+  window.judgeAudioMarks[participantId].push(mark);
+  // Sort marks chronologically
+  window.judgeAudioMarks[participantId].sort((a, b) => a.time - b.time);
+  
+  renderAudioMarks(participantId, trackIdx);
+  toast(`Marked at ${formattedTime}`, 'var(--pink)');
+};
+
+window.seekAudioTime = function(audioElId, time) {
+  const audioEl = document.getElementById(audioElId);
+  if (audioEl) {
+    audioEl.currentTime = time;
+    audioEl.play().catch(e => console.error("Auto-play prevented", e));
+  }
+};
+
+window.deleteAudioMark = function(participantId, trackIdx, markId, event) {
+  event.stopPropagation(); // prevent seek action
+  if (window.judgeAudioMarks[participantId]) {
+    window.judgeAudioMarks[participantId] = window.judgeAudioMarks[participantId].filter(m => String(m.id) !== String(markId));
+    renderAudioMarks(participantId, trackIdx);
+  }
+};
+
+window.renderAudioMarks = function(participantId, trackIdx) {
+  const container = document.getElementById(`audio-marks-${participantId}-${trackIdx}`);
+  if (!container) return;
+  
+  const marks = window.judgeAudioMarks[participantId] || [];
+  const trackMarks = marks.filter(m => m.trackIdx === trackIdx);
+  
+  if (trackMarks.length === 0) {
+    container.innerHTML = `<span style="font-size:10px; color:rgba(255,255,255,0.4); font-style:italic;">No marks yet. Click 'Mark Error' while playing.</span>`;
+    return;
+  }
+  
+  container.innerHTML = trackMarks.map(m => `
+    <div onclick="seekAudioTime('judge-audio-${trackIdx}', ${m.time})" style="display:inline-flex; align-items:center; background:rgba(236, 72, 153, 0.15); border:1px solid rgba(236, 72, 153, 0.4); border-radius:8px; padding:4px 8px; cursor:pointer; color:#fbcfe8; font-size:11px; font-weight:700; transition:all 0.2s;" onmouseover="this.style.background='rgba(236, 72, 153, 0.3)'" onmouseout="this.style.background='rgba(236, 72, 153, 0.15)'">
+      <span style="margin-right:6px;">⏱️ ${m.label}</span>
+      <span onclick="deleteAudioMark('${participantId}', ${trackIdx}, '${m.id}', event)" style="color:#fda4af; padding:2px; border-radius:4px; font-size:10px; display:flex; align-items:center; justify-content:center;" onmouseover="this.style.background='rgba(255,0,0,0.2)'" onmouseout="this.style.background='transparent'">❌</span>
+    </div>
+  `).join('');
+};
 
 function loadScorePanel(id) {
   scoringParticipantId = id;
