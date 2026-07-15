@@ -3158,7 +3158,7 @@ function renderOnStage() {
                   <!-- Custom Audio Player Layout -->
                   <div style="display:flex; align-items:center; gap:12px;">
                     <!-- Hidden MUTED audio element -->
-                    <audio id="judge-audio-${idx}" src="${safeUrl}" muted style="display:none;" ontimeupdate="updateCustomAudioUI('judge', ${idx})" onloadedmetadata="updateCustomAudioUI('judge', ${idx})"></audio>
+                    <audio id="judge-audio-${idx}" src="${safeUrl}" muted style="display:none;" ontimeupdate="updateCustomAudioUI('judge', ${idx})" onloadedmetadata="updateCustomAudioUI('judge', ${idx})" onended="window.markAudioCompleted('${p.id}')"></audio>
                     
                     <!-- Custom Play/Pause Button -->
                     <button id="judge-play-btn-${idx}" onclick="toggleCustomAudio('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg, #3b82f6, #4f46e5); color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(59,130,246,0.4); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
@@ -3249,6 +3249,17 @@ window.seekCustomAudioDrag = function(source, idx) {
   if (audioEl && seekBar && currentSpan && audioEl.duration) {
     const time = (seekBar.value / 100) * audioEl.duration;
     currentSpan.textContent = formatAudioTime(time);
+  }
+};
+
+window.markAudioCompleted = function(participantId) {
+  if (window.syncEngine && window.syncEngine.state && window.syncEngine.state.participants) {
+    const p = window.syncEngine.state.participants.find(x => String(x.id) === String(participantId));
+    if (p && p.formAnswers) {
+      const updatedForm = { ...p.formAnswers, _audioCompletedAt: Date.now() };
+      window.syncEngine.updateParticipant(p.id, { formAnswers: updatedForm });
+      console.log('[Audio] Marked participant audio as completed for auto-deletion:', participantId);
+    }
   }
 };
 
