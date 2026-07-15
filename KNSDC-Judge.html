@@ -3376,11 +3376,16 @@ window.markAudioTime = function(participantId, audioElId, trackIdx) {
   toast(`Comment Mark at ${formattedTime}`, 'var(--pink)');
 };
 
-window.seekAudioTime = function(audioElId, time) {
+window.seekAudioTime = function(audioElId, time, participantId) {
   const audioEl = document.getElementById(audioElId);
   if (audioEl) {
     audioEl.currentTime = time;
     audioEl.play().catch(e => console.error("Auto-play prevented", e));
+    
+    // Broadcast the seek/play command so Monitor syncs to the comment mark
+    if (participantId && window.dispatchRemoteAudioCommand) {
+      dispatchRemoteAudioCommand(participantId, audioEl.src, 'play', time, 'judge');
+    }
   }
 };
 
@@ -3405,7 +3410,7 @@ window.renderAudioMarks = function(participantId, trackIdx) {
   }
   
   container.innerHTML = trackMarks.map(m => `
-    <div onclick="seekAudioTime('judge-audio-${trackIdx}', ${m.time})" style="display:inline-flex; align-items:center; background:hsla(${m.hue || 330}, 80%, 60%, 0.15); border:1px solid hsla(${m.hue || 330}, 80%, 60%, 0.4); border-radius:8px; padding:4px 8px; cursor:pointer; color:hsla(${m.hue || 330}, 90%, 75%, 1); font-size:11px; font-weight:700; transition:all 0.2s;" onmouseover="this.style.background='hsla(${m.hue || 330}, 80%, 60%, 0.3)'" onmouseout="this.style.background='hsla(${m.hue || 330}, 80%, 60%, 0.15)'">
+    <div onclick="seekAudioTime('judge-audio-${trackIdx}', ${m.time}, '${participantId}')" style="display:inline-flex; align-items:center; background:hsla(${m.hue || 330}, 80%, 60%, 0.15); border:1px solid hsla(${m.hue || 330}, 80%, 60%, 0.4); border-radius:8px; padding:4px 8px; cursor:pointer; color:hsla(${m.hue || 330}, 90%, 75%, 1); font-size:11px; font-weight:700; transition:all 0.2s;" onmouseover="this.style.background='hsla(${m.hue || 330}, 80%, 60%, 0.3)'" onmouseout="this.style.background='hsla(${m.hue || 330}, 80%, 60%, 0.15)'">
       <span style="margin-right:6px;">📌 ${m.label}</span>
       <span onclick="deleteAudioMark('${participantId}', ${trackIdx}, '${m.id}', event)" style="color:#fda4af; padding:2px; border-radius:4px; font-size:10px; display:flex; align-items:center; justify-content:center;" onmouseover="this.style.background='rgba(255,0,0,0.2)'" onmouseout="this.style.background='transparent'">❌</span>
     </div>
