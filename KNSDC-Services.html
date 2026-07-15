@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KNSDC — Food & Ride Partner Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary: #f59e0b;
+    --green: #10b981;
+    --blue: #3b82f6;
+    --red: #ef4444;
+    --fh: 'Inter', sans-serif;
+    --fm: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--fh); background: var(--bg); color: var(--text); padding: 20px; min-height: 100vh; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  
+  .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1.5px solid var(--border); padding-bottom: 20px; margin-bottom: 25px; }
+  .logo-row { display: flex; align-items: center; gap: 12px; }
+  .logo-img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--primary); }
+  .title { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
+
+  .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
+  .tab-btn { flex: 1; padding: 12px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-muted); font-weight: 800; cursor: pointer; text-align: center; transition: all 0.2s; font-size: 14px; }
+  .tab-btn.active { color: #fff; border-color: var(--primary); background: rgba(245,158,11,0.1); }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media(min-width: 768px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .section-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px; padding: 20px; }
+  .section-title { font-size: 16px; font-weight: 800; border-bottom: 1.5px dashed var(--border); padding-bottom: 10px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+
+  .order-card { background: rgba(15,23,42,0.6); border: 1px solid var(--border); border-radius: 12px; padding: 15px; margin-bottom: 12px; }
+  .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; }
+  .order-id { font-family: var(--fm); font-weight: 700; color: var(--primary); }
+  
+  .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+  .badge-pending { background: rgba(245,158,11,0.15); color: var(--primary); border: 1px solid var(--primary); }
+  .badge-active { background: rgba(59,130,246,0.15); color: var(--blue); border: 1px solid var(--blue); }
+  .badge-completed { background: rgba(16,185,129,0.15); color: var(--green); border: 1px solid var(--green); }
+
+  .action-btn { width: 100%; padding: 10px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; font-size: 13px; transition: transform 0.15s; margin-top: 10px; }
+  .action-btn:active { transform: scale(0.97); }
+
+  .input-field { width: 100%; padding: 10px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; font-size: 13px; outline: none; margin-bottom: 10px; }
+  .input-field:focus { border-color: var(--primary); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN VIEW -->
+<div id="login-view" style="display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 40px);">
+  <div class="section-card" style="width: 100%; max-width: 400px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
+    <div style="text-align: center; margin-bottom: 25px;">
+      <div style="font-size: 40px; margin-bottom: 10px;">🛵</div>
+      <h2 style="font-size: 20px; font-weight: 900; margin-bottom: 5px;">Partner Login</h2>
+      <p style="font-size: 12px; color: var(--text-muted);">Enter assigned partner credentials to continue</p>
+    </div>
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div style="margin-bottom: 15px;">
+        <label style="font-size: 11px; font-weight: 800; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase;">Login ID (Email)</label>
+        <input type="email" id="login-email" class="input-field" placeholder="partner@knsdc.com" required style="margin-bottom:0; padding:12px;" />
+      </div>
+      <div style="margin-bottom: 20px;">
+        <label style="font-size: 11px; font-weight: 800; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase;">Password</label>
+        <input type="password" id="login-pass" class="input-field" placeholder="••••••••" required style="margin-bottom:0; padding:12px;" />
+      </div>
+      <button type="submit" class="action-btn" style="background: var(--primary); color: #000; font-weight: 800; padding: 12px; font-size: 14px; border-radius: 10px;">SIGN IN</button>
+    </form>
+    <div id="login-error" style="display: none; color: var(--red); font-size: 12px; font-weight: 800; text-align: center; margin-top: 15px;">❌ Invalid ID or password</div>
+  </div>
+</div>
+
+<!-- DASHBOARD VIEW -->
+<div id="dashboard-view" class="container" style="display: none;">
+  <div class="header">
+    <div class="logo-row">
+      <img src="logo.png" alt="KNSDC Logo" class="logo-img"/>
+      <div>
+        <h1 class="title">Partner Service Portal Hub</h1>
+        <div style="font-size:11px; color:var(--text-muted);">Welcome, <span id="partner-display-name" style="font-weight: 800; color:#fff;">...</span> | Role: <span id="partner-display-role" style="font-weight: 800; color:var(--primary);">...</span></div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <div id="connection-status" style="font-size:12px; font-weight:bold; color:var(--green);">⚡ ONLINE</div>
+      <button onclick="handleLogout()" class="badge badge-pending" style="border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.1); color:var(--red); cursor: pointer; padding: 6px 12px; border-radius: 8px;">LOGOUT</button>
+    </div>
+  </div>
+
+  <div class="tab-buttons" style="display: none;">
+    <!-- Tabs removed, unified view enabled -->
+  </div>
+
+  <!-- FOOD DELIVERY PARTNER SECTION -->
+  <div id="food-delivery-panel" class="grid">
+    <div class="section-card" style="grid-column: 1 / -1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; display: flex; justify-content: space-between; align-items: center; padding: 20px 30px;">
+      <div>
+        <h2 style="margin: 0; font-size: 16px; opacity: 0.9;">🍔 Total Food Sales</h2>
+        <div id="food-total-earnings" style="font-size: 32px; font-weight: 900; margin-top: 4px;">₹0.00</div>
+      </div>
+      <div style="font-size: 40px; opacity: 0.2;">📈</div>
+    </div>
+
+    <div class="section-card" style="grid-column: 1 / -1; background: #f8fafc; border: 2px dashed #cbd5e1;">
+      <h2 class="section-title" style="color: var(--primary); font-weight: 800;">📝 Menu Management</h2>
+      <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap;">
+        <input type="text" id="new-menu-emoji" placeholder="Emoji (🍔)" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; width:80px; font-size:16px; text-align:center;">
+        <input type="text" id="new-menu-name" placeholder="Item Name (e.g. Burger)" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:150px; font-weight:bold;">
+        <input type="number" id="new-menu-price" placeholder="Price (₹)" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; width:100px; font-weight:bold;">
+        <button onclick="addMenuItem()" class="action-btn" style="background:var(--primary); color:white; width:auto; padding:0 20px; font-weight:bold;">+ Add Item</button>
+      </div>
+      <div id="menu-management-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:10px;">
+        <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px; grid-column:1/-1;">Loading menu...</div>
+      </div>
+    </div>
+    
+    <div class="section-card">
+      <h2 class="section-title" style="color: var(--primary);">📥 New &amp; Pending Orders</h2>
+      <div id="pending-food-orders">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No pending orders. Good job!</div>
+      </div>
+    </div>
+    <div class="section-card">
+      <h2 class="section-title" style="color: var(--green);">🍳 Preparing &amp; Completed</h2>
+      <div id="completed-food-orders">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No processed orders yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRANSPORT RIDE PARTNER SECTION -->
+  <div id="transport-ride-panel" class="grid" style="margin-top: 20px;">
+    <div class="section-card" style="grid-column: 1 / -1; background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; display: flex; justify-content: space-between; align-items: center; padding: 20px 30px;">
+      <div>
+        <h2 style="margin: 0; font-size: 16px; opacity: 0.9;">🏍️ Your Total Ride Earnings</h2>
+        <div id="ride-total-earnings" style="font-size: 32px; font-weight: 900; margin-top: 4px;">₹0.00</div>
+      </div>
+      <div style="font-size: 40px; opacity: 0.2;">💸</div>
+    </div>
+
+    <div class="section-card">
+      <h2 class="section-title" style="color: var(--blue);">🔍 Incoming Ride Requests</h2>
+      <div id="incoming-ride-bookings">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No ride requests available.</div>
+      </div>
+    </div>
+    <div class="section-card">
+      <h2 class="section-title" style="color: var(--green);">🏁 Ongoing &amp; Arrived Rides</h2>
+      <div id="completed-ride-bookings">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active rides assigned.</div>
+      </div>
+    </div>
+    
+    <div class="section-card" style="grid-column: 1 / -1; margin-top: 20px;">
+      <h2 class="section-title" style="color: var(--primary);">🍔 Food Deliveries (Ready for Pickup)</h2>
+      <div id="incoming-food-deliveries">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No food deliveries available.</div>
+      </div>
+    </div>
+    <div class="section-card" style="grid-column: 1 / -1;">
+      <h2 class="section-title" style="color: var(--blue);">🏍️ My Ongoing Food Deliveries</h2>
+      <div id="ongoing-food-deliveries">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active food deliveries.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="lib/supabase.js"></script>
+<script src="lib/localSync-v4.js?v=99"></script>
+<script>
+window.syncEngine = new (window.LocalSync || LocalSync)();
+
+let loggedInPartner = null;
+
+// Wait for syncEngine to initialize
+const waitSync = setInterval(() => {
+  if (window.syncEngine && window.syncEngine.isInitialized) {
+    clearInterval(waitSync);
+    checkAutoLogin();
+  }
+}, 100);
+
+function checkAutoLogin() {
+  const saved = localStorage.getItem('knsdc_partner_email');
+  const role = localStorage.getItem('kns_role');
+  if (saved && (role === 'food_partner' || role === 'transport_partner' || role === 'service_partner')) {
+    const savedUser = JSON.parse(localStorage.getItem('kns_user') || '{}');
+    loginSuccess({ name: savedUser.name || saved.split('@')[0], email: saved, role });
+    return;
+  }
+  // Show login form
+  document.getElementById('login-view').style.display = 'flex';
+  document.getElementById('dashboard-view').style.display = 'none';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const pass = document.getElementById('login-pass').value.trim();
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+
+  // Admin bypass backdoor
+  if (email === 'admin@knsdc.com' && pass === 'admin123') {
+    loginSuccess({ name: 'System Administrator', email: 'admin@knsdc.com', role: 'food_partner' });
+    return;
+  }
+
+  if (window.syncEngine && window.syncEngine.signIn) {
+    const res = await window.syncEngine.signIn(email, pass);
+    if (res.success && (res.role === 'food_partner' || res.role === 'transport_partner' || res.role === 'service_partner')) {
+      loginSuccess({ name: res.user?.user_metadata?.fullname || email.split('@')[0], email, role: res.role });
+    } else {
+      errEl.textContent = res.error || '❌ Invalid ID or password';
+      errEl.style.display = 'block';
+    }
+  } else {
+    // Local fallback
+    const state = window.syncEngine.getData() || {};
+    const partners = state.partnerAssignments || [];
+    const p = partners.find(x => x.email.toLowerCase() === email && String(x.password) === pass);
+    if (p) {
+      loginSuccess(p);
+    } else {
+      errEl.textContent = '❌ Invalid ID or password';
+      errEl.style.display = 'block';
+    }
+  }
+}
+
+function loginSuccess(partner) {
+  loggedInPartner = partner;
+  // Persist role and user info so auto-login works on page reload
+  localStorage.setItem('knsdc_partner_email', partner.email);
+  localStorage.setItem('kns_role', partner.role);
+  localStorage.setItem('kns_user', JSON.stringify({ name: partner.name, email: partner.email, role: partner.role }));
+
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('dashboard-view').style.display = 'block';
+
+  document.getElementById('partner-display-name').textContent = partner.name;
+  let roleText = '🤝 Service Partner';
+  if (partner.role === 'food_partner') roleText = '🍔 Food Partner';
+  else if (partner.role === 'transport_partner') roleText = '🏍️ Ride Partner';
+  document.getElementById('partner-display-role').textContent = roleText;
+
+  // Both panels are now always visible in the unified dashboard
+  document.getElementById('food-delivery-panel').style.display = 'grid';
+  document.getElementById('transport-ride-panel').style.display = 'grid';
+
+  // Trigger initial data render after login
+  renderData();
+}
+
+function handleLogout() {
+  localStorage.removeItem('knsdc_partner_email');
+  localStorage.removeItem('kns_role');
+  localStorage.removeItem('kns_user');
+  loggedInPartner = null;
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-view').style.display = 'flex';
+  document.getElementById('dashboard-view').style.display = 'none';
+}
+
+
+
+window.syncEngine.subscribe(() => {
+  renderData();
+});
+
+function renderData() {
+  const state = window.syncEngine.getData() || {};
+  const orders = state.foodOrders || [];
+  const bookings = state.rideBookings || [];
+
+  // --- Food Data Logic ---
+  const pendingContainer = document.getElementById('pending-food-orders');
+  const completedContainer = document.getElementById('completed-food-orders');
+  const menuContainer = document.getElementById('menu-management-list');
+
+    // Menu rendering
+    const foodMenu = state.foodMenu || [
+      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+    ];
+
+    menuContainer.innerHTML = foodMenu.map(m => `
+      <div style="background:white; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:24px;">${m.icon}</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">${m.name}</div>
+            <div style="color:var(--green); font-size:12px; font-weight:800;">₹${m.price}</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <button onclick="editMenuPrice('${m.id}', ${m.price})" style="background:#f1f5f9; border:none; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Edit Price</button>
+          <button onclick="deleteMenuItem('${m.id}')" style="background:#fee2e2; color:#ef4444; border:none; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🗑️ Delete</button>
+        </div>
+      </div>
+    `).join('');
+
+    const pending = orders.filter(o => o.status === 'pending');
+    const completed = orders.filter(o => o.status === 'preparing' || o.status === 'ready_for_pickup' || o.status === 'out_for_delivery' || o.status === 'delivered' || o.status === 'rejected');
+
+    let totalFoodSales = 0;
+    completed.forEach(o => {
+      if (o.status !== 'rejected') {
+        o.items.forEach(i => totalFoodSales += (i.price * i.qty));
+      }
+    });
+    const foodEarningsEl = document.getElementById('food-total-earnings');
+    if (foodEarningsEl) foodEarningsEl.innerText = `₹${totalFoodSales.toFixed(2)}`;
+
+    if (pending.length === 0) {
+      pendingContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No pending orders. Good job!</div>`;
+    } else {
+      pendingContainer.innerHTML = pending.map(o => `
+        <div class="order-card">
+          <div class="order-header">
+            <span class="order-id">${o.id}</span>
+            <span class="badge badge-pending">New Order</span>
+          </div>
+          <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">Seat/Lounge: ${o.location}</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Customer:</strong> ${o.participantName} (${o.participantId})</div>
+          <div style="font-size:12px; color:var(--text-muted);">
+            <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+          </div>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button onclick="updateFoodStatus('${o.id}', 'preparing')" class="action-btn" style="flex:2; background:var(--blue); color:white; margin:0;">🍳 Accept &amp; Start Preparing</button>
+            <button onclick="updateFoodStatus('${o.id}', 'rejected')" class="action-btn" style="flex:1; background:#fee2e2; color:#ef4444; margin:0; padding:8px;">❌ Reject</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    if (completed.length === 0) {
+      completedContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No processed orders yet.</div>`;
+    } else {
+      completedContainer.innerHTML = completed.map(o => {
+        const isPreparing = o.status === 'preparing';
+        const isReadyForPickup = o.status === 'ready_for_pickup';
+        const isOutForDelivery = o.status === 'out_for_delivery';
+        
+        let actionHtml = '';
+        if (isPreparing) {
+          actionHtml = `
+            <button onclick="updateFoodStatus('${o.id}', 'ready_for_pickup')" class="action-btn" style="background:var(--primary); color:white;">🏍️ Ready for Pickup (Assign Transport)</button>
+            <button onclick="updateFoodStatus('${o.id}', 'delivered')" class="action-btn" style="background:var(--green); color:white; margin-top:5px;">📦 Mark as Delivered (Self)</button>
+          `;
+        } else if (isReadyForPickup) {
+          actionHtml = `<div style="color:var(--primary); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">⏳ Waiting for Delivery Partner...</div>`;
+        } else if (isOutForDelivery) {
+          actionHtml = `<div style="color:var(--blue); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">🏍️ Out for delivery by ${o.deliveryPartnerName || 'Partner'}</div>`;
+        } else if (o.status === 'delivered') {
+          actionHtml = `<div style="color:var(--green); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">✅ Delivered Successfully</div>`;
+        }
+
+        return `
+          <div class="order-card" style="border-color:${isPreparing ? 'var(--blue)' : 'var(--green)'};">
+            <div class="order-header">
+              <span class="order-id">${o.id}</span>
+              <span class="badge badge-${o.status}">${o.status}</span>
+            </div>
+            <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">Seat/Lounge: ${o.location}</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Customer:</strong> ${o.participantName}</div>
+            <div style="font-size:12px; color:var(--text-muted);">
+              <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+            </div>
+            ${actionHtml}
+          </div>
+        `;
+      }).join('');
+    }
+
+    // --- Ride & Transport Data Logic ---
+    const requestContainer = document.getElementById('incoming-ride-bookings');
+    const assignedContainer = document.getElementById('completed-ride-bookings');
+
+    const myEmail = loggedInPartner ? (loggedInPartner.email || '').toLowerCase() : '';
+    const myName  = loggedInPartner ? (loggedInPartner.name  || '').toLowerCase() : '';
+
+    // Show only unassigned requests (any partner can pick these up)
+    const requests = bookings.filter(b => b.status === 'finding');
+    // Show only rides this logged-in partner has accepted
+    const assigned = bookings.filter(b =>
+      (b.status === 'assigned' || b.status === 'completed') &&
+      ((b.driverEmail && b.driverEmail.toLowerCase() === myEmail) ||
+       (b.driverName  && b.driverName.toLowerCase()  === myName))
+    );
+
+    let totalRideSales = 0;
+    assigned.forEach(b => {
+      const isMyRide = loggedInPartner && (b.driverName === loggedInPartner.name || b.driverEmail === loggedInPartner.email);
+      if (b.status === 'completed' && isMyRide) {
+        totalRideSales += parseFloat(b.fare) || 0;
+      }
+    });
+    const rideEarningsEl = document.getElementById('ride-total-earnings');
+    if (rideEarningsEl) rideEarningsEl.innerText = `₹${totalRideSales.toFixed(2)}`;
+
+    if (requests.length === 0) {
+      requestContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No ride requests available.</div>`;
+    } else {
+      requestContainer.innerHTML = requests.map(b => `
+        <div class="order-card">
+          <div class="order-header">
+            <span class="order-id">${b.id}</span>
+            <span class="badge badge-pending">Finding Partner</span>
+          </div>
+          <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 Pickup Coords: ${b.pickup}</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+            <strong>Fare:</strong> ₹${b.fare} | <strong>Vehicle:</strong> ${b.vehicle.toUpperCase()} (${(b.distanceKm || 0).toFixed(2)} km)
+          </div>
+          
+          <p style="font-size: 11px; color: var(--red); background: rgba(239,68,68,0.1); padding: 6px; border-radius: 6px; margin-bottom: 10px;">
+            ⚠️ Passenger contact phone number is hidden until you accept this booking.
+          </p>
+
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button onclick="acceptRideBooking('${b.id}')" class="action-btn" style="background:var(--blue); color:white; margin-top:0; font-weight:800;">🏍️ Accept Booking &amp; Start Live Tracking</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Food delivery requests for Transport partners
+    const foodDeliveryRequests = orders.filter(o => o.status === 'ready_for_pickup');
+    const myFoodDeliveries = orders.filter(o => o.status === 'out_for_delivery' && (o.deliveryPartnerEmail === myEmail || o.deliveryPartnerName === myName));
+
+    const incomingFoodContainer = document.getElementById('incoming-food-deliveries');
+    if (incomingFoodContainer) {
+       if (foodDeliveryRequests.length === 0) {
+         incomingFoodContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No food deliveries available.</div>`;
+       } else {
+         incomingFoodContainer.innerHTML = foodDeliveryRequests.map(o => `
+           <div class="order-card">
+             <div class="order-header">
+               <span class="order-id">${o.id}</span>
+               <span class="badge badge-pending">Ready for Pickup</span>
+             </div>
+             <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 To: ${o.location}</div>
+             <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Customer:</strong> ${o.participantName}</div>
+             <div style="font-size:12px; color:var(--text-muted);">
+               <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+             </div>
+             <button onclick="acceptFoodDelivery('${o.id}')" class="action-btn" style="background:var(--blue); color:white; margin-top:10px; font-weight:800;">🏍️ Accept Delivery</button>
+           </div>
+         `).join('');
+       }
+    }
+
+    const ongoingFoodContainer = document.getElementById('ongoing-food-deliveries');
+    if (ongoingFoodContainer) {
+       if (myFoodDeliveries.length === 0) {
+         ongoingFoodContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active food deliveries.</div>`;
+         ongoingFoodContainer.removeAttribute('data-hash-food');
+       } else {
+         const currentHash = JSON.stringify(myFoodDeliveries.map(o => ({id: o.id, status: o.status, lat: o.driverLat, lng: o.driverLng})));
+         const prevHash = ongoingFoodContainer.getAttribute('data-hash-food') || '';
+         
+         if (prevHash !== currentHash) {
+           ongoingFoodContainer.setAttribute('data-hash-food', currentHash);
+           ongoingFoodContainer.innerHTML = myFoodDeliveries.map(o => {
+             let mapContainerHtml = '';
+             let navHtml = '';
+             let distanceHtml = '';
+             
+             if (o.location && o.location.startsWith('GPS: ')) {
+               const parts = o.location.replace('GPS: ', '').split(', ');
+               if (parts.length === 2) {
+                 const pLat = parseFloat(parts[0]);
+                 const pLng = parseFloat(parts[1]);
+                 
+                 if (o.driverLat && o.driverLng) {
+                   const R = 6371;
+                   const dLat = (pLat - o.driverLat) * Math.PI / 180;
+                   const dLng = (pLng - o.driverLng) * Math.PI / 180;
+                   const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(o.driverLat*Math.PI/180)*Math.cos(pLat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+                   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                   const distKm = (R * c).toFixed(2);
+                   distanceHtml = `<div style="font-size:13px; font-weight:800; color:var(--amber); margin-top:5px; background:rgba(245,158,11,0.1); padding:6px; border-radius:6px; text-align:center;">📏 Distance to Participant: ${distKm} km</div>`;
+                 }
+
+                 navHtml = `
+                   <div style="margin-top:10px;">
+                     <a href="https://www.google.com/maps/dir/?api=1&destination=${pLat},${pLng}" target="_blank" style="display:block; background:#4285F4; color:white; padding:8px; border-radius:8px; text-align:center; text-decoration:none; font-size:12px; font-weight:bold;">📍 Open Google Maps Navigation</a>
+                   </div>
+                 `;
+                 mapContainerHtml = `
+                   <div style="font-size: 11px; color: var(--primary); margin-top: 8px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+                     <span>📡 Sharing Your Geolocation Coords Live</span>
+                     <span id="geo-status-food-${o.id}" style="color: var(--green);">⚡ Active</span>
+                   </div>
+                   <div id="food-service-map-${o.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid var(--border); margin-top: 8px; z-index: 1;"></div>
+                 `;
+               }
+             }
+             
+             return `
+             <div class="order-card" style="border-color:var(--blue);">
+               <div class="order-header">
+                 <span class="order-id">${o.id}</span>
+                 <span class="badge badge-active">Out for Delivery</span>
+               </div>
+               <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 To: ${o.location}</div>
+               <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Customer:</strong> ${o.participantName}</div>
+               <div style="font-size:12px; color:var(--text-muted);">
+                 <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+               </div>
+               ${distanceHtml}
+               ${mapContainerHtml}
+               ${navHtml}
+               <button onclick="updateFoodStatus('${o.id}', 'delivered')" class="action-btn" style="background:var(--green); color:white; margin-top:10px; font-weight:800;">✅ Mark as Delivered</button>
+             </div>
+             `;
+           }).join('');
+         }
+
+         // Initialize food maps
+         myFoodDeliveries.forEach(o => {
+           if (!o.location || !o.location.startsWith('GPS: ')) return;
+           const parts = o.location.replace('GPS: ', '').split(', ');
+           if (parts.length !== 2) return;
+           const pLat = parseFloat(parts[0]);
+           const pLng = parseFloat(parts[1]);
+
+           const mapId = `food-service-map-${o.id}`;
+           const mapEl = document.getElementById(mapId);
+           if (!mapEl) return;
+
+           setTimeout(() => {
+             const trackKey = 'food_' + o.id;
+             if (!trackingMaps[trackKey]) {
+               const mapInstance = L.map(mapId, { attributionControl: false }).setView([pLat, pLng], 15);
+               L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+               L.marker([pLat, pLng], {
+                 icon: L.icon({
+                   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                   iconSize: [20, 32],
+                   iconAnchor: [10, 32]
+                 })
+               }).addTo(mapInstance).bindPopup("Participant Location");
+
+               let dMarker = null;
+               if (o.driverLat && o.driverLng) {
+                 dMarker = L.marker([o.driverLat, o.driverLng], {
+                   icon: L.icon({
+                     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                     iconSize: [24, 38],
+                     iconAnchor: [12, 38]
+                   })
+                 }).addTo(mapInstance).bindPopup("Your Location");
+               }
+
+               trackingMaps[trackKey] = { map: mapInstance, driverMarker: dMarker };
+             } else {
+               trackingMaps[trackKey].map.invalidateSize();
+               if (o.driverLat && o.driverLng) {
+                 const driverLatLng = [o.driverLat, o.driverLng];
+                 if (trackingMaps[trackKey].driverMarker) {
+                   trackingMaps[trackKey].driverMarker.setLatLng(driverLatLng);
+                 } else {
+                   trackingMaps[trackKey].driverMarker = L.marker(driverLatLng, {
+                     icon: L.icon({
+                       iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                       iconSize: [24, 38],
+                       iconAnchor: [12, 38]
+                     })
+                   }).addTo(trackingMaps[trackKey].map).bindPopup("Your Location");
+                 }
+               }
+             }
+           }, 100);
+         });
+       }
+    }
+
+    if (assigned.length === 0) {
+      assignedContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active rides assigned.</div>`;
+      assignedContainer.removeAttribute('data-hash');
+    } else {
+      // Determine if list changed to avoid rebuilding Leaflet elements repeatedly
+      const prevHtml = assignedContainer.getAttribute('data-hash') || '';
+      const currentHash = JSON.stringify(assigned.map(b => ({id: b.id, status: b.status, lat: b.driverLat, lng: b.driverLng})));
+      
+      if (prevHtml !== currentHash) {
+        assignedContainer.setAttribute('data-hash', currentHash);
+
+        assignedContainer.innerHTML = assigned.map(b => {
+          const isAssigned = b.status === 'assigned';
+          
+          // Secure layout details: only show rider info if the logged in partner accepted it
+          const isMyRide = loggedInPartner && (b.driverName === loggedInPartner.name || b.driverEmail === loggedInPartner.email);
+          const riderName = isMyRide ? b.participantName : '🔒 Hidden Rider';
+          const riderPhone = isMyRide ? b.participantPhone : '🔒 Hidden Phone';
+          
+          const actionHtml = isAssigned ? `
+            <button onclick="updateRideStatus('${b.id}', 'completed')" class="action-btn" style="background:var(--green); color:white; font-weight:800;">🏁 Mark as Arrived / Completed</button>
+          ` : `<div style="color:var(--green); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">✅ Trip Completed</div>`;
+
+          let mapContainerHtml = '';
+          if (isAssigned && isMyRide) {
+            mapContainerHtml = `
+              <div style="font-size: 11px; color: var(--primary); margin-top: 8px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+                <span>📡 Sharing Your Geolocation Coords Live</span>
+                <span id="geo-status-${b.id}" style="color: var(--green);">⚡ Active</span>
+              </div>
+              <div id="service-map-${b.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid var(--border); margin-top: 8px; z-index: 1;"></div>
+            `;
+          }
+
+          return `
+            <div class="order-card" style="border-color:${isAssigned ? 'var(--blue)' : 'var(--green)'};">
+              <div class="order-header">
+                <span class="order-id">${b.id}</span>
+                <span class="badge badge-${b.status}">${b.status}</span>
+              </div>
+              <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">📍 From ${b.pickup} ➔ To ${b.drop}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Rider Name:</strong> ${riderName}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+                <strong>Rider Phone:</strong> ${riderPhone}
+                ${isMyRide ? `<a href="tel:${riderPhone}" style="background:var(--green); color:white; padding:4px 8px; border-radius:4px; text-decoration:none; font-weight:bold; font-size:11px;">📞 Call</a>` : ''}
+              </div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;"><strong>Vehicle:</strong> ${b.vehicle.toUpperCase()} | <strong>Fare:</strong> ₹${b.fare}</div>
+              <div style="font-size:12px; color:var(--green); font-weight:bold;">🏍️ Driver: ${b.driverName} (${b.driverPhone})</div>
+              
+              ${isMyRide ? `
+                <div style="display:flex; gap:8px; margin-top:10px;">
+                  <a href="https://www.google.com/maps/dir/?api=1&destination=${b.pickupLat && b.pickupLng ? b.pickupLat + ',' + b.pickupLng : encodeURIComponent(b.pickup)}" target="_blank" style="flex:1; background:#4285F4; color:white; padding:8px; border-radius:8px; text-align:center; text-decoration:none; font-size:12px; font-weight:bold;">📍 Nav Pickup</a>
+                  <a href="https://www.google.com/maps/dir/?api=1&destination=${b.dropLat && b.dropLng ? b.dropLat + ',' + b.dropLng : encodeURIComponent(b.drop)}" target="_blank" style="flex:1; background:#EA4335; color:white; padding:8px; border-radius:8px; text-align:center; text-decoration:none; font-size:12px; font-weight:bold;">🏁 Nav Drop</a>
+                </div>
+              ` : ''}
+
+              ${mapContainerHtml}
+              ${actionHtml}
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Initialize maps for assigned rides
+      assigned.forEach(b => {
+        if (b.status !== 'assigned') return;
+        const isMyRide = loggedInPartner && (b.driverName === loggedInPartner.name || b.driverEmail === loggedInPartner.email);
+        if (!isMyRide) return;
+
+        const mapId = `service-map-${b.id}`;
+        const mapEl = document.getElementById(mapId);
+        if (!mapEl) return;
+
+        setTimeout(() => {
+          if (!trackingMaps[b.id]) {
+            const mapInstance = L.map(mapId, { attributionControl: false }).setView([b.pickupLat || 22.5126, b.pickupLng || 88.3986], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+            if (b.pickupLat && b.pickupLng) {
+              L.marker([b.pickupLat, b.pickupLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Pickup");
+            }
+            if (b.dropLat && b.dropLng) {
+              L.marker([b.dropLat, b.dropLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Drop");
+            }
+
+            let dMarker = null;
+            if (b.driverLat && b.driverLng) {
+              dMarker = L.marker([b.driverLat, b.driverLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                  iconSize: [24, 38],
+                  iconAnchor: [12, 38]
+                })
+              }).addTo(mapInstance).bindPopup("Your Location");
+            }
+
+            trackingMaps[b.id] = {
+              map: mapInstance,
+              driverMarker: dMarker
+            };
+          } else {
+            trackingMaps[b.id].map.invalidateSize();
+            if (b.driverLat && b.driverLng) {
+              const driverLatLng = [b.driverLat, b.driverLng];
+              if (trackingMaps[b.id].driverMarker) {
+                trackingMaps[b.id].driverMarker.setLatLng(driverLatLng);
+              } else {
+                trackingMaps[b.id].driverMarker = L.marker(driverLatLng, {
+                  icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                    iconSize: [24, 38],
+                    iconAnchor: [12, 38]
+                  })
+                }).addTo(trackingMaps[b.id].map).bindPopup("Your Location");
+              }
+            }
+          }
+        }, 100);
+      });
+    }
+}
+
+async function addMenuItem() {
+  const emoji = document.getElementById('new-menu-emoji').value.trim() || '🍽️';
+  const name = document.getElementById('new-menu-name').value.trim();
+  const price = parseFloat(document.getElementById('new-menu-price').value.trim());
+
+  if (!name || isNaN(price)) {
+    return alert('Please enter a valid item name and price.');
+  }
+
+  const id = 'f' + Date.now();
+  window.syncEngine.setData(s => {
+    const foodMenu = s.foodMenu || [
+      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+    ];
+    foodMenu.push({ id, name, price, icon: emoji });
+    return { ...s, foodMenu };
+  });
+
+  document.getElementById('new-menu-emoji').value = '';
+  document.getElementById('new-menu-name').value = '';
+  document.getElementById('new-menu-price').value = '';
+
+  await window.syncEngine.forceSaveStateToSupabase();
+}
+
+async function editMenuPrice(id, currentPrice) {
+  const newPrice = prompt(`Enter new price for this item:`, currentPrice);
+  if (newPrice === null) return;
+  const price = parseFloat(newPrice);
+  if (isNaN(price)) return alert('Invalid price entered.');
+
+  window.syncEngine.setData(s => {
+    const foodMenu = s.foodMenu || [
+      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+    ];
+    const idx = foodMenu.findIndex(m => String(m.id) === String(id));
+    if (idx !== -1) foodMenu[idx].price = price;
+    return { ...s, foodMenu };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
+}
+
+async function deleteMenuItem(id) {
+  if (!confirm('Are you sure you want to delete this menu item?')) return;
+  window.syncEngine.setData(s => {
+    const foodMenu = s.foodMenu || [
+      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+    ];
+    return { ...s, foodMenu: foodMenu.filter(m => String(m.id) !== String(id)) };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
+}
+
+async function updateFoodStatus(orderId, newStatus) {
+  if (newStatus === 'delivered' || newStatus === 'rejected') {
+    stopFoodGeoTracking(orderId);
+  }
+  window.syncEngine.setData(s => {
+    const orders = s.foodOrders || [];
+    const idx = orders.findIndex(o => String(o.id) === String(orderId));
+    if (idx !== -1) {
+      orders[idx].status = newStatus;
+    }
+    return { ...s, foodOrders: orders };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
+}
+
+async function acceptFoodDelivery(orderId) {
+  if (!loggedInPartner) return;
+  window.syncEngine.setData(s => {
+    const orders = s.foodOrders || [];
+    const idx = orders.findIndex(o => String(o.id) === String(orderId));
+    if (idx !== -1) {
+      orders[idx].status = 'out_for_delivery';
+      orders[idx].deliveryPartnerName = loggedInPartner.name || 'Delivery Partner';
+      orders[idx].deliveryPartnerEmail = (loggedInPartner.email || '').toLowerCase();
+    }
+    return { ...s, foodOrders: orders };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
+  startFoodGeoTracking(orderId);
+}
+
+function startFoodGeoTracking(orderId) {
+  if (geoIntervals['food_'+orderId]) return;
+
+  const trackLocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        window.syncEngine.setData(s => {
+          const orders = s.foodOrders || [];
+          const idx = orders.findIndex(o => String(o.id) === String(orderId));
+          if (idx !== -1 && orders[idx].status === 'out_for_delivery') {
+            orders[idx].driverLat = latitude;
+            orders[idx].driverLng = longitude;
+          }
+          return { ...s, foodOrders: orders };
+        });
+        window.syncEngine.forceSaveStateToSupabase();
+      },
+      (error) => console.warn('Geolocation sharing error:', error.message),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
+  trackLocation();
+  geoIntervals['food_'+orderId] = setInterval(trackLocation, 6000);
+}
+
+function stopFoodGeoTracking(orderId) {
+  if (geoIntervals['food_'+orderId]) {
+    clearInterval(geoIntervals['food_'+orderId]);
+    delete geoIntervals['food_'+orderId];
+  }
+}
+
+// Registry for active driver geolocation tracking intervals
+let geoIntervals = {};
+let trackingMaps = {};
+
+async function acceptRideBooking(bookingId) {
+  if (!loggedInPartner) {
+    alert('Please login as a service partner to accept bookings.');
+    return;
+  }
+
+  const driverName = loggedInPartner.name || 'Service Partner';
+  const driverPhone = loggedInPartner.phone || '9999999999';
+
+  window.syncEngine.setData(s => {
+    const bookings = s.rideBookings || [];
+    const idx = bookings.findIndex(b => String(b.id) === String(bookingId));
+    if (idx !== -1) {
+      bookings[idx].status = 'assigned';
+      bookings[idx].driverName = driverName;
+      bookings[idx].driverPhone = driverPhone;
+      bookings[idx].driverEmail = loggedInPartner.email;
+    }
+    return { ...s, rideBookings: bookings };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
+  startDriverGeoTracking(bookingId);
+}
+
+function startDriverGeoTracking(bookingId) {
+  if (geoIntervals[bookingId]) return;
+
+  const trackLocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        window.syncEngine.setData(s => {
+          const bookings = s.rideBookings || [];
+          const idx = bookings.findIndex(b => String(b.id) === String(bookingId));
+          if (idx !== -1 && bookings[idx].status === 'assigned') {
+            bookings[idx].driverLat = latitude;
+            bookings[idx].driverLng = longitude;
+          }
+          return { ...s, rideBookings: bookings };
+        });
+        window.syncEngine.forceSaveStateToSupabase();
+      },
+      (error) => {
+        console.warn('Geolocation sharing error:', error.message);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
+  // Run immediately and then poll every 6 seconds
+  trackLocation();
+  geoIntervals[bookingId] = setInterval(trackLocation, 6000);
+}
+
+function stopDriverGeoTracking(bookingId) {
+  if (geoIntervals[bookingId]) {
+    clearInterval(geoIntervals[bookingId]);
+    delete geoIntervals[bookingId];
+  }
+}
+
+async function updateRideStatus(bookingId, newStatus) {
+  if (newStatus === 'completed') {
+    stopDriverGeoTracking(bookingId);
+  }
+  window.syncEngine.setData(s => {
+    const bookings = s.rideBookings || [];
+    const idx = bookings.findIndex(b => String(b.id) === String(bookingId));
+    if (idx !== -1) {
+      bookings[idx].status = newStatus;
+    }
+    return { ...s, rideBookings: bookings };
+  });
+  await window.syncEngine.forceSaveStateToSupabase();
+}
+</script>
+<!-- Leaflet Map Script -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</body>
+</html>

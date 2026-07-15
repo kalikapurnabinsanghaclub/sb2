@@ -1,0 +1,3919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>KNSDC — Participant Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<!-- Removed importmap to support file:// protocol -->
+<style>
+  :root {
+    --primary: #FF6B35;
+    --accent: #2563eb;
+    --bg: transparent;
+    --surface: rgba(255, 255, 255, 0.7);
+    --text: #0f172a;
+    --text-muted: #475569;
+    --border: rgba(255, 255, 255, 0.5);
+    --shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+    --green: #10b981;
+    --red: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { 
+    font-family: 'Inter', sans-serif; 
+    background: var(--bg); 
+    color: var(--text); 
+    padding-bottom:40px; 
+    
+    /* Anti-copy protections */
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  
+  #anti-screenshot-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.98);
+    color: white;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    padding: 20px;
+    backdrop-filter: blur(15px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s ease;
+  }
+  #anti-screenshot-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  
+  /* TOAST */
+  #toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+  .toast { background: var(--text); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); animation: toastIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275) forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+  .container { max-width: 600px; margin: 40px auto; padding: 0 20px; position: relative; z-index: 10; }
+  .card { background: var(--surface); border-radius: 16px; padding: 30px; box-shadow: var(--shadow); border: 1px solid var(--border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  
+  /* Skip link for accessibility */
+  .skip-link {
+    position: absolute;
+    top: -40px; left: 0;
+    background: var(--primary);
+    color: white; padding: 8px; z-index: 100000;
+    transition: top 0.2s;
+  }
+  .skip-link:focus { top: 0; }
+  
+  /* Scene container for 3D background */
+  .scene-container {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    z-index: -1;
+    background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%);
+    overflow: hidden;
+  }
+  .scene-container canvas {
+    display: block;
+    width: 100%; height: 100%;
+  }
+
+  /* Cinematic Logo Effect */
+  @keyframes cinematic-float {
+    0%, 100% { 
+      transform: translateY(0) scale(1); 
+      box-shadow: 0 0 15px rgba(37,99,235,0.4), 0 0 30px rgba(124,58,237,0.2); 
+    }
+    50% { 
+      transform: translateY(-8px) scale(1.05); 
+      box-shadow: 0 15px 25px rgba(37,99,235,0.6), 0 0 45px rgba(16,185,129,0.4); 
+    }
+  }
+  .cinematic-logo {
+    animation: cinematic-float 4s ease-in-out infinite;
+    border: 3px solid var(--primary);
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 15px;
+    height: 90px;
+    width: 90px;
+    transition: transform 0.3s;
+  }
+  .cinematic-logo:hover {
+    animation-play-state: paused;
+    transform: scale(1.15) rotate(5deg);
+  }
+  
+  h1 { font-size: 24px; font-weight: 800; text-align: center; margin-bottom: 24px; color: var(--primary); }
+  h2 { font-size: 18px; font-weight: 700; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+  
+  .fg { margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select, textarea { width: 100%; padding: 12px 14px; border-radius: 8px; border: 2px solid var(--border); font-size: 15px; font-family: inherit; transition: all 0.2s; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); background: rgba(255, 255, 255, 0.9); }
+  input:disabled, select:disabled, textarea:disabled { background: rgba(241, 245, 249, 0.6); cursor: not-allowed; opacity: 0.8; }
+  
+  .btn { display: block; width: 100%; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; text-align: center; border: none; transition: 0.2s; color: #fff; }
+  .btn-primary { background: var(--accent); }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-green { background: var(--green); }
+  .btn-green:hover { background: #059669; }
+  .btn-locked { background: var(--text-muted); cursor: not-allowed; }
+
+  #login-view, #dashboard-view { display: none; }
+  
+  .banner { background: #fefce8; border: 1px solid #fef08a; color: #a16207; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  
+  /* Premium Frame Selection Thumbnail Buttons */
+  .frame-btn {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    position: relative;
+    outline: none;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  }
+  .frame-btn:hover {
+    transform: translateY(-4px) scale(1.08);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+  .frame-btn:active {
+    transform: translateY(-1px) scale(1.02);
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="scene-container" role="img" aria-label="Animated bright abstract 3D background">
+  <canvas id="webgl-canvas"></canvas>
+</div>
+
+<div id="anti-screenshot-overlay">
+  <div style="font-size: 48px; margin-bottom: 20px;">🛡️</div>
+  <div style="font-size: 24px;">Security Measure Active</div>
+  <span style="font-size: 14px; font-weight: 400; color: #ccc; margin-top: 10px; display: block; max-width:400px;">
+    Screenshots, screen recording, and text copying are disabled on this portal to protect sensitive participant data.
+  </span>
+</div>
+
+<!-- Dynamic Identity Watermark -->
+<div id="identity-watermark" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 999998; opacity: 0.04; background-repeat: repeat;"></div>
+
+<div id="toast-container" aria-live="polite"></div>
+
+<main id="main" class="container">
+  
+  <!-- LOGIN VIEW -->
+  <div id="login-view" class="card">
+    <h1>KNSDC Participant Portal</h1>
+    <div style="text-align:center;font-size:14px;color:var(--text-muted);margin-bottom:24px;">Log in to view and update your registration form.</div>
+    <form id="login-form">
+      <div class="fg">
+        <label>Username (First Name)</label>
+        <input type="text" id="login-user" placeholder="e.g. Sourav" required>
+      </div>
+      <div class="fg">
+        <label>Password (Participant ID)</label>
+        <input type="text" id="login-pass" placeholder="e.g. KN005" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="margin-top:24px;">Log In</button>
+    </form>
+  </div>
+
+  <!-- STOP VIBRATION BANNER -->
+  <div id="stop-vibration-banner" onclick="stopVibration()" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:999999; background:var(--red); color:white; padding:15px 30px; border-radius:30px; font-weight:800; font-size:16px; box-shadow:0 10px 30px rgba(239,68,68,0.4); display:none; cursor:pointer; align-items:center; gap:10px;">
+    <span>🛑 Stop Vibration</span>
+  </div>
+
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboard-view">
+    <header style="text-align:center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid rgba(37,99,235,0.1);">
+      <img src="logo.png" alt="KNSDC Logo" class="cinematic-logo">
+      <h1 style="margin:0; font-size: 1.6rem; color: var(--text); font-weight: 900; letter-spacing: -0.5px;" id="hero-heading">KNSDC Participant Portal</h1>
+      <div style="font-size: 0.75rem; color: var(--primary); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 6px;">Powered by Kalikapur Nabin Sangha</div>
+    </header>
+    
+    <!-- LOCATION AND PHONE & READY BUTTON -->
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:15px; margin-bottom:20px; box-shadow:var(--shadow); text-align:center;">
+      <div style="font-size:14px; font-weight:700; margin-bottom:8px;">📍 <a href="https://maps.app.goo.gl/n1LYiH7RsGHt7Dji9" target="_blank" style="color:var(--accent); text-decoration:none;">Venue Location</a></div>
+      <div style="font-size:13px; color:var(--text-muted); display:flex; justify-content:center; gap:15px; flex-wrap:wrap;">
+        <span>📞 <a href="tel:+917001371959" style="color:var(--text); text-decoration:none; font-weight:600;">+91 7001371959</a></span>
+        <span>📞 <a href="tel:+918001129978" style="color:var(--text); text-decoration:none; font-weight:600;">+91 8001129978</a></span>
+      </div>
+    </div>
+    
+    <button id="ready-btn" onclick="markParticipantReady()" style="position:sticky; top:10px; z-index:100; width:100%; padding:15px; border-radius:12px; font-size:16px; font-weight:800; cursor:pointer; text-align:center; border:none; color:#fff; background:linear-gradient(135deg, #FF0080, #FF8C00); box-shadow:0 6px 20px rgba(255,0,128,0.3); transition:all 0.3s; margin-bottom:25px; outline:none;">
+      🔥 I am Ready for Performance
+    </button>
+
+    <div id="upcoming-performer-card" class="card" style="display:none; margin-bottom:25px; border:2px solid var(--primary); background:linear-gradient(to right, rgba(124,58,237,0.05), rgba(124,58,237,0.1));">
+      <div style="font-size:16px; font-weight:800; color:var(--primary); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+        <span style="animation: pulse 1.5s infinite;">🎤</span> Upcoming Performers (Queue)
+      </div>
+      <div id="upcoming-performer-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+
+    <!-- Form Box -->
+    <section aria-labelledby="form-heading" style="background: rgba(255, 255, 255, 0.7); border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(59, 130, 246, 0.15); margin-bottom:20px; position:relative; border: 1px solid rgba(255,255,255,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom: 15px; border-bottom: 1px dashed rgba(59, 130, 246, 0.3);">
+        <h2 id="form-heading" style="font-size:18px; color:#1e3a8a; font-weight:800; display:flex; align-items:center; gap:8px;">
+          <span style="font-size: 22px;">📋</span> Registration Details
+        </h2>
+        <button type="button" onclick="logout()" style="background:#ef4444; border:none; color:#fff; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:700; font-size:13px; box-shadow:0 4px 10px rgba(239,68,68,0.3); transition:transform 0.2s ease, box-shadow 0.2s ease; display:flex; align-items:center; gap:6px; position:relative; z-index:10;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          Logout
+        </button>
+      </div>
+      
+      <div id="lock-banner" class="banner" style="display:none;">
+        <span>🔒</span> Your form is locked by the Monitor and cannot be edited.
+      </div>
+      
+      <form id="participant-form">
+        <div id="dynamic-form-container"></div>
+        
+        <button type="submit" id="save-btn" class="btn" style="margin-top:24px; width:100%; background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); border: none; color: white;">Save Updates</button>
+      </form>
+    </section>
+
+    <!-- DETAILED RESULTS CARD -->
+    <div id="detailed-results-card" style="margin-top: 20px; display: none;"></div>
+
+    <!-- Food Order Modal -->
+    <div id="food-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999999; justify-content:center; align-items:center; padding:15px;">
+      <div class="card" style="width:100%; max-width:420px; max-height:90vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.25s;">
+        <button onclick="closeFoodModal()" style="position:absolute; top:15px; right:15px; background:none; border:none; color:var(--text); font-size:24px; cursor:pointer;">&times;</button>
+        <h3 style="font-size:18px; font-weight:800; margin-bottom:15px; color:#10B981;">🍔 Select Menu Items</h3>
+        
+        <div id="menu-items-container" style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+          <!-- JS item injection -->
+        </div>
+
+        <div class="fg" style="margin-bottom:15px;">
+          <label>Delivery Seat / Location / Lounge Code</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="food-delivery-loc" placeholder="e.g. Lounge A - Table 4" required style="flex:1; margin-bottom:0;">
+            <button type="button" onclick="getCurrentFoodLocation()" class="btn" style="background:#3b82f6; border:none; padding:10px 14px; font-size:16px; border-radius:8px;" title="Use Current GPS Location">📍</button>
+          </div>
+        </div>
+
+        <div style="font-size:14px; font-weight:800; display:flex; justify-content:space-between; margin-bottom:20px; padding-top:10px; border-top:1px solid var(--border);">
+          <span>Total Price:</span>
+          <span id="food-total-price">₹0</span>
+        </div>
+
+        <button onclick="submitFoodOrder()" class="btn" style="background:#10B981; border:none;">Place Order (Cash on Delivery)</button>
+      </div>
+    </div>
+
+    <!-- Transport Booking Modal -->
+    <div id="ride-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999999; justify-content:center; align-items:flex-end; padding:0;">
+      <div class="card" style="width:100%; max-width:500px; max-height:95vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); padding: 25px 20px; border-radius: 24px 24px 0 0; background: #ffffff;">
+        <button onclick="closeRideModal()" style="position:absolute; top:15px; right:15px; background:#f1f5f9; border:none; color:var(--text); font-size:24px; cursor:pointer; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">&times;</button>
+        <h3 style="font-size:22px; font-weight:900; margin-bottom:4px; color:#FACC15; display: flex; align-items: center; gap: 8px;">
+          <span style="background: #000; padding: 4px 8px; border-radius: 6px; color: #fff; font-size: 14px;">KNSDC-TNSPT</span>
+        </h3>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px; font-weight: 600;">Fast & Reliable Rides</p>
+        
+        <div style="margin-bottom: 16px; display: flex; gap: 8px;">
+          <button onclick="useCurrentLocationAsPickup()" type="button" class="btn btn-sm" style="flex: 1; font-size: 13px; font-weight: bold; padding: 10px; background: #000; color: #FACC15; border: none; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">📍 Use Current GPS Location</button>
+        </div>
+
+        <div id="booking-map" style="width: 100%; height: 220px; border-radius: 16px; border: 2px solid #e2e8f0; margin-bottom: 15px; z-index: 1;"></div>
+
+        <div class="fg" style="margin-bottom: 12px; position: relative;">
+          <label style="font-size: 12px; font-weight: 800; color: #334155;">🔵 Pickup Location</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="ride-pickup-loc" placeholder="Search Pickup Address..." style="flex:1; font-size: 14px; padding: 12px; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #f8fafc; font-weight: 600;" onchange="updateFareOnAddressChange()">
+            <button type="button" onclick="searchAddress('pickup')" style="background: #3b82f6; color: white; border: none; border-radius: 12px; padding: 0 16px; font-weight: bold; cursor: pointer;">Search</button>
+          </div>
+        </div>
+
+        <div class="fg" style="margin-bottom: 16px; position: relative;">
+          <label style="font-size: 12px; font-weight: 800; color: #334155;">🔴 Drop Location</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="ride-drop-loc" placeholder="Search Drop Address..." style="flex:1; font-size: 14px; padding: 12px; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #f8fafc; font-weight: 600;" onchange="updateFareOnAddressChange()">
+            <button type="button" onclick="searchAddress('drop')" style="background: #ef4444; color: white; border: none; border-radius: 12px; padding: 0 16px; font-weight: bold; cursor: pointer;">Search</button>
+          </div>
+        </div>
+
+        <div class="fg" style="margin-bottom:15px;">
+          <label>Ride Type</label>
+          <select id="ride-vehicle-type" onchange="updateEstimatedFare()" style="padding: 10px;">
+            <option value="bike">🏍️ Bike Taxi — ₹12/km + fees</option>
+            <option value="auto">🛺 Auto Rickshaw — ₹15/km + fees</option>
+            <option value="cab">🚗 Mini Cab — ₹20/km + fees</option>
+          </select>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.02); padding: 12px; border-radius: 10px; font-size: 12px; border: 1px solid var(--border); margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Distance:</span>
+            <span id="ride-calculated-distance" style="font-weight: 700; color: var(--accent);">0.00 km</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Base Fare (₹12/km):</span>
+            <span id="ride-base-fare">₹0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Platform Fee (₹0.5/km):</span>
+            <span id="ride-platform-fee">₹0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; color: var(--red); display: none;" id="ride-night-premium-row">
+            <span>🌙 Night Premium (₹5/km 10PM+):</span>
+            <span id="ride-night-premium">₹0.00</span>
+          </div>
+          <hr style="border: none; border-top: 1px solid var(--border); margin: 6px 0;">
+          <div style="font-size:14px; font-weight:900; display:flex; justify-content:space-between;">
+            <span>Total Fare:</span>
+            <span id="ride-estimated-fare" style="color: var(--green);">₹0.00</span>
+          </div>
+        </div>
+
+        <button onclick="submitRideBooking()" class="btn" style="background:#3B82F6; border:none; width: 100%;">Confirm Booking</button>
+      </div>
+    </div>
+
+    <!-- NEW CARD FOR PERFORMANCE JOURNEY -->
+    <div class="card" id="performance-journey-card" style="margin-top: 20px; display: none;">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Your Performance Journey</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.4;">Your individual round-wise progression. Dotted lines indicate the global average score for that round.</div>
+      <div id="participant-stream-charts-container" style="width:100%; position:relative;">
+        <!-- JS will populate canvas -->
+      </div>
+    </div>
+
+    <!-- GLOBAL STATISTICS (PORTED FROM MONITOR) -->
+    <div id="global-statistics-section" style="margin-top: 30px; display: none;">
+      <h2 style="font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 16px;">Global Event Statistics</h2>
+
+      <!-- ROUND WISE -->
+      <div id="st-roundwise">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Round Stats</div>
+          <div class="chart-wrap" style="height:250px; position:relative;"><canvas id="round-chart"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Round-wise Gender Distribution</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;" id="gender-charts-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Round-wise Age Distribution</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;" id="age-charts-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- JUDGES -->
+      <div id="st-judges">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Judge Score Distribution</div>
+          <div class="chart-wrap" style="height:250px; position:relative;"><canvas id="judge-chart"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Max &amp; Average Scores</div>
+          <div id="judge-maxavg"></div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:14px; font-size:16px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Subject-wise Judge Analysis</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:20px;" id="judge-subject-charts-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CERTIFICATE CARD -->
+    <div class="card" id="certificate-card" style="margin-top: 30px; display: none; text-align: center;">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Participation Certificate</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Congratulations! You can now download your certificate of participation.</div>
+      <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+        <button class="btn" onclick="generateParticipantCertificateHTML()" style="background:linear-gradient(135deg, #7C3AED, #6366F1);color:white;display:flex;align-items:center;gap:6px;font-weight:bold;padding:12px 20px;">🖨️ Print / Download PDF</button>
+      </div>
+    </div>
+
+    <!-- SHARE CARD SECTION -->
+    <div class="card" style="margin-top: 30px; text-align: center; border: 2px solid var(--primary); background: linear-gradient(135deg, rgba(124,58,237,0.05), rgba(124,58,237,0.15));">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; color: var(--primary);">📸 Share on Social Media</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Generate a beautiful poster with your rank/score and share it directly to WhatsApp or Instagram! Let your friends know!</div>
+      <button class="btn" onclick="openShareModal()" style="background:linear-gradient(135deg, #10B981, #059669);color:white;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:bold;padding:12px 20px; width:100%; border-radius:12px; font-size:16px; box-shadow:0 6px 15px rgba(16,185,129,0.3); border:none; cursor:pointer;">
+        <span>🔥</span> Share Your Poster Now!
+      </button>
+    </div>
+
+    <!-- SHARE MODAL -->
+    <div id="share-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.9); z-index:999999; flex-direction:column; padding:20px; box-sizing:border-box; overflow-y:auto; align-items:center;">
+      <div style="background:var(--surface); width:100%; max-width:400px; border-radius:24px; padding:20px; box-shadow:0 25px 50px rgba(0,0,0,0.5); position:relative;">
+        <button onclick="closeShareModal()" style="position:absolute; top:15px; right:15px; background:rgba(255,255,255,0.1); border:none; color:var(--text); font-size:24px; cursor:pointer; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;">&times;</button>
+        <h2 style="margin:0 0 10px 0; font-size:1.4rem; color:var(--text); text-align:center;">Frame Color</h2>
+        
+        <!-- Custom Color Picker Circle -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:20px;">
+          <div style="position:relative; width:70px; height:70px; border-radius:50%; background:conic-gradient(red, yellow, lime, aqua, blue, magenta, red); cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border:3px solid var(--border); transition: transform 0.2s; margin-top:5px;" onclick="document.getElementById('poster-color-picker').click();" id="color-wheel-container">
+            <div style="width:34px; height:34px; border-radius:50%; background:#7c3aed; border:2px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.3);" id="color-preview-circle"></div>
+          </div>
+          <input type="color" id="poster-color-picker" value="#7c3aed" style="display:none;" oninput="onCustomColorChange(this.value)">
+          <span style="font-size:13px; color:var(--text); font-weight:800; letter-spacing:0.5px;" id="color-hex-label">#7C3AED</span>
+        </div>
+ 
+        <!-- Border Style Selection -->
+        <h3 style="margin: 10px 0 10px 0; font-size:1.1rem; color:var(--text); text-align:center; font-weight: 800;">Border Style</h3>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; margin-bottom:15px; width: 100%;">
+          <button onclick="selectBorder('greek')" id="border-btn-greek" style="padding: 8px 4px; font-size: 11px; font-weight:700; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s; white-space: nowrap;">🏛️ Greek Key</button>
+          <button onclick="selectBorder('wave')" id="border-btn-wave" style="padding: 8px 4px; font-size: 11px; font-weight:700; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s; white-space: nowrap;">🌊 Waves</button>
+          <button onclick="selectBorder('leaf')" id="border-btn-leaf" style="padding: 8px 4px; font-size: 11px; font-weight:700; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s; white-space: nowrap;">🍃 Leaves</button>
+          <button onclick="selectBorder('double')" id="border-btn-double" style="padding: 8px 4px; font-size: 11px; font-weight:700; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s; white-space: nowrap;">✨ Luxury Double</button>
+          <button onclick="selectBorder('line')" id="border-btn-line" style="padding: 8px 4px; font-size: 11px; font-weight:700; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s; white-space: nowrap;">➖ Thin Line</button>
+          <button onclick="selectBorder('none')" id="border-btn-none" style="padding: 8px 4px; font-size: 11px; font-weight:700; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: all 0.2s; white-space: nowrap;">🔲 Borderless</button>
+        </div>
+
+        <!-- Poster Preview (Canvas) -->
+        <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); margin-bottom:15px;" id="poster-preview-container">
+          <canvas id="poster-canvas" style="width:100%; height:100%; display:block; position:relative; z-index:2; pointer-events:none;"></canvas>
+          <!-- Live camera overlay -->
+          <video id="selfie-video" autoplay playsinline muted style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:16px; z-index:1;"></video>
+          <div id="camera-overlay" style="display:none; position:absolute; bottom:15px; left:0; right:0; justify-content:center; gap:12px; z-index:10;">
+            <button onclick="captureFromCamera()" style="background:#fff; color:#000; border:none; border-radius:50%; width:60px; height:60px; font-size:26px; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.4);">📷</button>
+            <button onclick="stopCamera()" style="background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:50%; width:60px; height:60px; font-size:22px; cursor:pointer;">✕</button>
+          </div>
+        </div>
+
+        <!-- Selfie / Camera button -->
+        <button onclick="openCamera()" id="selfie-btn" style="background:var(--surface); color:var(--text); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border-radius:12px; font-weight:700; font-size:14px; cursor:pointer; margin-bottom:12px; width:100%; box-sizing:border-box; box-shadow:0 4px 10px rgba(0,0,0,0.05);">
+          📸 Snap a Selfie for your Poster
+        </button>
+
+        <button onclick="sharePoster()" id="share-now-btn" style="background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; width:100%; padding:15px; border-radius:12px; font-weight:800; font-size:16px; border:none; cursor:pointer; box-shadow:0 6px 15px rgba(59,130,246,0.3); margin-bottom:8px;">
+          📲 Share Now
+        </button>
+        <button onclick="downloadPoster()" style="background:linear-gradient(135deg, #10b981, #059669); color:white; width:100%; padding:13px; border-radius:12px; font-weight:700; font-size:15px; border:none; cursor:pointer; box-shadow:0 6px 15px rgba(16,185,129,0.3);">
+          ⬇️ Download Poster
+        </button>
+        <div id="share-loading" style="display:none; text-align:center; color:var(--text-muted); font-size:12px; margin-top:10px;">Generating poster... Please wait.</div>
+      </div>
+    </div>
+
+    <!-- FEEDBACK FORM -->
+    <div class="card" id="feedback-card" style="margin-top: 30px; display: none;">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Leave Feedback</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">We would love to hear about your experience!</div>
+      
+      <div id="feedback-form-container">
+        <style>
+          .star-rating { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 5px; margin-bottom: 15px; }
+          .star-rating input { display: none; }
+          .star-rating label { font-size: 30px; color: #ccc; cursor: pointer; transition: color 0.2s; }
+          .star-rating input:checked ~ label,
+          .star-rating label:hover,
+          .star-rating label:hover ~ label { color: #f59e0b; }
+        </style>
+        <div class="star-rating">
+          <input type="radio" id="star5" name="fb_rating" value="5" /><label for="star5" title="5 stars">★</label>
+          <input type="radio" id="star4" name="fb_rating" value="4" /><label for="star4" title="4 stars">★</label>
+          <input type="radio" id="star3" name="fb_rating" value="3" /><label for="star3" title="3 stars">★</label>
+          <input type="radio" id="star2" name="fb_rating" value="2" /><label for="star2" title="2 stars">★</label>
+          <input type="radio" id="star1" name="fb_rating" value="1" /><label for="star1" title="1 star">★</label>
+        </div>
+        
+        <label class="fl">Your Comments</label>
+        <textarea id="feedback-text" rows="4" placeholder="Tell us what you liked or how we can improve..." style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg3); margin-bottom: 15px; font-family: var(--fb); color: var(--text);"></textarea>
+        
+        <button class="btn" style="background:var(--blue); color:#fff; width:100%; box-sizing: border-box; padding: 12px; font-weight: bold;" onclick="submitParticipantFeedback()">✅ Submit Feedback</button>
+      </div>
+
+      <div id="feedback-success-msg" style="display: none; text-align: center; padding: 20px;">
+        <div style="font-size: 40px; margin-bottom: 10px;">💖</div>
+        <h3 style="color: var(--green); margin-bottom: 5px;">Thank You!</h3>
+        <p style="color: var(--text-muted); font-size: 14px;">Your feedback is most valuable for the KNSDC team.</p>
+      </div>
+    </div>
+
+    <!-- SERVICES SECTION -->
+    <div class="card" id="services-section" style="margin-top: 30px; display: none;">
+      <div class="card-title" style="font-size:18px; font-weight:800; margin-bottom:8px; border-bottom: 1px solid var(--border); padding-bottom:10px; color: var(--primary);">Food &amp; Transport Services</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Order refreshments or book a transport ride directly from the venue.</div>
+      
+      <div style="display:flex; gap:12px; margin-bottom:20px;">
+        <button onclick="openFoodOrderModal()" class="btn" style="flex:1; background:#10B981; border:none; display:flex; align-items:center; justify-content:center; gap:8px;">🍔 Order Food</button>
+        <button onclick="openRideBookingModal()" class="btn" style="flex:1; background:#3B82F6; border:none; display:flex; align-items:center; justify-content:center; gap:8px;">🏍️ Book Ride</button>
+      </div>
+
+      <div id="active-food-orders" style="display:none; margin-bottom:15px;">
+        <h4 style="font-size:14px; font-weight:800; color:#10B981; margin-bottom:8px;">🍔 Active Food Orders</h4>
+        <div id="food-orders-list"></div>
+      </div>
+
+      <div id="active-ride-bookings" style="display:none;">
+        <h4 style="font-size:14px; font-weight:800; color:#3B82F6; margin-bottom:8px;">🏍️ Active Ride Bookings</h4>
+        <div id="ride-bookings-list" style="display:flex; flex-direction:column; gap:12px;"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<style>
+  /* Floating Chat FAB */
+  #chat-fab {
+    position: fixed;
+    bottom: 28px;
+    right: 20px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    border: none;
+    box-shadow: 0 8px 25px rgba(59,130,246,0.45);
+    color: white;
+    font-size: 26px;
+    cursor: pointer;
+    z-index: 999998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  #chat-fab:active { transform: scale(0.92); }
+  #chat-fab:hover { box-shadow: 0 12px 30px rgba(59,130,246,0.6); transform: scale(1.05); }
+
+  /* Chat Modal */
+  #chat-modal {
+    display: none;
+    position: fixed;
+    bottom: 98px;
+    right: 20px;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    height: 460px;
+    max-height: 65vh;
+    background: var(--surface);
+    border-radius: 20px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    z-index: 999999;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    animation: chatSlideUp 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes chatSlideUp {
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @media (max-width: 600px) {
+    #chat-fab  { bottom: 20px; right: 15px; }
+    #chat-modal { bottom: 88px; right: 10px; left: 10px; width: auto; max-width: none; }
+  }
+
+  /* Chat inner parts */
+  #chat-messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #f8fafc;
+  }
+  #chat-input {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 24px;
+    border: 1.5px solid var(--border);
+    font-size: 14px;
+    background: #f8fafc;
+    color: var(--text);
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  #chat-input:focus { border-color: #3b82f6; }
+  #chat-send-btn {
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+    transition: transform 0.15s;
+  }
+  #chat-send-btn:active { transform: scale(0.92); }
+</style>
+
+<!-- Floating Chat Button -->
+<button onclick="toggleChatModal()" id="chat-fab" aria-label="Open Helpdesk Chat">
+  💬
+  <div id="chat-unread-badge" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:white; font-size:11px; font-weight:800; border-radius:50%; min-width:20px; height:20px; align-items:center; justify-content:center; padding:0 3px;">0</div>
+</button>
+
+<!-- Chat Modal -->
+<div id="chat-modal">
+  <div style="background:linear-gradient(135deg,#3b82f6,#8b5cf6); padding:14px 18px; color:white; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="font-size:20px;">🎧</span>
+      <div>
+        <div style="font-size:15px; font-weight:800; margin:0;">Helpdesk Chat</div>
+        <div style="font-size:11px; opacity:0.85;">We reply as fast as possible</div>
+      </div>
+    </div>
+    <button onclick="toggleChatModal()" style="background:rgba(255,255,255,0.15); border:none; color:white; font-size:20px; cursor:pointer; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; line-height:1;">&times;</button>
+  </div>
+  <div id="chat-messages-container"></div>
+  <div style="padding:12px 14px; border-top:1px solid var(--border); background:var(--surface); display:flex; gap:10px; align-items:center; flex-shrink:0;">
+    <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChatMessage()">
+    <button id="chat-send-btn" onclick="sendChatMessage()">➤</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="lib/supabase.js"></script>
+<script src="lib/localSync-v4.js?v=99"></script>
+<script>
+window.syncEngine = new (window.LocalSync || LocalSync)();
+
+let CURRENT_USER = null;
+let lastStageStatus = null;
+let initialSyncFired = false;
+let vibrationInterval = null;
+
+// ==========================================
+// SHARE POSTER LOGIC (Canvas-Based)
+// ==========================================
+let currentShareColor = '#7c3aed';
+let currentBorderStyle = 'greek';
+let temporarySelfieUrl = null;
+let cameraStream = null;
+let _posterCanvas = null;
+
+function hexToRgba(hex, alpha) {
+  hex = hex.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex.split('').map(c => c + c).join('');
+  }
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function adjustColorBrightness(hex, percent) {
+  hex = hex.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex.split('').map(c => c + c).join('');
+  }
+  let r = parseInt(hex.substring(0, 2), 16);
+  let g = parseInt(hex.substring(2, 4), 16);
+  let b = parseInt(hex.substring(4, 6), 16);
+
+  r = Math.max(0, Math.min(255, r + percent));
+  g = Math.max(0, Math.min(255, g + percent));
+  b = Math.max(0, Math.min(255, b + percent));
+
+  const rHex = r.toString(16).padStart(2, '0');
+  const gHex = g.toString(16).padStart(2, '0');
+  const bHex = b.toString(16).padStart(2, '0');
+
+  return `#${rHex}${gHex}${bHex}`;
+}
+
+function openShareModal() {
+  document.getElementById('share-modal').style.display = 'flex';
+  selectBorder(currentBorderStyle);
+  openCamera(); // Automatically launch selfie camera inside the frame
+}
+
+function selectBorder(style) {
+  currentBorderStyle = style;
+  
+  const btnIds = ['greek', 'wave', 'leaf', 'double', 'line', 'none'];
+  btnIds.forEach(id => {
+    const btn = document.getElementById(`border-btn-${id}`);
+    if (btn) {
+      if (id === style) {
+        btn.style.background = 'var(--accent)';
+        btn.style.color = '#ffffff';
+        btn.style.borderColor = 'var(--accent)';
+      } else {
+        btn.style.background = 'rgba(255,255,255,0.06)';
+        btn.style.color = 'var(--text)';
+        btn.style.borderColor = 'rgba(255,255,255,0.1)';
+      }
+    }
+  });
+
+  selectFrame(currentShareColor);
+}
+
+function closeShareModal() {
+  stopCamera();
+  document.getElementById('share-modal').style.display = 'none';
+  if (temporarySelfieUrl) {
+    URL.revokeObjectURL(temporarySelfieUrl);
+    temporarySelfieUrl = null;
+  }
+  if (window._tempPhotoBlob) {
+    URL.revokeObjectURL(window._tempPhotoBlob);
+    window._tempPhotoBlob = null;
+  }
+}
+
+// ---- Live Camera ----
+function openCamera() {
+  const video = document.getElementById('selfie-video');
+  const overlay = document.getElementById('camera-overlay');
+  const canvas = document.getElementById('poster-canvas');
+  
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+    .then(stream => {
+      cameraStream = stream;
+      video.srcObject = stream;
+      video.style.display = 'block';
+      canvas.style.display = 'block'; // Keep canvas visible
+      overlay.style.display = 'flex';
+      window._isCameraLive = true;
+      selectFrame(currentShareColor); // Re-render canvas as transparent overlay
+    })
+    .catch(() => {
+      toast('Camera not available. Please upload a photo instead.');
+      // Fallback: open file picker
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'image/*';
+      inp.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (temporarySelfieUrl) URL.revokeObjectURL(temporarySelfieUrl);
+        temporarySelfieUrl = URL.createObjectURL(file);
+        selectFrame(currentShareColor);
+      };
+      inp.click();
+    });
+}
+
+function captureFromCamera() {
+  const video = document.getElementById('selfie-video');
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = video.videoWidth;
+  tempCanvas.height = video.videoHeight;
+  tempCanvas.getContext('2d').drawImage(video, 0, 0);
+  tempCanvas.toBlob(blob => {
+    if (temporarySelfieUrl) URL.revokeObjectURL(temporarySelfieUrl);
+    temporarySelfieUrl = URL.createObjectURL(blob);
+    stopCamera();
+    selectFrame(currentShareColor);
+  }, 'image/jpeg', 0.95);
+}
+
+function stopCamera() {
+  const video = document.getElementById('selfie-video');
+  const overlay = document.getElementById('camera-overlay');
+  const canvas = document.getElementById('poster-canvas');
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  video.srcObject = null;
+  video.style.display = 'none';
+  canvas.style.display = 'block';
+  overlay.style.display = 'none';
+  window._isCameraLive = false;
+}
+
+function selectFrame(colorHex) {
+  if (colorHex && colorHex.startsWith('#')) {
+    currentShareColor = colorHex;
+  }
+ 
+  // Update UI color circle elements
+  const preview = document.getElementById('color-preview-circle');
+  if (preview) preview.style.background = currentShareColor;
+  const label = document.getElementById('color-hex-label');
+  if (label) label.innerText = currentShareColor.toUpperCase();
+  const inputEl = document.getElementById('poster-color-picker');
+  if (inputEl && inputEl.value !== currentShareColor) {
+    inputEl.value = currentShareColor;
+  }
+ 
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (!p) return;
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  if (!ev) return;
+ 
+  const c = (ev.categories || []).find(x => String(x.id) === String(p.catId));
+  const catName = c ? c.name.toUpperCase() : 'OPEN CATEGORY';
+ 
+  let scoreText = null;
+  if (p.stageStatus === 'done' && p.scores && Object.keys(p.scores).length > 0) {
+    let totalScore = 0;
+    Object.values(p.scores).forEach(s => totalScore += (Number(s.total) || 0));
+    scoreText = `TOTAL SCORE: ${totalScore.toFixed(1)}`;
+  }
+ 
+  // Determine photo URL
+  const photoField = (ev.formFields || []).find(f => f.type === 'photo');
+  let photoUrl = null;
+  if (temporarySelfieUrl) {
+    photoUrl = temporarySelfieUrl;
+  } else if (photoField && p.formAnswers && p.formAnswers[photoField.id]) {
+    photoUrl = p.formAnswers[photoField.id];
+  }
+ 
+  const pData = {
+    name: (p.name || 'Participant').toUpperCase(),
+    eventName: (ev.name || 'DANCE IGNITION 5').toUpperCase(),
+    orgName: (ev.org || 'KALIKAPUR NABIN SANGHA').toUpperCase(),
+    catName,
+    scoreText,
+    photoUrl
+  };
+ 
+  drawPosterOnCanvas(currentShareColor, pData);
+}
+ 
+function onCustomColorChange(val) {
+  selectFrame(val);
+}
+
+// ---- Canvas Poster Renderer ----
+function drawWavesBorder(ctx, W, H, pad, color, shadowColor) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = 10;
+  const step = 15;
+  const amp = 6;
+
+  const drawWaves = (startX, endX, y, isBottom) => {
+    ctx.beginPath();
+    const dir = startX < endX ? 1 : -1;
+    const factor = isBottom ? -1 : 1;
+    let cx = startX;
+    ctx.moveTo(cx, y);
+    while ((dir === 1 && cx + step <= endX) || (dir === -1 && cx - step >= endX)) {
+      ctx.quadraticCurveTo(cx + (step / 2) * dir, y + amp * factor, cx + step * dir, y);
+      cx += step * dir;
+    }
+    ctx.stroke();
+  };
+
+  const drawVerticalWaves = (startX, yStart, yEnd, isRight) => {
+    ctx.beginPath();
+    const dir = yStart < yEnd ? 1 : -1;
+    const factor = isRight ? -1 : 1;
+    let cy = yStart;
+    ctx.moveTo(startX, cy);
+    while ((dir === 1 && cy + step <= yEnd) || (dir === -1 && cy - step >= yEnd)) {
+      ctx.quadraticCurveTo(startX + amp * factor, cy + (step / 2) * dir, startX, cy + step * dir);
+      cy += step * dir;
+    }
+    ctx.stroke();
+  };
+
+  drawWaves(pad, W - pad, pad, false);
+  drawWaves(pad, W - pad, H - pad, true);
+  drawVerticalWaves(pad, pad, H - pad, false);
+  drawVerticalWaves(W - pad, pad, H - pad, true);
+  ctx.restore();
+}
+
+function drawLeafBorder(ctx, W, H, pad, color, shadowColor) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = 8;
+  const step = 20;
+
+  const drawLeaves = (startX, endX, y, isVertical) => {
+    ctx.beginPath();
+    ctx.moveTo(startX, y);
+    if (isVertical) ctx.lineTo(startX, endX);
+    else ctx.lineTo(endX, y);
+    ctx.stroke();
+
+    const dir = startX < endX ? 1 : -1;
+    let curr = startX;
+    while ((dir === 1 && curr + step <= endX) || (dir === -1 && curr - step >= endX)) {
+      ctx.beginPath();
+      if (isVertical) {
+        ctx.ellipse(startX - 6, curr + step/2, 4, 8, Math.PI / 4, 0, 2 * Math.PI);
+        ctx.ellipse(startX + 6, curr + step/2, 4, 8, -Math.PI / 4, 0, 2 * Math.PI);
+      } else {
+        ctx.ellipse(curr + step/2, y - 6, 8, 4, Math.PI / 4, 0, 2 * Math.PI);
+        ctx.ellipse(curr + step/2, y + 6, 8, 4, -Math.PI / 4, 0, 2 * Math.PI);
+      }
+      ctx.fill();
+      curr += step * dir;
+    }
+  };
+
+  drawLeaves(pad, W - pad, pad, false);
+  drawLeaves(pad, W - pad, H - pad, false);
+  drawLeaves(pad, pad, H - pad, true);
+  drawLeaves(W - pad, pad, H - pad, true);
+  ctx.restore();
+}
+
+function drawDoubleLineBorder(ctx, W, H, pad, color, shadowColor) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = 15;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
+  
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 1;
+  const innerPad = pad + 6;
+  ctx.strokeRect(innerPad, innerPad, W - innerPad * 2, H - innerPad * 2);
+  ctx.restore();
+}
+
+function drawGreekKeyBorder(ctx, W, H, pad, color, shadowColor) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = 15;
+  ctx.lineCap = 'square';
+  ctx.lineJoin = 'miter';
+ 
+  const S = 18;
+  const D = 9;
+ 
+  const drawHorizontalKey = (startX, endX, y, isBottom) => {
+    ctx.beginPath();
+    const direction = startX < endX ? 1 : -1;
+    const absStep = S * direction;
+    const absDepth = D * (isBottom ? -1 : 1);
+    
+    let currentX = startX;
+    ctx.moveTo(currentX, y);
+ 
+    while ((direction === 1 && currentX + S <= endX) || (direction === -1 && currentX - S >= endX)) {
+      ctx.lineTo(currentX + absStep * 0.75, y);
+      ctx.lineTo(currentX + absStep * 0.75, y + absDepth);
+      ctx.lineTo(currentX + absStep * 0.25, y + absDepth);
+      ctx.lineTo(currentX + absStep * 0.25, y + absDepth * 0.4);
+      ctx.lineTo(currentX + absStep * 0.5, y + absDepth * 0.4);
+      ctx.lineTo(currentX + absStep * 0.5, y + absDepth * 0.7);
+      ctx.lineTo(currentX + absStep * 0.38, y + absDepth * 0.7);
+      ctx.lineTo(currentX + absStep, y + absDepth * 0.7);
+      ctx.lineTo(currentX + absStep, y);
+      currentX += absStep;
+    }
+    ctx.stroke();
+  };
+ 
+  const drawVerticalKey = (startX, yStart, yEnd, isRight) => {
+    ctx.beginPath();
+    const direction = yStart < yEnd ? 1 : -1;
+    const absStep = S * direction;
+    const absDepth = D * (isRight ? -1 : 1);
+ 
+    let currentY = yStart;
+    ctx.moveTo(startX, currentY);
+ 
+    while ((direction === 1 && currentY + S <= yEnd) || (direction === -1 && currentY - S >= yEnd)) {
+      ctx.lineTo(startX, currentY + absStep * 0.75);
+      ctx.lineTo(startX + absDepth, currentY + absStep * 0.75);
+      ctx.lineTo(startX + absDepth, currentY + absStep * 0.25);
+      ctx.lineTo(startX + absDepth * 0.4, currentY + absStep * 0.25);
+      ctx.lineTo(startX + absDepth * 0.4, currentY + absStep * 0.5);
+      ctx.lineTo(startX + absDepth * 0.7, currentY + absStep * 0.5);
+      ctx.lineTo(startX + absDepth * 0.7, currentY + absStep * 0.38);
+      ctx.lineTo(startX + absDepth * 0.7, currentY + absStep);
+      ctx.lineTo(startX, currentY + absStep);
+      currentY += absStep;
+    }
+    ctx.stroke();
+  };
+ 
+  drawHorizontalKey(pad, W - pad, pad, false);
+  drawHorizontalKey(pad, W - pad, H - pad, true);
+  drawVerticalKey(pad, pad, H - pad, false);
+  drawVerticalKey(W - pad, pad, H - pad, true);
+ 
+  ctx.restore();
+}
+
+function drawPosterOnCanvas(frame, pData) {
+  const container = document.getElementById('poster-preview-container');
+  const canvas = document.getElementById('poster-canvas');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  _posterCanvas = null;
+
+  const accent = frame || '#7c3aed';
+  const border = frame || '#7c3aed';
+  const shadow = hexToRgba(accent, 0.8);
+  const grad1 = adjustColorBrightness(accent, -110);
+  const grad2 = adjustColorBrightness(accent, -60);
+  
+  const f = {
+    gradient: [grad1, grad2],
+    accent: accent,
+    border: border,
+    shadow: shadow,
+    text: '#ffffff'
+  };
+
+  const doRender = (photoImg, logoImg) => {
+    if (!window._isCameraLive) {
+      // Background gradient
+      const grad = ctx.createLinearGradient(0, 0, W, H);
+      grad.addColorStop(0, f.gradient[0]);
+      grad.addColorStop(1, f.gradient[1]);
+      ctx.fillStyle = grad;
+      ctx.roundRect ? ctx.beginPath() : null;
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      ctx.clearRect(0, 0, W, H); // Transparent background for live camera
+    }
+
+    // Photo as full background
+    if (photoImg && !window._isCameraLive) {
+      ctx.save();
+      ctx.globalAlpha = 1;
+      // Draw photo cover
+      const ir = photoImg.naturalWidth / photoImg.naturalHeight;
+      const cr = W / H;
+      let sx = 0, sy = 0, sw = photoImg.naturalWidth, sh = photoImg.naturalHeight;
+      if (ir > cr) { sw = photoImg.naturalHeight * cr; sx = (photoImg.naturalWidth - sw) / 2; }
+      else { sh = photoImg.naturalWidth / cr; sy = (photoImg.naturalHeight - sh) / 2; }
+      ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, W, H);
+      ctx.restore();
+    }
+
+    // Gradient overlays for text readability
+    const topGrad = ctx.createLinearGradient(0, 0, 0, H * 0.28);
+    topGrad.addColorStop(0, 'rgba(0,0,0,0.9)');
+    topGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, W, H * 0.28);
+
+    const btmGrad = ctx.createLinearGradient(0, H * 0.72, 0, H);
+    btmGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    btmGrad.addColorStop(1, 'rgba(0,0,0,0.95)');
+    ctx.fillStyle = btmGrad;
+    ctx.fillRect(0, H * 0.72, W, H * 0.28);
+
+    // Draw chosen border style in matching accent color
+    const padOuter = W * 0.035;
+    if (currentBorderStyle === 'greek') {
+      drawGreekKeyBorder(ctx, W, H, padOuter, f.border, f.shadow);
+    } else if (currentBorderStyle === 'wave') {
+      drawWavesBorder(ctx, W, H, padOuter, f.border, f.shadow);
+    } else if (currentBorderStyle === 'leaf') {
+      drawLeafBorder(ctx, W, H, padOuter, f.border, f.shadow);
+    } else if (currentBorderStyle === 'double') {
+      drawDoubleLineBorder(ctx, W, H, padOuter, f.border, f.shadow);
+    } else if (currentBorderStyle === 'line') {
+      ctx.save();
+      ctx.strokeStyle = f.border;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = f.shadow;
+      ctx.shadowBlur = 15;
+      ctx.strokeRect(padOuter, padOuter, W - padOuter * 2, H - padOuter * 2);
+      
+      // Decorative corner brackets for line border
+      ctx.strokeStyle = f.accent;
+      ctx.lineWidth = 3;
+      const len = W * 0.05;
+      // Top-Left
+      ctx.beginPath(); ctx.moveTo(padOuter, padOuter + len); ctx.lineTo(padOuter, padOuter); ctx.lineTo(padOuter + len, padOuter); ctx.stroke();
+      // Top-Right
+      ctx.beginPath(); ctx.moveTo(W - padOuter - len, padOuter); ctx.lineTo(W - padOuter, padOuter); ctx.lineTo(W - padOuter, padOuter + len); ctx.stroke();
+      // Bottom-Left
+      ctx.beginPath(); ctx.moveTo(padOuter, H - padOuter - len); ctx.lineTo(padOuter, H - padOuter); ctx.lineTo(padOuter + len, H - padOuter); ctx.stroke();
+      // Bottom-Right
+      ctx.beginPath(); ctx.moveTo(W - padOuter - len, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter); ctx.lineTo(W - padOuter, H - padOuter - len); ctx.stroke();
+      
+      ctx.restore();
+    }
+
+    // ---- TOP SECTION ----
+    const logoSize = W * 0.12;
+    const logoY = H * 0.07;
+    
+    if (logoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(W / 2, logoY, logoSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(logoImg, W / 2 - logoSize / 2, logoY - logoSize / 2, logoSize, logoSize);
+      ctx.restore();
+      
+      ctx.beginPath();
+      ctx.arc(W / 2, logoY, logoSize / 2, 0, Math.PI * 2);
+      ctx.strokeStyle = f.accent;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    const topY = logoY + logoSize / 2 + H * 0.03;
+    ctx.textAlign = 'center';
+
+    // Club name
+    ctx.font = `800 ${W * 0.035}px 'Outfit', sans-serif`;
+    ctx.fillStyle = f.accent;
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 8;
+    ctx.fillText(pData.orgName, W / 2, topY);
+
+    // Event name
+    ctx.font = `900 ${W * 0.075}px 'Outfit', sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowBlur = 12;
+    ctx.fillText(pData.eventName, W / 2, topY + H * 0.055);
+    ctx.shadowBlur = 0;
+
+    // Stylized Event Accent Line
+    ctx.strokeStyle = f.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - W * 0.15, topY + H * 0.072);
+    ctx.lineTo(W / 2 + W * 0.15, topY + H * 0.072);
+    ctx.stroke();
+
+    // ---- BOTTOM SECTION ----
+    let currentY = H * 0.82;
+
+    // Name
+    ctx.font = `900 ${W * 0.09}px 'Outfit', sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 15;
+    ctx.fillText(pData.name, W / 2, currentY);
+    
+    currentY += H * 0.025;
+
+    // Category pill (Premium Glassmorphic style)
+    const catW = W * 0.62;
+    const catH = H * 0.042;
+    const catX = (W - catW) / 2;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.beginPath();
+    ctx.roundRect(catX, currentY, catW, catH, catH / 2);
+    ctx.fill();
+    ctx.strokeStyle = f.accent;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    ctx.font = `800 ${W * 0.038}px 'Outfit', sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(pData.catName, W / 2, currentY + catH * 0.68);
+    
+    currentY += catH + H * 0.015;
+
+    // Score box (ONLY if there is a score)
+    if (pData.scoreText) {
+      const scoreW = W * 0.7;
+      const scoreH = H * 0.045;
+      const scoreX = (W - scoreW) / 2;
+      ctx.strokeStyle = f.accent;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(scoreX, currentY, scoreW, scoreH, 10);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = `800 ${W * 0.04}px 'Outfit', sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(pData.scoreText, W / 2, currentY + scoreH * 0.68);
+      
+      currentY += scoreH + H * 0.015;
+    }
+
+    // Footer
+    ctx.font = `600 ${W * 0.032}px 'Outfit', sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillText('Watch me perform at knsdc.in', W / 2, currentY + H * 0.015);
+
+    // Save the final canvas reference for download/share
+    _posterCanvas = canvas;
+  };
+
+  // Load images
+  let photoImg = null;
+  let logoImg = null;
+  let loadedCount = 0;
+  
+  const checkDone = () => {
+    loadedCount++;
+    if (loadedCount === 2) {
+      doRender(photoImg, logoImg);
+    }
+  };
+
+  const lImg = new Image();
+  lImg.crossOrigin = 'anonymous';
+  lImg.onload = () => { logoImg = lImg; checkDone(); };
+  lImg.onerror = () => { checkDone(); };
+  lImg.src = 'logo.png';
+
+  if (pData.photoUrl) {
+    const pImg = new Image();
+    pImg.crossOrigin = 'anonymous';
+    pImg.onload = () => { photoImg = pImg; checkDone(); };
+    pImg.onerror = () => { checkDone(); };
+    pImg.src = pData.photoUrl;
+  } else {
+    checkDone();
+  }
+}
+
+// ---- Share & Download ----
+function getPosterBlob(callback) {
+  if (!_posterCanvas) {
+    toast('Please wait for the poster to render first!');
+    return;
+  }
+  _posterCanvas.toBlob(blob => callback(blob), 'image/jpeg', 0.95);
+}
+
+function sharePoster() {
+  const btn = document.getElementById('share-now-btn');
+  const loading = document.getElementById('share-loading');
+  btn.disabled = true;
+  loading.style.display = 'block';
+
+  getPosterBlob(async (blob) => {
+    btn.disabled = false;
+    loading.style.display = 'none';
+    if (!blob) { toast('Could not generate poster!'); return; }
+    const file = new File([blob], 'knsdc-poster.jpg', { type: 'image/jpeg' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          title: 'KNSDC – Dance Ignition 5',
+          text: 'Check out my official poster for Dance Ignition Season 5 by Kalikapur Nabin Sangha! 🔥',
+          files: [file]
+        });
+        return;
+      } catch (e) { /* fall through to download */ }
+    }
+    // Fallback: download
+    triggerDownload(blob);
+  });
+}
+
+function downloadPoster() {
+  const loading = document.getElementById('share-loading');
+  loading.style.display = 'block';
+  getPosterBlob((blob) => {
+    loading.style.display = 'none';
+    if (!blob) { toast('Could not generate poster!'); return; }
+    triggerDownload(blob);
+  });
+}
+
+function triggerDownload(blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'knsdc-dance-ignition-5-poster.jpg';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function markParticipantReady() {
+  if (!CURRENT_USER || !window.syncEngine) return;
+  
+  // Request native background notification permissions on interaction
+  if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+    Notification.requestPermission();
+  }
+  
+  // Unlock audio engine
+  if (typeof initAudio === 'function') initAudio();
+
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (!p) return;
+
+  const newState = !p.isReady;
+  
+  window.syncEngine.updateParticipant(CURRENT_USER, { isReady: newState })
+    .then(() => {
+      const btn = document.getElementById('ready-btn');
+      if (btn) {
+        if (newState) {
+          btn.innerHTML = '✅ Ready Alert Sent (Click to Cancel)';
+          btn.style.background = 'var(--green)';
+          btn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+        } else {
+          btn.innerHTML = '🔥 I am Ready for Performance';
+          btn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
+          btn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
+        }
+      }
+      toast(newState ? '✅ Organizer notified that you are ready!' : 'Ready alert cancelled.');
+    })
+    .catch(e => console.error(e));
+}
+
+let queueAudioCtx = null;
+let queueOscillators = [];
+let queueAudioInterval = null;
+
+function initAudio() {
+  if (!queueAudioCtx) {
+    try { queueAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (queueAudioCtx && queueAudioCtx.state === 'suspended') {
+    queueAudioCtx.resume();
+  }
+}
+
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('touchstart', initAudio, { once: true });
+
+function playRingTone() {
+  try {
+    initAudio();
+    if (!queueAudioCtx) return;
+    
+    const playBeep = () => {
+      const osc1 = queueAudioCtx.createOscillator();
+      const osc2 = queueAudioCtx.createOscillator();
+      const gain = queueAudioCtx.createGain();
+      
+      osc1.type = 'sine'; osc1.frequency.value = 440;
+      osc2.type = 'sine'; osc2.frequency.value = 480;
+      
+      gain.gain.setValueAtTime(0, queueAudioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.5, queueAudioCtx.currentTime + 0.05);
+      gain.gain.setValueAtTime(0.5, queueAudioCtx.currentTime + 1.2);
+      gain.gain.linearRampToValueAtTime(0, queueAudioCtx.currentTime + 1.3);
+      
+      osc1.connect(gain); osc2.connect(gain); gain.connect(queueAudioCtx.destination);
+      
+      osc1.start(queueAudioCtx.currentTime); osc2.start(queueAudioCtx.currentTime);
+      osc1.stop(queueAudioCtx.currentTime + 1.3); osc2.stop(queueAudioCtx.currentTime + 1.3);
+      queueOscillators.push(osc1, osc2);
+    };
+    
+    playBeep();
+    queueAudioInterval = setInterval(playBeep, 2000);
+  } catch(e) { console.error('Audio api error:', e); }
+}
+
+function stopRingTone() {
+  if (queueAudioInterval) { clearInterval(queueAudioInterval); queueAudioInterval = null; }
+  queueOscillators.forEach(osc => { try { osc.stop(); } catch(e){} });
+  queueOscillators = [];
+  if (queueAudioCtx && queueAudioCtx.state === 'running') queueAudioCtx.suspend();
+}
+
+function stopVibration() {
+  stopRingTone();
+  if (vibrationInterval) {
+    clearInterval(vibrationInterval);
+    vibrationInterval = null;
+  }
+  if ('vibrate' in navigator) navigator.vibrate(0);
+  document.getElementById('stop-vibration-banner').style.display = 'none';
+}
+
+function toast(msg) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// 1. App Init
+function initApp() {
+  const storedId = localStorage.getItem('knsdc_participant_id');
+  if (storedId) {
+    autoLogin(storedId);
+  } else {
+    document.getElementById('login-view').style.display = 'block';
+  }
+}
+
+// Wait for syncEngine to initialize
+const waitSync = setInterval(() => {
+  if (window.syncEngine && window.syncEngine.isInitialized) {
+    clearInterval(waitSync);
+    initApp();
+  }
+}, 100);
+
+// 2. Authentication
+document.getElementById('login-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const username = document.getElementById('login-user').value.trim().toLowerCase();
+  const passId = document.getElementById('login-pass').value.trim().toUpperCase();
+  
+  const state = window.syncEngine.getData() || {};
+  const participants = state.participants || [];
+  
+  const p = participants.find(part => {
+    if (username === 'admin' && passId === 'ADMIN') return true;
+    if (String(part.id).toUpperCase() !== passId) return false;
+    const firstName = (part.name || '').split(' ')[0].toLowerCase();
+    return firstName === username;
+  });
+  
+  if (p) {
+    localStorage.setItem('knsdc_participant_id', p.id);
+    CURRENT_USER = p.id;
+    toast('Logged in successfully!');
+    renderDashboard();
+  } else {
+    toast('Invalid Username or ID Number');
+  }
+});
+
+function autoLogin(id) {
+  // We trust the stored ID. The actual participant data might still be loading async via syncEngine.
+  // We will set the CURRENT_USER and let the subscription handle rendering when data arrives.
+  CURRENT_USER = id;
+  renderDashboard();
+}
+
+function logout() {
+  localStorage.removeItem('knsdc_participant_id');
+  CURRENT_USER = null;
+  document.getElementById('dashboard-view').style.display = 'none';
+  document.getElementById('login-view').style.display = 'block';
+  document.getElementById('login-form').reset();
+}
+
+window.uploadParticipantFileToCloud = async function(input, targetId) {
+  const file = input.files[0];
+  if(!file) return;
+  if (file.size > 20 * 1024 * 1024) {
+      toast("File too large. Please select a file smaller than 20MB.");
+      input.value = "";
+      return;
+  }
+  
+  toast("Uploading... Please wait.");
+  input.disabled = true;
+  
+  const url = await window.syncEngine.uploadFile(file, 'participants/');
+  input.disabled = false;
+  
+  if (url) {
+    document.getElementById(targetId).value = url;
+    toast("✅ File uploaded successfully!");
+    const imgPreview = document.getElementById(targetId + '-preview');
+    if (imgPreview) {
+      imgPreview.src = url;
+      imgPreview.style.display = 'block';
+    }
+  } else {
+    toast("❌ Failed to upload file.");
+    input.value = "";
+  }
+};
+
+// 3. Render Dashboard & Lock Logic
+function renderDashboard() {
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('dashboard-view').style.display = 'block';
+  // Initialize inline chat read tracking
+  setTimeout(() => initInlineChatReadTracking(), 500);
+  
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  
+  if (!p) {
+    // If the participant isn't in the state yet (due to async loading), just wait.
+    // The subscription will call renderDashboard again once data arrives.
+    return; 
+  }
+  
+  // Set Dynamic Identity Watermark
+  const watermarkText = `${p.name || 'Participant'} - ${p.id} - ${new Date().toLocaleString()}`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='350' height='250'>
+    <text x='50%' y='50%' transform='rotate(-30 175 125)' text-anchor='middle' 
+    font-family='Inter, sans-serif' font-size='16' font-weight='800' fill='#000' opacity='0.7'>${watermarkText}</text>
+  </svg>`;
+  const b64 = btoa(svg);
+  const wm = document.getElementById('identity-watermark');
+  if (wm) wm.style.backgroundImage = `url('data:image/svg+xml;base64,${b64}')`;
+  
+  
+  const ans = p.formAnswers || {};
+  const ansKeys = Object.keys(ans);
+  
+  // Get active event and form fields
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  let formFields = [];
+  if (ev) {
+    if (state.eventFormFields && state.eventFormFields[ev.id]) {
+      formFields = state.eventFormFields[ev.id];
+    } else {
+      formFields = (ev.formFields && ev.formFields.length > 0) ? ev.formFields : (state.formFields || []);
+      if (typeof formFields === 'string') {
+        try { formFields = JSON.parse(formFields); } catch(e) { formFields = []; }
+      }
+    }
+  }
+
+  if (!formFields || formFields.length === 0) {
+    formFields = [
+      { type: 'text', label: 'Full Name', required: true, placeholder: 'As per ID proof' },
+      { type: 'radio', label: 'Gender', required: true, options: ['Male', 'Female', 'Other'] },
+      { type: 'number', label: 'Phone Number', required: true, placeholder: '98XXXXXXXX' }
+    ];
+  }
+
+  const container = document.getElementById('dynamic-form-container');
+  let html = '';
+
+  window.participantFormFields = formFields; // Save for submit handler
+
+  formFields.forEach((f, i) => {
+    const fieldId = `dyn-field-${i}`;
+    const reqMark = f.required ? '<span style="color:#ef4444">*</span>' : '';
+    let val = '';
+    
+    // Map existing value from p
+    const lbl = f.label.toUpperCase();
+    if (lbl.includes('NAME')) val = p.name || '';
+    else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) val = p.phone || '';
+    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) val = p.age || '';
+    else if (f.type === 'category') val = p.catId || '';
+    else if (f.type === 'venue') val = p.venueId || '';
+    else {
+      // Find in formAnswers (case-insensitive)
+      const foundKey = ansKeys.find(k => k.toLowerCase() === f.label.toLowerCase() || k.toLowerCase().includes(f.label.toLowerCase()));
+      if (foundKey) val = ans[foundKey];
+      else val = '';
+    }
+
+    html += `<div class="fg">
+      <label>${f.label} ${reqMark}</label>`;
+
+    if (f.type === 'text') {
+      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else if (f.type === 'number') {
+      html += `<input type="number" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else if (f.type === 'textarea') {
+      html += `<textarea id="${fieldId}" rows="3" ${f.required ? 'required' : ''}>${val}</textarea>`;
+    } else if (f.type === 'radio' && f.options) {
+      html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
+      f.options.forEach(opt => {
+        const isChecked = (val === opt) ? 'checked' : '';
+        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="radio" name="${fieldId}" value="${opt}" ${isChecked} ${f.required ? 'required' : ''}> ${opt}</label>`;
+      });
+      html += `</div>`;
+    } else if (f.type === 'checkbox' && f.options) {
+      const valArr = Array.isArray(val) ? val : [val];
+      html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
+      f.options.forEach(opt => {
+        const isChecked = valArr.includes(opt) ? 'checked' : '';
+        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="checkbox" name="${fieldId}" value="${opt}" ${isChecked}> ${opt}</label>`;
+      });
+      html += `</div>`;
+    } else if (f.type === 'category') {
+      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
+        <option value="">Select Category</option>`;
+      (ev.categories || []).forEach(c => {
+        html += `<option value="${c.id}" ${String(c.id) === String(val) ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+      });
+      html += `</select>`;
+    } else if (f.type === 'venue') {
+      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
+        <option value="">Select Venue</option>`;
+      (ev.venues || []).forEach(v => {
+        html += `<option value="${v.id}" ${String(v.id) === String(val) ? 'selected' : ''}>${v.name}</option>`;
+      });
+      html += `</select>`;
+    } else if (f.type === 'tc') {
+      const isChecked = val ? 'checked' : '';
+      html += `<label style="display:flex; align-items:start; gap:8px; font-weight:normal; text-transform:none; margin-top:5px; font-size:13px; line-height:1.4;">
+        <input type="checkbox" id="${fieldId}" ${isChecked} ${f.required ? 'required' : ''} style="width:auto; margin-top:3px;">
+        <span>${f.tcText || 'I agree to the terms and conditions'}</span>
+      </label>`;
+    } else if (f.type === 'date' || f.label.toUpperCase().includes('DATE')) {
+      html += `<input type="date" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else if (f.type === 'file_link') {
+      html += `<input type="text" id="${fieldId}" placeholder="Paste link (e.g. Google Drive, YouTube)" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else if (f.type === 'video_link_or_file' || f.type === 'audio_link_or_file') {
+      const accept = f.type === 'video_link_or_file' ? 'video/*' : 'audio/*';
+      html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
+        <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
+        <input type="hidden" id="${fieldId}" value="${val}">
+        ${val ? `<div style="font-size:12px;color:green;margin-top:4px;">File/Link saved.</div>` : ''}
+      </div>`;
+    } else if (f.type === 'file' || f.type === 'photo') {
+      const accept = f.type === 'photo' ? 'image/*' : '*/*';
+      html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
+        <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
+        <input type="hidden" id="${fieldId}" value="${val}">
+        ${f.type === 'photo' ? `<img id="${fieldId}-preview" src="${val}" style="max-width:150px; border-radius:8px; border:2px solid var(--primary); display:${val ? 'block' : 'none'}; box-shadow:0 4px 10px rgba(0,0,0,0.1); margin-top:5px;" crossorigin="anonymous">` : `<div style="font-size:12px;color:green;margin-top:4px;display:${val ? 'block' : 'none'};">File uploaded: <a href="${val}" target="_blank">View File</a></div>`}
+      </div>`;
+    } else {
+      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    }
+    
+    html += `</div>`;
+  });
+
+  if (formFields.length === 0) {
+    html = `<div style="text-align:center; padding:20px; color:var(--text-muted);">No form fields configured for this event.</div>`;
+  }
+
+  container.innerHTML = html;
+  
+  // Lock Logic
+  const inputs = document.querySelectorAll('#participant-form input, #participant-form select, #participant-form textarea');
+  const btn = document.getElementById('save-btn');
+  const banner = document.getElementById('lock-banner');
+  
+  const formLocked = p.formLocked === true;
+  if (formLocked === true) {
+    inputs.forEach(inp => inp.disabled = true);
+    btn.disabled = true;
+    btn.style.background = 'var(--text-muted)';
+    btn.style.cursor = 'not-allowed';
+    btn.textContent = '🔒 Form Locked by Monitor';
+    banner.style.display = 'flex';
+  } else {
+    inputs.forEach(inp => inp.disabled = false);
+    btn.disabled = false;
+    btn.style.background = 'linear-gradient(135deg, #2563eb, #1d4ed8)';
+    btn.style.cursor = 'pointer';
+    btn.textContent = 'Save Updates';
+    banner.style.display = 'none';
+  }
+  
+  // Render Detailed Results
+  renderDetailedResults(p);
+  // Render Performance Journey Chart
+  renderPerformanceJourney(p);
+  // Render Global Stats Charts
+  renderGlobalEventStatistics(p);
+
+  // Render Certificate Card
+  const eventSwitches = (state.eventSwitches && ev ? state.eventSwitches[ev.id] : null) 
+    || (ev ? ev.switchStates : null) 
+    || state.switchStates 
+    || {};
+  if (ev && (eventSwitches.certificatePublic === true || eventSwitches.downloadPublic === true)) {
+    document.getElementById('certificate-card').style.display = 'block';
+  } else {
+    document.getElementById('certificate-card').style.display = 'none';
+  }
+
+  // Render Feedback Card
+  const existingFeedback = p.formAnswers && p.formAnswers._feedback;
+  if (existingFeedback) {
+    document.getElementById('feedback-card').style.display = 'block';
+    document.getElementById('feedback-form-container').style.display = 'none';
+    document.getElementById('feedback-success-msg').style.display = 'block';
+  } else {
+    document.getElementById('feedback-card').style.display = 'block';
+    document.getElementById('feedback-form-container').style.display = 'block';
+    document.getElementById('feedback-success-msg').style.display = 'none';
+  }
+
+  // Render Services Card based on monitor switch
+  const servicesSec = document.getElementById('services-section');
+  if (servicesSec) {
+    if (eventSwitches.servicesToggle === true) {
+      servicesSec.style.display = 'block';
+      // Load current active services orders/bookings
+      renderActiveServicesData(p);
+    } else {
+      servicesSec.style.display = 'none';
+    }
+  }
+}
+
+async function submitParticipantFeedback() {
+  const ratingEl = document.querySelector('input[name="fb_rating"]:checked');
+  if (!ratingEl) {
+    toast("⚠️ Please select a star rating.");
+    return;
+  }
+  const rating = parseInt(ratingEl.value, 10);
+  const text = document.getElementById('feedback-text').value.trim();
+  
+  if (window.syncEngine && window.syncEngine.submitFeedback) {
+    const success = await window.syncEngine.submitFeedback(CURRENT_USER, rating, text);
+    if (success) {
+      document.getElementById('feedback-form-container').style.display = 'none';
+      document.getElementById('feedback-success-msg').style.display = 'block';
+      toast("💖 Feedback sent successfully!");
+    } else {
+      toast("❌ Failed to send feedback.");
+    }
+  }
+}
+function generateParticipantCertificateHTML() {
+  if (!CURRENT_USER) return;
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  if (!p || !ev) return toast('Error: Participant or Event not found.');
+
+  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev.id] : state.switchStates) || {};
+  const certSetup = eventSwitches.certificateSetup || {};
+
+  const certNo = `KNSDC-${Date.now().toString().slice(-6)}-${(p.name || 'P').slice(0, 2).toUpperCase()}`;
+  
+  const cat = (ev.categories || []).find(c => String(c.id) === String(p.catId));
+  const catName = cat ? cat.name.toUpperCase() : 'OPEN CATEGORY';
+
+  let secSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">Secretary</div>`;
+  let presSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">President</div>`;
+  let judgeSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-bottom:10px; font-size:0.75rem;">Judge</div>`;
+
+  if (certSetup.secretary) {
+    secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
+                    <img src="${certSetup.secretary}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                    <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Secretary</div>
+                  </div>`;
+  }
+  if (certSetup.president) {
+    presSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
+                    <img src="${certSetup.president}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                    <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">President</div>
+                  </div>`;
+  }
+  if (certSetup.judge) {
+    judgeSigHtml = `<div style="text-align:center;">
+                      <div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-bottom:10px;">
+                        <img src="${certSetup.judge}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                        <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Judge</div>
+                      </div>
+                    </div>`;
+  }
+
+  const content = `
+    <div style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:30px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+      <!-- Top Logo -->
+      <div style="margin-bottom:15px;">
+        <img src="logo.png" style="height:100px; width:auto; border-radius:50%; box-shadow:0 4px 10px rgba(0,0,0,0.15);" alt="KNS Logo">
+      </div>
+
+      <div style="font-family:'Cinzel Decorative', cursive; font-size:1.1rem; color:#1A237E; margin-bottom:5px; font-weight:800;">Kalikapur Nabin Sangha</div>
+      <div style="font-size:2rem; font-weight:900; color:#1A237E; margin-bottom:15px; font-family:'Playfair Display', serif; text-transform:uppercase; letter-spacing:1px;">Certificate of Participation</div>
+      
+      <div style="margin:10px 0; font-size:1.1rem; color:#555;">This is to certify that</div>
+      <div style="font-size:2.5rem; font-weight:900; color:#FF6B35; font-family:'Playfair Display', serif; border-bottom:2px solid #eee; display:inline-block; padding:0 40px; margin-bottom:15px; letter-spacing:0.5px;">${p.name || 'Participant'}</div>
+      
+      <div style="margin:10px 0; font-size:1.1rem; color:#333; line-height:1.6;">
+        Participant ID: <strong style="color:#1A237E;">${p.id || 'N/A'}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; Category: <strong style="color:#1A237E;">${catName}</strong> <br>
+        has successfully participated in the <br>
+        <strong style="color:#1A237E; font-size:1.2rem;">${ev.name || 'Event'}</strong> <br>
+        held on <strong style="color:#444;">${ev.disp || (ev.date ? new Date(ev.date).toLocaleDateString() : '')}</strong> at <strong>Kalikapur, Kolkata</strong>.
+      </div>
+
+      <div style="margin-top:35px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 40px;">
+        <div style="display:flex; gap:50px; align-items:flex-end; text-align:center;">
+          <div>
+            ${secSigHtml}
+          </div>
+          <div>
+            ${presSigHtml}
+          </div>
+        </div>
+        
+        <div style="display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;">
+          ${judgeSigHtml}
+          <div>
+            <div style="font-size:0.65rem; color:#777; margin-bottom:5px; font-weight:600;">Certificate No: ${certNo}</div>
+            <div style="background:linear-gradient(135deg, #1A237E, #3949AB); color:#fff; padding:5px 14px; font-size:0.75rem; font-weight:800; border-radius:6px; letter-spacing:1.5px; box-shadow:0 2px 4px rgba(0,0,0,0.15);">KNSDC OFFICIAL</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Power By Footer -->
+      <div style="margin-top:25px; font-size:0.65rem; color:#9ca3af; text-transform:uppercase; letter-spacing:2px; font-weight:700;">
+        Powered by Kalikapur Nabin Sangha
+      </div>
+      
+      <!-- Logo Watermark -->
+      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:15rem; opacity:0.02; pointer-events:none; font-weight:900;">KNS</div>
+    </div>
+  `;
+
+  const win = window.open('', '', 'height=800,width=1200');
+  if (!win) {
+    toast("⚠️ Please allow popups to view and print your certificate.");
+    return;
+  }
+  
+  win.document.write(`
+    <html>
+      <head>
+        <title>KNSDC Certificate</title>
+        <style>
+          @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); 
+          body { margin:0; padding:20px; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #e2e8f0; }
+          #cert-wrapper { width: 1056px; height: 750px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; }
+          #controls { display: flex; gap: 15px; margin-bottom: 20px; }
+          .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; display: flex; align-items: center; gap: 8px; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s; }
+          .btn:active { opacity: 0.8; }
+          .btn-print { background: #7c3aed; }
+          .btn-jpg { background: #ea580c; }
+          @media print {
+            @page { size: landscape; margin: 0; }
+            body { padding: 0; background: white; align-items: flex-start; justify-content: flex-start; }
+            #controls { display: none !important; }
+            #cert-wrapper { width: 100%; height: 100%; box-shadow: none; margin: 0; }
+          }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+      </head>
+      <body>
+        <div id="controls">
+          <button class="btn btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+          <button class="btn btn-jpg" onclick="downloadJPG()">🖼️ Download JPG</button>
+        </div>
+        <div id="cert-wrapper">
+          ${content}
+        </div>
+        <script>
+          function downloadJPG() {
+            const btn = document.querySelector('.btn-jpg');
+            btn.textContent = 'Generating...';
+            btn.disabled = true;
+            
+            html2canvas(document.getElementById('cert-wrapper'), { scale: 2, useCORS: true }).then(canvas => {
+              const link = document.createElement('a');
+              link.download = '${(p.name || 'Participant').replace(/\s+/g,'_')}_Certificate.jpg';
+              link.href = canvas.toDataURL('image/jpeg', 0.95);
+              link.click();
+              
+              btn.textContent = '🖼️ Download JPG';
+              btn.disabled = false;
+            }).catch(err => {
+              alert('Failed to generate JPG.');
+              btn.textContent = '🖼️ Download JPG';
+              btn.disabled = false;
+            });
+          }
+        <\/script>
+      </body>
+    </html>
+  `);
+  win.document.close();
+  
+  toast("📥 Popup opened! You can Print/PDF or Download JPG.");
+}
+
+// 4. Save Updates (Auto-Lock)
+document.getElementById('participant-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('save-btn');
+  if (btn.disabled) return;
+  
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
+  
+  const formFields = window.participantFormFields || [];
+  let payload = { formAnswers: { ...(p.formAnswers || {}) }, formLocked: true };
+  
+  for (let i = 0; i < formFields.length; i++) {
+    const f = formFields[i];
+    const fieldId = `dyn-field-${i}`;
+    const el = document.getElementById(fieldId);
+    let val = '';
+
+    if (f.type === 'radio') {
+      const checked = document.querySelector(`input[name="${fieldId}"]:checked`);
+      val = checked ? checked.value : '';
+    } else if (f.type === 'checkbox') {
+      const checked = Array.from(document.querySelectorAll(`input[name="${fieldId}"]:checked`)).map(c => c.value);
+      val = checked;
+    } else if (f.type === 'tc') {
+      val = el ? el.checked : false;
+    } else if (el) {
+      val = el.value.trim ? el.value.trim() : el.value;
+    }
+
+    if (f.required && (!val || (Array.isArray(val) && val.length === 0))) {
+      toast(`Please fill required field: ${f.label}`);
+      btn.disabled = false;
+      btn.textContent = 'Save Updates';
+      return;
+    }
+
+    payload.formAnswers[f.label] = val;
+
+    // Map to standard properties
+    const lbl = f.label.toUpperCase();
+    if (lbl.includes('NAME')) payload.name = val;
+    else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) payload.phone = val;
+    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) payload.age = val;
+    else if (f.type === 'category') payload.catId = val;
+    else if (f.type === 'venue') payload.venueId = val;
+  }
+  
+  try {
+    await window.syncEngine.updateParticipant(CURRENT_USER, payload);
+    toast('✅ Your form updated successfully!');
+    // Render will naturally lock the UI because we pushed formLocked:true
+  } catch(err) {
+    console.error(err);
+    toast('Error saving updates');
+    btn.disabled = false;
+    btn.textContent = 'Save Updates';
+  }
+});
+
+// Reactively re-render if Monitor unlocks them while they are logged in!
+let renderTimer = null;
+const debouncedRenderDashboard = () => {
+  if (renderTimer) clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    renderDashboard();
+  }, 250);
+};
+
+if (window.syncEngine) {
+  window.syncEngine.subscribe(() => {
+    if (CURRENT_USER && document.getElementById('dashboard-view').style.display === 'block') {
+      const state = window.syncEngine.getData() || {};
+      const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
+      
+      // Prevent ringing on initial page load if already in queue
+      if (!initialSyncFired) {
+        lastStageStatus = p.stageStatus;
+        initialSyncFired = true;
+      }
+
+      // --- VIBRATION & READY RESET LOGIC ---
+      if (lastStageStatus !== 'queue' && p.stageStatus === 'queue') {
+        // Added to queue! Vibrate and ring for 15 seconds.
+        if ('vibrate' in navigator) {
+          navigator.vibrate([1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000]);
+        }
+        playRingTone();
+        if ('Notification' in window && Notification.permission === 'granted') {
+           try {
+             new Notification('🚨 YOU ARE UP NEXT!', {
+               body: 'You have been added to the queue! Please head to the stage immediately.',
+               requireInteraction: true
+             });
+           } catch(e) { console.error('Notification error', e); }
+        }
+        document.getElementById('stop-vibration-banner').style.display = 'flex';
+        setTimeout(() => { stopVibration(); }, 15000);
+      }
+
+      // Always track stage status (outside any guard)
+      if (p.stageStatus !== undefined) {
+        lastStageStatus = p.stageStatus;
+      }
+
+      if (p.stageStatus) {
+        // Sync button UI with current state if loaded
+        const btn = document.getElementById('ready-btn');
+        if (btn) {
+          if (p.isReady) {
+            btn.innerHTML = '✅ Ready Alert Sent (Click to Cancel)';
+            btn.style.background = 'var(--green)';
+            btn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+            btn.style.cursor = 'pointer';
+            btn.disabled = false;
+          } else {
+            btn.innerHTML = '🔥 I am Ready for Performance';
+            btn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
+            btn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
+            btn.style.cursor = 'pointer';
+            btn.disabled = false;
+          }
+        }
+        
+        const upcomingCard = document.getElementById('upcoming-performer-card');
+        const upcomingList = document.getElementById('upcoming-performer-list');
+        if (upcomingCard && upcomingList) {
+          if (p.stageStatus === 'queue' || p.stageStatus === 'on-stage') {
+            const state = window.syncEngine.getData() || {};
+            let queue = (state.participants || []).filter(part => part.stageStatus === 'queue' && String(part.eventId) === String(p.eventId));
+            // Sort by queueOrder
+            queue.sort((a, b) => (a.queueOrder || 0) - (b.queueOrder || 0));
+            
+            let html = '';
+            if (p.stageStatus === 'on-stage') {
+              html += `<div style="background:var(--green); color:white; padding:12px; border-radius:8px; font-weight:800; text-align:center; box-shadow:0 4px 15px rgba(16, 185, 129, 0.3); margin-bottom:10px;">🌟 YOU ARE ON STAGE! 🌟</div>`;
+            }
+            
+            if (queue.length > 0) {
+              queue.forEach((q, idx) => {
+                const isMe = String(q.id) === String(CURRENT_USER);
+                html += `
+                  <div style="background:var(--surface); padding:10px 15px; border-radius:8px; display:flex; align-items:center; gap:12px; border:1px solid ${isMe ? 'var(--primary)' : 'var(--border)'}; box-shadow:${isMe ? '0 0 10px rgba(124,58,237,0.2)' : 'none'};">
+                    <div style="background:rgba(124,58,237,0.15); color:var(--primary); width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;">${idx + 1}</div>
+                    <div style="flex:1;">
+                      <div style="font-weight:700; color:var(--text);">${isMe ? '👉 ' + q.name + ' (YOU)' : q.name}</div>
+                      <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm);">${q.id}</div>
+                    </div>
+                  </div>
+                `;
+              });
+            } else if (p.stageStatus !== 'on-stage') {
+              html += `<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:10px;">Queue is empty</div>`;
+            }
+            upcomingList.innerHTML = html;
+            upcomingCard.style.display = 'block';
+          } else {
+            upcomingCard.style.display = 'none';
+          }
+        }
+        
+      }
+      // --- END LOGIC ---
+      
+      // Update Chat
+      renderChatMessages();
+
+      const formLocked = p.formLocked === true;
+      const btn = document.getElementById('save-btn');
+      const isCurrentlyLocked = btn && btn.disabled;
+      
+      // If form was just locked remotely, force re-render immediately
+      if (formLocked && !isCurrentlyLocked) {
+        debouncedRenderDashboard();
+        return;
+      }
+      
+      // If form was unlocked remotely, force re-render immediately
+      if (!formLocked && isCurrentlyLocked) {
+        debouncedRenderDashboard();
+        return;
+      }
+
+      // Otherwise, only re-render if the user is not actively typing
+      const activeEl = document.activeElement;
+      const isTyping = activeEl && document.getElementById('participant-form').contains(activeEl);
+      
+      if (!isTyping) {
+        debouncedRenderDashboard();
+      }
+      
+      // Update food menu in real-time if open
+      const foodModal = document.getElementById('food-modal');
+      if (foodModal && foodModal.style.display === 'flex' && window.renderFoodMenuUI) {
+        window.renderFoodMenuUI();
+      }
+    }
+  });
+}
+
+// 5-second auto-polling loop: only runs when participant is logged in and form is currently locked
+setInterval(async () => {
+  if (CURRENT_USER && window.syncEngine) {
+    const state = window.syncEngine.getData() || {};
+    const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+    if (p) {
+      const formLocked = p.formLocked === true;
+      if (formLocked) {
+        try {
+          await window.syncEngine.loadParticipants();
+        } catch(e) {
+          console.error('[Participant] Auto-poll status failed:', e);
+        }
+      }
+    }
+  }
+}, 5000);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && window.syncEngine) {
+    window.syncEngine.loadParticipants().catch(e => console.error(e));
+  }
+});
+
+function renderDetailedResults(p) {
+  const container = document.getElementById('detailed-results-card');
+  if (!container) return;
+
+  const state = window.syncEngine.getData() || {};
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev ? ev.id : null] : state.switchStates) || {};
+  
+  if (!p.scores || Object.keys(p.scores).length === 0 || !eventSwitches['resultPublic']) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  container.style.display = 'block';
+
+  const cat = ((ev && ev.categories) || []).find(c => String(c.id) === String(p.catId));
+  const catName = cat ? cat.name : 'Participant';
+
+  const totalScore = Object.values(p.scores || {}).reduce((a, b) => {
+    if (typeof b === 'object') return a + Object.values(b).reduce((x, y) => x + (Number(y) || 0), 0);
+    return a + (Number(b) || 0);
+  }, 0);
+  
+  const subjects = (ev && ev.subjects) || state.subjects || [];
+  
+  const scoredJudgeCount = Object.keys(p.scores).length || 1;
+  const maxTotalScore = scoredJudgeCount * subjects.reduce((a, s) => a + (Number(s.maxMarks) || 10), 0);
+
+  const allParticipants = state.participants || [];
+  const sameCatParticipants = allParticipants.filter(pp => String(pp.eventId) === String(p.eventId) && pp.catId === p.catId);
+  let catTotalScores = 0;
+  let catScoredCount = 0;
+  sameCatParticipants.forEach(pp => {
+    let ppTotal = 0;
+    Object.values(pp.scores || {}).forEach(jScores => {
+      if (typeof jScores === 'object') Object.values(jScores).forEach(v => ppTotal += (Number(v) || 0));
+      else ppTotal += (Number(jScores) || 0);
+    });
+    if (ppTotal > 0) { catTotalScores += ppTotal; catScoredCount++; }
+  });
+  const catAvg = catScoredCount > 0 ? (catTotalScores / catScoredCount).toFixed(1) : '0.0';
+
+  let subjectBreakdownHTML = '';
+  if (subjects.length > 0) {
+    const judges = state.judges || [];
+    const judgeAgreements = state.judgeAgreements || [];
+    
+    const getJudgeScores = (j) => {
+      const agr = judgeAgreements.find(a => 
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      );
+      return (p.scores && p.scores[j.id]) || (agr && p.scores && p.scores[agr.id]) || null;
+    };
+
+    let scoredJudges = judges.filter(j => getJudgeScores(j) !== null);
+    
+    if (scoredJudges.length === 0) {
+      scoredJudges = Object.keys(p.scores).map(jid => {
+        return { id: jid, name: 'Judge ' + jid.substring(0, 4) };
+      });
+    }
+    
+    if (scoredJudges.length === 0) {
+      subjectBreakdownHTML = `
+        <div style="margin-top:16px; background:var(--bg2); border-radius:14px; padding:16px; border:1px solid var(--border);">
+          <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
+          <div style="font-size:0.8rem; color:var(--text-muted); font-style:italic;">Scores will appear here once submitted.</div>
+        </div>`;
+    } else {
+      subjectBreakdownHTML = `
+        <div style="margin-top:16px; background:var(--bg2); border-radius:14px; padding:16px; border:1px solid var(--border);">
+          <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">📊 Judge-wise Category Breakdown</div>
+          ${scoredJudges.map(judge => {
+            const jScores = getJudgeScores(judge) || p.scores[judge.id] || {};
+            let judgeTotal = 0;
+            let judgeMax = 0;
+            
+            subjects.forEach(s => {
+              judgeTotal += (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
+              judgeMax += (Number(s.maxMarks) || 10);
+            });
+
+            let judgeHtml = `
+              <div style="margin-bottom:12px; padding:12px; background:var(--bg); border-radius:10px; border:1px solid var(--border);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:4px;">
+                  <span style="font-size:0.8rem; font-weight:800; color:var(--text);">🧑‍⚖️ ${judge.name}</span>
+                  <span style="font-size:0.75rem; font-weight:800; color:var(--primary); background:rgba(124,58,237,0.1); padding:2px 8px; border-radius:10px;">${judgeTotal} / ${judgeMax} pts</span>
+                </div>`;
+            
+            subjects.forEach(s => {
+              let subScore = (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
+              const subMax = Number(s.maxMarks) || 10;
+              const pct = subMax > 0 ? Math.round(subScore / subMax * 100) : 0;
+              const barColor = pct >= 70 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
+              
+              judgeHtml += `
+                <div style="margin-bottom:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted);">${s.name || 'Subject'}</span>
+                    <span style="font-size:0.75rem; font-weight:700; color:${barColor};">${subScore} / ${subMax}</span>
+                  </div>
+                  <div style="height:4px; background:var(--border); border-radius:10px; overflow:hidden;">
+                    <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:10px; transition:width 0.6s ease;"></div>
+                  </div>
+                </div>
+              `;
+            });
+            // Get judge-specific comment for this round
+            const currentRound = p.round || 'audition';
+            const judgeComment = (p.roundComments && p.roundComments[currentRound] && p.roundComments[currentRound][judge.id]) || '';
+            if (judgeComment) {
+              judgeHtml += `<div style="padding:10px; margin-top:8px; background:var(--bg3); border-radius:8px; border-left:3px solid var(--primary); font-size:0.75rem; color:var(--text); font-style:italic; line-height:1.4;">
+                💬 "${judgeComment}"
+              </div>`;
+            }
+            
+            judgeHtml += `</div>`;
+            return judgeHtml;
+          }).join('')}
+        </div>
+      `;
+    }
+  }
+
+  container.innerHTML = `
+    <div style="padding:24px; border-radius:20px; border:2px solid rgba(124,58,237,0.2); text-align:left; background:var(--bg); box-shadow: 0 8px 24px rgba(124,58,237,0.08);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+        <div>
+          <h3 style="color:var(--text); font-size:1.4rem; font-weight:900; margin:4px 0;">${p.name}</h3>
+          <div style="color:var(--text-muted); font-size:0.85rem;">${catName} · Round: ${(p.round || 'audition').toUpperCase()}</div>
+        </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px;">
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(124,58,237,0.1);">
+          <div style="font-size:0.65rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Your Score</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${totalScore}</div>
+        </div>
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(234,88,12,0.1);">
+          <div style="font-size:0.65rem; color:#EA580C; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Max Score</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${maxTotalScore}</div>
+        </div>
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(245,158,11,0.1);">
+          <div style="font-size:0.65rem; color:#D97706; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Cat. Avg</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${catAvg}</div>
+        </div>
+      </div>
+
+      ${subjectBreakdownHTML}
+    </div>
+  `;
+}
+
+function renderPerformanceJourney(p) {
+  const container = document.getElementById('participant-stream-charts-container');
+  const card = document.getElementById('performance-journey-card');
+  if (!container || !card) return;
+
+  const state = window.syncEngine.getData() || {};
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev ? ev.id : null] : state.switchStates) || {};
+
+  const hasCurrentScores = p.scores && Object.keys(p.scores).length > 0;
+  const hasPastScores = p.roundScores && Object.keys(p.roundScores).length > 0;
+  
+  if ((!hasCurrentScores && !hasPastScores) || !eventSwitches['resultPublic']) {
+    card.style.display = 'none';
+    return;
+  }
+  
+  card.style.display = 'block';
+
+  if (typeof Chart === 'undefined') {
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">Chart library not loaded.</div>';
+    return;
+  }
+  
+  if (window.participantStreamChartInstance) {
+    window.participantStreamChartInstance.destroy();
+  }
+  
+  container.innerHTML = '<canvas id="stream-chart"></canvas>';
+  const canvasEl = document.getElementById('stream-chart');
+  
+  // Set height for the container
+  container.style.height = '250px';
+  
+  const ctx2d = canvasEl.getContext('2d');
+  
+  const subjects = state.subjects || [];
+  const participants = state.participants || [];
+  
+  const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+  const roundLabels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  
+  // Calculate Global Averages
+  const globalAvgs = {};
+  rounds.forEach(r => {
+    globalAvgs[r] = {};
+    subjects.forEach(s => {
+      let total = 0, count = 0;
+      participants.forEach(part => {
+        let scores = null;
+        if (part.round === r && part.scores) scores = part.scores;
+        else if (part.roundScores && part.roundScores[r]) scores = part.roundScores[r];
+        if (scores) {
+          const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
+          if (jScores.length > 0) {
+            total += jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length;
+            count++;
+          }
+        }
+      });
+      globalAvgs[r][s.id] = count > 0 ? Number((total / count).toFixed(1)) : null;
+    });
+  });
+
+  const datasets = [];
+  
+  subjects.forEach((s, idx) => {
+    const pData = rounds.map(r => {
+      let scores = null;
+      if (p.round === r && p.scores) scores = p.scores;
+      else if (p.roundScores && p.roundScores[r]) scores = p.roundScores[r];
+      if (scores) {
+        const jScores = Object.values(scores).map(j => j[s.id]).filter(v => v !== undefined);
+        if (jScores.length > 0) return Number((jScores.reduce((a, b) => Number(a) + Number(b), 0) / jScores.length).toFixed(1));
+      }
+      return null;
+    });
+
+    const gradient = ctx2d.createLinearGradient(0, 0, 0, 250);
+    let colorStart, colorEnd, borderColor;
+    if (idx % 6 === 0) { colorStart = 'rgba(236, 72, 153, 0.85)'; colorEnd = 'rgba(244, 63, 94, 0.5)'; borderColor = '#f43f5e'; }
+    else if (idx % 6 === 1) { colorStart = 'rgba(168, 85, 247, 0.85)'; colorEnd = 'rgba(124, 58, 237, 0.5)'; borderColor = '#8b5cf6'; }
+    else if (idx % 6 === 2) { colorStart = 'rgba(56, 189, 248, 0.85)'; colorEnd = 'rgba(59, 130, 246, 0.5)'; borderColor = '#3b82f6'; }
+    else if (idx % 6 === 3) { colorStart = 'rgba(52, 211, 153, 0.85)'; colorEnd = 'rgba(16, 185, 129, 0.5)'; borderColor = '#10b981'; }
+    else if (idx % 6 === 4) { colorStart = 'rgba(250, 204, 21, 0.85)'; colorEnd = 'rgba(245, 158, 11, 0.5)'; borderColor = '#eab308'; }
+    else { colorStart = 'rgba(251, 146, 60, 0.85)'; colorEnd = 'rgba(234, 88, 12, 0.5)'; borderColor = '#f97316'; }
+
+    gradient.addColorStop(0, colorStart);
+    gradient.addColorStop(1, colorEnd);
+
+    datasets.push({
+      label: s.name,
+      data: pData,
+      fill: true,
+      backgroundColor: gradient,
+      borderColor: borderColor,
+      pointRadius: function(context) {
+        const dataset = context.dataset.data;
+        const validPoints = dataset.filter(val => val !== null).length;
+        return validPoints === 1 ? 4 : 0;
+      },
+      pointHoverRadius: 6,
+      borderWidth: 2,
+      tension: 0.5
+    });
+  });
+
+  const globalData = rounds.map(r => {
+    let total = 0;
+    let hasData = false;
+    subjects.forEach(s => { 
+      if (globalAvgs[r][s.id] !== null) {
+        total += globalAvgs[r][s.id]; 
+        hasData = true;
+      }
+    });
+    return hasData ? Number(total.toFixed(1)) : null;
+  });
+
+  datasets.push({
+    label: 'Global Average (Total)',
+    data: globalData,
+    type: 'line',
+    fill: false,
+    borderColor: 'rgba(148, 163, 184, 0.8)',
+    borderDash: [5, 5],
+    borderWidth: 2,
+    pointRadius: function(context) {
+      const dataset = context.dataset.data;
+      const validPoints = dataset.filter(val => val !== null).length;
+      return validPoints <= 1 ? 3 : 0;
+    },
+    pointHoverRadius: 5,
+    tension: 0.4
+  });
+
+  window.participantStreamChartInstance = new Chart(canvasEl, {
+    type: 'line',
+    data: {
+      labels: roundLabels,
+      datasets: datasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      spanGaps: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          titleFont: { size: 11, weight: 'bold', family: "'Inter', sans-serif" },
+          bodyFont: { size: 10, family: "'Inter', sans-serif" },
+          padding: 10,
+          cornerRadius: 8,
+          boxPadding: 4,
+          usePointStyle: true
+        }
+      },
+      scales: {
+        y: { stacked: true, display: false, min: 0 },
+        x: {
+          ticks: { color: '#94a3b8', font: { size: 10, family: "'Inter', sans-serif", weight: 'bold' } },
+          grid: { display: false },
+          border: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function renderGlobalEventStatistics(p) {
+  const container = document.getElementById('global-statistics-section');
+  if (!container) return;
+
+  const state = window.syncEngine.getData() || {};
+
+  // ─── GATE: Only show when Monitor enables "Result Public" ───
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  const eventSwitches = (state.eventSwitches && ev ? state.eventSwitches[ev.id] : null)
+    || (ev ? ev.switchStates : null)
+    || state.switchStates
+    || {};
+
+  if (!eventSwitches.resultPublic) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+
+  const participants = state.participants || [];
+  const judges = state.judges || [];
+  const subjects = state.subjects || [];
+  const categories = state.categories || [];
+  const activeEventId = p.eventId;
+
+  // Present Judges
+  const presentJudges = judges.filter(j => {
+    if (!j.present) return false;
+    const agreements = state.judgeAgreements || [];
+    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+  });
+
+  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
+  const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+
+  // Helpers
+  const getAllJudgeScores = (part, jId) => {
+    let allScores = [];
+    if (part.scores && part.scores[jId]) {
+      Object.values(part.scores[jId]).forEach(v => allScores.push(Number(v)));
+    }
+    if (part.roundScores) {
+      Object.keys(part.roundScores).forEach(rName => {
+        const rScores = part.roundScores[rName];
+        if (rScores && rScores[jId]) {
+          Object.values(rScores[jId]).forEach(v => allScores.push(Number(v)));
+        }
+      });
+    }
+    return allScores;
+  };
+
+  const getSubjectScores = (jId, sId) => {
+    let allScores = [];
+    participants.forEach(part => {
+      if (part.scores && part.scores[jId] && part.scores[jId][sId]) {
+        allScores.push(Number(part.scores[jId][sId]));
+      }
+      if (part.roundScores) {
+        Object.values(part.roundScores).forEach(rScores => {
+          if (rScores && rScores[jId] && rScores[jId][sId]) {
+            allScores.push(Number(rScores[jId][sId]));
+          }
+        });
+      }
+    });
+    return allScores;
+  };
+
+  const resolveCatBorderColor = (catColorStr, index) => {
+    const classMap = {
+      'b-blue': '#3b82f6', 'b-green': '#10b981', 'b-amber': '#f59e0b',
+      'b-orange': '#ea580c', 'b-red': '#ef4444', 'b-purple': '#8b5cf6',
+      'b-pink': '#ec4899', 'b-teal': '#14b8a6', 'b-indigo': '#6366f1'
+    };
+    if (catColorStr && classMap[catColorStr]) return classMap[catColorStr];
+    if (catColorStr && catColorStr.startsWith('#')) return catColorStr;
+    const fallbackPalette = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
+    return fallbackPalette[index % fallbackPalette.length];
+  };
+
+  const hexToRgba = (hex, alpha) => {
+    let r = 0, g = 0, b = 0;
+    if (hex && hex.length === 4) { r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16); }
+    else if (hex && hex.length === 7) { r = parseInt(hex.slice(1, 3), 16); g = parseInt(hex.slice(3, 5), 16); b = parseInt(hex.slice(5, 7), 16); }
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // 1. ROUND STATS CHART
+  const renderRoundChart = () => {
+    const ctx = document.getElementById('round-chart');
+    if (!ctx) return;
+    const activeEventCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+    const datasets = [];
+    
+    activeEventCats.forEach((cat, catIdx) => {
+      const promotedData = [];
+      const stoppedData = [];
+      const borderColor = resolveCatBorderColor(cat.color, catIdx);
+  
+      roundsOrder.forEach((round, rIdx) => {
+        const catParts = participants.filter(p => String(p.catId) === String(cat.id) && (String(p.eventId) === String(activeEventId) || !p.eventId));
+        const presentInRound = catParts.filter(p => roundsOrder.indexOf(p.round) >= rIdx);
+        const promoted = presentInRound.filter(p => roundsOrder.indexOf(p.round) > rIdx);
+        const stopped = presentInRound.filter(p => roundsOrder.indexOf(p.round) === rIdx);
+  
+        promotedData.push(promoted.length);
+        stoppedData.push(stopped.length);
+      });
+  
+      datasets.push({
+        label: `${cat.name} (Promoted)`,
+        data: promotedData,
+        backgroundColor: hexToRgba(borderColor, 0.85),
+        borderColor: borderColor,
+        borderWidth: 2.5,
+        borderRadius: 4,
+        stack: `cat_${cat.id}`
+      });
+  
+      datasets.push({
+        label: `${cat.name} (Stopped Here)`,
+        data: stoppedData,
+        backgroundColor: hexToRgba(borderColor, 0.25),
+        borderColor: borderColor,
+        borderWidth: 2.5,
+        borderRadius: 4,
+        stack: `cat_${cat.id}`
+      });
+    });
+  
+    if(window.roundChartInstance) window.roundChartInstance.destroy();
+    window.roundChartInstance = new Chart(ctx, {
+      type:'bar',
+      data:{labels, datasets},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        plugins:{
+          legend:{
+            display:true,
+            labels:{ color:'#8892a4', font:{size:10, family:"'Inter', sans-serif", weight:'bold'} }
+          },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales:{
+          x:{ ticks:{color:'#8892a4'}, grid:{color:'rgba(34,36,54,0.15)'}, stacked: true },
+          y:{ ticks:{color:'#8892a4',stepSize:1}, grid:{color:'rgba(34,36,54,0.15)'}, stacked: true }
+        }
+      }
+    });
+  };
+
+  // 2. GENDER CHARTS
+  const renderGenderCharts = () => {
+    const container = document.getElementById('gender-charts-container');
+    if (!container) return;
+    container.innerHTML = '';
+    if (window.genderCharts) window.genderCharts.forEach(c => c.destroy());
+    window.genderCharts = [];
+  
+    roundsOrder.forEach((r, idx) => {
+      const reached = participants.filter(p => {
+        if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
+        return roundsOrder.indexOf(p.round || 'audition') >= idx;
+      });
+  
+      const males = reached.filter(p => p.gender && p.gender.toLowerCase() === 'male').length;
+      const females = reached.filter(p => p.gender && p.gender.toLowerCase() === 'female').length;
+      const total = males + females;
+      
+      const wrap = document.createElement('div');
+      wrap.style.textAlign = 'center';
+      wrap.innerHTML = `
+        <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;">${labels[idx]}</div>
+        <div style="position:relative;height:120px;display:flex;justify-content:center;">
+          <canvas id="gender-chart-${r}"></canvas>
+        </div>
+        <div style="font-size:11px;margin-top:10px;font-family:'Inter', sans-serif;display:flex;justify-content:center;gap:15px">
+          <span style="color:#f97316;font-weight:800">M: ${males}</span>
+          <span style="color:#a855f7;font-weight:800">F: ${females}</span>
+        </div>
+      `;
+      container.appendChild(wrap);
+  
+      const ctx = document.getElementById(`gender-chart-${r}`);
+      const chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Male', 'Female'],
+          datasets: [{
+            data: [males, females],
+            backgroundColor: ['#f97316', '#a855f7'],
+            borderWidth: 0,
+            hoverOffset: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '70%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  if(total === 0) return '0%';
+                  const percentage = Math.round((context.raw / total) * 100);
+                  return ` ${context.label}: ${context.raw} (${percentage}%)`;
+                }
+              }
+            }
+          }
+        },
+        plugins: [{
+          id: 'centerText',
+          beforeDraw: function(chart) {
+            const width = chart.width, height = chart.height, ctx = chart.ctx;
+            ctx.restore();
+            ctx.font = "bold 18px 'Inter', sans-serif";
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#64748b';
+            const text = total.toString();
+            const textX = Math.round((width - ctx.measureText(text).width) / 2);
+            const textY = height / 2;
+            ctx.fillText(text, textX, textY);
+            
+            ctx.font = "600 9px 'Inter', sans-serif";
+            ctx.fillStyle = '#94a3b8';
+            const subText = 'Total';
+            const subX = Math.round((width - ctx.measureText(subText).width) / 2);
+            ctx.fillText(subText, subX, textY + 14);
+            ctx.save();
+          }
+        }]
+      });
+      window.genderCharts.push(chart);
+    });
+  };
+
+  // 3. AGE CHARTS
+  const renderAgeCharts = () => {
+    const container = document.getElementById('age-charts-container');
+    if (!container) return;
+    container.innerHTML = '';
+    if (window.ageCharts) window.ageCharts.forEach(c => c.destroy());
+    window.ageCharts = [];
+  
+    const ageGroups = ['Below 6', '6 - 10', '11 - 20', '21 - 25', '26 - 32', '33+'];
+    const groupColors = ['#f43f5e', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#f59e0b'];
+  
+    roundsOrder.forEach((r, idx) => {
+      const reached = participants.filter(p => {
+        if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
+        return roundsOrder.indexOf(p.round || 'audition') >= idx;
+      });
+  
+      const bucketCounts = [0, 0, 0, 0, 0, 0];
+      reached.forEach(p => {
+        const ageStr = p.age ? String(p.age).replace(/[^0-9]/g, '') : '';
+        if (!ageStr) return;
+        const a = parseInt(ageStr, 10);
+        if (isNaN(a)) return;
+  
+        if (a < 6) bucketCounts[0]++;
+        else if (a >= 6 && a <= 10) bucketCounts[1]++;
+        else if (a >= 11 && a <= 20) bucketCounts[2]++;
+        else if (a >= 21 && a <= 25) bucketCounts[3]++;
+        else if (a >= 26 && a <= 32) bucketCounts[4]++;
+        else if (a >= 33) bucketCounts[5]++;
+      });
+  
+      const wrap = document.createElement('div');
+      wrap.style.textAlign = 'center';
+      wrap.innerHTML = `
+        <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;">${labels[idx]}</div>
+        <div style="position:relative;height:160px;display:flex;justify-content:center;">
+          <canvas id="age-chart-${r}"></canvas>
+        </div>
+      `;
+      container.appendChild(wrap);
+  
+      const ctx = document.getElementById(`age-chart-${r}`);
+      const chart = new Chart(ctx, {
+        type: 'polarArea',
+        data: {
+          labels: ageGroups,
+          datasets: [{
+            data: bucketCounts,
+            backgroundColor: groupColors.map(c => c + 'BB'),
+            borderColor: groupColors,
+            borderWidth: 1.5
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.label}: ${context.raw} Participants`;
+                }
+              }
+            }
+          },
+          scales: {
+            r: { ticks: { display: false }, grid: { color: 'rgba(0,0,0,0.05)' } }
+          }
+        }
+      });
+      window.ageCharts.push(chart);
+    });
+  };
+
+  // 4. JUDGE SCORE DISTRIBUTION
+  const renderJudgeDistChart = () => {
+    const ctx = document.getElementById('judge-chart');
+    if (!ctx) return;
+    if(window.judgeChartInstance) window.judgeChartInstance.destroy();
+    
+    const chartDatasets = presentJudges.map((j, i) => {
+      const scoreCounts = new Array(10).fill(0);
+      participants.forEach(p => {
+        const allVals = getAllJudgeScores(p, j.id);
+        allVals.forEach(val => {
+          const num = Math.round(val);
+          if (num >= 1 && num <= 10) scoreCounts[num - 1]++;
+        });
+      });
+  
+      const judgeColors = ['109,40,217', '37,99,235', '5,150,105', '217,119,6'];
+      const colorStr = judgeColors[i % judgeColors.length];
+  
+      return {
+        label: j.name.split(' ')[0],
+        data: scoreCounts,
+        backgroundColor: `rgba(${colorStr}, 0.15)`,
+        borderColor: `rgba(${colorStr}, 1)`,
+        borderWidth: 2.5,
+        pointBackgroundColor: `rgba(${colorStr}, 1)`,
+        pointBorderColor: '#fff',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: true,
+        tension: 0.4
+      };
+    });
+  
+    window.judgeChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+        datasets: chartDatasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: { color: '#8892a4', font: { size: 10, family: "'Inter', sans-serif", weight: 'bold' } }
+          },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Score Given', color: '#8892a4', font: { size: 10, weight: 'bold' } },
+            ticks: { color: '#8892a4' },
+            grid: { color: 'rgba(34,36,54,0.15)' }
+          },
+          y: {
+            title: { display: true, text: 'Frequency (Count)', color: '#8892a4', font: { size: 10, weight: 'bold' } },
+            ticks: { color: '#8892a4', stepSize: 1 },
+            grid: { color: 'rgba(34,36,54,0.15)' }
+          }
+        }
+      }
+    });
+  };
+
+  // 5. MAX & AVERAGE SCORES
+  const renderMaxAvg = () => {
+    const container = document.getElementById('judge-maxavg');
+    if(!container) return;
+    container.innerHTML = presentJudges.map(j=>{
+      let allJudgeScores = [];
+      participants.forEach(p => {
+        const pScores = getAllJudgeScores(p, j.id);
+        if(pScores.length) allJudgeScores.push(...pScores);
+      });
+      const max = allJudgeScores.length ? Math.max(...allJudgeScores) : 0;
+      const avg = allJudgeScores.length ? Math.round((allJudgeScores.reduce((a,b)=>a+b,0)/allJudgeScores.length)*10)/10 : 0;
+      const pct = subjects.length*10 > 0 ? Math.round(avg/(subjects.length*10)*100) : 0;
+      
+      const styles = {
+        row: 'display:flex; margin-bottom:12px; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:8px;',
+        avatar: `width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;margin-right:12px;background:${j.color}20;color:${j.color};border:1px solid ${j.color}50`,
+        barWrap: 'height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; margin-top:6px;',
+        barFill: `height:100%; width:${pct}%; background:${j.color}; transition:width 0.5s ease`
+      };
+      
+      return `<div style="${styles.row}">
+        <div style="${styles.avatar}">${j.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px">${j.name}</div>
+          <div style="${styles.barWrap}"><div style="${styles.barFill}"></div></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Avg: ${avg} · Max given: ${max}</div>
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  // 6. SUBJECT-WISE JUDGE ANALYSIS
+  const renderJudgeSubjectCharts = () => {
+    const container = document.getElementById('judge-subject-charts-container');
+    if (!container) return;
+    container.innerHTML = '';
+  
+    if (window.judgeSubjectCharts) window.judgeSubjectCharts.forEach(c => c.destroy());
+    window.judgeSubjectCharts = [];
+  
+    if (presentJudges.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No judges present for this event.</div>';
+      return;
+    }
+  
+    const subjectNames = subjects.map(s => s.name);
+  
+    presentJudges.forEach(j => {
+      const mins = [];
+      const avgs = [];
+      const maxs = [];
+  
+      subjects.forEach(s => {
+        const scores = getSubjectScores(j.id, s.id);
+        if (scores.length > 0) {
+          mins.push(Math.min(...scores));
+          maxs.push(Math.max(...scores));
+          avgs.push(Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10);
+        } else {
+          mins.push(0); maxs.push(0); avgs.push(0);
+        }
+      });
+  
+      const wrap = document.createElement('div');
+      wrap.style.textAlign = 'center';
+      wrap.innerHTML = `
+        <div style="font-size:13px;font-weight:800;margin-bottom:12px;color:${j.color};text-transform:uppercase;letter-spacing:1px;">${j.name}</div>
+        <div style="position:relative;height:240px;width:100%">
+          <canvas id="judge-subj-chart-${j.id}"></canvas>
+        </div>
+      `;
+      container.appendChild(wrap);
+  
+      const ctx = document.getElementById(`judge-subj-chart-${j.id}`);
+      const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: subjectNames,
+          datasets: [
+            { label: 'Min', data: mins, backgroundColor: '#fb7185', borderRadius: 2 },
+            { label: 'Avg', data: avgs, backgroundColor: '#60a5fa', borderRadius: 2 },
+            { label: 'Max', data: maxs, backgroundColor: '#34d399', borderRadius: 2 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                usePointStyle: true,
+                boxWidth: 8,
+                font: { size: 11, family: "'Inter', sans-serif" }
+              }
+            }
+          },
+          scales: {
+            y: { min: 0, max: 10, grid: { color: 'rgba(0,0,0,0.05)' } },
+            x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+      window.judgeSubjectCharts.push(chart);
+    });
+  };
+
+  // Execute all renderers
+  renderRoundChart();
+  renderGenderCharts();
+  renderAgeCharts();
+  renderJudgeDistChart();
+  renderMaxAvg();
+  renderJudgeSubjectCharts();
+}
+
+
+// ==========================================
+// CHAT / HELPDESK
+// ==========================================
+function toggleChatModal() {
+  const modal = document.getElementById('chat-modal');
+  const isOpen = modal.style.display === 'flex';
+  if (isOpen) {
+    modal.style.display = 'none';
+  } else {
+    modal.style.display = 'flex';
+    renderChatMessages();
+    if (CURRENT_USER && window.syncEngine) {
+      window.syncEngine.markMessagesAsRead(CURRENT_USER, 'participant');
+    }
+    setTimeout(() => {
+      const cont = document.getElementById('chat-messages-container');
+      if (cont) cont.scrollTop = cont.scrollHeight;
+    }, 60);
+  }
+}
+
+// dummy — no longer needed for inline mode
+function initInlineChatReadTracking() {}
+
+async function sendChatMessage() {
+  if (!CURRENT_USER || !window.syncEngine) return;
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  
+  input.value = '';
+  await window.syncEngine.addChatMessage(text, CURRENT_USER, 'participant');
+  
+  // Instantly render
+  renderChatMessages();
+  setTimeout(() => {
+    const cont = document.getElementById('chat-messages-container');
+    cont.scrollTop = cont.scrollHeight;
+  }, 50);
+}
+
+function renderChatMessages() {
+  if (!CURRENT_USER || !window.syncEngine) return;
+  const state = window.syncEngine.getData() || {};
+  const FIVE_HOURS = 5 * 60 * 60 * 1000;
+  const now = Date.now();
+  const msgs = (state.chatMessages || []).filter(m => String(m.participantId) === String(CURRENT_USER) && (now - m.timestamp <= FIVE_HOURS));
+  
+  const container = document.getElementById('chat-messages-container');
+  if (!container) return;
+  
+  // Smart render: skip if nothing changed
+  const msgHash = msgs.map(m => m.id + ':' + (m.read ? 'r' : 'u')).join(',');
+  if (container._lastMsgHash === msgHash) return;
+  container._lastMsgHash = msgHash;
+  
+  const wasScrolledToBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 30;
+  
+  let unreadCount = 0;
+  let html = '';
+  
+  if (msgs.length === 0) {
+    html = `<div style="text-align:center; color:var(--text-muted); font-size:13px; margin:auto; padding:20px 0;">Welcome to Helpdesk! Ask us anything 👋</div>`;
+  } else {
+    msgs.sort((a, b) => a.timestamp - b.timestamp).forEach(m => {
+      const isMe = m.senderRole === 'participant';
+      if (!isMe && !m.read) unreadCount++;
+      
+      let bubbleColor = isMe ? 'linear-gradient(135deg,#3b82f6,#8b5cf6)' : '#ffffff';
+      let textColor = isMe ? '#fff' : 'var(--text)';
+      let borderColor = isMe ? 'none' : '1px solid var(--border)';
+      let senderName = isMe ? 'You' : (m.senderRole || 'Monitor').toUpperCase();
+
+      if (!isMe) {
+        if (m.senderRole === 'judge') {
+          bubbleColor = 'rgba(16,185,129,0.12)';
+          borderColor = '1px solid #10b981';
+        } else if (m.senderRole === 'admin' || m.senderRole === 'organizer') {
+          bubbleColor = 'rgba(225,29,72,0.1)';
+          borderColor = '1px solid #e11d48';
+        } else if (m.senderRole === 'monitor') {
+          bubbleColor = 'rgba(217,119,6,0.1)';
+          borderColor = '1px solid #d97706';
+        }
+      }
+
+      let formattedText = m.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const mentionRegex = /@(monitor|help|organizer|kalikapur|all|judge)/gi;
+      formattedText = formattedText.replace(mentionRegex, '<strong style="background:#f59e0b;color:#fff;padding:2px 5px;border-radius:4px;">$&</strong>');
+      
+      html += `
+        <div style="display:flex; flex-direction:column; align-items:${isMe ? 'flex-end' : 'flex-start'};">
+          <div style="font-size:10px; font-weight:700; color:var(--text-muted); margin-bottom:3px; margin-${isMe?'right':'left'}:6px;">${senderName}</div>
+          <div style="max-width:85%; padding:10px 14px; border-radius:${isMe?'16px 16px 4px 16px':'16px 16px 16px 4px'}; background:${bubbleColor}; color:${textColor}; border:${borderColor}; font-size:14px; box-shadow:0 2px 8px rgba(0,0,0,0.07); word-break:break-word;">${formattedText}</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:3px; margin-${isMe?'right':'left'}:6px;">${new Date(m.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+      `;
+    });
+  }
+  
+  container.innerHTML = html;
+  
+  // Update unread badge on FAB
+  const badge = document.getElementById('chat-unread-badge');
+  const modal = document.getElementById('chat-modal');
+  const isModalOpen = modal && modal.style.display === 'flex';
+  if (badge) {
+    if (unreadCount > 0 && !isModalOpen) {
+      badge.style.display = 'flex';
+      badge.innerText = unreadCount;
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  // Auto-mark as read if modal is open
+  if (unreadCount > 0 && isModalOpen && window.syncEngine && CURRENT_USER) {
+    window.syncEngine.markMessagesAsRead(CURRENT_USER, 'participant');
+  }
+  
+  if (wasScrolledToBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+// ==========================================
+// FOOD & TRANSPORT SERVICES LOGIC
+// ==========================================
+function getFoodMenu() {
+  const state = window.syncEngine.getData() || {};
+  return state.foodMenu || [
+    { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+    { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+    { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+    { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+  ];
+}
+
+window.renderFoodMenuUI = function() {
+  const container = document.getElementById('menu-items-container');
+  if (container) {
+    const foodMenu = getFoodMenu();
+    container.innerHTML = foodMenu.map(item => {
+      const currentQty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
+      return `
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0;">
+        <span style="font-size:14px; font-weight:700;">${item.icon} ${item.name} (₹${item.price})</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" onclick="changeQty('${item.id}', -1)" style="width:24px; height:24px; border-radius:50%; border:1px solid #cbd5e1; background:#fff; font-weight:bold; cursor:pointer;">-</button>
+          <span id="qty-${item.id}" style="font-weight:bold; font-size:14px; min-width:14px; text-align:center;">${currentQty}</span>
+          <button type="button" onclick="changeQty('${item.id}', 1)" style="width:24px; height:24px; border-radius:50%; border:1px solid #cbd5e1; background:#fff; font-weight:bold; cursor:pointer;">+</button>
+        </div>
+      </div>
+    `}).join('');
+  }
+  updateFoodTotalPrice();
+};
+
+window.openFoodOrderModal = function() {
+  window._foodQuantities = {};
+  document.getElementById('food-delivery-loc').value = '';
+  window.renderFoodMenuUI();
+  document.getElementById('food-modal').style.display = 'flex';
+};
+
+window.closeFoodModal = function() {
+  document.getElementById('food-modal').style.display = 'none';
+};
+
+window.changeQty = function(itemId, amount) {
+  window._foodQuantities = window._foodQuantities || {};
+  const current = window._foodQuantities[itemId] || 0;
+  const target = Math.max(0, current + amount);
+  window._foodQuantities[itemId] = target;
+  
+  const el = document.getElementById(`qty-${itemId}`);
+  if (el) el.innerText = target;
+  
+  updateFoodTotalPrice();
+};
+
+function updateFoodTotalPrice() {
+  let total = 0;
+  const foodMenu = getFoodMenu();
+  foodMenu.forEach(item => {
+    const qty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
+    total += qty * item.price;
+  });
+  document.getElementById('food-total-price').innerText = `₹${total}`;
+}
+
+window.getCurrentFoodLocation = function() {
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by your browser.");
+    return;
+  }
+  const btn = document.querySelector('button[onclick="getCurrentFoodLocation()"]');
+  if (btn) btn.innerText = "⏳";
+  navigator.geolocation.getCurrentPosition((position) => {
+    const lat = position.coords.latitude.toFixed(5);
+    const lng = position.coords.longitude.toFixed(5);
+    document.getElementById('food-delivery-loc').value = `GPS: ${lat}, ${lng}`;
+    if (btn) btn.innerText = "📍";
+  }, (error) => {
+    console.error(error);
+    alert("Unable to retrieve your location.");
+    if (btn) btn.innerText = "📍";
+  }, { enableHighAccuracy: true });
+};
+
+window.submitFoodOrder = async function() {
+  const loc = document.getElementById('food-delivery-loc').value.trim();
+  if (!loc) return toast('⚠️ Please enter delivery seat / lounge code.');
+  
+  let orderedItems = [];
+  const foodMenu = getFoodMenu();
+  foodMenu.forEach(item => {
+    const qty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
+    if (qty > 0) {
+      orderedItems.push({ name: item.name, qty, price: item.price });
+    }
+  });
+
+  if (orderedItems.length === 0) return toast('⚠️ Please select at least 1 menu item.');
+
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (!p) return;
+
+  const orderId = 'ORD-' + Math.floor(1000 + Math.random() * 9000);
+  const newOrder = {
+    id: orderId,
+    participantId: CURRENT_USER,
+    participantName: p.name,
+    items: orderedItems,
+    location: loc,
+    status: 'pending', // pending, preparing, delivered, rejected
+    timestamp: Date.now()
+  };
+
+  window.syncEngine.setData(s => {
+    const orders = s.foodOrders || [];
+    orders.push(newOrder);
+    return { ...s, foodOrders: orders };
+  });
+
+  await window.syncEngine.forceSaveStateToSupabase();
+  toast('🍔 Food order placed successfully!');
+  closeFoodModal();
+};
+
+let bookingMap = null;
+let pickupMarker = null;
+let dropMarker = null;
+let pickupCoords = null;
+let dropCoords = null;
+let calculatedDistanceKm = 0;
+
+window.openRideBookingModal = function() {
+  document.getElementById('ride-pickup-loc').value = '';
+  document.getElementById('ride-drop-loc').value = '';
+  document.getElementById('ride-calculated-distance').innerText = '0.00 km';
+  document.getElementById('ride-base-fare').innerText = '₹0.00';
+  document.getElementById('ride-platform-fee').innerText = '₹0.00';
+  document.getElementById('ride-night-premium-row').style.display = 'none';
+  document.getElementById('ride-estimated-fare').innerText = '₹0.00';
+  
+  pickupCoords = null;
+  dropCoords = null;
+  calculatedDistanceKm = 0;
+
+  document.getElementById('ride-modal').style.display = 'flex';
+
+  setTimeout(() => {
+    if (!bookingMap) {
+      // Initialize map centered at Kalikapur event area
+      bookingMap = L.map('booking-map').setView([22.5126, 88.3986], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+      }).addTo(bookingMap);
+
+      bookingMap.on('click', function(e) {
+        const latlng = e.latlng;
+        if (!pickupCoords) {
+          pickupCoords = latlng;
+          document.getElementById('ride-pickup-loc').value = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+          pickupMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Pickup Location</b>").openPopup();
+        } else if (!dropCoords) {
+          dropCoords = latlng;
+          document.getElementById('ride-drop-loc').value = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+          dropMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Drop Location</b>").openPopup();
+          
+          // Calculate distance via Haversine formula
+          calculatedDistanceKm = getDistance(pickupCoords.lat, pickupCoords.lng, dropCoords.lat, dropCoords.lng);
+          document.getElementById('ride-calculated-distance').innerText = `${calculatedDistanceKm.toFixed(2)} km`;
+          updateEstimatedFare();
+        } else {
+          // Reset
+          if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+          if (dropMarker) bookingMap.removeLayer(dropMarker);
+          pickupMarker = null;
+          dropMarker = null;
+          pickupCoords = latlng;
+          dropCoords = null;
+          document.getElementById('ride-pickup-loc').value = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+          document.getElementById('ride-drop-loc').value = '';
+          document.getElementById('ride-calculated-distance').innerText = '0.00 km';
+          document.getElementById('ride-base-fare').innerText = '₹0.00';
+          document.getElementById('ride-platform-fee').innerText = '₹0.00';
+          document.getElementById('ride-night-premium-row').style.display = 'none';
+          document.getElementById('ride-estimated-fare').innerText = '₹0.00';
+          
+          pickupMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Pickup Location</b>").openPopup();
+        }
+      });
+    } else {
+      bookingMap.invalidateSize();
+      if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+      if (dropMarker) bookingMap.removeLayer(dropMarker);
+      pickupMarker = null;
+      dropMarker = null;
+    }
+  }, 300);
+};
+
+// Haversine distance formula in KM
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2-lat1);
+  const dLon = deg2rad(lon2-lon1); 
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+    ; 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c; // Distance in km
+}
+
+function deg2rad(deg) {
+  return deg * (Math.PI/180);
+}
+
+window.closeRideModal = function() {
+  document.getElementById('ride-modal').style.display = 'none';
+};
+
+window.useCurrentLocationAsPickup = function() {
+  if (!navigator.geolocation) {
+    toast('Geolocation is not supported by your browser.');
+    return;
+  }
+  toast('Fetching your location...');
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const latlng = L.latLng(lat, lng);
+    pickupCoords = latlng;
+    document.getElementById('ride-pickup-loc').value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    
+    if (bookingMap) {
+      if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+      pickupMarker = L.marker(latlng, {
+        icon: L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        })
+      }).addTo(bookingMap).bindPopup("<b>Pickup Location</b>").openPopup();
+      bookingMap.setView(latlng, 15);
+    }
+    
+    if (dropCoords) {
+      calculatedDistanceKm = getDistance(pickupCoords.lat, pickupCoords.lng, dropCoords.lat, dropCoords.lng);
+      document.getElementById('ride-calculated-distance').innerText = `${calculatedDistanceKm.toFixed(2)} km`;
+      updateEstimatedFare();
+    }
+  }, (err) => {
+    toast('Failed to get location. Please allow location permissions.');
+  });
+};
+
+window.updateFareOnAddressChange = function() {
+  if (!pickupCoords || !dropCoords) {
+    calculatedDistanceKm = 0;
+    document.getElementById('ride-calculated-distance').innerText = 'Unknown (Manual Address)';
+    document.getElementById('ride-estimated-fare').innerText = '₹50.00* (Est.)'; 
+    document.getElementById('ride-base-fare').innerText = '-';
+    document.getElementById('ride-platform-fee').innerText = '-';
+  }
+};
+
+window.searchAddress = async function(type) {
+  const inputId = type === 'pickup' ? 'ride-pickup-loc' : 'ride-drop-loc';
+  const query = document.getElementById(inputId).value.trim();
+  if (!query) {
+    return toast(`Please enter a ${type} address to search.`);
+  }
+
+  toast('🔍 Searching address...');
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+    const data = await res.json();
+    if (data && data.length > 0) {
+      const lat = parseFloat(data[0].lat);
+      const lng = parseFloat(data[0].lon);
+      const latlng = L.latLng(lat, lng);
+
+      if (type === 'pickup') {
+        pickupCoords = latlng;
+        if (bookingMap) {
+          if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+          pickupMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Pickup:</b> " + data[0].display_name).openPopup();
+          bookingMap.setView(latlng, 14);
+        }
+      } else {
+        dropCoords = latlng;
+        if (bookingMap) {
+          if (dropMarker) bookingMap.removeLayer(dropMarker);
+          dropMarker = L.marker(latlng, {
+            icon: L.icon({
+              iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41]
+            })
+          }).addTo(bookingMap).bindPopup("<b>Drop:</b> " + data[0].display_name).openPopup();
+          
+          if (pickupCoords) {
+            const bounds = L.latLngBounds(pickupCoords, dropCoords);
+            bookingMap.fitBounds(bounds, { padding: [30, 30] });
+          } else {
+            bookingMap.setView(latlng, 14);
+          }
+        }
+      }
+
+      document.getElementById(inputId).value = data[0].display_name;
+      toast('✅ Location found!');
+
+      if (pickupCoords && dropCoords) {
+        calculatedDistanceKm = getDistance(pickupCoords.lat, pickupCoords.lng, dropCoords.lat, dropCoords.lng);
+        document.getElementById('ride-calculated-distance').innerText = `${calculatedDistanceKm.toFixed(2)} km`;
+        updateEstimatedFare();
+      }
+    } else {
+      toast('❌ Address not found. Try being more specific.');
+    }
+  } catch (err) {
+    console.error(err);
+    toast('Error searching address. Try again later.');
+  }
+};
+
+window.updateEstimatedFare = function() {
+  if (calculatedDistanceKm <= 0) return;
+  const vehicle = document.getElementById('ride-vehicle-type').value;
+  
+  // Custom Dynamic Base Fares per km
+  const baseRateMap = { bike: 12, auto: 15, cab: 20 };
+  const ratePerKm = baseRateMap[vehicle] || 12;
+
+  const baseFare = calculatedDistanceKm * ratePerKm;
+  const platformFee = calculatedDistanceKm * 0.5;
+
+  // Check late night premium (10 PM to 6 AM)
+  const currentHour = new Date().getHours();
+  const isNight = currentHour >= 22 || currentHour < 6;
+  const nightPremium = isNight ? (calculatedDistanceKm * 5) : 0;
+
+  document.getElementById('ride-base-fare').innerText = `₹${baseFare.toFixed(2)}`;
+  document.getElementById('ride-platform-fee').innerText = `₹${platformFee.toFixed(2)}`;
+  
+  const nightPremiumRow = document.getElementById('ride-night-premium-row');
+  if (nightPremiumRow) {
+    if (isNight) {
+      nightPremiumRow.style.display = 'flex';
+      document.getElementById('ride-night-premium').innerText = `₹${nightPremium.toFixed(2)}`;
+    } else {
+      nightPremiumRow.style.display = 'none';
+    }
+  }
+
+  const totalFare = baseFare + platformFee + nightPremium;
+  document.getElementById('ride-estimated-fare').innerText = `₹${totalFare.toFixed(2)}`;
+};
+
+window.submitRideBooking = async function() {
+  const pickupText = document.getElementById('ride-pickup-loc').value.trim();
+  const dropText = document.getElementById('ride-drop-loc').value.trim();
+
+  if (!pickupText || !dropText) {
+    return toast('⚠️ Please provide both pickup and drop locations (text or map).');
+  }
+
+  const vehicle = document.getElementById('ride-vehicle-type').value;
+  let rawFare = document.getElementById('ride-estimated-fare').innerText.replace('₹', '').replace('* (Est.)', '');
+  let fare = parseFloat(rawFare) || 50.00;
+
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (!p) return;
+
+  const bookingId = 'RIDE-' + Math.floor(1000 + Math.random() * 9000);
+  const newBooking = {
+    id: bookingId,
+    participantId: CURRENT_USER,
+    participantName: p.name,
+    participantPhone: p.phone || '',
+    pickup: pickupText,
+    pickupLat: pickupCoords ? pickupCoords.lat : null,
+    pickupLng: pickupCoords ? pickupCoords.lng : null,
+    drop: dropText,
+    dropLat: dropCoords ? dropCoords.lat : null,
+    dropLng: dropCoords ? dropCoords.lng : null,
+    distanceKm: calculatedDistanceKm,
+    vehicle,
+    fare: fare.toFixed(2),
+    status: 'finding', // finding, assigned, completed
+    driverName: '',
+    driverPhone: '',
+    driverLat: null,
+    driverLng: null,
+    timestamp: Date.now()
+  };
+
+  window.syncEngine.setData(s => {
+    const bookings = s.rideBookings || [];
+    bookings.push(newBooking);
+    return { ...s, rideBookings: bookings };
+  });
+
+  await window.syncEngine.forceSaveStateToSupabase();
+  toast('🏍️ Ride booked successfully! Finding partner...');
+  closeRideModal();
+};
+
+// Global registry to store active tracking map instances for riders
+let trackingMaps = {};
+
+window.renderActiveServicesData = function(p) {
+  const state = window.syncEngine.getData() || {};
+  const orders = (state.foodOrders || []).filter(o => String(o.participantId) === String(p.id));
+  const bookings = (state.rideBookings || []).filter(b => String(b.participantId) === String(p.id));
+
+  // Render food orders
+  const foodWrap = document.getElementById('active-food-orders');
+  const foodList = document.getElementById('food-orders-list');
+  if (foodWrap && foodList) {
+    if (orders.length > 0) {
+      foodWrap.style.display = 'block';
+      const currentHash = JSON.stringify(orders.map(o => ({id: o.id, status: o.status, lat: o.driverLat, lng: o.driverLng})));
+      const prevHash = foodList.getAttribute('data-hash') || '';
+      
+      if (prevHash !== currentHash) {
+        foodList.setAttribute('data-hash', currentHash);
+        foodList.innerHTML = orders.map(o => {
+          let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">Pending</span>`;
+          if (o.status === 'preparing') statusBadge = `<span style="color:#3b82f6; font-weight:bold;">🍳 Preparing</span>`;
+          if (o.status === 'out_for_delivery') statusBadge = `<span style="color:#10b981; font-weight:bold;">🏍️ Out for Delivery</span>`;
+          if (o.status === 'delivered') statusBadge = `<span style="color:#10b981; font-weight:bold;">✅ Delivered</span>`;
+          if (o.status === 'rejected') statusBadge = `<span style="color:#ef4444; font-weight:bold;">❌ Rejected / Cancelled</span>`;
+          
+          let partnerStr = '';
+          if (o.deliveryPartnerName) {
+            partnerStr = `<div style="font-size:12px; color:#15803d; margin-top: 4px; font-weight: bold;"><strong>Partner:</strong> ${o.deliveryPartnerName}</div>`;
+          }
+
+          let mapContainerHtml = '';
+          if (o.status === 'out_for_delivery') {
+            mapContainerHtml = `<div id="part-food-map-${o.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 8px; z-index: 1;"></div>`;
+          }
+          
+          const itemsStr = o.items.map(i => `${i.qty}x ${i.name}`).join(', ');
+          return `<div style="border-bottom:1.5px solid #e2e8f0; padding-bottom:8px; margin-bottom:8px;">
+            <div><strong>ID:</strong> ${o.id} | ${statusBadge}</div>
+            <div style="font-size:11px; color:#475569;">${itemsStr}</div>
+            <div style="font-size:11px; color:#64748b;">📍 Loc: ${o.location}</div>
+            ${o.status === 'rejected' ? `<div style="font-size:11px; color:#ef4444; font-weight:bold; margin-top:4px;">No payment required. Order was rejected.</div>` : ''}
+            ${partnerStr}
+            ${mapContainerHtml}
+          </div>`;
+        }).join('');
+      }
+
+      // Initialize or update maps
+      orders.forEach(o => {
+        if (o.status !== 'out_for_delivery') {
+          if (trackingMaps['part_food_'+o.id]) delete trackingMaps['part_food_'+o.id];
+          return;
+        }
+
+        const mapId = `part-food-map-${o.id}`;
+        const mapEl = document.getElementById(mapId);
+        if (!mapEl) return;
+
+        setTimeout(() => {
+          let mapData = trackingMaps['part_food_'+o.id];
+          const driverLatLng = (o.driverLat && o.driverLng) ? [o.driverLat, o.driverLng] : null;
+
+          if (!mapData) {
+            let pLat = 22.5126; let pLng = 88.3986;
+            if (o.location && o.location.startsWith('GPS: ')) {
+              const parts = o.location.replace('GPS: ', '').split(', ');
+              if (parts.length === 2) { pLat = parseFloat(parts[0]); pLng = parseFloat(parts[1]); }
+            }
+
+            const mapInstance = L.map(mapId, { attributionControl: false }).setView([pLat, pLng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+            L.marker([pLat, pLng], {
+              icon: L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                iconSize: [20, 32],
+                iconAnchor: [10, 32]
+              })
+            }).addTo(mapInstance).bindPopup("Delivery Location");
+
+            let dMarker = null;
+            if (driverLatLng) {
+              dMarker = L.marker(driverLatLng, {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                  iconSize: [24, 38],
+                  iconAnchor: [12, 38]
+                })
+              }).addTo(mapInstance).bindPopup("Partner Location");
+            }
+
+            trackingMaps['part_food_'+o.id] = { map: mapInstance, driverMarker: dMarker };
+          } else {
+            mapData.map.invalidateSize();
+            if (driverLatLng) {
+              if (mapData.driverMarker) {
+                mapData.driverMarker.setLatLng(driverLatLng);
+              } else {
+                mapData.driverMarker = L.marker(driverLatLng, {
+                  icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                    iconSize: [24, 38],
+                    iconAnchor: [12, 38]
+                  })
+                }).addTo(mapData.map).bindPopup("Partner Location");
+              }
+              mapData.map.panTo(driverLatLng);
+            }
+          }
+        }, 100);
+      });
+    } else {
+      foodWrap.style.display = 'none';
+    }
+  }
+
+  // Render ride bookings
+  const rideWrap = document.getElementById('active-ride-bookings');
+  const rideList = document.getElementById('ride-bookings-list');
+  if (rideWrap && rideList) {
+    if (bookings.length > 0) {
+      rideWrap.style.display = 'block';
+      
+      // Determine if list changed to avoid rebuilding Leaflet elements repeatedly
+      const prevHtml = rideList.getAttribute('data-hash') || '';
+      const currentHash = JSON.stringify(bookings.map(b => ({id: b.id, status: b.status, lat: b.driverLat, lng: b.driverLng})));
+      
+      if (prevHtml !== currentHash) {
+        rideList.setAttribute('data-hash', currentHash);
+        
+        rideList.innerHTML = bookings.map(b => {
+          let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">🔍 Finding Partner...</span>`;
+          if (b.status === 'assigned') statusBadge = `<span style="color:#10b981; font-weight:bold;">🏍️ Driver Assigned</span>`;
+          if (b.status === 'completed') statusBadge = `<span style="color:#64748b; font-weight:bold;">🏁 Arrived</span>`;
+          if (b.status === 'cancelled') statusBadge = `<span style="color:#ef4444; font-weight:bold;">❌ Cancelled</span>`;
+          
+          let driverStr = '';
+          if (b.driverName) {
+            driverStr = `<div style="font-size:12px; color:#15803d; margin-top: 4px; font-weight: bold;"><strong>Driver:</strong> ${b.driverName} (${b.driverPhone})</div>`;
+          }
+
+          let mapContainerHtml = '';
+          if (b.status === 'assigned') {
+            mapContainerHtml = `<div id="tracking-map-${b.id}" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 8px; z-index: 1;"></div>`;
+          }
+
+          return `
+            <div class="glass-card" style="border:1.5px solid var(--border); padding:12px; border-radius:12px; background:#f8fafc; margin-bottom:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <strong style="color:var(--accent); font-family:var(--fm);">${b.id}</strong>
+                ${statusBadge}
+              </div>
+              <div style="font-size:12px; color:#475569;">
+                <div><strong>Fare:</strong> ₹${b.fare} | <strong>Vehicle:</strong> ${b.vehicle.toUpperCase()} (${(b.distanceKm || 0).toFixed(2)} km)</div>
+                <div style="margin-top: 2px;">📍 From: <span style="font-family:monospace; color:#3b82f6;">${b.pickup}</span></div>
+                <div>📍 To: <span style="font-family:monospace; color:#ef4444;">${b.drop}</span></div>
+              </div>
+              ${driverStr}
+              ${mapContainerHtml}
+              ${(b.status === 'pending' || b.status === 'assigned') ? `<button onclick="cancelRide('${b.id}')" class="btn" style="width:100%; margin-top:10px; background:#ef4444; color:#fff; border:none; padding:8px; border-radius:8px;">Cancel Ride</button>` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Initialize or update Leaflet instances for assigned bookings
+      bookings.forEach(b => {
+        if (b.status !== 'assigned') {
+          if (trackingMaps[b.id]) {
+            delete trackingMaps[b.id];
+          }
+          return;
+        }
+
+        const mapId = `tracking-map-${b.id}`;
+        const mapEl = document.getElementById(mapId);
+        if (!mapEl) return;
+
+        setTimeout(() => {
+          let mapData = trackingMaps[b.id];
+          const driverLatLng = (b.driverLat && b.driverLng) ? [b.driverLat, b.driverLng] : null;
+
+          if (!mapData) {
+            // Init tracking map
+            const mapInstance = L.map(mapId, { attributionControl: false }).setView([b.pickupLat || 22.5126, b.pickupLng || 88.3986], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+            // Add static pickup and drop markers
+            if (b.pickupLat && b.pickupLng) {
+              L.marker([b.pickupLat, b.pickupLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Pickup");
+            }
+            if (b.dropLat && b.dropLng) {
+              L.marker([b.dropLat, b.dropLng], {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                  iconSize: [20, 32],
+                  iconAnchor: [10, 32]
+                })
+              }).addTo(mapInstance).bindPopup("Drop");
+            }
+
+            // Driver marker
+            let dMarker = null;
+            if (driverLatLng) {
+              dMarker = L.marker(driverLatLng, {
+                icon: L.icon({
+                  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                  iconSize: [24, 38],
+                  iconAnchor: [12, 38]
+                })
+              }).addTo(mapInstance).bindPopup("Driver Location");
+            }
+
+            trackingMaps[b.id] = {
+              map: mapInstance,
+              driverMarker: dMarker
+            };
+          } else {
+            // Map already exists, update driver location marker dynamically
+            mapData.map.invalidateSize();
+            if (driverLatLng) {
+              if (mapData.driverMarker) {
+                mapData.driverMarker.setLatLng(driverLatLng);
+              } else {
+                mapData.driverMarker = L.marker(driverLatLng, {
+                  icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                    iconSize: [24, 38],
+                    iconAnchor: [12, 38]
+                  })
+                }).addTo(mapData.map).bindPopup("Driver Location");
+              }
+              // Pan to driver location smoothly
+              mapData.map.panTo(driverLatLng);
+            }
+          }
+        }, 100);
+      });
+    } else {
+      rideWrap.style.display = 'none';
+      rideList.removeAttribute('data-hash');
+    }
+  }
+};
+
+window.cancelRide = async function(id) {
+  if (!confirm('Are you sure you want to cancel this ride?')) return;
+  window.syncEngine.updateState(s => {
+    const bookings = s.rideBookings || [];
+    const idx = bookings.findIndex(b => b.id === id);
+    if (idx !== -1) bookings[idx].status = 'cancelled';
+    return { ...s, rideBookings: bookings };
+  });
+  if (window.syncEngine.forceSaveStateToSupabase) {
+    await window.syncEngine.forceSaveStateToSupabase();
+  }
+  toast('Ride cancelled.');
+  
+  // Re-render
+  const state = window.syncEngine.getData() || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (p) window.renderActiveServicesData(p);
+};
+
+// ==========================================
+// ANTI-SCREENSHOT & CONTENT PROTECTION
+// ==========================================
+// (Protection Removed per User Request)
+</script>
+<!-- Leaflet Map Script -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Three.js Semantic WebGL Background (Standard Script for file:// support) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  (function() {
+    const container = document.querySelector('.scene-container');
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (prefersReducedMotion) {
+      container.style.background = 'linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%)';
+    } else {
+      const scene = new THREE.Scene();
+      // Light bright background
+      scene.background = new THREE.Color(0xf8fafc);
+      scene.fog = new THREE.FogExp2(0xf8fafc, 0.003);
+
+      const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 1, 1000);
+      camera.position.set(0, 30, 100);
+
+      const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('#webgl-canvas'), antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(container.clientWidth, container.clientHeight);
+
+      // Cinematic Wave (PlaneGeometry)
+      const geometry = new THREE.PlaneGeometry(400, 200, 40, 20);
+      geometry.rotateX(-Math.PI / 2); // Lay flat
+      
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x3b82f6,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.4
+      });
+
+      const waveMesh = new THREE.Mesh(geometry, material);
+      waveMesh.position.y = -15;
+      scene.add(waveMesh);
+
+      // Lighting for the cinematic feel
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+      scene.add(ambientLight);
+      
+      const pointLight = new THREE.PointLight(0x10b981, 2, 200);
+      pointLight.position.set(0, 20, 0);
+      scene.add(pointLight);
+      
+      const pointLight2 = new THREE.PointLight(0xf59e0b, 2, 200);
+      pointLight2.position.set(50, 20, -50);
+      scene.add(pointLight2);
+
+      // Floating Particles
+      const particlesGeo = new THREE.BufferGeometry();
+      const vertices = [];
+      for (let i = 0; i < 500; i++) {
+        vertices.push((Math.random() - 0.5) * 400, Math.random() * 100, (Math.random() - 0.5) * 400);
+      }
+      particlesGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      const particlesMat = new THREE.PointsMaterial({ color: 0x3b82f6, size: 2, transparent: true, opacity: 0.5 });
+      const particles = new THREE.Points(particlesGeo, particlesMat);
+      scene.add(particles);
+
+      // Resize Handling
+      window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      // Optimization: Pause when off-screen
+      let isVisible = true;
+      if (window.IntersectionObserver) {
+        new IntersectionObserver(([entry]) => { isVisible = entry.isIntersecting; }, { threshold: 0.01 }).observe(container);
+      }
+      document.addEventListener('visibilitychange', () => { isVisible = isVisible && !document.hidden; });
+
+      // Interactive parallax on hover/touch
+      let mouseX = 0;
+      let mouseY = 0;
+      const windowHalfX = window.innerWidth / 2;
+      const windowHalfY = window.innerHeight / 2;
+      document.addEventListener('pointermove', (e) => {
+        mouseX = (e.clientX - windowHalfX) * 0.05;
+        mouseY = (e.clientY - windowHalfY) * 0.05;
+      });
+
+      let clock = new THREE.Clock();
+      let rafId;
+
+      function animate() {
+        rafId = requestAnimationFrame(animate);
+        if (!isVisible) return;
+
+        const time = clock.getElapsedTime();
+
+        // Animate the wave vertices
+        const positionAttribute = geometry.getAttribute('position');
+        const vertex = new THREE.Vector3();
+        for (let i = 0; i < positionAttribute.count; i++) {
+          vertex.fromBufferAttribute(positionAttribute, i);
+          // Create sweeping wave effect based on x and z position
+          vertex.y = Math.sin(vertex.x * 0.05 + time) * 5 + Math.cos(vertex.z * 0.05 + time * 0.8) * 5;
+          positionAttribute.setY(i, vertex.y);
+        }
+        positionAttribute.needsUpdate = true;
+
+        // Gentle rotation and parallax
+        camera.position.x += (mouseX - camera.position.x) * 0.02;
+        camera.position.y += (30 - mouseY - camera.position.y) * 0.02;
+        camera.lookAt(scene.position);
+
+        particles.rotation.y = time * 0.05;
+        
+        // Move lights dynamically
+        pointLight.position.x = Math.sin(time * 0.5) * 50;
+        pointLight.position.z = Math.cos(time * 0.5) * 50;
+
+        renderer.render(scene, camera);
+      }
+      animate();
+    }
+  })();
+</script>
+</body>
+</html>
