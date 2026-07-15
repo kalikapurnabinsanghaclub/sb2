@@ -3765,6 +3765,62 @@
     window.submitPublicVote = submitPublicVote;
     window.submitPublicVoteStandalone = submitPublicVoteStandalone;
     window.submitPublicVoteLive = submitPublicVoteLive;
+
+    function submitPublicVoteEPV(eventId, participantId, round) {
+      const msgEl = document.getElementById('vote-msg-epv-' + participantId);
+      const slider = document.getElementById('vote-slider-epv-' + participantId);
+      const phoneEl = document.getElementById('vote-phone-epv-' + participantId);
+      const nameEl = document.getElementById('vote-name-epv-' + participantId);
+      if (!msgEl || !slider || !phoneEl) return;
+
+      const score = parseInt(slider.value, 10);
+      const phone = phoneEl.value.trim();
+      const voterName = nameEl ? nameEl.value.trim() : '';
+      const lsKey = `knsdc_vote_${participantId}_${round}`;
+
+      if (!voterName || voterName.length < 2) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter your full name.';
+        if (nameEl) nameEl.focus();
+        return;
+      }
+
+      if (!phone || phone.length < 7) {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = '⚠️ Please enter a valid phone number.';
+        phoneEl.focus();
+        return;
+      }
+
+      if (localStorage.getItem(lsKey)) {
+        msgEl.style.color = '#b45309';
+        msgEl.textContent = '⚡ You already rated this performer in this round!';
+        return;
+      }
+
+      syncEngine.setData(s => {
+        const updated = { ...s };
+        if (!updated.publicVotes) updated.publicVotes = {};
+        const voteKey = participantId + '_' + round;
+        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+        if (alreadyVoted) return s;
+        updated.publicVotes[voteKey] = [
+          ...updated.publicVotes[voteKey],
+          { phone, name: voterName, score, ts: Date.now() }
+        ];
+        return updated;
+      });
+
+      localStorage.setItem(lsKey, '1');
+
+      msgEl.style.color = '#059669';
+      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+      slider.disabled = true;
+      phoneEl.disabled = true;
+      if (nameEl) nameEl.disabled = true;
+    }
+    window.submitPublicVoteEPV = submitPublicVoteEPV;
     window.lastAutoScrolledPerformerRound = null;
     window.scrollToLiveEvents = function() {
       const el = document.getElementById("dynamicLiveContainer");
@@ -4660,73 +4716,15 @@
               </div>
               ` : ''}
 
-              <!-- ★ Public Rating Submission Section (Below On Stage Now) ★ -->
-              ${(onStage && publicVotingOn) ? `
-              <div style="margin-top: 24px; background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 20px; padding: 28px 32px; border: 2px solid #FFD23F; position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(255,210,63,0.2);">
-                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.06; pointer-events:none;">🌟</div>
-                <div style="position:absolute; bottom:-30px; left:-30px; font-size:100px; opacity:0.05; pointer-events:none;">🎭</div>
-                
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
-                  <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; box-shadow: 0 4px 15px rgba(255,210,63,0.35);">⭐</div>
-                  <div>
-                    <h4 style="color: #92400e; font-family: 'Cinzel Decorative', cursive; font-size: 1.05rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Rate This Performance</h4>
-                    <p style="color: #78716c; font-size: 0.8rem; margin: 4px 0 0;">Submit your rating for <strong style="color:#1e1b4b;">${onStage.name}</strong> · ${onStage.round.toUpperCase()}</p>
-                  </div>
+              <!-- Public Rating Submission Section moved to Event Page View -->
+              <!-- Rating Stats Mini -->
+              ${publicVoteCount > 0 ? `
+                <div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; background: #fff; border-radius: 20px; border: 1px solid #fbbf24; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                  <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">Current Avg:</span>
+                  <span style="font-size: 1.1rem; font-weight: 900; color: #b45309;">${publicVoteAvg}/10</span>
+                  <span style="font-size: 0.75rem; color: #d4d4d4;">·</span>
+                  <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">${publicVoteCount} ratings</span>
                 </div>
-
-                <div id="vote-widget-${eid}" style="position: relative;">
-                  <!-- Slider Row -->
-                  <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 18px; background: #fff; padding: 16px 20px; border-radius: 14px; border: 1px solid rgba(255,210,63,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                    <div style="font-size: 0.85rem; color: #92400e; font-weight: 800; white-space: nowrap;">1</div>
-                    <input type="range" id="vote-slider-${eid}" class="premium-rating-slider" min="1" max="10" value="5" step="1"
-                      oninput="document.getElementById('vote-val-${eid}').textContent=this.value;" />
-                    <div style="font-size: 0.85rem; color: #92400e; font-weight: 800;">10</div>
-                    <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 12px; padding: 8px 18px; min-width: 55px; text-align: center; box-shadow: 0 4px 12px rgba(255,210,63,0.3);">
-                      <span id="vote-val-${eid}" style="font-size: 1.8rem; font-weight: 900; color: #1e1b4b; line-height:1;">5</span>
-                      <div style="font-size: 0.6rem; color: rgba(30,27,75,0.6); font-weight: 800; letter-spacing: 1px;">/ 10</div>
-                    </div>
-                  </div>
-
-                  <!-- Name + Phone + Submit Row -->
-                  <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <div style="display: flex; gap: 10px;">
-                      <div style="flex: 1; position: relative;">
-                        <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:0.9rem;">👤</span>
-                        <input type="text" id="vote-name-${eid}" placeholder="Enter your full name"
-                          style="width:100%; padding:12px 12px 12px 36px; border:2px solid #fbbf24; border-radius:12px; font-size:0.9rem; color:#1e1b4b; font-weight:700; outline:none; background:#fff; transition: all 0.2s; box-sizing:border-box;"
-                          onfocus="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';"
-                          onblur="this.style.borderColor='#fbbf24'; this.style.boxShadow='none';" />
-                      </div>
-                      <div style="flex: 1; position: relative;">
-                        <span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:0.9rem;">📱</span>
-                        <input type="tel" id="vote-phone-${eid}" placeholder="Enter your phone number" maxlength="15"
-                          style="width:100%; padding:12px 12px 12px 36px; border:2px solid #fbbf24; border-radius:12px; font-size:0.9rem; color:#1e1b4b; font-weight:700; outline:none; background:#fff; transition: all 0.2s; box-sizing:border-box;"
-                          onfocus="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 0 0 3px rgba(245,158,11,0.15)';"
-                          onblur="this.style.borderColor='#fbbf24'; this.style.boxShadow='none';" />
-                      </div>
-                    </div>
-                    <button onclick="window.submitPublicVote('${eid}','${onStage.id}','${onStage.round}')"
-                      style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:12px; padding:14px 28px; font-size:1rem; font-weight:900; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 15px rgba(255,210,63,0.35); letter-spacing: 0.5px; width:100%;"
-                      onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(255,210,63,0.45)';"
-                      onmouseout="this.style.transform=''; this.style.boxShadow='0 4px 15px rgba(255,210,63,0.35)';">
-                      ⭐ Submit Rating
-                    </button>
-                  </div>
-
-                  <!-- Feedback Message -->
-                  <div id="vote-msg-${eid}" style="font-size:0.85rem; font-weight:800; color:#92400e; margin-top:12px; min-height:16px; text-align:center;"></div>
-                </div>
-
-                <!-- Rating Stats Mini -->
-                ${publicVoteCount > 0 ? `
-                  <div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; background: #fff; border-radius: 20px; border: 1px solid #fbbf24; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
-                    <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">Current Avg:</span>
-                    <span style="font-size: 1.1rem; font-weight: 900; color: #b45309;">${publicVoteAvg}/10</span>
-                    <span style="font-size: 0.75rem; color: #d4d4d4;">·</span>
-                    <span style="font-size: 0.85rem; color: #78716c; font-weight:600;">${publicVoteCount} ratings</span>
-                  </div>
-                ` : ''}
-              </div>
               ` : ''}
 
             </div>
@@ -8337,26 +8335,27 @@
         }
       }
       
-      // Public Favorites Logic
+      // Public Favorites & Rating Logic
       const allParts = state.participants || [];
       const evParts = allParts.filter(p => String(p.eventId) === String(ev.id));
       const pubVotes = state.publicVotes || {};
       
-      const favoritesData = [];
+      const ratingData = [];
       
       evParts.forEach(p => {
-        // Collect all votes for this participant across all rounds
+        // Show all participants for voting
+        let currentRound = p.round || 'audition';
         let allVotes = [];
-        ['audition', 'qualified', 'semifinal', 'final', 'favorite'].forEach(round => {
-          const key = p.id + '_' + round;
-          if (pubVotes[key]) allVotes = allVotes.concat(pubVotes[key]);
-        });
-        
-        if (allVotes.length > 0) {
-          // Calculate unique "Likes" (unique phone numbers)
+          
+          ['audition', 'qualified', 'semifinal', 'final', 'favorite'].forEach(round => {
+            const key = p.id + '_' + round;
+            if (pubVotes[key]) allVotes = allVotes.concat(pubVotes[key]);
+          });
+          
           const uniquePhones = new Set();
           let totalScore = 0;
           let ratingCount = 0;
+          
           allVotes.forEach(v => {
             if (v.phone) uniquePhones.add(v.phone);
             if (v.score !== undefined && v.score <= 10) {
@@ -8368,42 +8367,70 @@
           const likes = uniquePhones.size;
           const avgScore = ratingCount > 0 ? (totalScore / ratingCount).toFixed(1) : '0.0';
           
-          favoritesData.push({
+          ratingData.push({
             p: p,
             likes: likes,
-            avg: avgScore
+            avg: avgScore,
+            round: currentRound
           });
-        }
       });
       
       const pubCont = document.getElementById('epv-public-rating-container');
       const pubBody = document.getElementById('epv-public-rating');
       
-      if (favoritesData.length > 0) {
-        // Sort by likes descending, then average descending
-        favoritesData.sort((a, b) => b.likes - a.likes || b.avg - a.avg);
-        
+      if (ratingData.length > 0) {
         let pHtml = '';
-        favoritesData.forEach(fav => {
+        ratingData.forEach(fav => {
           const pName = fav.p.name || 'Participant';
-          const pCat = ev.categories?.find(c => c.id == fav.p.catId)?.name || 'General';
+          const pAge = fav.p.age ? `Age ${fav.p.age}` : '';
+          const pCat = ev.categories?.find(c => String(c.id) === String(fav.p.catId))?.name || 'General';
+          const pId = fav.p.id;
           
           pHtml += `
-            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; display:flex; align-items:center; gap:16px; box-shadow:0 4px 12px rgba(0,0,0,0.03); position:relative; overflow:hidden;">
-              <div style="width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);">
-                ${fav.p.id ? fav.p.id.slice(-2).toUpperCase() : '🌟'}
-              </div>
-              <div style="flex:1; overflow:hidden;">
-                <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pName}</div>
-                <div style="font-size:0.8rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pCat}</div>
-              </div>
-              <div style="text-align:right;">
-                <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
-                  <span style="font-size:1.3rem;">❤️</span>
-                  <span style="font-size:1.5rem; font-weight:900; color:#059669;">${fav.likes}</span>
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; box-shadow:0 4px 12px rgba(0,0,0,0.03); margin-bottom:20px; overflow:hidden;">
+              <div style="display:flex; align-items:center; gap:16px; margin-bottom: 16px;">
+                <div style="width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);">
+                  ${fav.p.id ? String(fav.p.id).slice(-2).toUpperCase() : '🌟'}
                 </div>
-                <div style="font-size:0.8rem; color:#f59e0b; font-weight:800; margin-top:4px;">⭐ ${fav.avg} AVG</div>
-                <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="margin-top:10px; background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-weight:800; font-size:0.75rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote</button>
+                <div style="flex:1; overflow:hidden;">
+                  <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pName} ${pAge ? `(${pAge})` : ''}</div>
+                  <div style="font-size:0.8rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pCat} · ${fav.round.toUpperCase()}</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
+                    <span style="font-size:1.3rem;">❤️</span>
+                    <span style="font-size:1.5rem; font-weight:900; color:#059669;">${fav.likes}</span>
+                  </div>
+                  <div style="font-size:0.8rem; color:#f59e0b; font-weight:800; margin-top:4px;">⭐ ${fav.avg} AVG</div>
+                </div>
+              </div>
+
+              <!-- Rating Section for Event View -->
+              <div style="background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 12px; padding: 16px; border: 1px solid #FFD23F; margin-top: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div style="font-weight: 800; color: #92400e; font-size: 0.9rem;">Rate ${pName}'s ${fav.round.toUpperCase()}</div>
+                  <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-weight:800; font-size:0.75rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote (Favorite) ❤️</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; background: #fff; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,210,63,0.4);">
+                  <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">1</div>
+                  <input type="range" id="vote-slider-epv-${pId}" class="premium-rating-slider" min="1" max="10" value="5" step="1" oninput="document.getElementById('vote-val-epv-${pId}').textContent=this.value;" style="flex:1;" />
+                  <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">10</div>
+                  <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 8px; padding: 4px 10px; min-width: 40px; text-align: center;">
+                    <span id="vote-val-epv-${pId}" style="font-size: 1.2rem; font-weight: 900; color: #1e1b4b;">5</span>
+                  </div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <div style="flex: 1; min-width: 120px;">
+                    <input type="text" id="vote-name-epv-${pId}" placeholder="Full name" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                  </div>
+                  <div style="flex: 1; min-width: 120px;">
+                    <input type="tel" id="vote-phone-epv-${pId}" placeholder="Phone" maxlength="15" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                  </div>
+                  <button onclick="window.submitPublicVoteEPV('${ev.id}','${pId}','${fav.round}')" style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:8px; padding:8px 16px; font-size:0.9rem; font-weight:900; cursor:pointer; flex: 1; min-width: 100px;">
+                    Submit ⭐
+                  </button>
+                </div>
+                <div id="vote-msg-epv-${pId}" style="font-size:0.8rem; font-weight:800; color:#92400e; margin-top:8px; min-height:16px; text-align:center;"></div>
               </div>
             </div>
           `;
@@ -8438,6 +8465,15 @@
       };
       
       // Render specific event's prizes inside the event page view
+      if (!ev.categories || ev.categories.length === 0) {
+        ev.categories = (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id));
+      }
+      
+      const stateEv = (state.events || []).find(e => String(e.id) === String(ev.id));
+      if (stateEv) {
+        ev.otherPrizes = stateEv.otherPrizes || ev.otherPrizes || [];
+      }
+      
       if (typeof renderPrizeBoard === 'function') {
         renderPrizeBoard(ev);
       }
