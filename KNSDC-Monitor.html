@@ -3493,6 +3493,261 @@
 <script src="lib/localSync-v4.js?v=99"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
+/* ============================================================== */
+/* DJ STUDIO WEB AUDIO API LOGIC */
+/* ============================================================== */
+const DJ = {
+  ctx: null,
+  masterGain: null,
+  playlist: [],
+  selectedPlaylistId: null,
+  decks: {
+    'A': { audio: new Audio(), srcNode: null, gain: null, eq: {}, echo: null, url: '', playing: false, reqId: null },
+    'B': { audio: new Audio(), srcNode: null, gain: null, eq: {}, echo: null, url: '', playing: false, reqId: null }
+  }
+};
+
+function initDJAudioContext() {
+  if (DJ.ctx) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  DJ.ctx = new AudioContext();
+  
+  DJ.masterGain = DJ.ctx.createGain();
+  DJ.masterGain.connect(DJ.ctx.destination);
+  
+  ['A', 'B'].forEach(dId => {
+    const d = DJ.decks[dId];
+    
+    d.srcNode = DJ.ctx.createMediaElementSource(d.audio);
+    
+    d.eq.low = DJ.ctx.createBiquadFilter();
+    d.eq.low.type = 'lowshelf';
+    d.eq.low.frequency.value = 250;
+    
+    d.eq.mid = DJ.ctx.createBiquadFilter();
+    d.eq.mid.type = 'peaking';
+    d.eq.mid.frequency.value = 1000;
+    
+    d.eq.high = DJ.ctx.createBiquadFilter();
+    d.eq.high.type = 'highshelf';
+    d.eq.high.frequency.value = 4000;
+    
+    const delayNode = DJ.ctx.createDelay(5.0);
+    delayNode.delayTime.value = 0.33; 
+    const feedbackNode = DJ.ctx.createGain();
+    feedbackNode.gain.value = 0.4;
+    const echoGainNode = DJ.ctx.createGain();
+    echoGainNode.gain.value = 0; 
+    
+    d.echo = echoGainNode;
+    
+    d.gain = DJ.ctx.createGain();
+    d.gain.gain.value = dId === 'A' ? 1 : 0; 
+    const crossFaderEl = document.getElementById('dj-crossfader');
+    if(crossFaderEl) {
+      const cv = parseFloat(crossFaderEl.value);
+      d.gain.gain.value = dId === 'A' ? Math.cos(cv * 0.5 * Math.PI) : Math.cos((1-cv) * 0.5 * Math.PI);
+    }
+    
+    d.srcNode.connect(d.eq.low);
+    d.eq.low.connect(d.eq.mid);
+    d.eq.mid.connect(d.eq.high);
+    
+    d.eq.high.connect(d.gain);
+    
+    d.eq.high.connect(delayNode);
+    delayNode.connect(feedbackNode);
+    feedbackNode.connect(delayNode);
+    delayNode.connect(echoGainNode);
+    echoGainNode.connect(d.gain);
+    
+    d.gain.connect(DJ.masterGain);
+    
+    d.audio.addEventListener('timeupdate', () => updateDeckUI(dId));
+    d.audio.addEventListener('ended', () => {
+      d.playing = false;
+      document.getElementById('deck-'+dId+'-play-btn').innerHTML = '▶ Play';
+      autoPlayNext(dId);
+    });
+  });
+}
+
+window.handleDJFiles = function(files) {
+  if (!files || files.length === 0) return;
+  for(let i=0; i<files.length; i++) {
+    const f = files[i];
+    DJ.playlist.push({
+      id: 't_' + Date.now() + '_' + i,
+      file: f,
+      name: f.name,
+      url: URL.createObjectURL(f)
+    });
+  }
+  renderPlaylist();
+};
+
+window.selectPlaylistTrack = function(id) {
+  DJ.selectedPlaylistId = id;
+  renderPlaylist();
+};
+
+window.removePlaylistTrack = function(id, e) {
+  e.stopPropagation();
+  const t = DJ.playlist.find(x => x.id === id);
+  if(t) URL.revokeObjectURL(t.url);
+  DJ.playlist = DJ.playlist.filter(x => x.id !== id);
+  if(DJ.selectedPlaylistId === id) DJ.selectedPlaylistId = null;
+  renderPlaylist();
+};
+
+function renderPlaylist() {
+  const container = document.getElementById('dj-playlist-container');
+  if(DJ.playlist.length === 0) {
+    container.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic;">No tracks in playlist.</div>';
+    return;
+  }
+  
+  let html = '';
+  DJ.playlist.forEach((t, idx) => {
+    html += '<div onclick="selectPlaylistTrack(\\'' + t.id + '\\')" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:' + (DJ.selectedPlaylistId === t.id ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)') + '; border:1px solid ' + (DJ.selectedPlaylistId === t.id ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)') + '; border-radius:6px; cursor:pointer; font-size:13px; color:var(--text);">';
+    html += '  <div style="display:flex; gap:12px; align-items:center; overflow:hidden;">';
+    html += '    <div style="font-weight:700; color:var(--text-muted); font-size:10px;">' + (idx+1) + '</div>';
+    html += '    <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + t.name + '</div>';
+    html += '  </div>';
+    html += '  <div onclick="removePlaylistTrack(\\'' + t.id + '\\', event)" style="color:#ef4444; font-size:10px; cursor:pointer; padding:4px;">❌</div>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+window.loadTrackToDeck = function(deckId) {
+  initDJAudioContext();
+  if(DJ.ctx.state === 'suspended') DJ.ctx.resume();
+  
+  if(!DJ.selectedPlaylistId) {
+    alert("Please select a track from the playlist first!");
+    return;
+  }
+  
+  const t = DJ.playlist.find(x => x.id === DJ.selectedPlaylistId);
+  if(!t) return;
+  
+  const d = DJ.decks[deckId];
+  d.audio.src = t.url;
+  d.audio.load();
+  d.url = t.url;
+  document.getElementById('deck-'+deckId+'-title').textContent = t.name;
+  
+  d.playing = false;
+  document.getElementById('deck-'+deckId+'-play-btn').innerHTML = '▶ Play';
+  
+  const idx = DJ.playlist.findIndex(x => x.id === t.id);
+  if(idx < DJ.playlist.length - 1) {
+    DJ.selectedPlaylistId = DJ.playlist[idx+1].id;
+    renderPlaylist();
+  }
+};
+
+window.togglePlayDeck = function(deckId) {
+  initDJAudioContext();
+  if(DJ.ctx.state === 'suspended') DJ.ctx.resume();
+  
+  const d = DJ.decks[deckId];
+  if(!d.url) return;
+  
+  if(d.playing) {
+    d.audio.pause();
+    d.playing = false;
+    document.getElementById('deck-'+deckId+'-play-btn').innerHTML = '▶ Play';
+  } else {
+    d.audio.play();
+    d.playing = true;
+    document.getElementById('deck-'+deckId+'-play-btn').innerHTML = '⏸ Pause';
+  }
+};
+
+window.stopDeck = function(deckId) {
+  const d = DJ.decks[deckId];
+  d.audio.pause();
+  d.audio.currentTime = 0;
+  d.playing = false;
+  document.getElementById('deck-'+deckId+'-play-btn').innerHTML = '▶ Play';
+  updateDeckUI(deckId);
+};
+
+window.cueDeck = function(deckId) {
+  const d = DJ.decks[deckId];
+  d.audio.currentTime = 0;
+  if(d.playing) {
+    d.audio.play();
+  }
+};
+
+window.seekDeck = function(deckId, val) {
+  const d = DJ.decks[deckId];
+  if(!d.audio.duration) return;
+  d.audio.currentTime = (val / 100) * d.audio.duration;
+};
+
+function formatTime(s) {
+  if(isNaN(s)) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return m + ":" + sec;
+}
+
+function updateDeckUI(deckId) {
+  const d = DJ.decks[deckId];
+  if(!d.audio.duration) return;
+  
+  const prog = document.getElementById('deck-'+deckId+'-progress');
+  const ct = document.getElementById('deck-'+deckId+'-time-current');
+  const tt = document.getElementById('deck-'+deckId+'-time-total');
+  
+  prog.value = (d.audio.currentTime / d.audio.duration) * 100;
+  ct.textContent = formatTime(d.audio.currentTime);
+  tt.textContent = formatTime(d.audio.duration);
+}
+
+function autoPlayNext(deckId) {
+  const currentIdx = DJ.playlist.findIndex(x => x.url === DJ.decks[deckId].url);
+  if(currentIdx !== -1 && currentIdx < DJ.playlist.length - 1) {
+    const nextTrack = DJ.playlist[currentIdx + 1];
+    DJ.selectedPlaylistId = nextTrack.id;
+    renderPlaylist();
+    window.loadTrackToDeck(deckId);
+    window.togglePlayDeck(deckId);
+  }
+}
+
+window.changeSpeed = function(deckId, val) {
+  DJ.decks[deckId].audio.playbackRate = parseFloat(val);
+  document.getElementById('deck-'+deckId+'-speed-val').textContent = parseFloat(val).toFixed(2) + 'x';
+};
+
+window.changeEQ = function(deckId, band, val) {
+  const d = DJ.decks[deckId];
+  if(band === 'low') d.eq.low.gain.value = parseFloat(val);
+  if(band === 'mid') d.eq.mid.gain.value = parseFloat(val);
+  if(band === 'high') d.eq.high.gain.value = parseFloat(val);
+};
+
+window.changeEcho = function(deckId, val) {
+  const d = DJ.decks[deckId];
+  if(d.echo) d.echo.gain.value = parseFloat(val);
+};
+
+window.changeMasterVol = function(val) {
+  if(DJ.masterGain) DJ.masterGain.gain.value = parseFloat(val);
+  const shaft = document.getElementById('dj-master-shaft');
+  if(shaft) shaft.style.height = (parseFloat(val)*100) + '%';
+};
+
+window.changeCrossfader = function(val) {
+  const v = parseFloat(val);
+  if(DJ.decks['A'].gain) DJ.decks['A'].gain.gain.value = Math.cos(v * 0.5 * Math.PI);
+  if(DJ.decks['B'].gain) DJ.decks['B'].gain.gain.value = Math.cos((1.0 - v) * 0.5 * Math.PI);
+};
 const syncEngine = new (window.LocalSync || LocalSync)();
 
 // Role-specific profile configuration
