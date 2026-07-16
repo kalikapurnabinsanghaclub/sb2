@@ -3322,7 +3322,8 @@ window.dispatchRemoteAudioCommand = function(participantId, url, action, time, s
       action,
       time,
       timestamp: Date.now(),
-      source: source
+      source: source,
+      senderId: (typeof JUDGE !== 'undefined' && JUDGE) ? JUDGE.id : 'monitor'
     };
     
     // Broadcast purely over WebSockets for minimum delay (no database write)
@@ -4538,8 +4539,8 @@ syncEngine.subscribe((state) => {
     if (cmd.timestamp && cmd.timestamp !== window.lastRemoteAudioCommandTime) {
       window.lastRemoteAudioCommandTime = cmd.timestamp;
       
-      // Ignore stale commands
-      if (Date.now() - cmd.timestamp < 10000 && cmd.source !== 'judge') {
+      // Ignore stale commands and commands we sent ourselves
+      if (Date.now() - cmd.timestamp < 10000 && cmd.senderId !== JUDGE.id) {
         const allAudios = document.querySelectorAll('audio[id^="judge-audio-"]');
         allAudios.forEach(audioEl => {
           if (audioEl.src.includes(cmd.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")) || audioEl.src.includes(encodeURI(cmd.url))) {
