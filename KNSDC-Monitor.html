@@ -2739,7 +2739,7 @@
         
         <!-- Glow Fader for Master Volume -->
         <div style="font-size:8px; color:#94a3b8; margin-bottom:8px; font-weight:700;">MASTER VOL</div>
-        <div class="fader-panel" style="width:48px; height:130px; margin-bottom:24px;">
+        <div class="fader-panel" style="width:48px; height:130px; margin-bottom:10px;">
           <div class="tick-marks">
             <div class="tick major t-15"></div><div class="tick t-12"></div><div class="tick major t-10"></div><div class="tick t-8"></div>
             <div class="tick major t-5"></div><div class="tick t-3"></div><div class="tick major t-0"></div>
@@ -2750,6 +2750,42 @@
           </div>
         </div>
         
+        <!-- MASTER REVERB -->
+        <div style="background:linear-gradient(180deg, #1e293b, #0f172a); border:1px solid #334155; border-radius:8px; padding:10px; width:140px; margin-top:10px; margin-bottom:auto; box-shadow:0 4px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);">
+          
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:6px; margin-bottom:8px;">
+            <div style="font-family:'Montserrat', sans-serif; font-weight:800; font-size:10px; color:#e2e8f0; letter-spacing:1px; text-shadow:0 1px 2px rgba(0,0,0,0.8);">AMBIENCE</div>
+            <button id="reverb-toggle-btn" class="btn" style="background:#22c55e; color:white; font-size:7px; padding:2px 6px; font-weight:800; box-shadow:0 0 5px rgba(34,197,94,0.5);" onclick="toggleMasterReverb()">ON</button>
+          </div>
+          
+          <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+            <!-- Decay Knob -->
+            <div style="display:flex; flex-direction:column; align-items:center;">
+              <div class="rotary-knob reverb-knob" data-min="0.5" data-max="6.0" data-val="2.0" data-onchange="changeReverbDecay" style="width:28px; height:28px; background:#0f172a; border-color:#475569;">
+                <div class="knob-indicator" style="background:#38bdf8; height:10px; top:4px;"></div>
+              </div>
+              <div style="font-size:7px; font-weight:700; color:#94a3b8; margin-top:4px;">DECAY</div>
+              <div id="reverb-decay-val" style="font-size:7px; color:#38bdf8; font-family:monospace;">2.0s</div>
+            </div>
+            
+            <!-- Mix Knob -->
+            <div style="display:flex; flex-direction:column; align-items:center;">
+              <div class="rotary-knob reverb-knob" data-min="0" data-max="100" data-val="25" data-onchange="changeReverbMix" style="width:28px; height:28px; background:#0f172a; border-color:#475569;">
+                <div class="knob-indicator" style="background:#f59e0b; height:10px; top:4px;"></div>
+              </div>
+              <div style="font-size:7px; font-weight:700; color:#94a3b8; margin-top:4px;">MIX</div>
+              <div id="reverb-mix-val" style="font-size:7px; color:#f59e0b; font-family:monospace;">25%</div>
+            </div>
+          </div>
+
+          <!-- Pre-delay -->
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+             <div style="font-size:7px; font-weight:700; color:#94a3b8;">PRE-DELAY</div>
+             <input type="range" min="0" max="100" value="20" oninput="changeReverbPredelay(this.value)" class="fx-slider" style="width:60px; height:4px; accent-color:#38bdf8;">
+          </div>
+          
+        </div>
+
         <!-- Crossfader -->
         <div style="width:150px; margin-top:auto;">
           <div style="display:flex; justify-content:space-between; font-size:8px; color:#94a3b8; font-weight:700; margin-bottom:4px;">
@@ -3781,6 +3817,7 @@ function initDJAudioContext() {
     });
   });
 
+  initMasterReverb();
   // Initialize Knob Logic
   initKnobs();
 }
@@ -3916,6 +3953,109 @@ window.changeBalance = function(dId, val) {
   if(val > 0.05) text = 'R:' + Math.round(val*100);
   document.getElementById(`deck-${dId}-bal-val`).textContent = text;
 };
+
+// Reverb Engine
+DJ.reverb = {
+  active: true,
+  convolver: null,
+  preDelay: null,
+  dryGain: null,
+  wetGain: null,
+  decayTime: 2.0,
+  mix: 0.25
+};
+
+function generateReverbBuffer(ctx, decay) {
+  const sampleRate = ctx.sampleRate;
+  const length = sampleRate * decay;
+  const buffer = ctx.createBuffer(2, length, sampleRate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+  for (let i = 0; i < length; i++) {
+    // Exponential decay
+    const factor = Math.pow(1 - i / length, 3.0);
+    left[i] = (Math.random() * 2 - 1) * factor;
+    right[i] = (Math.random() * 2 - 1) * factor;
+  }
+  return buffer;
+}
+
+function initMasterReverb() {
+  if(!DJ.ctx || DJ.reverb.convolver) return;
+  
+  DJ.reverb.dryGain = DJ.ctx.createGain();
+  DJ.reverb.wetGain = DJ.ctx.createGain();
+  DJ.reverb.preDelay = DJ.ctx.createDelay(1.0);
+  DJ.reverb.convolver = DJ.ctx.createConvolver();
+  
+  // Set initial values
+  DJ.reverb.preDelay.delayTime.value = 0.02; // 20ms
+  DJ.reverb.convolver.buffer = generateReverbBuffer(DJ.ctx, DJ.reverb.decayTime);
+  
+  updateReverbMix();
+  
+  // Disconnect masterGain from destination and route through reverb
+  DJ.masterGain.disconnect();
+  
+  // Dry routing
+  DJ.masterGain.connect(DJ.reverb.dryGain);
+  DJ.reverb.dryGain.connect(DJ.ctx.destination);
+  
+  // Wet routing
+  DJ.masterGain.connect(DJ.reverb.preDelay);
+  DJ.reverb.preDelay.connect(DJ.reverb.convolver);
+  DJ.reverb.convolver.connect(DJ.reverb.wetGain);
+  DJ.reverb.wetGain.connect(DJ.ctx.destination);
+}
+
+function updateReverbMix() {
+  if(!DJ.reverb.dryGain) return;
+  if(DJ.reverb.active) {
+    // Equal power crossfade
+    const wetMix = DJ.reverb.mix;
+    DJ.reverb.wetGain.gain.value = Math.sin(wetMix * Math.PI / 2);
+    DJ.reverb.dryGain.gain.value = Math.cos(wetMix * Math.PI / 2);
+  } else {
+    DJ.reverb.wetGain.gain.value = 0;
+    DJ.reverb.dryGain.gain.value = 1;
+  }
+}
+
+window.toggleMasterReverb = function() {
+  DJ.reverb.active = !DJ.reverb.active;
+  const btn = document.getElementById('reverb-toggle-btn');
+  if(DJ.reverb.active) {
+    btn.style.background = '#22c55e';
+    btn.style.boxShadow = '0 0 5px rgba(34,197,94,0.5)';
+    btn.textContent = 'ON';
+  } else {
+    btn.style.background = '#475569';
+    btn.style.boxShadow = 'none';
+    btn.textContent = 'OFF';
+  }
+  updateReverbMix();
+};
+
+window.changeReverbDecay = function(ignore, val) {
+  DJ.reverb.decayTime = parseFloat(val);
+  document.getElementById('reverb-decay-val').textContent = DJ.reverb.decayTime.toFixed(1) + 's';
+  if(DJ.reverb.convolver) {
+    DJ.reverb.convolver.buffer = generateReverbBuffer(DJ.ctx, DJ.reverb.decayTime);
+  }
+};
+
+window.changeReverbMix = function(ignore, val) {
+  DJ.reverb.mix = parseFloat(val) / 100;
+  document.getElementById('reverb-mix-val').textContent = Math.round(val) + '%';
+  updateReverbMix();
+};
+
+window.changeReverbPredelay = function(val) {
+  if(DJ.reverb.preDelay) {
+    DJ.reverb.preDelay.delayTime.value = parseFloat(val) / 1000;
+  }
+};
+
 
 // Preserve other DJ logic
 
