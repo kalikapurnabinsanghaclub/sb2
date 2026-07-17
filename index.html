@@ -4206,18 +4206,17 @@
       });
     }
 
-    let isPublicFirstTick = true;
     function setupSync() {
       syncEngine.subscribe((state) => {
         // Handle remote audio commands from Monitor
         if (state && state.remoteAudioCommand) {
           const cmd = state.remoteAudioCommand;
           if (cmd.timestamp && cmd.timestamp !== window.lastPublicRemoteAudioCommandTime) {
-            const prevTimestamp = window.lastPublicRemoteAudioCommandTime;
             window.lastPublicRemoteAudioCommandTime = cmd.timestamp;
             
-            // Only execute if it's not the first tick (prevents playing old database commands on load)
-            if (!isPublicFirstTick || prevTimestamp !== 0) {
+            // Only skip commands older than 30 seconds (stale from a previous session)
+            const ageMs = Date.now() - cmd.timestamp;
+            if (ageMs < 30000) {
               const getBasename = (url) => {
                 if (!url) return '';
                 try {
@@ -4237,13 +4236,18 @@
                   const idxMatch = audioEl.id.match(/public-audio-(\d+)/);
                   if (idxMatch) {
                     const idx = idxMatch[1];
+                    const eqEl = document.getElementById('public-eq-visualizer-' + idx);
                     const applyCommand = () => {
                       if (audioEl.readyState >= 1) {
                         audioEl.currentTime = cmd.time;
                         if (cmd.action === 'play') {
                           audioEl.play().catch(e => console.log("Play failed/blocked:", e));
+                          // Activate EQ dancing visualizer
+                          if (eqEl) eqEl.classList.add('pub-eq-active');
                         } else if (cmd.action === 'pause') {
                           audioEl.pause();
+                          // Deactivate EQ dancing visualizer
+                          if (eqEl) eqEl.classList.remove('pub-eq-active');
                         }
                         if (typeof window.updatePublicAudioUI === 'function') {
                           window.updatePublicAudioUI(idx);
@@ -4254,6 +4258,8 @@
                     if (audioEl.readyState >= 1) {
                       applyCommand();
                     } else {
+                      // Force load the audio file
+                      audioEl.load();
                       audioEl.onloadedmetadata = () => {
                         applyCommand();
                       };
@@ -5133,7 +5139,6 @@
           renderDynamicForm(suSelectedEventId, true);
         }
 
-        isPublicFirstTick = false;
         // Hide loader when first data arrives
         const pl = document.getElementById("pageLoader");
         if (pl && pl.style.opacity !== '0') {
@@ -6767,8 +6772,8 @@
                   // Controls row: Mute button & progress slider (visual indicator only, no scrubbing)
                   html += '<div style="display:flex;align-items:center;gap:12px;width:100%;">';
                   
-                  // Hidden Muted audio element
-                  html += '<audio id="public-audio-' + idx + '" src="' + safeUrl + '" muted style="display:none;" onplay="window.updatePublicAudioUI(' + idx + ')" onpause="window.updatePublicAudioUI(' + idx + ')" onplaying="window.updatePublicAudioUI(' + idx + ')" ontimeupdate="window.updatePublicAudioUI(' + idx + ')" onloadedmetadata="window.updatePublicAudioUI(' + idx + ')" onended="window._onAudioEnded && window._onAudioEnded(this)" data-audio-url="' + safeUrl + '"></audio>';
+                  // Hidden Muted audio element - preload=auto ensures file is downloaded before play command arrives
+                  html += '<audio id="public-audio-' + idx + '" src="' + safeUrl + '" preload="auto" crossorigin="anonymous" muted style="display:none;" onplay="window.updatePublicAudioUI(' + idx + ')" onpause="window.updatePublicAudioUI(' + idx + ')" onplaying="window.updatePublicAudioUI(' + idx + ')" ontimeupdate="window.updatePublicAudioUI(' + idx + ')" onloadedmetadata="window.updatePublicAudioUI(' + idx + ')" onended="window._onAudioEnded && window._onAudioEnded(this)" data-audio-url="' + safeUrl + '"></audio>';
                   
                   // Mute button
                   html += '<button id="public-mute-btn-' + idx + '" onclick="window.togglePublicMute(' + idx + ')" style="flex-shrink:0; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.3); color:#be185d; border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.75rem; font-weight:700; display:flex; align-items:center; gap:4px; transition:all 0.2s; outline:none;" title="Toggle Mute">';
