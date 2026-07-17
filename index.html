@@ -4216,10 +4216,22 @@
             
             // Ignore stale commands
             if (Date.now() - cmd.timestamp < 15000) {
+              const getBasename = (url) => {
+                if (!url) return '';
+                try {
+                  return decodeURIComponent(url).split('/').pop().split('?')[0];
+                } catch (e) {
+                  return url.split('/').pop().split('?')[0];
+                }
+              };
               const allAudios = document.querySelectorAll('audio[id^="public-audio-"]');
               allAudios.forEach(audioEl => {
-                const safeCmdUrl = cmd.url.replace(/"/g, '&quot;').replace(/'/g, "\\'");
-                if (audioEl.src.includes(safeCmdUrl) || audioEl.src.includes(encodeURI(cmd.url))) {
+                const basenameCmd = getBasename(cmd.url);
+                const basenameAudio = getBasename(audioEl.src);
+                const isMatch = (basenameCmd && basenameCmd === basenameAudio) || 
+                                audioEl.src.includes(cmd.url) || 
+                                audioEl.src.includes(encodeURI(cmd.url));
+                if (isMatch) {
                   const idxMatch = audioEl.id.match(/public-audio-(\d+)/);
                   if (idxMatch) {
                     const idx = idxMatch[1];
@@ -6739,7 +6751,7 @@
                 html += '<div style="display:flex;align-items:center;gap:12px;width:100%;">';
                 
                 // Hidden Muted audio element
-                html += '<audio id="public-audio-' + idx + '" src="' + safeUrl + '" muted style="display:none;" ontimeupdate="window.updatePublicAudioUI(' + idx + ')" onloadedmetadata="window.updatePublicAudioUI(' + idx + ')" onended="window._onAudioEnded && window._onAudioEnded(this)" data-audio-url="' + safeUrl + '"></audio>';
+                html += '<audio id="public-audio-' + idx + '" src="' + safeUrl + '" muted style="display:none;" onplay="window.updatePublicAudioUI(' + idx + ')" onpause="window.updatePublicAudioUI(' + idx + ')" onplaying="window.updatePublicAudioUI(' + idx + ')" ontimeupdate="window.updatePublicAudioUI(' + idx + ')" onloadedmetadata="window.updatePublicAudioUI(' + idx + ')" onended="window._onAudioEnded && window._onAudioEnded(this)" data-audio-url="' + safeUrl + '"></audio>';
                 
                 // Mute button
                 html += '<button id="public-mute-btn-' + idx + '" onclick="window.togglePublicMute(' + idx + ')" style="flex-shrink:0; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.3); color:#be185d; border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.75rem; font-weight:700; display:flex; align-items:center; gap:4px; transition:all 0.2s; outline:none;" title="Toggle Mute">';
