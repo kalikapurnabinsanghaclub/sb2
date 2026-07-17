@@ -1130,6 +1130,44 @@
       background: linear-gradient(135deg, #fdf2f8, #fce7f3);
     }
 
+    /* Custom Compact Audio Player Styles */
+    .public-eq-container {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 24px;
+      padding: 2px 4px;
+      border-radius: 6px;
+      background: rgba(236, 72, 153, 0.03);
+      border: 1px solid rgba(236, 72, 153, 0.05);
+      transition: all 0.3s;
+      flex-shrink: 0;
+    }
+    .pub-eq-bar {
+      width: 3px;
+      height: 4px;
+      background: linear-gradient(to top, #ec4899, #8b5cf6, #3b82f6);
+      border-radius: 2px;
+      transition: height 0.2s ease, background 0.3s;
+    }
+    .pub-eq-active .pub-eq-bar {
+      animation: pubEqBounce 0.8s ease-in-out infinite alternate;
+    }
+    .public-eq-container.pub-eq-active {
+      background: rgba(236, 72, 153, 0.08);
+      border-color: rgba(236, 72, 153, 0.15);
+      filter: drop-shadow(0 0 6px rgba(236, 72, 153, 0.3)) drop-shadow(0 0 10px rgba(139, 92, 246, 0.2));
+      animation: pubEqGlowPulse 1.2s infinite alternate ease-in-out;
+    }
+    @keyframes pubEqBounce {
+      0% { height: 4px; }
+      100% { height: var(--h, 16px); }
+    }
+    @keyframes pubEqGlowPulse {
+      0% { transform: scale(1); opacity: 0.95; }
+      100% { transform: scale(1.03); opacity: 1; }
+    }
+
 
     .performer-card-live {
       background: linear-gradient(135deg, #FF6B35, #FFD23F);
@@ -3416,6 +3454,76 @@
       }
     };
 
+    // ═══ CUSTOM COMPACT AUDIO PLAYER FOR PUBLIC PORTAL ═══
+    window.lastPublicRemoteAudioCommandTime = 0;
+
+    window.updatePublicAudioUI = function(idx) {
+      const audioEl = document.getElementById(`public-audio-${idx}`);
+      const progressBar = document.getElementById(`public-progress-bar-${idx}`);
+      const currentSpan = document.getElementById(`public-time-current-${idx}`);
+      const totalSpan = document.getElementById(`public-time-total-${idx}`);
+      const eqVisualizer = document.getElementById(`public-eq-visualizer-${idx}`);
+      
+      if (!audioEl) return;
+      
+      if (progressBar && audioEl.duration) {
+        progressBar.style.width = `${(audioEl.currentTime / audioEl.duration) * 100}%`;
+      }
+      
+      if (currentSpan) {
+        currentSpan.textContent = formatPublicAudioTime(audioEl.currentTime);
+      }
+      
+      if (totalSpan && audioEl.duration && !isNaN(audioEl.duration)) {
+        totalSpan.textContent = formatPublicAudioTime(audioEl.duration);
+      }
+      
+      if (eqVisualizer) {
+        if (audioEl.paused || audioEl.ended) {
+          eqVisualizer.classList.remove('pub-eq-active');
+        } else {
+          eqVisualizer.classList.add('pub-eq-active');
+        }
+      }
+    };
+
+    window.togglePublicMute = function(idx) {
+      const audioEl = document.getElementById(`public-audio-${idx}`);
+      const iconEl = document.getElementById(`public-mute-icon-${idx}`);
+      const textEl = document.getElementById(`public-mute-text-${idx}`);
+      const btnEl = document.getElementById(`public-mute-btn-${idx}`);
+      
+      if (!audioEl) return;
+      
+      if (audioEl.muted) {
+        audioEl.muted = false;
+        audioEl.volume = 1.0;
+        if (iconEl) iconEl.textContent = '🔊';
+        if (textEl) textEl.textContent = 'Muted: Off';
+        if (btnEl) {
+          btnEl.style.background = 'linear-gradient(135deg, #ec4899, #a855f7)';
+          btnEl.style.color = '#fff';
+          btnEl.style.borderColor = 'transparent';
+        }
+      } else {
+        audioEl.muted = true;
+        if (iconEl) iconEl.textContent = '🔇';
+        if (textEl) textEl.textContent = 'Tap to Unmute';
+        if (btnEl) {
+          btnEl.style.background = 'rgba(236,72,153,0.1)';
+          btnEl.style.color = '#be185d';
+          btnEl.style.borderColor = 'rgba(236,72,153,0.3)';
+        }
+      }
+    };
+
+    function formatPublicAudioTime(seconds) {
+      if (!seconds || isNaN(seconds)) return "0:00";
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
     // ════════════ DATA ════════════
     let EVENTS = [];
 
@@ -4099,6 +4207,40 @@
 
     function setupSync() {
       syncEngine.subscribe((state) => {
+        // Handle remote audio commands from Monitor
+        if (state && state.remoteAudioCommand) {
+          const cmd = state.remoteAudioCommand;
+          if (cmd.timestamp && cmd.timestamp !== window.lastPublicRemoteAudioCommandTime) {
+            window.lastPublicRemoteAudioCommandTime = cmd.timestamp;
+            
+            // Ignore stale commands
+            if (Date.now() - cmd.timestamp < 15000) {
+              const allAudios = document.querySelectorAll('audio[id^="public-audio-"]');
+              allAudios.forEach(audioEl => {
+                const safeCmdUrl = cmd.url.replace(/"/g, '&quot;').replace(/'/g, "\\'");
+                if (audioEl.src.includes(safeCmdUrl) || audioEl.src.includes(encodeURI(cmd.url))) {
+                  const idxMatch = audioEl.id.match(/public-audio-(\d+)/);
+                  if (idxMatch) {
+                    const idx = idxMatch[1];
+                    if (cmd.action === 'play') {
+                      audioEl.currentTime = cmd.time;
+                      audioEl.play().catch(e => console.log("Autoplay check:", e));
+                    } else if (cmd.action === 'pause') {
+                      audioEl.pause();
+                      audioEl.currentTime = cmd.time;
+                    } else if (cmd.action === 'seek') {
+                      audioEl.currentTime = cmd.time;
+                    }
+                    if (typeof window.updatePublicAudioUI === 'function') {
+                      window.updatePublicAudioUI(idx);
+                    }
+                  }
+                }
+              });
+            }
+          }
+        }
+
         if (state) {
           const judgesStr = JSON.stringify(state.judges || []);
           const agreementsStr = JSON.stringify(state.judgeAgreements || state.agreements || []);
@@ -6576,12 +6718,46 @@
               audioItems.forEach((item, idx) => {
                 const safeUrl = item.url.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
                 const labelClean = item.label.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
-                html += '<div class="onstage-audio-track" style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 18px;margin-bottom:' + (idx < audioItems.length - 1 ? '12px' : '0') + ';border:1px solid rgba(236,72,153,0.1);backdrop-filter:blur(8px);transition:all 0.3s;box-shadow:0 2px 8px rgba(0,0,0,0.03);">';
-                html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
-                html += '<div style="width:28px;height:28px;background:linear-gradient(135deg,#ec4899,#a855f7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:900;color:#fff;flex-shrink:0;">' + (idx + 1) + '</div>';
-                html += '<div style="font-size:0.82rem;font-weight:700;color:#831843;">🎵 ' + labelClean + '</div>';
+                html += '<div class="onstage-audio-track" style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 18px;margin-bottom:' + (idx < audioItems.length - 1 ? '12px' : '0') + ';border:1px solid rgba(236,72,153,0.1);backdrop-filter:blur(8px);transition:all 0.3s;box-shadow:0 2px 8px rgba(0,0,0,0.03);display:flex;flex-direction:column;gap:8px;">';
+                
+                // Track header: Name & EQ Visualizer
+                html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;">';
+                html += '<div style="font-size:0.82rem;font-weight:700;color:#831843;display:flex;align-items:center;gap:6px;">🎵 ' + labelClean + '</div>';
+                
+                // Custom dancing EQ visualizer
+                html += '<div id="public-eq-visualizer-' + idx + '" class="public-eq-container">';
+                const barHeights = [10, 18, 14, 22, 16, 12, 20, 15, 24, 18, 13, 17];
+                barHeights.forEach((h, bIdx) => {
+                  const delay = -(Math.random() * 0.8).toFixed(2);
+                  html += '<div class="pub-eq-bar" style="--h:' + h + 'px; animation-delay:' + delay + 's;"></div>';
+                });
                 html += '</div>';
-                html += '<audio controls controlsList="nodownload" src="' + safeUrl + '" style="width:100%;height:36px;border-radius:20px;outline:none;" data-audio-url="' + safeUrl + '" onended="window._onAudioEnded && window._onAudioEnded(this)"></audio>';
+                html += '</div>';
+
+                // Controls row: Mute button & progress slider (visual indicator only, no scrubbing)
+                html += '<div style="display:flex;align-items:center;gap:12px;width:100%;">';
+                
+                // Hidden Muted audio element
+                html += '<audio id="public-audio-' + idx + '" src="' + safeUrl + '" muted style="display:none;" ontimeupdate="window.updatePublicAudioUI(' + idx + ')" onloadedmetadata="window.updatePublicAudioUI(' + idx + ')" onended="window._onAudioEnded && window._onAudioEnded(this)" data-audio-url="' + safeUrl + '"></audio>';
+                
+                // Mute button
+                html += '<button id="public-mute-btn-' + idx + '" onclick="window.togglePublicMute(' + idx + ')" style="flex-shrink:0; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.3); color:#be185d; border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.75rem; font-weight:700; display:flex; align-items:center; gap:4px; transition:all 0.2s; outline:none;" title="Toggle Mute">';
+                html += '<span id="public-mute-icon-' + idx + '">🔇</span> <span id="public-mute-text-' + idx + '">Tap to Unmute</span>';
+                html += '</button>';
+                
+                // Non-clickable Progress Bar visualizer
+                html += '<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; position:relative; overflow:hidden;">';
+                html += '<div id="public-progress-bar-' + idx + '" style="width:0%; height:100%; background:linear-gradient(90deg, #ec4899, #a855f7); border-radius:3px; transition:width 0.1s linear;"></div>';
+                html += '</div>';
+                
+                // Time display
+                html += '<div style="font-size:0.75rem; font-family:monospace; color:#831843; font-weight:600; flex-shrink:0; min-width:65px; text-align:right;">';
+                html += '<span id="public-time-current-' + idx + '">0:00</span>';
+                html += '<span style="opacity:0.4; margin:0 2px;">/</span>';
+                html += '<span id="public-time-total-' + idx + '">0:00</span>';
+                html += '</div>';
+                
+                html += '</div>';
                 html += '</div>';
               });
 
