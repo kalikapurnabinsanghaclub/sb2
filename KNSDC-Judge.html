@@ -3369,7 +3369,7 @@ window.updateCustomAudioUI = function(source, idx) {
 };
 
 window.dispatchRemoteAudioCommand = function(participantId, url, action, time, source) {
-  if (window.syncEngine && window.syncEngine.broadcastChannel) {
+  if (window.syncEngine) {
     const cmd = {
       participantId,
       url,
@@ -3380,30 +3380,10 @@ window.dispatchRemoteAudioCommand = function(participantId, url, action, time, s
       senderId: (typeof JUDGE !== 'undefined' && JUDGE) ? JUDGE.id : 'monitor'
     };
     
-    // Broadcast purely over WebSockets for minimum delay (no database write)
-    window.syncEngine.broadcastChannel.send({
-      type: 'broadcast',
-      event: 'state_update',
-      payload: { remoteAudioCommand: cmd }
-    }).catch(e => console.error("Fast broadcast failed:", e));
-    
-    // Also update local state memory so UI stays consistent
-    if (window.syncEngine.state) {
-      window.syncEngine.state.remoteAudioCommand = cmd;
-    }
-  } else if (window.syncEngine) {
-    // Fallback to slow DB sync if broadcast channel is dead
-    syncEngine.setData(state => {
+    window.syncEngine.setData(state => {
       return {
         ...state,
-        remoteAudioCommand: {
-          participantId,
-          url,
-          action,
-          time,
-          timestamp: Date.now(),
-          source: source
-        }
+        remoteAudioCommand: cmd
       };
     });
   }
