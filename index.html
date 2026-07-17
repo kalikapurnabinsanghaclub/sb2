@@ -4206,16 +4206,18 @@
       });
     }
 
+    let isPublicFirstTick = true;
     function setupSync() {
       syncEngine.subscribe((state) => {
         // Handle remote audio commands from Monitor
         if (state && state.remoteAudioCommand) {
           const cmd = state.remoteAudioCommand;
           if (cmd.timestamp && cmd.timestamp !== window.lastPublicRemoteAudioCommandTime) {
+            const prevTimestamp = window.lastPublicRemoteAudioCommandTime;
             window.lastPublicRemoteAudioCommandTime = cmd.timestamp;
             
-            // Ignore stale commands
-            if (Date.now() - cmd.timestamp < 15000) {
+            // Only execute if it's not the first tick (prevents playing old database commands on load)
+            if (!isPublicFirstTick || prevTimestamp !== 0) {
               const getBasename = (url) => {
                 if (!url) return '';
                 try {
@@ -5131,6 +5133,7 @@
           renderDynamicForm(suSelectedEventId, true);
         }
 
+        isPublicFirstTick = false;
         // Hide loader when first data arrives
         const pl = document.getElementById("pageLoader");
         if (pl && pl.style.opacity !== '0') {
@@ -6693,41 +6696,40 @@
 
             <!-- ★ On Stage Audio Player Section ★ -->
             ${(() => {
-              if (!onStage || !onStage.formAnswers) return '';
               const formFields = (state.eventFormFields && state.eventFormFields[ev.id]) || [];
               const audioItems = [];
 
-              // Collect all audio URLs from form fields
-              for (const f of formFields) {
-                if ((f.type === 'audio_link_or_file' || f.type === 'audio') && onStage.formAnswers[f.label]) {
-                  const url = onStage.formAnswers[f.label];
-                  if (typeof url === 'string' && url.trim()) {
-                    // Check 10-hour expiry for unplayed audio
-                    const tsMatch = url.match(/\/(\d{13})_/);
-                    let expired = false;
-                    if (tsMatch) {
-                      const uploadTs = parseInt(tsMatch[1]);
-                      const tenHoursMs = 10 * 60 * 60 * 1000;
-                      if (Date.now() - uploadTs > tenHoursMs) {
-                        expired = true;
-                        // Schedule auto-delete for expired audio
-                        if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
-                        if (!window._onstageDeletedAudios.has(url)) {
-                          window._onstageDeletedAudios.add(url);
-                          window._scheduleAudioDelete && window._scheduleAudioDelete(url, 0);
+              if (onStage && onStage.formAnswers) {
+                // Collect all audio URLs from form fields
+                for (const f of formFields) {
+                  if ((f.type === 'audio_link_or_file' || f.type === 'audio') && onStage.formAnswers[f.label]) {
+                    const url = onStage.formAnswers[f.label];
+                    if (typeof url === 'string' && url.trim()) {
+                      // Check 10-hour expiry for unplayed audio
+                      const tsMatch = url.match(/\/(\d{13})_/);
+                      let expired = false;
+                      if (tsMatch) {
+                        const uploadTs = parseInt(tsMatch[1]);
+                        const tenHoursMs = 10 * 60 * 60 * 1000;
+                        if (Date.now() - uploadTs > tenHoursMs) {
+                          expired = true;
+                          // Schedule auto-delete for expired audio
+                          if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
+                          if (!window._onstageDeletedAudios.has(url)) {
+                            window._onstageDeletedAudios.add(url);
+                            window._scheduleAudioDelete && window._scheduleAudioDelete(url, 0);
+                          }
                         }
                       }
-                    }
-                    if (!expired) {
-                      audioItems.push({ label: f.label, url: url });
+                      if (!expired) {
+                        audioItems.push({ label: f.label, url: url });
+                      }
                     }
                   }
                 }
               }
 
-              if (audioItems.length === 0) return '';
-
-              let html = '<div class="onstage-audio-section" style="background:linear-gradient(135deg,#fdf2f8 0%,#fce7f3 50%,#fae8ff 100%);border-radius:20px;padding:clamp(18px,4vw,30px);margin-bottom:40px;position:relative;overflow:hidden;border:1px solid rgba(236,72,153,0.15);box-shadow:0 6px 24px rgba(236,72,153,0.08);animation:onstageCatIn 0.6s ease 0.9s both;">';
+              let html = '<div class="onstage-audio-section" style="background:linear-gradient(135deg,#fdf2f8 0%,#fce7f3 50%,#fae8ff 100%);border-radius:20px;padding:clamp(18px,4vw,30px);margin-bottom:40px;position:relative;overflow:hidden;border:1px solid rgba(236,72,153,0.15);box-shadow:0 6px 24px rgba(236,72,153,0.08);animation:onstageCatIn 0.6s ease 0.9s both; min-height:120px; display:flex; flex-direction:column; justify-content:center;">';
               html += '<div style="position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 80% 20%,rgba(236,72,153,0.06),transparent 60%);pointer-events:none;"></div>';
               html += '<div style="position:relative;z-index:1;">';
               html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">';
@@ -6740,51 +6742,55 @@
               html += '<h4 style="color:#be185d;font-family:Playfair Display,serif;font-size:1rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin:0;">Performance Audio</h4>';
               html += '</div>';
 
-              audioItems.forEach((item, idx) => {
-                const safeUrl = item.url.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
-                const labelClean = item.label.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
-                html += '<div class="onstage-audio-track" style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 18px;margin-bottom:' + (idx < audioItems.length - 1 ? '12px' : '0') + ';border:1px solid rgba(236,72,153,0.1);backdrop-filter:blur(8px);transition:all 0.3s;box-shadow:0 2px 8px rgba(0,0,0,0.03);display:flex;flex-direction:column;gap:8px;">';
-                
-                // Track header: Name & EQ Visualizer
-                html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;">';
-                html += '<div style="font-size:0.82rem;font-weight:700;color:#831843;display:flex;align-items:center;gap:6px;">🎵 ' + labelClean + '</div>';
-                
-                // Custom dancing EQ visualizer
-                html += '<div id="public-eq-visualizer-' + idx + '" class="public-eq-container">';
-                const barHeights = [10, 18, 14, 22, 16, 12, 20, 15, 24, 18, 13, 17];
-                barHeights.forEach((h, bIdx) => {
-                  const delay = -(Math.random() * 0.8).toFixed(2);
-                  html += '<div class="pub-eq-bar" style="--h:' + h + 'px; animation-delay:' + delay + 's;"></div>';
-                });
-                html += '</div>';
-                html += '</div>';
+              if (audioItems.length === 0) {
+                html += '<div style="font-size:0.85rem;color:#be185d;opacity:0.6;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;min-height:60px;background:rgba(255,255,255,0.4);border-radius:12px;border:1px dashed rgba(236,72,153,0.25);">📡 Waiting for performance audio track to broadcast...</div>';
+              } else {
+                audioItems.forEach((item, idx) => {
+                  const safeUrl = item.url.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                  const labelClean = item.label.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                  html += '<div class="onstage-audio-track" style="background:rgba(255,255,255,0.7);border-radius:14px;padding:14px 18px;margin-bottom:' + (idx < audioItems.length - 1 ? '12px' : '0') + ';border:1px solid rgba(236,72,153,0.1);backdrop-filter:blur(8px);transition:all 0.3s;box-shadow:0 2px 8px rgba(0,0,0,0.03);display:flex;flex-direction:column;gap:8px;">';
+                  
+                  // Track header: Name & EQ Visualizer
+                  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;">';
+                  html += '<div style="font-size:0.82rem;font-weight:700;color:#831843;display:flex;align-items:center;gap:6px;">🎵 ' + labelClean + '</div>';
+                  
+                  // Custom dancing EQ visualizer
+                  html += '<div id="public-eq-visualizer-' + idx + '" class="public-eq-container">';
+                  const barHeights = [10, 18, 14, 22, 16, 12, 20, 15, 24, 18, 13, 17];
+                  barHeights.forEach((h, bIdx) => {
+                    const delay = -(Math.random() * 0.8).toFixed(2);
+                    html += '<div class="pub-eq-bar" style="--h:' + h + 'px; animation-delay:' + delay + 's;"></div>';
+                  });
+                  html += '</div>';
+                  html += '</div>';
 
-                // Controls row: Mute button & progress slider (visual indicator only, no scrubbing)
-                html += '<div style="display:flex;align-items:center;gap:12px;width:100%;">';
-                
-                // Hidden Muted audio element
-                html += '<audio id="public-audio-' + idx + '" src="' + safeUrl + '" muted style="display:none;" onplay="window.updatePublicAudioUI(' + idx + ')" onpause="window.updatePublicAudioUI(' + idx + ')" onplaying="window.updatePublicAudioUI(' + idx + ')" ontimeupdate="window.updatePublicAudioUI(' + idx + ')" onloadedmetadata="window.updatePublicAudioUI(' + idx + ')" onended="window._onAudioEnded && window._onAudioEnded(this)" data-audio-url="' + safeUrl + '"></audio>';
-                
-                // Mute button
-                html += '<button id="public-mute-btn-' + idx + '" onclick="window.togglePublicMute(' + idx + ')" style="flex-shrink:0; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.3); color:#be185d; border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.75rem; font-weight:700; display:flex; align-items:center; gap:4px; transition:all 0.2s; outline:none;" title="Toggle Mute">';
-                html += '<span id="public-mute-icon-' + idx + '">🔇</span> <span id="public-mute-text-' + idx + '">Tap to Unmute</span>';
-                html += '</button>';
-                
-                // Non-clickable Progress Bar visualizer
-                html += '<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; position:relative; overflow:hidden;">';
-                html += '<div id="public-progress-bar-' + idx + '" style="width:0%; height:100%; background:linear-gradient(90deg, #ec4899, #a855f7); border-radius:3px; transition:width 0.1s linear;"></div>';
-                html += '</div>';
-                
-                // Time display
-                html += '<div style="font-size:0.75rem; font-family:monospace; color:#831843; font-weight:600; flex-shrink:0; min-width:65px; text-align:right;">';
-                html += '<span id="public-time-current-' + idx + '">0:00</span>';
-                html += '<span style="opacity:0.4; margin:0 2px;">/</span>';
-                html += '<span id="public-time-total-' + idx + '">0:00</span>';
-                html += '</div>';
-                
-                html += '</div>';
-                html += '</div>';
-              });
+                  // Controls row: Mute button & progress slider (visual indicator only, no scrubbing)
+                  html += '<div style="display:flex;align-items:center;gap:12px;width:100%;">';
+                  
+                  // Hidden Muted audio element
+                  html += '<audio id="public-audio-' + idx + '" src="' + safeUrl + '" muted style="display:none;" onplay="window.updatePublicAudioUI(' + idx + ')" onpause="window.updatePublicAudioUI(' + idx + ')" onplaying="window.updatePublicAudioUI(' + idx + ')" ontimeupdate="window.updatePublicAudioUI(' + idx + ')" onloadedmetadata="window.updatePublicAudioUI(' + idx + ')" onended="window._onAudioEnded && window._onAudioEnded(this)" data-audio-url="' + safeUrl + '"></audio>';
+                  
+                  // Mute button
+                  html += '<button id="public-mute-btn-' + idx + '" onclick="window.togglePublicMute(' + idx + ')" style="flex-shrink:0; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.3); color:#be185d; border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.75rem; font-weight:700; display:flex; align-items:center; gap:4px; transition:all 0.2s; outline:none;" title="Toggle Mute">';
+                  html += '<span id="public-mute-icon-' + idx + '">🔇</span> <span id="public-mute-text-' + idx + '">Tap to Unmute</span>';
+                  html += '</button>';
+                  
+                  // Non-clickable Progress Bar visualizer
+                  html += '<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; position:relative; overflow:hidden;">';
+                  html += '<div id="public-progress-bar-' + idx + '" style="width:0%; height:100%; background:linear-gradient(90deg, #ec4899, #a855f7); border-radius:3px; transition:width 0.1s linear;"></div>';
+                  html += '</div>';
+                  
+                  // Time display
+                  html += '<div style="font-size:0.75rem; font-family:monospace; color:#831843; font-weight:600; flex-shrink:0; min-width:65px; text-align:right;">';
+                  html += '<span id="public-time-current-' + idx + '">0:00</span>';
+                  html += '<span style="opacity:0.4; margin:0 2px;">/</span>';
+                  html += '<span id="public-time-total-' + idx + '">0:00</span>';
+                  html += '</div>';
+                  
+                  html += '</div>';
+                  html += '</div>';
+                });
+              }
 
               html += '</div></div>';
               return html;
