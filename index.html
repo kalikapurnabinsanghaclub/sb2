@@ -4235,17 +4235,29 @@
                   const idxMatch = audioEl.id.match(/public-audio-(\d+)/);
                   if (idxMatch) {
                     const idx = idxMatch[1];
-                    if (cmd.action === 'play') {
-                      audioEl.currentTime = cmd.time;
-                      audioEl.play().catch(e => console.log("Autoplay check:", e));
-                    } else if (cmd.action === 'pause') {
-                      audioEl.pause();
-                      audioEl.currentTime = cmd.time;
-                    } else if (cmd.action === 'seek') {
-                      audioEl.currentTime = cmd.time;
-                    }
-                    if (typeof window.updatePublicAudioUI === 'function') {
-                      window.updatePublicAudioUI(idx);
+                    const applyCommand = () => {
+                      if (audioEl.readyState >= 1) {
+                        audioEl.currentTime = cmd.time;
+                        if (cmd.action === 'play') {
+                          audioEl.play().catch(e => console.log("Play failed/blocked:", e));
+                        } else if (cmd.action === 'pause') {
+                          audioEl.pause();
+                        }
+                        if (typeof window.updatePublicAudioUI === 'function') {
+                          window.updatePublicAudioUI(idx);
+                        }
+                      }
+                    };
+
+                    if (audioEl.readyState >= 1) {
+                      applyCommand();
+                    } else {
+                      audioEl.onloadedmetadata = () => {
+                        applyCommand();
+                      };
+                      audioEl.oncanplay = () => {
+                        applyCommand();
+                      };
                     }
                   }
                 }
