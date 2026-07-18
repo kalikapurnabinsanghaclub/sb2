@@ -4,71 +4,147 @@ const fs = require('fs');
 let monitor = fs.readFileSync('KNSDC-Monitor.html', 'utf8');
 
 const micCSS = `
-  /* MIC PLUG SWITCH ANIMATION */
-  .mic-switch {
+  /* ==========================================================================
+     Isolated State-Color Stylesheet (Message-Free Configuration)
+     ========================================================================== */
+
+  /* Component Isolation Namespace Wrapper */
+  .jack-toggle-component {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Console Panel Board Backing */
+  .jack-toggle-component .jack-toggle-panel {
+    background: #f0f2f5;
+    border: 2px solid #dcdfe4;
+    padding: 30px;
+    border-radius: 8px;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 
+      0px 8px 24px rgba(160, 174, 192, 0.25),
+      inset 1px 1px 0px #ffffff;
+    box-sizing: border-box;
+  }
+
+  /* Header Text Label */
+  .jack-toggle-component .jack-toggle-title {
+    color: #718096;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    margin-bottom: 35px;
+  }
+
+  /* Main Interactive Hitbox Layout Box */
+  .jack-toggle-component .jack-toggle-container {
     position: relative;
-    display: inline-block;
-    width: 60px;
-    height: 24px;
-    cursor: pointer;
-  }
-  .mic-switch input { opacity: 0; width: 0; height: 0; }
-  .mic-slider {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: #e2e8f0;
-    border-radius: 12px;
-    transition: 0.4s;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-    overflow: hidden;
-  }
-  .mic-socket {
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 10px;
-    height: 16px;
-    background: #1e293b;
-    border-radius: 3px;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
-    transition: 0.4s;
-  }
-  .mic-plug {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    left: 4px;
+    width: 180px;
+    height: 60px;
     display: flex;
     align-items: center;
-    transition: 0.4s cubic-bezier(0.4, 0.0, 0.2, 1);
-    z-index: 2;
+    cursor: pointer;
+    box-sizing: border-box;
   }
-  .plug-tip {
-    width: 8px;
-    height: 8px;
-    background: linear-gradient(to bottom, #f3f4f6, #9ca3af, #f3f4f6);
-    border-radius: 0 3px 3px 0;
-    border-right: 1px solid #4b5563;
+
+  /* Hide native checkbox element */
+  .jack-toggle-component .jack-toggle-input {
+    display: none;
   }
-  .plug-body {
-    width: 14px;
-    height: 12px;
-    background: #0f172a;
-    border-radius: 2px 0 0 2px;
-  }
-  .plug-wire {
-    width: 40px;
-    height: 3px;
-    background: #334155;
+
+  /* Audio Input Socket Hole */
+  .jack-toggle-component .jack-socket-port {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #1a202c; 
+    border: 3px solid #cbd5e0; 
+    box-shadow: 
+      inset 0px 3px 6px rgba(0, 0, 0, 0.9),
+      0px 2px 4px rgba(0, 0, 0, 0.05);
     position: absolute;
-    right: 100%;
+    left: 10px;
+    z-index: 1;
+    box-sizing: border-box;
   }
-  .mic-switch input:checked + .mic-slider { background: #bbf7d0; }
-  .mic-switch input:checked + .mic-slider .mic-plug { left: calc(100% - 28px); }
-  .mic-switch input:checked + .mic-slider .mic-socket {
-    background: #22c55e;
-    box-shadow: inset 0 0 8px rgba(0,0,0,0.2), 0 0 8px #4ade80;
+
+  /* Cable Plug Assembly Master Node */
+  .jack-toggle-component .jack-cable-plug {
+    position: absolute;
+    left: 95px; /* Default pulled out position (OFF state) */
+    display: flex;
+    align-items: center;
+    transition: left 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    will-change: left;
+  }
+
+  /* Metal Probe Shaft */
+  .jack-toggle-component .jack-plug-shaft {
+    width: 30px;
+    height: 8px;
+    background: linear-gradient(to bottom, #ffffff 0%, #e2e8f0 40%, #a0aec0 70%, #4a5568 100%);
+    border-radius: 1px 0 0 1px;
+    position: relative;
+    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Tip segment detail marking on the probe */
+  .jack-toggle-component .jack-plug-shaft::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 6px;
+    height: 8px;
+    background: linear-gradient(to bottom, #cbd5e0, #4a5568);
+    border-radius: 2px 0 0 2px;
+    border-right: 2px solid #1a202c;
+  }
+
+  /* Textured Grip Handle */
+  .jack-toggle-component .jack-plug-handle {
+    width: 45px;
+    height: 20px;
+    background: repeating-linear-gradient(
+      to right, 
+      #edf2f7, 
+      #edf2f7 4px, 
+      #e2e8f0 4px, 
+      #e2e8f0 6px
+    );
+    border: 1px solid #cbd5e0;
+    border-radius: 3px;
+    box-shadow: 0px 3px 6px rgba(160, 174, 192, 0.3);
+  }
+
+  /* The Trailing Wire Line - DEFAULT STATE (PLUG-OUT: YELLOW) */
+  .jack-toggle-component .jack-wire-tail {
+    width: 50px;
+    height: 6px;
+    background: #ecc94b; 
+    border-radius: 0 3px 3px 0;
+    box-shadow: 0px 2px 4px rgba(236, 201, 75, 0.3);
+    transition: background 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  /* ==========================================================================
+     State Transformations (ON Action / PLUG-IN INTERLOCKS)
+     ========================================================================== */
+
+  /* Shift the cable forward smoothly into the input hole container */
+  .jack-toggle-component .jack-toggle-input:checked ~ .jack-cable-plug {
+    left: 22px; 
+  }
+
+  /* Transition the wire line color when plugged in (PLUG-IN: GREEN) */
+  .jack-toggle-component .jack-toggle-input:checked ~ .jack-cable-plug .jack-wire-tail {
+    background: #38a169; 
+    box-shadow: 0px 2px 4px rgba(56, 161, 105, 0.3);
   }
 </style>
 `;
@@ -80,17 +156,17 @@ const hostSwitchHTML = `
             <div style="font-weight:800;font-size:13px" id="host-score-vis-label">Host Live Ranking: OFF 🔒</div>
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Toggle to show scores in Host panel</div>
           </div>
-          <label class="mic-switch" title="Mic Plug Switch">
-            <input type="checkbox" id="host-score-vis-toggle" onchange="handleHostScoreVisToggle(this)"/>
-            <span class="mic-slider">
-              <div class="mic-socket"></div>
-              <div class="mic-plug">
-                <div class="plug-wire"></div>
-                <div class="plug-body"></div>
-                <div class="plug-tip"></div>
+          <div class="jack-toggle-component" style="display:inline-block; padding: 0;">
+            <label class="jack-toggle-container">
+              <input type="checkbox" class="jack-toggle-input" id="host-score-vis-toggle" onchange="handleHostScoreVisToggle(this)"/>
+              <div class="jack-socket-port"></div>
+              <div class="jack-cable-plug">
+                <div class="jack-plug-shaft"></div>
+                <div class="jack-plug-handle"></div>
+                <div class="jack-wire-tail"></div>
               </div>
-            </span>
-          </label>
+            </label>
+          </div>
         </div>
 `;
 
