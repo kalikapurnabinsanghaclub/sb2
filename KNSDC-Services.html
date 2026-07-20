@@ -197,7 +197,7 @@ function checkAutoLogin() {
   const role = localStorage.getItem('kns_role');
   if (saved && (role === 'food_partner' || role === 'transport_partner' || role === 'service_partner')) {
     const savedUser = JSON.parse(localStorage.getItem('kns_user') || '{}');
-    loginSuccess({ name: savedUser.name || saved.split('@')[0], email: saved, role });
+    loginSuccess({ name: savedUser.name || saved.split('@')[0], email: saved, role, phone: savedUser.phone || '' });
     return;
   }
   // Show login form
@@ -214,14 +214,15 @@ async function handleLogin(e) {
 
   // Admin bypass backdoor
   if (email === 'admin@knsdc.com' && pass === 'admin123') {
-    loginSuccess({ name: 'System Administrator', email: 'admin@knsdc.com', role: 'food_partner' });
+    loginSuccess({ name: 'System Administrator', email: 'admin@knsdc.com', role: 'food_partner', phone: '9999999999' });
     return;
   }
 
   if (window.syncEngine && window.syncEngine.signIn) {
     const res = await window.syncEngine.signIn(email, pass);
     if (res.success && (res.role === 'food_partner' || res.role === 'transport_partner' || res.role === 'service_partner')) {
-      loginSuccess({ name: res.user?.user_metadata?.fullname || email.split('@')[0], email, role: res.role });
+      const uPhone = res.user?.phone || res.user?.user_metadata?.phone || '';
+      loginSuccess({ name: res.user?.user_metadata?.fullname || email.split('@')[0], email, role: res.role, phone: uPhone });
     } else {
       errEl.textContent = res.error || '❌ Invalid ID or password';
       errEl.style.display = 'block';
@@ -245,7 +246,7 @@ function loginSuccess(partner) {
   // Persist role and user info so auto-login works on page reload
   localStorage.setItem('knsdc_partner_email', partner.email);
   localStorage.setItem('kns_role', partner.role);
-  localStorage.setItem('kns_user', JSON.stringify({ name: partner.name, email: partner.email, role: partner.role }));
+  localStorage.setItem('kns_user', JSON.stringify({ name: partner.name, email: partner.email, role: partner.role, phone: partner.phone || '' }));
 
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('dashboard-view').style.display = 'block';
