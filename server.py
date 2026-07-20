@@ -138,6 +138,61 @@ class Event(BaseModel):
     venues: Optional[List[Venue]] = []
     formFields: Optional[List[Dict[str, Any]]] = []
 
+class MenuItem(BaseModel):
+    id: str
+    name: str
+    price: float
+    icon: Optional[str] = "🍽️"
+
+class PartnerAssignment(BaseModel):
+    id: str
+    eventId: Optional[Any] = None
+    name: str
+    phone: str
+    email: str
+    password: str
+    role: str = "service_partner"
+
+class FoodOrderItem(BaseModel):
+    id: str
+    name: str
+    qty: int
+    price: float
+
+class FoodOrder(BaseModel):
+    id: str
+    participantName: str
+    participantPhone: str
+    items: List[FoodOrderItem]
+    total: float
+    status: str = "pending"
+    location: str = ""
+    timestamp: Optional[int] = None
+    deliveryPartnerName: Optional[str] = ""
+    deliveryPartnerPhone: Optional[str] = ""
+    deliveryPartnerEmail: Optional[str] = ""
+
+class RideBooking(BaseModel):
+    id: str
+    participantName: str
+    participantPhone: str
+    pickup: str
+    drop: str
+    pickupLat: Optional[float] = None
+    pickupLng: Optional[float] = None
+    dropLat: Optional[float] = None
+    dropLng: Optional[float] = None
+    distance: float
+    vehicle: str
+    fare: float
+    status: str = "finding"
+    timestamp: Optional[int] = None
+    driverName: Optional[str] = ""
+    driverPhone: Optional[str] = ""
+    driverEmail: Optional[str] = ""
+    driverLat: Optional[float] = None
+    driverLng: Optional[float] = None
+
 class GlobalState(BaseModel):
     activeEventId: Any = "ev-2026-05-09"
     eventName: str = "Dance Ignition Season 6"
@@ -158,6 +213,10 @@ class GlobalState(BaseModel):
     hostAssignments: Optional[List[Dict[str, Any]]] = []
     sosActive: Optional[bool] = False
     sosHistory: Optional[List[Dict[str, Any]]] = []
+    foodMenu: Optional[List[MenuItem]] = []
+    partnerAssignments: Optional[List[PartnerAssignment]] = []
+    foodOrders: Optional[List[FoodOrder]] = []
+    rideBookings: Optional[List[RideBooking]] = []
 
 # --- STATE MANAGEMENT ---
 
