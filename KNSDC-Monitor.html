@@ -336,19 +336,21 @@
   .btn-delete-fancy .svgIcon path {
     fill: white;
   }
-  .btn-delete-fancy:hover {
-    width: 90px;
-    border-radius: 50px;
-    transition-duration: .3s;
-    background-color: rgb(255, 69, 69);
-    align-items: center;
-    justify-content: flex-start;
-    padding-left: 10px !important;
-  }
-  .btn-delete-fancy:hover .svgIcon {
-    width: 12px;
-    transition-duration: .3s;
-    transform: translateY(60%);
+  @media (hover: hover) {
+    .btn-delete-fancy:hover {
+      width: 90px;
+      border-radius: 50px;
+      transition-duration: .3s;
+      background-color: rgb(255, 69, 69);
+      align-items: center;
+      justify-content: flex-start;
+      padding-left: 10px !important;
+    }
+    .btn-delete-fancy:hover .svgIcon {
+      width: 12px;
+      transition-duration: .3s;
+      transform: translateY(60%);
+    }
   }
   .btn-delete-fancy::before {
     position: absolute;
@@ -359,12 +361,14 @@
     font-size: 2px;
     font-family: var(--fb);
   }
-  .btn-delete-fancy:hover::before {
-    font-size: 11px;
-    opacity: 1;
-    transform: translateY(28px);
-    transition-duration: .3s;
-    left: 32px;
+  @media (hover: hover) {
+    .btn-delete-fancy:hover::before {
+      font-size: 11px;
+      opacity: 1;
+      transform: translateY(28px);
+      transition-duration: .3s;
+      left: 32px;
+    }
   }
   .btn-success { 
     background: rgba(5,150,105,0.05); 
@@ -7565,20 +7569,35 @@ function editFormField(i){
 
 function saveFormField(){
   const i = parseInt(document.getElementById('ff-idx').value);
-  formFields[i].label = document.getElementById('ff-label').value;
-  formFields[i].placeholder = document.getElementById('ff-placeholder').value;
-  formFields[i].required = document.getElementById('ff-required').checked;
-  if(formFields[i].type==='radio'||formFields[i].type==='checkbox')
-    formFields[i].options = document.getElementById('ff-options').value.split('\n').filter(x=>x.trim());
-  if(formFields[i].type==='tc')
-    formFields[i].tcText = document.getElementById('ff-tc-text').value;
+  const label = document.getElementById('ff-label').value;
+  const placeholder = document.getElementById('ff-placeholder').value;
+  const required = document.getElementById('ff-required').checked;
+  const options = (formFields[i].type==='radio'||formFields[i].type==='checkbox') ? document.getElementById('ff-options').value.split('\n').filter(x=>x.trim()) : undefined;
+  const tcText = formFields[i].type==='tc' ? document.getElementById('ff-tc-text').value : undefined;
+
   closeM('ffield-modal');
-  syncAll();
-  renderFormBuilder();
-  toast('Field updated!');
+
+  showUndoToast(`Update field "${formFields[i].label}"?`, () => {
+    formFields[i].label = label;
+    formFields[i].placeholder = placeholder;
+    formFields[i].required = required;
+    if(options !== undefined) formFields[i].options = options;
+    if(tcText !== undefined) formFields[i].tcText = tcText;
+    syncAll();
+    renderFormBuilder();
+    toast('Field updated!');
+  });
 }
 
-function removeFormField(i){ formFields.splice(i,1); syncAll(); renderFormBuilder(); }
+function removeFormField(i){
+  const label = formFields[i].label;
+  showUndoToast(`Delete field "${label}"?`, () => {
+    formFields.splice(i,1);
+    syncAll();
+    renderFormBuilder();
+    toast(`Field "${label}" deleted`);
+  });
+}
 function previewForm(){ renderFormPreview(); toast('Preview updated'); }
 async function saveForm() {
   const s = syncEngine.getData();
@@ -7696,48 +7715,59 @@ function openCatModal(id=null){
 
 let isSavingCat = false;
 async function saveCat() {
-  if (isSavingCat) return;
   const name=document.getElementById('cm-name').value.trim();
   if(!name){toast('Name required!');return;}
   
-  isSavingCat = true;
+  const ageMin = parseInt(document.getElementById('cm-agemin').value)||0;
+  const ageMax = parseInt(document.getElementById('cm-agemax').value)||99;
+  const color = document.getElementById('cm-color').value;
   const btn = document.querySelector('#cat-modal .btn-amber');
-  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
 
-  try {
-    const obj={name,ageMin:parseInt(document.getElementById('cm-agemin').value)||0,ageMax:parseInt(document.getElementById('cm-agemax').value)||99,color:document.getElementById('cm-color').value, eventId: activeEventId};
-    
-    if(editingCatId){
-      // Preserve existing prizes when editing category info
-      const existing = categories.find(c=>c.id===editingCatId);
-      if(existing && existing.prizes) obj.prizes = existing.prizes;
-      const success = await syncEngine.updateCategory(editingCatId, obj);
-      if (!success) { toast('❌ Error saving category'); return; }
-      if(existing) Object.assign(existing, obj);
-    } else {
-      obj.id=Date.now();
-      obj.prizes=[];
-      const success = await syncEngine.createCategory(obj);
-      if (!success) { toast('❌ Error creating category'); return; }
-      if(!categories.find(c=>c.id===obj.id)) categories.push(obj);
+  closeM('cat-modal');
+
+  const actionMsg = editingCatId ? `Update category "${name}"?` : `Create category "${name}"?`;
+
+  showUndoToast(actionMsg, async () => {
+    if (isSavingCat) return;
+    isSavingCat = true;
+    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+    try {
+      const obj={name,ageMin,ageMax,color, eventId: activeEventId};
+      if(editingCatId){
+        const existing = categories.find(c=>c.id===editingCatId);
+        if(existing && existing.prizes) obj.prizes = existing.prizes;
+        const success = await syncEngine.updateCategory(editingCatId, obj);
+        if (!success) { toast('❌ Error saving category'); return; }
+        if(existing) Object.assign(existing, obj);
+      } else {
+        obj.id=Date.now();
+        obj.prizes=[];
+        const success = await syncEngine.createCategory(obj);
+        if (!success) { toast('❌ Error creating category'); return; }
+        if(!categories.find(c=>c.id===obj.id)) categories.push(obj);
+      }
+      syncAll();
+      renderCategories();toast('Category saved!');
+      broadcast('DATA_SYNC', { categories, subjects });
+    } finally {
+      isSavingCat = false;
+      if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
     }
-    syncAll();
-    closeM('cat-modal');renderCategories();toast('Category saved!');
-    broadcast('DATA_SYNC', { categories, subjects });
-  } finally {
-    isSavingCat = false;
-    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
-  }
+  });
 }
 
 async function deleteCat(id) {
-  const success = await syncEngine.deleteCategory(id);
-  if (!success) { toast('❌ Error deleting category'); return; }
-  categories = categories.filter(c => c.id !== id);
-  syncAll();
-  renderCategories();
-  toast('Category deleted');
-  broadcast('DATA_SYNC', { categories, subjects });
+  const cat = categories.find(c => c.id === id);
+  const name = cat ? cat.name : 'Category';
+  showUndoToast(`Delete category "${name}"?`, async () => {
+    const success = await syncEngine.deleteCategory(id);
+    if (!success) { toast('❌ Error deleting category'); return; }
+    categories = categories.filter(c => c.id !== id);
+    syncAll();
+    renderCategories();
+    toast('Category deleted');
+    broadcast('DATA_SYNC', { categories, subjects });
+  });
 }
 
 // ── PRIZE MANAGEMENT ─────────────────────────
@@ -7985,30 +8015,44 @@ function openVenueModal(id=null){
 async function saveVenue() {
   const name=document.getElementById('vm-name').value.trim();
   if(!name){toast('Name required!');return;}
-  const obj={name,location:document.getElementById('vm-loc').value,capacity:parseInt(document.getElementById('vm-cap').value)||0,dates:[document.getElementById('vm-dates').value].filter(Boolean), eventId: activeEventId};
-  
-  if(editingVenueId){
-    const success = await syncEngine.updateVenue(editingVenueId, obj);
-    if (!success) { toast('❌ Error saving venue'); return; }
-    const existing = venues.find(v=>String(v.id)===String(editingVenueId));
-    if(existing) Object.assign(existing, obj);
-  } else {
-    obj.id=Date.now();
-    const success = await syncEngine.createVenue(obj);
-    if (!success) { toast('❌ Error creating venue'); return; }
-    if(!venues.find(v=>String(v.id)===String(obj.id))) venues.push(obj);
-  }
-  syncAll();
-  closeM('venue-modal');renderVenueDates();toast('Venue saved!');
+  const loc=document.getElementById('vm-loc').value;
+  const cap=parseInt(document.getElementById('vm-cap').value)||0;
+  const dates=[document.getElementById('vm-dates').value].filter(Boolean);
+
+  closeM('venue-modal');
+
+  const actionMsg = editingVenueId ? `Update venue "${name}"?` : `Create venue "${name}"?`;
+
+  showUndoToast(actionMsg, async () => {
+    const obj={name,location:loc,capacity:cap,dates, eventId: activeEventId};
+    if(editingVenueId){
+      const success = await syncEngine.updateVenue(editingVenueId, obj);
+      if (!success) { toast('❌ Error saving venue'); return; }
+      const existing = venues.find(v=>String(v.id)===String(editingVenueId));
+      if(existing) Object.assign(existing, obj);
+    } else {
+      obj.id=Date.now();
+      const success = await syncEngine.createVenue(obj);
+      if (!success) { toast('❌ Error creating venue'); return; }
+      if(!venues.find(v=>String(v.id)===String(obj.id))) venues.push(obj);
+    }
+    syncAll();
+    renderVenueDates();
+    toast('Venue saved!');
+  });
 }
 
 async function deleteVenue(id) {
-  const success = await syncEngine.deleteVenue(id);
-  if (!success) { toast('❌ Error deleting venue'); return; }
-  venues = venues.filter(v => v.id !== id);
-  syncAll();
-  renderVenueDates();
-  toast('Venue deleted');
+  const v = venues.find(x=>String(x.id)===String(id));
+  const name = v ? v.name : 'Venue';
+  showUndoToast(`Delete venue "${name}"?`, async () => {
+    const success = await syncEngine.deleteVenue(id);
+    if (!success) { toast('❌ Error deleting venue'); return; }
+    venues = venues.filter(x => String(x.id) !== String(id));
+    syncAll();
+    renderVenueDates();
+    toast('Venue deleted');
+  });
 }
 
 // ══════════════════════════════════════════
@@ -11485,58 +11529,59 @@ function saveEventSchedule() {
   const time = document.getElementById('ees-time').value;
   const venue = document.getElementById('ees-venue').value.trim();
   const location = document.getElementById('ees-loc').value.trim();
-  
-  syncEngine.setData(state => {
-    const newState = { ...state };
-    const evIdx = newState.events.findIndex(e => String(e.id) === String(id));
-    if (evIdx !== -1) {
-      const ev = { ...newState.events[evIdx] };
-      if (!ev.roundSchedules) ev.roundSchedules = {};
-      
-      if (round === 'general') {
-        ev.date = date; ev.startDate = date;
-        ev.time = time; ev.startTime = time;
-        ev.venue = venue; ev.location = location;
-      } else {
-        ev.roundSchedules[round] = { date, time, venue, location };
-      }
-      
-      newState.events[evIdx] = ev;
-      EVENTS = newState.events;
 
-      // Fully synchronize with upcomingEvents so all columns (Date & Time, Venue, Type, Capacity) are updated dynamically across panels!
-      if (!newState.upcomingEvents) newState.upcomingEvents = [];
-      const upIdx = newState.upcomingEvents.findIndex(e => String(e.id) === String(id));
-      if (upIdx !== -1) {
-        newState.upcomingEvents[upIdx] = {
-          ...newState.upcomingEvents[upIdx],
-          date: ev.date || ev.startDate || '',
-          time: ev.time || ev.startTime || '',
-          venue: ev.venue || '',
-          category: ev.type || 'Standard',
-          roundSchedules: ev.roundSchedules
-        };
-      } else {
-        newState.upcomingEvents.push({
-          id: ev.id,
-          title: ev.name,
-          date: ev.date || ev.startDate || '',
-          time: ev.time || ev.startTime || '',
-          venue: ev.venue || '',
-          category: ev.type || 'Standard',
-          roundSchedules: ev.roundSchedules
-        });
-      }
-    }
-    return newState;
-  });
-  
-  // Keep modal open if they want to edit another round, or just close if they're done.
-  // For better UX, we'll close it.
   closeM('edit-event-modal');
-  renderMonitorEvents();
-  broadcastControlsToPublic();
-  toast(`✅ Schedule updated for ${round === 'general' ? 'Event' : round.toUpperCase()}!`);
+
+  showUndoToast(`Update schedule for ${round === 'general' ? 'Event' : round.toUpperCase()}?`, () => {
+    syncEngine.setData(state => {
+      const newState = { ...state };
+      const evIdx = newState.events.findIndex(e => String(e.id) === String(id));
+      if (evIdx !== -1) {
+        const ev = { ...newState.events[evIdx] };
+        if (!ev.roundSchedules) ev.roundSchedules = {};
+        
+        if (round === 'general') {
+          ev.date = date; ev.startDate = date;
+          ev.time = time; ev.startTime = time;
+          ev.venue = venue; ev.location = location;
+        } else {
+          ev.roundSchedules[round] = { date, time, venue, location };
+        }
+        
+        newState.events[evIdx] = ev;
+        EVENTS = newState.events;
+
+        // Fully synchronize with upcomingEvents so all columns (Date & Time, Venue, Type, Capacity) are updated dynamically across panels!
+        if (!newState.upcomingEvents) newState.upcomingEvents = [];
+        const upIdx = newState.upcomingEvents.findIndex(e => String(e.id) === String(id));
+        if (upIdx !== -1) {
+          newState.upcomingEvents[upIdx] = {
+            ...newState.upcomingEvents[upIdx],
+            date: ev.date || ev.startDate || '',
+            time: ev.time || ev.startTime || '',
+            venue: ev.venue || '',
+            category: ev.type || 'Standard',
+            roundSchedules: ev.roundSchedules
+          };
+        } else {
+          newState.upcomingEvents.push({
+            id: ev.id,
+            title: ev.name,
+            date: ev.date || ev.startDate || '',
+            time: ev.time || ev.startTime || '',
+            venue: ev.venue || '',
+            category: ev.type || 'Standard',
+            roundSchedules: ev.roundSchedules
+          });
+        }
+      }
+      return newState;
+    });
+    
+    renderMonitorEvents();
+    broadcastControlsToPublic();
+    toast(`✅ Schedule updated for ${round === 'general' ? 'Event' : round.toUpperCase()}!`);
+  });
 }
 
 function renderEventSettings() {
@@ -11908,6 +11953,66 @@ function toast(msg){
   t.textContent=msg; t.style.display='block';
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>t.style.display='none',2800);
+}
+
+let pendingUndoAction = null;
+function showUndoToast(message, onConfirm, onUndo) {
+  if (pendingUndoAction) {
+    clearTimeout(pendingUndoAction.timer);
+    clearInterval(pendingUndoAction.interval);
+    pendingUndoAction.onConfirm();
+  }
+
+  const t = document.getElementById('toast');
+  t.innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: var(--fb);">
+      <span>${message}</span>
+      <button id="toast-undo-btn" style="background: var(--blue); color: white; border: none; padding: 4px 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 11px; transition: background 0.2s;">Undo (2s)</button>
+    </div>
+  `;
+  t.style.display = 'block';
+
+  let timeLeft = 2;
+  const undoBtn = document.getElementById('toast-undo-btn');
+
+  const interval = setInterval(() => {
+    timeLeft--;
+    if (undoBtn) {
+      undoBtn.textContent = `Undo (${timeLeft}s)`;
+    }
+  }, 1000);
+
+  const timer = setTimeout(() => {
+    clearInterval(interval);
+    t.style.display = 'none';
+    if (pendingUndoAction) {
+      pendingUndoAction.onConfirm();
+      pendingUndoAction = null;
+    }
+  }, 2000);
+
+  pendingUndoAction = {
+    timer,
+    interval,
+    onConfirm: () => {
+      onConfirm();
+    },
+    onUndo: () => {
+      clearInterval(interval);
+      clearTimeout(timer);
+      t.style.display = 'none';
+      if (onUndo) onUndo();
+      toast('↩️ Action undone!');
+    }
+  };
+
+  undoBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (pendingUndoAction) {
+      pendingUndoAction.onUndo();
+      pendingUndoAction = null;
+    }
+  };
 }
 
 // ══════════════════════════════════════════
