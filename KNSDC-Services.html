@@ -277,6 +277,106 @@ function handleLogout() {
 
 
 
+function toast(msg) {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.cssText = 'position:fixed; bottom:32px; right:32px; z-index:10000; display:flex; flex-direction:column; gap:8px; pointer-events:none;';
+    document.body.appendChild(container);
+  }
+  const el = document.createElement('div');
+  el.style.cssText = 'background:var(--surface, #fff); color:var(--text, #0f172a); border:1px solid var(--blue, #3b82f6); box-shadow:0 10px 30px rgba(0,0,0,0.08); padding:14px 24px; border-radius:12px; font-family:sans-serif; font-size:13px; font-weight:600; min-width:250px; pointer-events:auto; transform:translateY(20px); opacity:0; transition:all 0.3s cubic-bezier(0.16, 1, 0.3, 1);';
+  el.innerText = msg;
+  container.appendChild(el);
+  
+  setTimeout(() => {
+    el.style.transform = 'translateY(0)';
+    el.style.opacity = '1';
+  }, 10);
+  
+  setTimeout(() => {
+    el.style.transform = 'translateY(-20px)';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
+}
+
+let reminderInterval = null;
+let lastNotifyTime = 0;
+let lastVibrateTime = 0;
+const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-84.wav');
+
+function checkAlertReminders() {
+  if (!loggedInPartner) {
+    if (reminderInterval) {
+      clearInterval(reminderInterval);
+      reminderInterval = null;
+    }
+    if (navigator.vibrate) navigator.vibrate(0);
+    return;
+  }
+  const state = window.syncEngine.getData() || {};
+  const pendingFood = (state.foodOrders || []).filter(o => o.status === 'pending');
+  const pendingRides = (state.rideBookings || []).filter(b => b.status === 'finding');
+  const totalPending = pendingFood.length + pendingRides.length;
+
+  if (totalPending > 0) {
+    if (!reminderInterval) {
+      triggerNotificationAlert(totalPending);
+      triggerVibrationAlert();
+      reminderInterval = setInterval(runReminderScheduler, 1000);
+    }
+  } else {
+    if (reminderInterval) {
+      clearInterval(reminderInterval);
+      reminderInterval = null;
+    }
+    if (navigator.vibrate) navigator.vibrate(0);
+    lastNotifyTime = 0;
+    lastVibrateTime = 0;
+  }
+}
+
+function runReminderScheduler() {
+  if (!loggedInPartner) {
+    if (reminderInterval) {
+      clearInterval(reminderInterval);
+      reminderInterval = null;
+    }
+    if (navigator.vibrate) navigator.vibrate(0);
+    return;
+  }
+  const now = Date.now();
+  if (now - lastNotifyTime >= 120000) { // 2 mins
+    const state = window.syncEngine.getData() || {};
+    const pendingFood = (state.foodOrders || []).filter(o => o.status === 'pending');
+    const pendingRides = (state.rideBookings || []).filter(b => b.status === 'finding');
+    triggerNotificationAlert(pendingFood.length + pendingRides.length);
+  }
+  if (now - lastVibrateTime >= 300000) { // 5 mins
+    triggerVibrationAlert();
+  }
+}
+
+function triggerNotificationAlert(count) {
+  lastNotifyTime = Date.now();
+  notificationSound.play().catch(e => console.log('Audio playback delayed:', e));
+  toast(`⚠️ Warning: You have ${count} pending tasks waiting!`);
+}
+
+function triggerVibrationAlert() {
+  lastVibrateTime = Date.now();
+  if (navigator.vibrate) {
+    const pattern = [];
+    for (let i = 0; i < 14; i++) {
+      pattern.push(500, 250);
+    }
+    navigator.vibrate(pattern);
+    toast('📳 Device vibrating: New pending task needs attention!');
+  }
+}
+
 window.syncEngine.subscribe(() => {
   renderData();
 });
@@ -724,6 +824,7 @@ function renderData() {
         }, 100);
       });
     }
+    checkAlertReminders();
 }
 
 async function addMenuItem() {
