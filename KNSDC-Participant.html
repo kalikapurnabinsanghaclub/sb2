@@ -310,9 +310,8 @@
         <div class="fg" style="margin-bottom:15px;">
           <label>Ride Type</label>
           <select id="ride-vehicle-type" onchange="updateEstimatedFare()" style="padding: 10px;">
-            <option value="bike">🏍️ Bike Taxi — ₹12/km + fees</option>
-            <option value="auto">🛺 Auto Rickshaw — ₹15/km + fees</option>
-            <option value="cab">🚗 Mini Cab — ₹20/km + fees</option>
+            <option value="bike">🏍️ Bike Taxi (Max 2 Persons) — ₹10/km + fees</option>
+            <option value="toto">🛺 Toto Rickshaw — ₹25/km + fees</option>
           </select>
         </div>
 
@@ -322,7 +321,7 @@
             <span id="ride-calculated-distance" style="font-weight: 700; color: var(--accent);">0.00 km</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Base Fare (₹12/km):</span>
+            <span id="ride-base-fare-label">Base Fare (₹10/km):</span>
             <span id="ride-base-fare">₹0.00</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
@@ -3373,7 +3372,12 @@ window.searchAddress = async function(type) {
 
   toast('🔍 Searching address...');
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+    let searchQuery = query;
+    const lowerQuery = query.toLowerCase();
+    if (!lowerQuery.includes('west bengal') && !lowerQuery.includes('kolkata') && !lowerQuery.includes('india') && !lowerQuery.includes('parganas')) {
+      searchQuery = query + ", West Bengal, India";
+    }
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1&viewbox=85.5,21.5,89.5,27.5`);
     const data = await res.json();
     if (data && data.length > 0) {
       const lat = parseFloat(data[0].lat);
@@ -3438,8 +3442,8 @@ window.updateEstimatedFare = function() {
   const vehicle = document.getElementById('ride-vehicle-type').value;
   
   // Custom Dynamic Base Fares per km
-  const baseRateMap = { bike: 12, auto: 15, cab: 20 };
-  const ratePerKm = baseRateMap[vehicle] || 12;
+  const baseRateMap = { bike: 10, toto: 25 };
+  const ratePerKm = baseRateMap[vehicle] || 10;
 
   const baseFare = calculatedDistanceKm * ratePerKm;
   const platformFee = calculatedDistanceKm * 0.5;
@@ -3448,6 +3452,11 @@ window.updateEstimatedFare = function() {
   const currentHour = new Date().getHours();
   const isNight = currentHour >= 22 || currentHour < 6;
   const nightPremium = isNight ? (calculatedDistanceKm * 5) : 0;
+
+  const baseFareLabel = document.getElementById('ride-base-fare-label');
+  if (baseFareLabel) {
+    baseFareLabel.innerText = `Base Fare (₹${ratePerKm}/km):`;
+  }
 
   document.getElementById('ride-base-fare').innerText = `₹${baseFare.toFixed(2)}`;
   document.getElementById('ride-platform-fee').innerText = `₹${platformFee.toFixed(2)}`;
