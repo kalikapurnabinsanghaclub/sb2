@@ -221,8 +221,12 @@ async function handleLogin(e) {
   if (window.syncEngine && window.syncEngine.signIn) {
     const res = await window.syncEngine.signIn(email, pass);
     if (res.success && (res.role === 'food_partner' || res.role === 'transport_partner' || res.role === 'service_partner')) {
-      const uPhone = res.user?.phone || res.user?.user_metadata?.phone || '';
-      loginSuccess({ name: res.user?.user_metadata?.fullname || email.split('@')[0], email, role: res.role, phone: uPhone });
+      const state = window.syncEngine.getData() || {};
+      const partners = state.partnerAssignments || [];
+      const dbPartner = partners.find(x => x.email.toLowerCase() === email);
+      const uPhone = dbPartner?.phone || res.user?.phone || res.user?.user_metadata?.phone || '';
+      const uName = dbPartner?.name || res.user?.user_metadata?.fullname || email.split('@')[0];
+      loginSuccess({ name: uName, email, role: res.role, phone: uPhone });
     } else {
       errEl.textContent = res.error || '❌ Invalid ID or password';
       errEl.style.display = 'block';
@@ -966,8 +970,12 @@ async function acceptRideBooking(bookingId) {
     return;
   }
 
-  const driverName = loggedInPartner.name || 'Service Partner';
-  const driverPhone = loggedInPartner.phone || '9999999999';
+  const state = window.syncEngine.getData() || {};
+  const partners = state.partnerAssignments || [];
+  const dbPartner = partners.find(x => x.email.toLowerCase() === loggedInPartner.email.toLowerCase());
+
+  const driverName = dbPartner?.name || loggedInPartner.name || 'Service Partner';
+  const driverPhone = dbPartner?.phone || loggedInPartner.phone || '9999999999';
 
   window.syncEngine.setData(s => {
     const bookings = s.rideBookings || [];
