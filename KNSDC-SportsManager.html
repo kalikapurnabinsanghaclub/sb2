@@ -2802,6 +2802,55 @@
         rrrItem.classList.add('hidden');
         targetBanner.classList.add('hidden');
       }
+      
+      populateScorerPlayers();
+    }
+
+    function updateActivePlayer(role, playerId) {
+      if (!state.liveScorer) return;
+      if (role === 'striker') state.liveScorer.strikerId = playerId;
+      if (role === 'nonStriker') state.liveScorer.nonStrikerId = playerId;
+      if (role === 'bowler') state.liveScorer.bowlerId = playerId;
+      saveState();
+    }
+
+    function populateScorerPlayers() {
+      const sc = state.liveScorer;
+      if (!sc) return;
+
+      const strikerSelect = document.getElementById('score-striker');
+      const nonStrikerSelect = document.getElementById('score-non-striker');
+      const bowlerSelect = document.getElementById('score-bowler');
+      
+      const unifiedTeams = getUnifiedTeams();
+      const battingTeam = unifiedTeams.find(t => String(t.id) === String(sc.battingTeamId));
+      const bowlingTeam = unifiedTeams.find(t => String(t.id) === String(sc.bowlingTeamId));
+
+      let batOptions = '<option value="">-- Select Batsman --</option>';
+      if (battingTeam && battingTeam.players && battingTeam.players.length > 0) {
+        battingTeam.players.forEach(p => {
+          batOptions += `<option value="${p.id}">${p.name}</option>`;
+        });
+      } else {
+        batOptions += `<option value="unknown">Unknown Player</option>`;
+      }
+
+      let bowlOptions = '<option value="">-- Select Bowler --</option>';
+      if (bowlingTeam && bowlingTeam.players && bowlingTeam.players.length > 0) {
+        bowlingTeam.players.forEach(p => {
+          bowlOptions += `<option value="${p.id}">${p.name}</option>`;
+        });
+      } else {
+        bowlOptions += `<option value="unknown">Unknown Player</option>`;
+      }
+
+      if (strikerSelect.innerHTML !== batOptions) strikerSelect.innerHTML = batOptions;
+      if (nonStrikerSelect.innerHTML !== batOptions) nonStrikerSelect.innerHTML = batOptions;
+      if (bowlerSelect.innerHTML !== bowlOptions) bowlerSelect.innerHTML = bowlOptions;
+
+      strikerSelect.value = sc.strikerId || '';
+      nonStrikerSelect.value = sc.nonStrikerId || '';
+      bowlerSelect.value = sc.bowlerId || '';
     }
 
     function endInningsTrigger() {
@@ -2819,6 +2868,14 @@
           const temp = sc.battingTeamName;
           sc.battingTeamName = sc.bowlingTeamName;
           sc.bowlingTeamName = temp;
+          
+          const tempId = sc.battingTeamId;
+          sc.battingTeamId = sc.bowlingTeamId;
+          sc.bowlingTeamId = tempId;
+
+          sc.strikerId = '';
+          sc.nonStrikerId = '';
+          sc.bowlerId = '';
           
           // Reset runs & counts for 2nd Innings
           sc.runs = 0;
