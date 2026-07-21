@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS public.staff_credentials (
     email         TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,       -- SHA-256 hex of plaintext password
     name          TEXT NOT NULL,
-    role          TEXT NOT NULL CHECK (role IN ('admin','monitor','host','judge')),
+    role          TEXT NOT NULL CHECK (role IN ('admin','monitor','host','judge','sportsmanager')),
     active        BOOLEAN DEFAULT true,
     created_at    TIMESTAMPTZ DEFAULT NOW(),
     updated_at    TIMESTAMPTZ DEFAULT NOW()

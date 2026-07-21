@@ -27,7 +27,7 @@ ALTER TABLE public.sync_state ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "sync_state_public_all" ON public.sync_state;
 CREATE POLICY "sync_state_public_all"
     ON public.sync_state FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- Seed the initial state row (knsdc_global_sync is the hardcoded ID in localSync-v4.js)
 INSERT INTO public.sync_state (id, payload)
@@ -82,11 +82,11 @@ DROP POLICY IF EXISTS "staff_read_all"   ON public.staff_credentials;
 DROP POLICY IF EXISTS "staff_manage_all" ON public.staff_credentials;
 
 CREATE POLICY "staff_read_all"
-    ON public.staff_credentials FOR SELECT USING (true);
+    ON public.staff_credentials FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "staff_manage_all"
     ON public.staff_credentials FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ── Default staff accounts ────────────────────────────────────
 -- SHA-256 hashes computed with Web Crypto API (same as localSync-v4.js sha256()):
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS public.judge_credentials (
     password_hash TEXT NOT NULL,
     name          TEXT NOT NULL,
     event_id      TEXT,
-    agreement_id  INTEGER,
+    agreement_id  BIGINT,
     created_at    TIMESTAMPTZ DEFAULT NOW(),
     updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -139,11 +139,11 @@ DROP POLICY IF EXISTS "judge_creds_read"   ON public.judge_credentials;
 DROP POLICY IF EXISTS "judge_creds_upsert" ON public.judge_credentials;
 
 CREATE POLICY "judge_creds_read"
-    ON public.judge_credentials FOR SELECT USING (true);
+    ON public.judge_credentials FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "judge_creds_upsert"
     ON public.judge_credentials FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -152,7 +152,7 @@ CREATE POLICY "judge_creds_upsert"
 -- ══════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS public.public_registrations (
-    id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id         TEXT PRIMARY KEY,            -- custom string IDs like OZ0715 used by the app
     event_id   TEXT,                        -- stored as text to match local event IDs
     name       TEXT NOT NULL,
     phone      TEXT NOT NULL,
@@ -164,9 +164,14 @@ CREATE TABLE IF NOT EXISTS public.public_registrations (
     timestamp  BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
     status     TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','waitlist')),
     notes      TEXT,
-    form_data  JSONB DEFAULT '{}'::jsonb,   -- stores all custom form fields
+    form_data  JSONB DEFAULT '{}'::jsonb,   -- stores all custom form fields + _formLocked flag
+    scores     JSONB DEFAULT '{}'::jsonb,   -- judge scores: { judgeId: { subjectId: value } }
+    round_scores JSONB DEFAULT '{}'::jsonb, -- per-round scores: { round: { judgeId: { subjectId: value } } }
+    round_comments JSONB DEFAULT '{}'::jsonb, -- per-round comments: { round: { judgeId: comment } }
+    comment    TEXT,                        -- backward-compat global comment field
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
 
 ALTER TABLE public.public_registrations ENABLE ROW LEVEL SECURITY;
 
@@ -175,14 +180,14 @@ DROP POLICY IF EXISTS "pub_reg_read"   ON public.public_registrations;
 DROP POLICY IF EXISTS "pub_reg_all"    ON public.public_registrations;
 
 CREATE POLICY "pub_reg_insert"
-    ON public.public_registrations FOR INSERT WITH CHECK (true);
+    ON public.public_registrations FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
 CREATE POLICY "pub_reg_read"
-    ON public.public_registrations FOR SELECT USING (true);
+    ON public.public_registrations FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "pub_reg_all"
     ON public.public_registrations FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -203,6 +208,7 @@ CREATE TABLE IF NOT EXISTS public.events (
     "stagePreview"  BOOLEAN DEFAULT false,
     "resultPublic"  BOOLEAN DEFAULT false,
     active          BOOLEAN DEFAULT false,
+    switch_states   JSONB DEFAULT '{}'::jsonb,
     form_fields     JSONB DEFAULT '[]'::jsonb,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -213,11 +219,11 @@ DROP POLICY IF EXISTS "events_read"   ON public.events;
 DROP POLICY IF EXISTS "events_manage" ON public.events;
 
 CREATE POLICY "events_read"
-    ON public.events FOR SELECT USING (true);
+    ON public.events FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "events_manage"
     ON public.events FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -241,11 +247,11 @@ DROP POLICY IF EXISTS "past_events_read"   ON public.past_events;
 DROP POLICY IF EXISTS "past_events_manage" ON public.past_events;
 
 CREATE POLICY "past_events_read"
-    ON public.past_events FOR SELECT USING (true);
+    ON public.past_events FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "past_events_manage"
     ON public.past_events FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -266,11 +272,11 @@ DROP POLICY IF EXISTS "gallery_read"   ON public.gallery_images;
 DROP POLICY IF EXISTS "gallery_manage" ON public.gallery_images;
 
 CREATE POLICY "gallery_read"
-    ON public.gallery_images FOR SELECT USING (true);
+    ON public.gallery_images FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "gallery_manage"
     ON public.gallery_images FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -293,11 +299,11 @@ DROP POLICY IF EXISTS "notices_read"   ON public.notices;
 DROP POLICY IF EXISTS "notices_manage" ON public.notices;
 
 CREATE POLICY "notices_read"
-    ON public.notices FOR SELECT USING (true);
+    ON public.notices FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "notices_manage"
     ON public.notices FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 INSERT INTO public.notices (title, date, priority, content, pinned) VALUES
   ('Dance Championship Registration Open', CURRENT_DATE, 'urgent',
@@ -330,11 +336,11 @@ DROP POLICY IF EXISTS "donations_read"   ON public.donations;
 DROP POLICY IF EXISTS "donations_manage" ON public.donations;
 
 CREATE POLICY "donations_read"
-    ON public.donations FOR SELECT USING (true);
+    ON public.donations FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "donations_manage"
     ON public.donations FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 INSERT INTO public.donations (name, target, raised, icon, color) VALUES
   ('Annual Fast Fund',      50000,  32500, '🙏', '#FF6B35'),
@@ -364,11 +370,11 @@ DROP POLICY IF EXISTS "work_items_read"   ON public.work_items;
 DROP POLICY IF EXISTS "work_items_manage" ON public.work_items;
 
 CREATE POLICY "work_items_read"
-    ON public.work_items FOR SELECT USING (true);
+    ON public.work_items FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "work_items_manage"
     ON public.work_items FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -389,11 +395,11 @@ DROP POLICY IF EXISTS "team_read"   ON public.team_members;
 DROP POLICY IF EXISTS "team_manage" ON public.team_members;
 
 CREATE POLICY "team_read"
-    ON public.team_members FOR SELECT USING (true);
+    ON public.team_members FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "team_manage"
     ON public.team_members FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -414,11 +420,11 @@ DROP POLICY IF EXISTS "partners_read"   ON public.partners;
 DROP POLICY IF EXISTS "partners_manage" ON public.partners;
 
 CREATE POLICY "partners_read"
-    ON public.partners FOR SELECT USING (true);
+    ON public.partners FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "partners_manage"
     ON public.partners FOR ALL
-    USING (true) WITH CHECK (true);
+    USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 
 -- ══════════════════════════════════════════════════════════════
@@ -441,10 +447,10 @@ DROP POLICY IF EXISTS "eco_log_read"   ON public.ecosystem_log;
 DROP POLICY IF EXISTS "eco_log_insert" ON public.ecosystem_log;
 
 CREATE POLICY "eco_log_read"
-    ON public.ecosystem_log FOR SELECT USING (true);
+    ON public.ecosystem_log FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "eco_log_insert"
-    ON public.ecosystem_log FOR INSERT WITH CHECK (true);
+    ON public.ecosystem_log FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
 -- Seed some example log entries so Ecosystem Dashboard has data immediately
 INSERT INTO public.ecosystem_log (role, action, target_role, payload) VALUES
@@ -559,9 +565,9 @@ CREATE TABLE IF NOT EXISTS public.categories (
 
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "categories_read" ON public.categories;
-CREATE POLICY "categories_read" ON public.categories FOR SELECT USING (true);
+CREATE POLICY "categories_read" ON public.categories FOR SELECT USING (auth.uid() IS NOT NULL);
 DROP POLICY IF EXISTS "categories_manage" ON public.categories;
-CREATE POLICY "categories_manage" ON public.categories FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "categories_manage" ON public.categories FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ==========================================
 -- 16. VENUES TABLE
@@ -577,6 +583,45 @@ CREATE TABLE IF NOT EXISTS public.venues (
 
 ALTER TABLE public.venues ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "venues_read" ON public.venues;
-CREATE POLICY "venues_read" ON public.venues FOR SELECT USING (true);
+CREATE POLICY "venues_read" ON public.venues FOR SELECT USING (auth.uid() IS NOT NULL);
 DROP POLICY IF EXISTS "venues_manage" ON public.venues;
-CREATE POLICY "venues_manage" ON public.venues FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "venues_manage" ON public.venues FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+
+-- ==========================================
+-- MIGRATION: Fix public_registrations schema
+-- Run this if the table already exists with old schema (UUID id, missing score columns)
+-- ==========================================
+DO $$
+BEGIN
+    -- Add scores column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'scores'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN scores JSONB DEFAULT '{}'::jsonb;
+    END IF;
+
+    -- Add round_scores column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'round_scores'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN round_scores JSONB DEFAULT '{}'::jsonb;
+    END IF;
+
+    -- Add round_comments column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'round_comments'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN round_comments JSONB DEFAULT '{}'::jsonb;
+    END IF;
+
+    -- Add comment column if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'public_registrations' AND column_name = 'comment'
+    ) THEN
+        ALTER TABLE public.public_registrations ADD COLUMN comment TEXT;
+    END IF;
+END $$;
