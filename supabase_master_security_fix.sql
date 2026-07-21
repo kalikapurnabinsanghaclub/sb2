@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS public.events (
     active          BOOLEAN DEFAULT false,
     switch_states   JSONB DEFAULT '{}'::jsonb,
     form_fields     JSONB DEFAULT '[]'::jsonb,
+    staff           JSONB DEFAULT '[]'::jsonb,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
