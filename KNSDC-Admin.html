@@ -1396,6 +1396,7 @@
         <div class="fg"><label class="fl">Venue</label><select id="er-venue"></select></div>
         <div class="fg"><label class="fl">Present Status</label><select id="er-present"><option value="true">✓ Present</option><option value="false">✗ Absent</option></select></div>
       </div>
+      <div id="er-custom-fields" style="margin-top: 15px; padding: 15px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px dashed #cbd5e1; display: none;"></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeM('edit-reg-modal')">Cancel</button>
@@ -1667,6 +1668,7 @@
         <div class="fg"><label class="fl">Venue</label><select id="er-venue"></select></div>
         <div class="fg"><label class="fl">Present Status</label><select id="er-present"><option value="true">✓ Present</option><option value="false">✗ Absent</option></select></div>
       </div>
+      <div id="er-custom-fields" style="margin-top: 15px; padding: 15px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px dashed #cbd5e1; display: none;"></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeM('edit-reg-modal')">Cancel</button>
@@ -2587,7 +2589,7 @@ window.renderAdminParticipants = (state) => {
   html += filteredParts.map(p => {
     const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
     return `
-      <tr>
+      <tr onclick="window.viewAdminParticipant('${p.id}')" style="cursor:pointer; transition:0.2s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
         <td style="font-weight:700">#${p.id || '-'}</td>
         <td style="font-weight:700">${p.name || '-'}</td>
         <td>${p.phone || '-'}</td>
@@ -2601,6 +2603,85 @@ window.renderAdminParticipants = (state) => {
 
 window.renderPublicRegs = (state) => {
   // Merged into renderAdminParticipants
+};
+
+window.viewAdminParticipant = (id) => {
+  const state = window.syncEngine ? window.syncEngine.getData() : {};
+  const p = (state.participants || []).find(x => String(x.id) === String(id));
+  if (!p) return;
+  
+  // Try to use the first active modal (since there are duplicates in the HTML)
+  const modals = document.querySelectorAll('#edit-reg-modal');
+  const activeModal = modals.length > 0 ? modals[0] : null;
+  if (!activeModal) return;
+
+  const idInputs = activeModal.querySelectorAll('#er-id');
+  if (idInputs.length > 0) idInputs[0].value = p.id;
+  
+  const nameInputs = activeModal.querySelectorAll('#er-name');
+  if (nameInputs.length > 0) nameInputs[0].value = p.name || '';
+  
+  const phoneInputs = activeModal.querySelectorAll('#er-phone');
+  if (phoneInputs.length > 0) phoneInputs[0].value = p.phone || '';
+  
+  const ageInputs = activeModal.querySelectorAll('#er-age');
+  if (ageInputs.length > 0) ageInputs[0].value = p.age || '';
+
+  // Render custom fields
+  const customFieldsContainers = activeModal.querySelectorAll('#er-custom-fields');
+  if (customFieldsContainers.length > 0 && p.formAnswers) {
+    const customContainer = customFieldsContainers[0];
+    customContainer.innerHTML = '';
+    
+    if (Object.keys(p.formAnswers).length > 0) {
+      customContainer.style.display = 'block';
+      let html = '<div style="font-size:12px; font-weight:800; color:var(--text-muted); margin-bottom:10px; text-transform:uppercase;">Custom Form Answers</div>';
+      
+      Object.entries(p.formAnswers).forEach(([k, v]) => {
+        let displayVal = v;
+        
+        // Detect Player List Builder array
+        if (typeof v === 'string' && v.startsWith('[') && v.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(v);
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].role !== undefined) {
+              displayVal = '<div style="margin-top:8px; display:grid; gap:8px;">';
+              parsed.forEach(player => {
+                const badgeStyle = player.isCaptain ? 'background:#fef08a; color:#854d0e; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800;' : 'background:#e2e8f0; color:#475569; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700;';
+                displayVal += `
+                  <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px;">
+                    <div style="font-weight:700; font-size:13px; color:#1e293b;">${player.name}</div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                      ${player.isCaptain ? `<span style="${badgeStyle}">CAPTAIN</span>` : ''}
+                      <span style="${player.isCaptain ? 'background:#e2e8f0; color:#475569; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700;' : badgeStyle}">${player.role || 'Player'}</span>
+                    </div>
+                  </div>
+                `;
+              });
+              displayVal += '</div>';
+            }
+          } catch(e) {}
+        }
+        
+        // Render simple strings
+        if (!displayVal.toString().includes('<div')) {
+           displayVal = `<div style="font-weight:600; font-size:13px; color:#1e293b;">${displayVal}</div>`;
+        }
+
+        html += `
+          <div style="margin-bottom: 12px;">
+            <div style="font-size:11px; color:#64748b; font-weight:600; margin-bottom:2px;">${k}</div>
+            ${displayVal}
+          </div>
+        `;
+      });
+      customContainer.innerHTML = html;
+    } else {
+      customContainer.style.display = 'none';
+    }
+  }
+
+  activeModal.style.display = 'flex';
 };
 
 window.populateDropdowns = (state) => {

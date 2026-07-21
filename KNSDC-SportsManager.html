@@ -1019,6 +1019,19 @@
                 <div class="color-preset" style="background: #8b5cf6;" data-color="#8b5cf6"></div>
                 <div class="color-preset" style="background: #ec4899;" data-color="#ec4899"></div>
               </div>
+            <div class="form-group">
+              <label for="teamPhone">Contact Phone</label>
+              <input type="text" id="teamPhone" placeholder="Captain/Manager Phone">
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top: 15px;">
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Squad Players</label>
+              <div style="background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:10px;">
+                 <div id="sp-list"></div>
+                 <button type="button" class="btn btn-outline btn-sm" onclick="addSquadPlayer()" style="align-self:flex-start;">+ Add Player</button>
+              </div>
             </div>
           </div>
           <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Register Team</button>
@@ -1282,6 +1295,7 @@
               <option value="text">Text Input</option>
               <option value="number">Number Input</option>
               <option value="select">Category Choice</option>
+              <option value="player-list">Team Player List Builder</option>
             </select>
           </div>
         </div>
@@ -1644,22 +1658,89 @@
     }
 
     // --- TEAMS TAB CONTROLLER ---
+    let squadPlayers = [];
+    
+    function addSquadPlayer() {
+      const id = Date.now() + Math.floor(Math.random() * 1000);
+      squadPlayers.push({ id, name: '', role: '', isCaptain: false });
+      renderSquadPlayers();
+    }
+    
+    function removeSquadPlayer(id) {
+      squadPlayers = squadPlayers.filter(p => p.id !== id);
+      renderSquadPlayers();
+    }
+    
+    function updateSquadPlayer(id, field, value) {
+      const p = squadPlayers.find(x => x.id === id);
+      if (p) p[field] = value;
+    }
+    
+    function renderSquadPlayers() {
+      const container = document.getElementById('sp-list');
+      if (!container) return;
+      container.innerHTML = '';
+      
+      if (squadPlayers.length === 0) {
+        container.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic;">No players added. Click "+ Add Player" to build the squad.</div>';
+        return;
+      }
+      
+      squadPlayers.forEach((p, idx) => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.gap = '8px';
+        row.style.alignItems = 'center';
+        row.style.marginBottom = '8px';
+        
+        row.innerHTML = `
+          <input type="text" placeholder="Player Name" value="${p.name}" onchange="updateSquadPlayer(${p.id}, 'name', this.value)" style="flex:1; padding:6px 10px; font-size:13px; border-radius:6px;">
+          <select onchange="updateSquadPlayer(${p.id}, 'role', this.value)" style="width:120px; padding:6px 10px; font-size:13px; border-radius:6px; background:#fff;">
+            <option value="" ${p.role === '' ? 'selected' : ''}>-- Role --</option>
+            <option value="Batsman" ${p.role === 'Batsman' ? 'selected' : ''}>Batsman</option>
+            <option value="Bowler" ${p.role === 'Bowler' ? 'selected' : ''}>Bowler</option>
+            <option value="Allrounder" ${p.role === 'Allrounder' ? 'selected' : ''}>Allrounder</option>
+            <option value="Goalkeeper" ${p.role === 'Goalkeeper' ? 'selected' : ''}>Goalkeeper</option>
+          </select>
+          <label style="display:flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--text-muted); cursor:pointer;">
+            <input type="checkbox" ${p.isCaptain ? 'checked' : ''} onchange="updateSquadPlayer(${p.id}, 'isCaptain', this.checked)"> Capt
+          </label>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="removeSquadPlayer(${p.id})" style="color:red; padding:4px 8px;">✕</button>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    // Initialize an empty squad list on load
+    window.addEventListener('load', () => setTimeout(() => renderSquadPlayers(), 500));
+
     function handleTeamRegister(event) {
       event.preventDefault();
       const input = document.getElementById('teamName');
+      const phoneInput = document.getElementById('teamPhone');
       const name = input.value.trim();
       if (!name) return;
 
       const teamId = 'team_' + Date.now();
+      
+      // Filter out empty player names
+      const validPlayers = squadPlayers.filter(p => p.name.trim() !== '');
+
       const newTeam = {
         id: teamId,
         name: name,
+        phone: phoneInput ? phoneInput.value.trim() : '',
         color: selectedColor,
-        membersCount: 11 // default squad size
+        players: validPlayers,
+        membersCount: validPlayers.length > 0 ? validPlayers.length : 11 // default squad size if no players provided
       };
 
       state.teams.push(newTeam);
+      
       input.value = '';
+      if (phoneInput) phoneInput.value = '';
+      squadPlayers = [];
+      renderSquadPlayers();
       
       saveState();
       renderTeams();
@@ -1691,15 +1772,34 @@
       state.teams.forEach(team => {
         const item = document.createElement('div');
         item.className = 'team-card';
+        
+        // Build players HTML
+        let playersHtml = '';
+        if (team.players && team.players.length > 0) {
+           playersHtml = '<div style="margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 10px; font-size: 11px;">';
+           team.players.forEach(p => {
+              const badgeStyle = p.isCaptain ? 'background:#fef08a; color:#854d0e; padding:1px 4px; border-radius:3px; font-weight:800; margin-right:4px;' : 'background:#e2e8f0; color:#475569; padding:1px 4px; border-radius:3px; font-weight:700; margin-right:4px;';
+              playersHtml += `<div style="margin-bottom:4px; display:flex; justify-content:space-between;">
+                <div><b>${p.name}</b> ${team.phone && p.isCaptain ? `<span style="color:#94a3b8">(${team.phone})</span>` : ''}</div>
+                <div>
+                  ${p.isCaptain ? `<span style="${badgeStyle}">C</span>` : ''}
+                  <span style="color:#64748b;">${p.role || ''}</span>
+                </div>
+              </div>`;
+           });
+           playersHtml += '</div>';
+        }
+
         item.innerHTML = `
-          <div class="team-info">
-            <div class="team-color-badge" style="background: ${team.color}"></div>
-            <div>
+          <div class="team-info" style="align-items: flex-start;">
+            <div class="team-color-badge" style="background: ${team.color}; margin-top: 4px;"></div>
+            <div style="flex:1;">
               <div class="team-name">${team.name}</div>
-              <div class="team-members-count">${team.membersCount} Squad Players</div>
+              <div class="team-members-count">${team.membersCount} Squad Players ${team.phone && (!team.players || team.players.length===0) ? ` • 📞 ${team.phone}` : ''}</div>
+              ${playersHtml}
             </div>
           </div>
-          <button class="delete-btn" onclick="deleteTeam('${team.id}')" title="Delete Team">🗑️</button>
+          <button class="delete-btn" onclick="deleteTeam('${team.id}')" title="Delete Team" style="align-self:flex-start;">🗑️</button>
         `;
         container.appendChild(item);
       });
