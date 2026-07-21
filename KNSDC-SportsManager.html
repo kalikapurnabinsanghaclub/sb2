@@ -1408,7 +1408,53 @@
     </div>
   </div>
 
-  </main>
+  <!-- Fixture Modal -->
+  <div id="fixture-modal" class="modal-overlay">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 id="fixture-modal-title">Edit Fixture</h3>
+        <button class="modal-close" onclick="closeFixtureModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Team A (Home)</label>
+            <select id="fixture-team-a" class="modal-input" required></select>
+          </div>
+          <div class="form-group">
+            <label>Team B (Away)</label>
+            <select id="fixture-team-b" class="modal-input" required></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Stage / Pipeline</label>
+          <select id="fixture-stage" class="modal-input" required>
+            <option value="Group Stage">Group Stage</option>
+            <option value="1st Round">1st Round</option>
+            <option value="Qualifier Round">Qualifier Round</option>
+            <option value="Quarter Final">Quarter Final</option>
+            <option value="Semi Final">Semi Final</option>
+            <option value="Final">Final</option>
+            <option value="Custom">Custom Match</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date & Time</label>
+            <input type="datetime-local" id="fixture-datetime" class="modal-input">
+          </div>
+          <div class="form-group">
+            <label>Venue</label>
+            <input type="text" id="fixture-venue" class="modal-input" value="KNS Community Ground" placeholder="Enter venue">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn btn-outline" onclick="closeFixtureModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveFixtureModal()">Save Fixture</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     // State management & LocalStorage Key
@@ -2220,17 +2266,99 @@
       });
     }
 
-    function addCustomFixture() {
-      state.fixtures.push({
-        id: 'fix_custom_' + Date.now(),
-        teamA: { name: 'TBD', id: 'tbd_a' },
-        teamB: { name: 'TBD', id: 'tbd_b' },
-        stage: 'Custom Match',
-        venue: 'KNS Community Ground'
+    let currentEditingFixtureIndex = null;
+
+    function openFixtureModal(index = null) {
+      currentEditingFixtureIndex = index;
+      const modal = document.getElementById('fixture-modal');
+      const title = document.getElementById('fixture-modal-title');
+      const teamASelect = document.getElementById('fixture-team-a');
+      const teamBSelect = document.getElementById('fixture-team-b');
+      const stageSelect = document.getElementById('fixture-stage');
+      const datetimeInput = document.getElementById('fixture-datetime');
+      const venueInput = document.getElementById('fixture-venue');
+
+      // Populate dropdowns
+      const unifiedTeams = getUnifiedTeams();
+      let teamOptions = '<option value="">-- Select Team --</option>';
+      unifiedTeams.forEach(t => {
+        teamOptions += `<option value="${t.id}">${t.name}</option>`;
       });
+      teamASelect.innerHTML = teamOptions;
+      teamBSelect.innerHTML = teamOptions;
+
+      if (index !== null) {
+        // Editing existing
+        title.innerText = "Edit Fixture";
+        const fix = state.fixtures[index];
+        teamASelect.value = fix.teamA.id || '';
+        teamBSelect.value = fix.teamB.id || '';
+        stageSelect.value = fix.stage || 'Custom Match';
+        venueInput.value = fix.venue || 'KNS Community Ground';
+        datetimeInput.value = fix.time && fix.time !== 'TBD' ? fix.time : '';
+      } else {
+        // Adding new custom
+        title.innerText = "Add Custom Fixture";
+        teamASelect.value = '';
+        teamBSelect.value = '';
+        stageSelect.value = 'Custom Match';
+        datetimeInput.value = '';
+        venueInput.value = 'KNS Community Ground';
+      }
+
+      modal.classList.add('active');
+    }
+
+    function closeFixtureModal() {
+      document.getElementById('fixture-modal').classList.remove('active');
+      currentEditingFixtureIndex = null;
+    }
+
+    function saveFixtureModal() {
+      const teamAId = document.getElementById('fixture-team-a').value;
+      const teamBId = document.getElementById('fixture-team-b').value;
+      const stage = document.getElementById('fixture-stage').value;
+      const time = document.getElementById('fixture-datetime').value || 'TBD';
+      const venue = document.getElementById('fixture-venue').value || 'KNS Community Ground';
+
+      if (!teamAId || !teamBId) {
+        alert("Please select both Team A and Team B.");
+        return;
+      }
+
+      const unifiedTeams = getUnifiedTeams();
+      const teamA = unifiedTeams.find(t => t.id === teamAId) || { name: 'Unknown', id: teamAId };
+      const teamB = unifiedTeams.find(t => t.id === teamBId) || { name: 'Unknown', id: teamBId };
+
+      if (currentEditingFixtureIndex !== null) {
+        // Update existing
+        const fix = state.fixtures[currentEditingFixtureIndex];
+        fix.teamA = teamA;
+        fix.teamB = teamB;
+        fix.stage = stage;
+        fix.time = time;
+        fix.venue = venue;
+      } else {
+        // Create new
+        state.fixtures.push({
+          id: 'fix_custom_' + Date.now(),
+          teamA: teamA,
+          teamB: teamB,
+          stage: stage,
+          time: time,
+          venue: venue
+        });
+      }
+
       saveState();
       renderFixtures();
       updateDashboardStats();
+      closeFixtureModal();
+    }
+
+    // Redirect the old addCustomFixture button to the modal
+    function addCustomFixture() {
+      openFixtureModal(null);
     }
 
     function renderGroups() {
@@ -2320,27 +2448,7 @@
     }
 
     function editFixture(index) {
-      const fix = state.fixtures[index];
-      
-      const newTeamA = prompt("Edit Team A Name:", fix.teamA.name);
-      if (newTeamA === null) return;
-      
-      const newTeamB = prompt("Edit Team B Name:", fix.teamB.name);
-      if (newTeamB === null) return;
-      
-      const newStage = prompt("Edit Stage (e.g. Group A, Semi Final):", fix.stage || "");
-      if (newStage === null) return;
-      
-      const newVenue = prompt("Edit Venue:", fix.venue || "");
-      if (newVenue === null) return;
-      
-      fix.teamA.name = newTeamA.trim();
-      fix.teamB.name = newTeamB.trim();
-      fix.stage = newStage.trim();
-      fix.venue = newVenue.trim();
-      
-      saveState();
-      renderFixtures();
+      openFixtureModal(index);
     }
 
     function loadFixtureToMatchSetup(index) {
