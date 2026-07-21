@@ -1478,6 +1478,71 @@
     </div>
   </div>
 
+  <!-- Wicket Modal -->
+  <div id="wicket-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>Wicket Details</h3>
+        <button class="modal-close" onclick="document.getElementById('wicket-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 15px;">
+        <div class="form-group">
+          <label>Wicket Type</label>
+          <select id="wicket-type" class="modal-input" onchange="toggleFielderDropdown()">
+            <option value="Bowled">Bowled</option>
+            <option value="Caught">Caught</option>
+            <option value="Run Out">Run Out</option>
+            <option value="LBW">LBW</option>
+            <option value="Stumped">Stumped</option>
+            <option value="Hit Wicket">Hit Wicket</option>
+            <option value="Obstructing the Field">Obstructing the Field</option>
+            <option value="Retired Hurt">Retired Hurt</option>
+          </select>
+        </div>
+        
+        <div class="form-group" id="wicket-fielder-group" style="display: none;">
+          <label>Fielder (Bowling Team)</label>
+          <select id="wicket-fielder" class="modal-input"></select>
+        </div>
+        
+        <div class="form-group" id="wicket-who-out-group" style="display: none;">
+          <label>Who Got Out?</label>
+          <select id="wicket-who-out" class="modal-input"></select>
+        </div>
+        
+        <div class="form-group" style="margin-top: 20px;">
+          <label style="color: var(--danger); font-weight: bold;">New Batsman</label>
+          <select id="wicket-new-batsman" class="modal-input"></select>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn btn-outline" onclick="document.getElementById('wicket-modal').classList.remove('active')">Cancel</button>
+        <button class="btn btn-primary" style="background: var(--danger);" onclick="confirmWicket()">Confirm Wicket</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Next Bowler Modal -->
+  <div id="next-bowler-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>Over Complete!</h3>
+      </div>
+      <div class="modal-body" style="padding: 15px;">
+        <div style="text-align: center; margin-bottom: 20px; font-weight: 600; color: var(--accent);">
+          End of the over. Please select the next bowler.
+        </div>
+        <div class="form-group">
+          <label>Next Bowler</label>
+          <select id="next-bowler-select" class="modal-input"></select>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn btn-primary" onclick="confirmNextBowler()">Start Next Over</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // State management & LocalStorage Key
     const LS_KEY = 'KNSDC_SPORTS_MANAGER_STATE';
@@ -2636,11 +2701,9 @@
         sc.currentOverDeliveries.push(action);
         deliveryLog = `${currentBallStr}: ${action} run(s) from batting team`;
       } else if (action === 'W') {
-        sc.wickets++;
-        sc.ballsCount++;
-        sc.deliveries.push("W");
-        sc.currentOverDeliveries.push("W");
-        deliveryLog = `${currentBallStr}: 🔴 WICKET! OUT.`;
+        openWicketModal();
+        return; // Halt score processing until wicket is confirmed
+
       } else if (action === 'WD') {
         sc.runs += 1;
         sc.extras += 1;
@@ -2668,17 +2731,194 @@
       if (sc.ballsCount > 0 && sc.ballsCount % 6 === 0 && action !== 'WD' && action !== 'NB') {
         deliveryLog += ` | ⚠️ OVER COMPLETED.`;
         sc.currentOverDeliveries = []; // Reset current over ball track
+        
+        logCommentary(deliveryLog, false);
+        saveState();
+        updateScorerUI();
+        
+        promptNextBowler(); // Trigger modal to force next bowler selection
+      } else {
+        // Log action to panel normally if over didn't end
+        logCommentary(deliveryLog, action === 'W');
+
+        // Auto transition/Target check for 2nd innings
+        if (sc.targetScore && sc.runs >= sc.targetScore) {
+          logCommentary(`🎉 Match Finished! ${sc.battingTeamName} chased down the target successfully!`, false);
+          alert(`${sc.battingTeamName} won the match!`);
+        }
+
+        saveState();
+        updateScorerUI();
+      }
+    }
+
+    // --- ADVANCED WORKFLOW MODALS ---
+
+    function toggleFielderDropdown() {
+      const type = document.getElementById('wicket-type').value;
+      const fielderGroup = document.getElementById('wicket-fielder-group');
+      if (['Caught', 'Run Out', 'Stumped'].includes(type)) {
+        fielderGroup.style.display = 'block';
+      } else {
+        fielderGroup.style.display = 'none';
+      }
+    }
+
+    function openWicketModal() {
+      const sc = state.liveScorer;
+      const modal = document.getElementById('wicket-modal');
+      
+      const fielderSelect = document.getElementById('wicket-fielder');
+      const whoOutSelect = document.getElementById('wicket-who-out');
+      const newBatsmanSelect = document.getElementById('wicket-new-batsman');
+      
+      const unifiedTeams = getUnifiedTeams();
+      let battingTeam = unifiedTeams.find(t => String(t.id) === String(sc.battingTeamId)) || unifiedTeams.find(t => String(t.name).trim() === String(sc.battingTeamName).trim());
+      let bowlingTeam = unifiedTeams.find(t => String(t.id) === String(sc.bowlingTeamId)) || unifiedTeams.find(t => String(t.name).trim() === String(sc.bowlingTeamName).trim());
+
+      // Setup Fielder Dropdown
+      let fielderOptions = '<option value="">-- Select Fielder (Optional) --</option>';
+      if (bowlingTeam && bowlingTeam.players) {
+        bowlingTeam.players.forEach(p => fielderOptions += `<option value="${p.id}">${p.name}</option>`);
+      }
+      fielderSelect.innerHTML = fielderOptions;
+
+      // Setup Who Got Out Dropdown (Default Striker)
+      let strikerName = 'Striker', nonStrikerName = 'Non-Striker';
+      if (battingTeam && battingTeam.players) {
+        const str = battingTeam.players.find(p => p.id === sc.strikerId);
+        const ns = battingTeam.players.find(p => p.id === sc.nonStrikerId);
+        if (str) strikerName = str.name;
+        if (ns) nonStrikerName = ns.name;
+      }
+      whoOutSelect.innerHTML = `
+        <option value="striker">${strikerName} (Striker)</option>
+        <option value="nonStriker">${nonStrikerName} (Non-Striker)</option>
+      `;
+      // Only show who got out group for Run Out or Obstructing the Field, otherwise Striker is assumed
+      document.getElementById('wicket-type').onchange = () => {
+        toggleFielderDropdown();
+        const t = document.getElementById('wicket-type').value;
+        document.getElementById('wicket-who-out-group').style.display = ['Run Out', 'Obstructing the Field', 'Retired Hurt'].includes(t) ? 'block' : 'none';
+      };
+      document.getElementById('wicket-type').onchange(); // trigger initial layout
+
+      // Setup New Batsman Dropdown
+      let batOptions = '<option value="">-- Select Incoming Batsman --</option>';
+      if (battingTeam && battingTeam.players) {
+        battingTeam.players.forEach(p => {
+          if (p.id !== sc.strikerId && p.id !== sc.nonStrikerId) {
+            batOptions += `<option value="${p.id}">${p.name}</option>`;
+          }
+        });
+      }
+      newBatsmanSelect.innerHTML = batOptions;
+
+      modal.classList.add('active');
+    }
+
+    function confirmWicket() {
+      const sc = state.liveScorer;
+      const type = document.getElementById('wicket-type').value;
+      const fielderId = document.getElementById('wicket-fielder').value;
+      const whoOut = ['Run Out', 'Obstructing the Field', 'Retired Hurt'].includes(type) ? document.getElementById('wicket-who-out').value : 'striker';
+      const newBatsmanId = document.getElementById('wicket-new-batsman').value;
+
+      if (!newBatsmanId) {
+        alert("Please select the incoming batsman to continue.");
+        return;
       }
 
-      // Log action to panel
-      logCommentary(deliveryLog, action === 'W');
+      const unifiedTeams = getUnifiedTeams();
+      let battingTeam = unifiedTeams.find(t => String(t.id) === String(sc.battingTeamId)) || unifiedTeams.find(t => String(t.name).trim() === String(sc.battingTeamName).trim());
+      let bowlingTeam = unifiedTeams.find(t => String(t.id) === String(sc.bowlingTeamId)) || unifiedTeams.find(t => String(t.name).trim() === String(sc.bowlingTeamName).trim());
 
-      // Auto transition/Target check for 2nd innings
-      if (sc.targetScore && sc.runs >= sc.targetScore) {
-        logCommentary(`🎉 Match Finished! ${sc.battingTeamName} chased down the target successfully!`, false);
-        alert(`${sc.battingTeamName} won the match!`);
+      let strikerName = 'Striker', bowlerName = 'Bowler', fielderName = '', outPlayerName = 'Striker';
+      if (battingTeam && battingTeam.players) {
+        const outPlayer = battingTeam.players.find(p => p.id === (whoOut === 'striker' ? sc.strikerId : sc.nonStrikerId));
+        if (outPlayer) outPlayerName = outPlayer.name;
+        
+        // Update the active player
+        if (whoOut === 'striker') sc.strikerId = newBatsmanId;
+        else sc.nonStrikerId = newBatsmanId;
       }
 
+      if (bowlingTeam && bowlingTeam.players) {
+        const b = bowlingTeam.players.find(p => p.id === sc.bowlerId);
+        if (b) bowlerName = b.name;
+        if (fielderId) {
+          const f = bowlingTeam.players.find(p => p.id === fielderId);
+          if (f) fielderName = f.name;
+        }
+      }
+
+      // Build commentary
+      const overNumber = Math.floor(sc.ballsCount / 6);
+      const ballInOverNum = (sc.ballsCount % 6) + 1;
+      let logStr = `${overNumber}.${ballInOverNum}: 🔴 WICKET! ${outPlayerName} is OUT (${type})`;
+      if (fielderName) logStr += ` by ${fielderName}`;
+      if (type !== 'Run Out' && type !== 'Retired Hurt' && type !== 'Obstructing the Field') logStr += ` b ${bowlerName}`;
+
+      // Update state
+      sc.wickets++;
+      sc.ballsCount++;
+      sc.deliveries.push("W");
+      sc.currentOverDeliveries.push("W");
+
+      logCommentary(logStr, true);
+      document.getElementById('wicket-modal').classList.remove('active');
+
+      // Check if over completed
+      if (sc.ballsCount > 0 && sc.ballsCount % 6 === 0) {
+        logCommentary(`⚠️ OVER COMPLETED.`, false);
+        sc.currentOverDeliveries = [];
+        saveState();
+        updateScorerUI();
+        promptNextBowler();
+      } else {
+        saveState();
+        updateScorerUI();
+      }
+    }
+
+    function promptNextBowler() {
+      const sc = state.liveScorer;
+      const modal = document.getElementById('next-bowler-modal');
+      const select = document.getElementById('next-bowler-select');
+
+      const unifiedTeams = getUnifiedTeams();
+      let bowlingTeam = unifiedTeams.find(t => String(t.id) === String(sc.bowlingTeamId)) || unifiedTeams.find(t => String(t.name).trim() === String(sc.bowlingTeamName).trim());
+
+      let options = '<option value="">-- Select Next Bowler --</option>';
+      if (bowlingTeam && bowlingTeam.players) {
+        bowlingTeam.players.forEach(p => {
+          if (p.id !== sc.bowlerId) { // Can't bowl consecutive overs
+            options += `<option value="${p.id}">${p.name}</option>`;
+          }
+        });
+      }
+      select.innerHTML = options;
+      modal.classList.add('active');
+    }
+
+    function confirmNextBowler() {
+      const sc = state.liveScorer;
+      const newBowlerId = document.getElementById('next-bowler-select').value;
+      if (!newBowlerId) {
+        alert("Please select the next bowler to continue.");
+        return;
+      }
+
+      sc.bowlerId = newBowlerId;
+      
+      // Automatically rotate strike at the end of the over
+      const temp = sc.strikerId;
+      sc.strikerId = sc.nonStrikerId;
+      sc.nonStrikerId = temp;
+
+      document.getElementById('next-bowler-modal').classList.remove('active');
+      logCommentary(`🔄 Over finished. Strike rotated. New bowler incoming.`, false);
+      
       saveState();
       updateScorerUI();
     }
