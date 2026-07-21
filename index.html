@@ -6459,19 +6459,31 @@
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
 
-      // 1. Prioritize explicitly active event from Monitor
+      // Helper: returns true if an event is a sports-type event
+      // (Sports events have their own live score section — never show in cultural #live section)
+      const isSportsEvent = (ev) => {
+        if (!ev) return false;
+        const cat = (ev.cat || ev.type || ev.category || '').toLowerCase();
+        return cat === 'sports' || cat === 'cricket' || cat === 'sport';
+      };
+
+      // 1. Prioritize explicitly active event from Monitor — but ONLY if it is NOT a sports event
       let liveEvent = null;
       if (state.activeEventId) {
-        liveEvent = EVENTS.find(e => String(e.id) === String(state.activeEventId));
+        const candidate = EVENTS.find(e => String(e.id) === String(state.activeEventId));
+        if (candidate && !isSportsEvent(candidate)) {
+          liveEvent = candidate;
+        }
       }
 
-      // 2. Fallback to today's event if no explicit active event
+      // 2. Fallback to today's cultural/non-sports event if no explicit active event
       if (!liveEvent) {
-        liveEvent = EVENTS.find(e => e.date === todayStr);
+        liveEvent = EVENTS.find(e => e.date === todayStr && !isSportsEvent(e));
       }
 
-      // Check if we have an active stage preview enabled
+      // Check if we have an active stage preview enabled (stagePreview must be explicitly true or not explicitly false)
       const hasLiveStage = liveEvent && liveEvent.switchStates?.stagePreview !== false;
+
 
       // Handle visibility of the live section and navigation links
       const liveSection = document.getElementById('live');
