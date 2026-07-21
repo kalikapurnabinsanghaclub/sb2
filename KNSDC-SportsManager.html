@@ -959,13 +959,24 @@
             <p style="font-size:13px; color:#3b82f6; font-weight:600; text-transform:uppercase;">Registration &amp; Event Control</p>
           </div>
           
-          <!-- Toggle Switch for Registration -->
-          <div style="display:flex; align-items:center; gap:12px; background:white; padding:10px 16px; border-radius:12px; border:1.5px solid #bfdbfe; box-shadow:var(--shadow);">
-            <span style="font-size:13px; font-weight:800; color:var(--text);">Team Registration Open</span>
-            <label class="switch">
-              <input type="checkbox" id="reg-toggle-switch" onchange="toggleTeamRegistration(this.checked)">
-              <span class="slider"></span>
-            </label>
+          <!-- Controls Row -->
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <!-- Toggle Switch for Registration -->
+            <div style="display:flex; align-items:center; gap:10px; background:white; padding:10px 16px; border-radius:12px; border:1.5px solid #bfdbfe; box-shadow:var(--shadow);">
+              <span style="font-size:13px; font-weight:800; color:var(--text);">Team Registration Open</span>
+              <label class="switch">
+                <input type="checkbox" id="reg-toggle-switch" onchange="toggleTeamRegistration(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <!-- Toggle Switch for Live Score Public Visibility -->
+            <div style="display:flex; align-items:center; gap:10px; background:white; padding:10px 16px; border-radius:12px; border:1.5px solid #bbf7d0; box-shadow:var(--shadow);">
+              <span style="font-size:13px; font-weight:800; color:var(--text);">Show Live Score to Public</span>
+              <label class="switch">
+                <input type="checkbox" id="public-score-toggle" onchange="togglePublicScore(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -1451,6 +1462,14 @@
       }
     }
 
+    // Toggle whether the live score is visible on the public page
+    function togglePublicScore(isOn) {
+      // Immediately re-call saveState which will push sportLiveScore with updated public flag
+      saveState();
+      const label = isOn ? '🟢 Live score is now visible on the public page' : '⚫ Live score is now hidden from public page';
+      console.log('[SportsManager] ' + label);
+    }
+
     async function toggleEventActiveStatus(isActive) {
       if (!assignedEvent) {
         alert("No assigned sports event found to change visibility!");
@@ -1583,6 +1602,29 @@
     function saveState() {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
       updateDashboardStats();
+      // Push live scorer to syncEngine so public page can read it
+      if (window.syncEngine) {
+        const publicScoreOn = document.getElementById('public-score-toggle')?.checked || false;
+        window.syncEngine.setData(s => ({
+          ...s,
+          sportLiveScore: {
+            public: publicScoreOn,
+            eventId: (window.assignedEvent && window.assignedEvent.id) || null,
+            eventName: (window.assignedEvent && (window.assignedEvent.name || window.assignedEvent.title)) || '',
+            battingTeam: state.liveScorer.battingTeamName,
+            bowlingTeam: state.liveScorer.bowlingTeamName,
+            runs: state.liveScorer.runs,
+            wickets: state.liveScorer.wickets,
+            ballsCount: state.liveScorer.ballsCount,
+            extras: state.liveScorer.extras,
+            oversLimit: state.liveScorer.oversLimit,
+            targetScore: state.liveScorer.targetScore,
+            matchStatus: state.liveScorer.matchStatus,
+            deliveries: state.liveScorer.deliveries,
+            updatedAt: Date.now()
+          }
+        }));
+      }
     }
 
     // Switch Tabs
