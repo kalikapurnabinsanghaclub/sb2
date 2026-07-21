@@ -962,13 +962,25 @@
             <p style="font-size:13px; color:#3b82f6; font-weight:600; text-transform:uppercase;">Registration &amp; Event Control</p>
           </div>
           
-          <!-- Toggle Switch for Registration -->
-          <div style="display:flex; align-items:center; gap:12px; background:white; padding:10px 16px; border-radius:12px; border:1.5px solid #bfdbfe; box-shadow:var(--shadow);">
-            <span style="font-size:13px; font-weight:800; color:var(--text);">Team Registration Open</span>
-            <label class="switch">
-              <input type="checkbox" id="reg-toggle-switch" onchange="toggleTeamRegistration(this.checked)">
-              <span class="slider"></span>
-            </label>
+          <!-- Controls Container -->
+          <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+            <!-- Toggle Switch for Registration -->
+            <div style="display:flex; align-items:center; gap:12px; background:white; padding:10px 16px; border-radius:12px; border:1.5px solid #bfdbfe; box-shadow:var(--shadow);">
+              <span style="font-size:13px; font-weight:800; color:var(--text);">Team Registration Open</span>
+              <label class="switch">
+                <input type="checkbox" id="reg-toggle-switch" onchange="toggleTeamRegistration(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <!-- Toggle Switch for Event Visibility (Show on Public Page) -->
+            <div style="display:flex; align-items:center; gap:12px; background:white; padding:10px 16px; border-radius:12px; border:1.5px solid #bfdbfe; box-shadow:var(--shadow);">
+              <span style="font-size:13px; font-weight:800; color:var(--text);">Show on Public Page</span>
+              <label class="switch">
+                <input type="checkbox" id="active-toggle-switch" onchange="toggleEventActiveStatus(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -1451,6 +1463,29 @@
       } catch (err) {
         console.error("Error toggling registration", err);
         document.getElementById('reg-toggle-switch').checked = !isOpen;
+      }
+    }
+
+    async function toggleEventActiveStatus(isActive) {
+      if (!assignedEvent) {
+        alert("No assigned sports event found to change visibility!");
+        document.getElementById('active-toggle-switch').checked = !isActive;
+        return;
+      }
+      if (!window.syncEngine) return;
+      
+      try {
+        const res = await window.syncEngine.updateEvent(assignedEvent.id, { active: isActive });
+        if (res === true || (res && res.success !== false)) {
+          assignedEvent.active = isActive;
+          console.log(`[SportsManager] Event active status set to: ${isActive}`);
+        } else {
+          alert(`Failed to update visibility status: ${res ? (res.error || res.message || JSON.stringify(res)) : 'Unknown error'}`);
+          document.getElementById('active-toggle-switch').checked = !isActive;
+        }
+      } catch (err) {
+        console.error("Error toggling event active status", err);
+        document.getElementById('active-toggle-switch').checked = !isActive;
       }
     }
 
@@ -2305,6 +2340,12 @@
           const regSwitch = document.getElementById('reg-toggle-switch');
           if (regSwitch) {
             regSwitch.checked = assignedEvent.publicReg === true;
+          }
+
+          // Set active visibility toggle switch
+          const activeSwitch = document.getElementById('active-toggle-switch');
+          if (activeSwitch) {
+            activeSwitch.checked = assignedEvent.active === true;
           }
 
           // Pre-fill setup fields
