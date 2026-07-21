@@ -1671,7 +1671,8 @@
     function updateDashboardStats() {
       const teamsCountEl = document.getElementById('dash-teams-count');
       const matchesCountEl = document.getElementById('dash-matches-count');
-      if (teamsCountEl) teamsCountEl.innerText = state.teams.length;
+      const unifiedTeams = getUnifiedTeams();
+      if (teamsCountEl) teamsCountEl.innerText = unifiedTeams.length;
       if (matchesCountEl) matchesCountEl.innerText = state.fixtures.length;
     }
 
@@ -2071,8 +2072,9 @@
     }
 
     function generateTournamentSchedule() {
-      if (state.teams.length < 2) {
-        alert("Please register at least 2 teams to generate a tournament!");
+      const unifiedTeams = getUnifiedTeams();
+      if (unifiedTeams.length < 2) {
+        alert("Not enough teams registered to generate fixtures. Minimum 2 teams required.");
         return;
       }
 
@@ -2084,12 +2086,12 @@
 
       if (state.format === 'round-robin') {
         // Round Robin Fixtures
-        for (let i = 0; i < state.teams.length; i++) {
-          for (let j = i + 1; j < state.teams.length; j++) {
+        for (let i = 0; i < unifiedTeams.length; i++) {
+          for (let j = i + 1; j < unifiedTeams.length; j++) {
             state.fixtures.push({
               id: 'fix_' + i + '_' + j + '_' + Date.now(),
-              teamA: state.teams[i],
-              teamB: state.teams[j],
+              teamA: unifiedTeams[i],
+              teamB: unifiedTeams[j],
               time: 'TBD',
               venue: 'KNS Community Ground'
             });
@@ -2097,12 +2099,12 @@
         }
       } else if (state.format === 'knockout') {
         // Simple Knockout Bracket Generators (Semi Finals setup or finals based on count)
-        const teamCount = state.teams.length;
+        const teamCount = unifiedTeams.length;
         if (teamCount === 2) {
           state.fixtures.push({
             id: 'fix_final_' + Date.now(),
-            teamA: state.teams[0],
-            teamB: state.teams[1],
+            teamA: unifiedTeams[0],
+            teamB: unifiedTeams[1],
             stage: 'Grand Finale',
             venue: 'KNS Stadium Center'
           });
@@ -2112,8 +2114,8 @@
           for (let i = 0; i < matchesCount; i++) {
             state.fixtures.push({
               id: 'fix_semi_' + i + '_' + Date.now(),
-              teamA: state.teams[i * 2],
-              teamB: state.teams[i * 2 + 1],
+              teamA: unifiedTeams[i * 2],
+              teamB: unifiedTeams[i * 2 + 1],
               stage: 'Semi Final ' + (i + 1),
               venue: 'KNS Arena Ground'
             });
@@ -2121,7 +2123,7 @@
           if (teamCount % 2 !== 0) {
             state.fixtures.push({
               id: 'fix_bye_' + Date.now(),
-              teamA: state.teams[teamCount - 1],
+              teamA: unifiedTeams[teamCount - 1],
               teamB: { name: 'BYE / Match Winner' },
               stage: 'Qualifier Round',
               venue: 'KNS Arena Ground'
@@ -2217,11 +2219,46 @@
             <div class="fixture-meta">
               <span>🏟️ ${fix.venue}</span>
             </div>
+            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 11px; color:#eab308; border-color:#eab308;" onclick="editFixture(${index})">Edit</button>
+            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 11px; color:#ef4444; border-color:#ef4444;" onclick="deleteFixture(${index})">Delete</button>
             <button class="btn btn-outline" style="padding: 6px 12px; font-size: 11px;" onclick="loadFixtureToMatchSetup(${index})">Load Config</button>
           </div>
         `;
         container.appendChild(item);
       });
+    }
+
+    function deleteFixture(index) {
+      if (confirm("Are you sure you want to delete this fixture?")) {
+        state.fixtures.splice(index, 1);
+        saveState();
+        renderFixtures();
+        updateDashboardStats();
+      }
+    }
+
+    function editFixture(index) {
+      const fix = state.fixtures[index];
+      
+      const newTeamA = prompt("Edit Team A Name:", fix.teamA.name);
+      if (newTeamA === null) return;
+      
+      const newTeamB = prompt("Edit Team B Name:", fix.teamB.name);
+      if (newTeamB === null) return;
+      
+      const newStage = prompt("Edit Stage (e.g. Group A, Semi Final):", fix.stage || "");
+      if (newStage === null) return;
+      
+      const newVenue = prompt("Edit Venue:", fix.venue || "");
+      if (newVenue === null) return;
+      
+      fix.teamA.name = newTeamA.trim();
+      fix.teamB.name = newTeamB.trim();
+      fix.stage = newStage.trim();
+      fix.venue = newVenue.trim();
+      
+      saveState();
+      renderFixtures();
     }
 
     function loadFixtureToMatchSetup(index) {
@@ -2248,7 +2285,8 @@
       selectA.innerHTML = '';
       selectB.innerHTML = '';
 
-      state.teams.forEach(team => {
+      const unifiedTeams = getUnifiedTeams();
+      unifiedTeams.forEach(team => {
         const optA = document.createElement('option');
         optA.value = team.id;
         optA.text = team.name;
