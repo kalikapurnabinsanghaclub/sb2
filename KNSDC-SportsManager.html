@@ -2680,6 +2680,7 @@
       let deliveryLog = '';
 
       if (sc.wickets >= sc.wicketsLimit || sc.ballsCount >= sc.oversLimit * 6) {
+        if (checkInningsComplete()) return;
         alert("The innings/match is already complete! Press End Innings to switch sides or end.");
         return;
       }
@@ -2748,20 +2749,32 @@
         saveState();
         updateScorerUI();
         
-        promptNextBowler(); // Trigger modal to force next bowler selection
+        if (!checkInningsComplete()) {
+          promptNextBowler(); // Trigger modal to force next bowler selection
+        }
       } else {
         // Log action to panel normally if over didn't end
         logCommentary(deliveryLog, action === 'W');
 
-        // Auto transition/Target check for 2nd innings
-        if (sc.targetScore && sc.runs >= sc.targetScore) {
-          logCommentary(`🎉 Match Finished! ${sc.battingTeamName} chased down the target successfully!`, false);
-          alert(`${sc.battingTeamName} won the match!`);
-        }
-
         saveState();
         updateScorerUI();
+        
+        checkInningsComplete();
       }
+    }
+
+    function checkInningsComplete() {
+      const sc = state.liveScorer;
+      if (!sc) return false;
+      const isAllOut = sc.wickets >= sc.wicketsLimit;
+      const isOversFinished = sc.ballsCount >= sc.oversLimit * 6;
+      const isTargetChased = sc.targetScore && sc.runs >= sc.targetScore;
+      
+      if (isAllOut || isOversFinished || isTargetChased) {
+        setTimeout(() => { endInningsTrigger(true); }, 500);
+        return true;
+      }
+      return false;
     }
 
     // --- ADVANCED WORKFLOW MODALS ---
@@ -2816,15 +2829,21 @@
       document.getElementById('wicket-type').onchange(); // trigger initial layout
 
       // Setup New Batsman Dropdown
-      let batOptions = '<option value="">-- Select Incoming Batsman --</option>';
-      if (battingTeam && battingTeam.players) {
-        battingTeam.players.forEach(p => {
-          if (p.id !== sc.strikerId && p.id !== sc.nonStrikerId) {
-            batOptions += `<option value="${p.id}">${p.name}</option>`;
-          }
-        });
+      if (sc.wickets + 1 >= sc.wicketsLimit) {
+        document.getElementById('wicket-new-batsman').closest('.form-group').style.display = 'none';
+        document.getElementById('wicket-new-batsman').innerHTML = '<option value="none">All Out</option>';
+      } else {
+        let batOptions = '<option value="">-- Select Incoming Batsman --</option>';
+        if (battingTeam && battingTeam.players) {
+          battingTeam.players.forEach(p => {
+            if (p.id !== sc.strikerId && p.id !== sc.nonStrikerId) {
+              batOptions += `<option value="${p.id}">${p.name}</option>`;
+            }
+          });
+        }
+        document.getElementById('wicket-new-batsman').innerHTML = batOptions;
+        document.getElementById('wicket-new-batsman').closest('.form-group').style.display = 'block';
       }
-      newBatsmanSelect.innerHTML = batOptions;
 
       modal.classList.add('active');
     }
@@ -2836,7 +2855,7 @@
       const whoOut = ['Run Out', 'Obstructing the Field', 'Retired Hurt'].includes(type) ? document.getElementById('wicket-who-out').value : 'striker';
       const newBatsmanId = document.getElementById('wicket-new-batsman').value;
 
-      if (!newBatsmanId) {
+      if (!newBatsmanId && sc.wickets + 1 < sc.wicketsLimit) {
         alert("Please select the incoming batsman to continue.");
         return;
       }
@@ -2851,8 +2870,8 @@
         if (outPlayer) outPlayerName = outPlayer.name;
         
         // Update the active player
-        if (whoOut === 'striker') sc.strikerId = newBatsmanId;
-        else sc.nonStrikerId = newBatsmanId;
+        if (whoOut === 'striker') sc.strikerId = newBatsmanId !== 'none' ? newBatsmanId : '';
+        else sc.nonStrikerId = newBatsmanId !== 'none' ? newBatsmanId : '';
       }
 
       if (bowlingTeam && bowlingTeam.players) {
@@ -2886,10 +2905,13 @@
         sc.currentOverDeliveries = [];
         saveState();
         updateScorerUI();
-        promptNextBowler();
+        if (!checkInningsComplete()) {
+          promptNextBowler();
+        }
       } else {
         saveState();
         updateScorerUI();
+        checkInningsComplete();
       }
     }
 
@@ -3116,14 +3138,22 @@
       bowlerSelect.value = sc.bowlerId || '';
     }
 
-    function endInningsTrigger() {
+    function endInningsTrigger(auto = false) {
       if (!state.matchSetup) return;
       const sc = state.liveScorer;
       
       if (sc.matchStatus === "First Innings") {
         const target = sc.runs + 1;
-        const confirmSwitch = confirm(`Switching to Second Innings. Set target score to ${target}?`);
-        if (confirmSwitch) {
+        
+        // Show native confirm dialog ONLY if it wasn't triggered automatically by limits
+        let proceed = true;
+        if (!auto) {
+          proceed = confirm(`Switching to Second Innings. Set target score to ${target}?`);
+        } else {
+          alert(`Innings Over! ${sc.battingTeamName} scored ${sc.runs}/${sc.wickets}. Target for ${sc.bowlingTeamName} is ${target}.`);
+        }
+        
+        if (proceed) {
           sc.targetScore = target;
           sc.matchStatus = "Second Innings";
           
