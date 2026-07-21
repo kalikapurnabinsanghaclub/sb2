@@ -808,6 +808,106 @@
       border-color: var(--text);
       transform: scale(1.1);
     }
+
+    /* Toggle Switch Style */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 24px;
+    }
+    .switch input { 
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: #cbd5e1;
+      transition: .3s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #10b981;
+    }
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-container {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 500px;
+      padding: 24px;
+      box-shadow: var(--shadow-lg);
+      transform: translateY(20px);
+      transition: transform 0.3s ease;
+    }
+    .modal-overlay.active .modal-container {
+      transform: translateY(0);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1.5px dashed var(--border);
+      padding-bottom: 12px;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .form-field-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg);
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      border: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
@@ -836,7 +936,8 @@
   <!-- ════════════════ NAV TABS ════════════════ -->
   <nav class="nav-tabs">
     <div class="tabs-container">
-      <button class="tab-link active" onclick="switchTab('teams-tab')">👥 Teams</button>
+      <button class="tab-link active" onclick="switchTab('dashboard-tab')">📊 Dashboard</button>
+      <button class="tab-link" onclick="switchTab('teams-tab')">👥 Teams</button>
       <button class="tab-link" onclick="switchTab('format-tab')">🏆 Rule selection</button>
       <button class="tab-link" onclick="switchTab('setup-tab')">⚙️ Match Setup</button>
       <button class="tab-link" onclick="switchTab('scorer-tab')" id="scorer-nav-tab">🔴 Live Scorer</button>
@@ -845,11 +946,49 @@
 
   <!-- ════════════════ MAIN CONTENT ════════════════ -->
   <main>
+
+    <!-- ════════════════ DASHBOARD TAB ════════════════ -->
+    <div id="dashboard-tab" class="tab-content active">
+      <div class="card" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-color: #bfdbfe;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+          <div>
+            <h2 style="font-size:20px; font-weight:900; color:#1e40af; margin-bottom:4px;">🏏 Tournament Dashboard</h2>
+            <p style="font-size:13px; color:#3b82f6; font-weight:600; text-transform:uppercase;">Registration &amp; Event Control</p>
+          </div>
+          
+          <!-- Toggle Switch for Registration -->
+          <div style="display:flex; align-items:center; gap:12px; background:white; padding:10px 16px; border-radius:12px; border:1.5px solid #bfdbfe; box-shadow:var(--shadow);">
+            <span style="font-size:13px; font-weight:800; color:var(--text);">Team Registration Open</span>
+            <label class="switch">
+              <input type="checkbox" id="reg-toggle-switch" onchange="toggleTeamRegistration(this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="form-row" style="margin-bottom: 20px;">
+        <div class="card" style="margin-bottom: 0; text-align:center; padding:24px;">
+          <div style="font-size:36px; margin-bottom:8px;">👥</div>
+          <div style="font-size:24px; font-weight:900;" id="dash-teams-count">0</div>
+          <div style="font-size:12px; color:var(--text-muted); font-weight:800; text-transform:uppercase;">Registered Clubs</div>
+        </div>
+        <div class="card" style="margin-bottom: 0; text-align:center; padding:24px;">
+          <div style="font-size:36px; margin-bottom:8px;">📅</div>
+          <div style="font-size:24px; font-weight:900;" id="dash-matches-count">0</div>
+          <div style="font-size:12px; color:var(--text-muted); font-weight:800; text-transform:uppercase;">Total Match Fixtures</div>
+        </div>
+      </div>
+    </div>
     
     <!-- ════════════════ TEAMS TAB ════════════════ -->
-    <div id="teams-tab" class="tab-content active">
+    <div id="teams-tab" class="tab-content">
       <div class="card">
-        <div class="card-title"><span>➕</span> Register New Club / Team</div>
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <span>➕ Register New Club / Team</span>
+          <button class="btn btn-outline" style="padding: 6px 14px; font-size: 12px; border-radius:10px; font-weight:800; margin:0;" onclick="openCustomizeFormModal()">⚙️ Customize Form</button>
+        </div>
         <form id="team-form" onsubmit="handleTeamRegister(event)">
           <div class="form-row">
             <div class="form-group">
@@ -1101,6 +1240,47 @@
       </div>
     </div>
 
+  <!-- Customize Form Modal Overlay -->
+  <div id="customize-form-modal" class="modal-overlay">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title">⚙️ Customize Team Form</div>
+        <button class="close-btn" onclick="closeCustomizeFormModal()">✕</button>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <p style="font-size:13px; color:var(--text-muted); line-height:1.4;">Add or remove fields that clubs must fill out when registering for this sports event.</p>
+      </div>
+      <div id="modal-fields-list" style="margin-bottom: 20px; max-height:260px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">
+        <!-- Dynamic fields list -->
+      </div>
+      
+      <!-- Add new field section -->
+      <div style="background:#f8fafc; padding:12px; border-radius:10px; border:1.5px solid var(--border); margin-bottom: 20px; display:flex; flex-direction:column; gap:8px;">
+        <div style="font-size:12px; font-weight:800; color:var(--text);">➕ Add Field</div>
+        <div class="form-row" style="gap:8px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-size:10px; margin-bottom:2px;">Field Label</label>
+            <input type="text" id="new-field-label" placeholder="e.g. Captain Name" style="padding:8px; font-size:12px;">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-size:10px; margin-bottom:2px;">Field Type</label>
+            <select id="new-field-type" style="padding:8px; font-size:12px; cursor:pointer;">
+              <option value="text">Text Input</option>
+              <option value="number">Number Input</option>
+              <option value="select">Category Choice</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-secondary" style="padding:8px 16px; font-size:12px; width:100%; border-radius:8px;" onclick="addCustomFieldToModal()">Add Field</button>
+      </div>
+      
+      <div style="display:flex; gap:12px;">
+        <button class="btn btn-outline" style="flex:1; border-radius:8px; padding:10px;" onclick="closeCustomizeFormModal()">Cancel</button>
+        <button class="btn btn-primary" style="flex:1; border-radius:8px; padding:10px;" onclick="saveCustomFormFields()">Save Layout</button>
+      </div>
+    </div>
+  </div>
+
   </main>
 
   <script>
@@ -1138,6 +1318,125 @@
       });
     });
 
+    // --- DASHBOARD & CUSTOMIZE FORM FUNCTIONS ---
+    let localFormFields = [];
+
+    function updateDashboardStats() {
+      const teamsCountEl = document.getElementById('dash-teams-count');
+      const matchesCountEl = document.getElementById('dash-matches-count');
+      if (teamsCountEl) teamsCountEl.innerText = state.teams.length;
+      if (matchesCountEl) matchesCountEl.innerText = state.fixtures.length;
+    }
+
+    async function toggleTeamRegistration(isOpen) {
+      if (!assignedEvent) {
+        alert("No assigned sports event found to change registration status!");
+        document.getElementById('reg-toggle-switch').checked = !isOpen;
+        return;
+      }
+      if (!window.syncEngine) return;
+      
+      try {
+        const res = await window.syncEngine.updateEvent(assignedEvent.id, { publicReg: isOpen });
+        if (res.success) {
+          assignedEvent.publicReg = isOpen;
+          console.log(`[SportsManager] Team registration toggle set to: ${isOpen}`);
+        } else {
+          alert(`Failed to update registration status: ${res.error}`);
+          document.getElementById('reg-toggle-switch').checked = !isOpen;
+        }
+      } catch (err) {
+        console.error("Error toggling registration", err);
+        document.getElementById('reg-toggle-switch').checked = !isOpen;
+      }
+    }
+
+    function openCustomizeFormModal() {
+      localFormFields = [];
+      if (assignedEvent && assignedEvent.formFields) {
+        localFormFields = [...assignedEvent.formFields];
+      } else if (assignedEvent && assignedEvent.form_fields) {
+        localFormFields = [...assignedEvent.form_fields];
+      } else {
+        // Default basic fields
+        localFormFields = [
+          { label: 'Captain Name', type: 'text', required: true },
+          { label: 'Player List (comma separated)', type: 'text', required: true }
+        ];
+      }
+      renderModalFormFields();
+      document.getElementById('customize-form-modal').classList.add('active');
+    }
+
+    function closeCustomizeFormModal() {
+      document.getElementById('customize-form-modal').classList.remove('active');
+    }
+
+    function renderModalFormFields() {
+      const container = document.getElementById('modal-fields-list');
+      container.innerHTML = '';
+      if (localFormFields.length === 0) {
+        container.innerHTML = '<p style="text-align:center; padding:12px; color:var(--text-muted); font-size:12px;">No custom fields setup yet.</p>';
+        return;
+      }
+      localFormFields.forEach((field, index) => {
+        const item = document.createElement('div');
+        item.className = 'form-field-row';
+        item.innerHTML = `
+          <span style="font-weight:700; font-size:13px; flex:1;">${field.label} (${field.type})</span>
+          <button class="delete-btn" onclick="removeFieldFromModal(${index})" style="padding:4px; font-size:12px;">🗑️</button>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function addCustomFieldToModal() {
+      const labelInput = document.getElementById('new-field-label');
+      const typeInput = document.getElementById('new-field-type');
+      const label = labelInput.value.trim();
+      if (!label) {
+        alert("Please enter a field label!");
+        return;
+      }
+      
+      localFormFields.push({
+        label: label,
+        type: typeInput.value,
+        required: true
+      });
+      labelInput.value = '';
+      renderModalFormFields();
+    }
+
+    function removeFieldFromModal(index) {
+      localFormFields.splice(index, 1);
+      renderModalFormFields();
+    }
+
+    async function saveCustomFormFields() {
+      if (!assignedEvent) {
+        alert("No assigned sports event found to customize form fields!");
+        closeCustomizeFormModal();
+        return;
+      }
+      if (!window.syncEngine) return;
+      
+      try {
+        const res = await window.syncEngine.updateEvent(assignedEvent.id, { formFields: localFormFields });
+        if (res.success) {
+          assignedEvent.formFields = [...localFormFields];
+          assignedEvent.form_fields = [...localFormFields];
+          alert("Team registration form customized successfully!");
+          closeCustomizeFormModal();
+        } else {
+          alert(`Failed to save form fields: ${res.error}`);
+        }
+      } catch (err) {
+        console.error("Error saving form fields", err);
+        alert("Failed to save layout.");
+      }
+    }
+
     // On Load
     window.addEventListener('DOMContentLoaded', () => {
       const savedState = localStorage.getItem(LS_KEY);
@@ -1152,6 +1451,7 @@
       renderFixtures();
       populateMatchSetupTeams();
       updateScorerUI();
+      updateDashboardStats();
       
       // Select appropriate format UI based on saved state
       selectFormat(state.format);
@@ -1159,6 +1459,7 @@
 
     function saveState() {
       localStorage.setItem(LS_KEY, JSON.stringify(state));
+      updateDashboardStats();
     }
 
     // Switch Tabs
@@ -1889,6 +2190,13 @@
         
         if (assignedEvent) {
           console.log("Assigned Event found:", assignedEvent);
+          
+          // Set registration toggle switch
+          const regSwitch = document.getElementById('reg-toggle-switch');
+          if (regSwitch) {
+            regSwitch.checked = assignedEvent.publicReg === true;
+          }
+
           // Pre-fill setup fields
           const groundInput = document.getElementById('groundName');
           if (groundInput && assignedEvent.venue) {
