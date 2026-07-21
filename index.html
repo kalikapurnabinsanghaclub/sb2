@@ -7957,6 +7957,75 @@
       renderSuEventList();
     }
 
+    // Global helpers for Player List Builder
+    window.addPlayerListRow = function(containerId, hiddenInputId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      
+      const row = document.createElement('div');
+      row.className = 'player-list-row';
+      row.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:#f8fafc; padding:12px; border-radius:12px; border:1px solid #cbd5e1; position:relative;";
+      
+      const nameInput = document.createElement('input');
+      nameInput.type = "text";
+      nameInput.placeholder = "Player Name";
+      nameInput.style.cssText = "flex:1; min-width:150px; padding:10px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.95rem;";
+      nameInput.onchange = () => updatePlayerList(containerId, hiddenInputId);
+      nameInput.onkeyup = () => updatePlayerList(containerId, hiddenInputId);
+      
+      const roleSelect = document.createElement('select');
+      roleSelect.innerHTML = `
+        <option value="">- Role -</option>
+        <option value="Batsman">Batsman</option>
+        <option value="Bowler">Bowler</option>
+        <option value="Allrounder">Allrounder</option>
+        <option value="Goalkeeper">Goalkeeper</option>
+      `;
+      roleSelect.style.cssText = "padding:10px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.95rem; background:#fff;";
+      roleSelect.onchange = () => updatePlayerList(containerId, hiddenInputId);
+      
+      const capLabel = document.createElement('label');
+      capLabel.style.cssText = "display:flex; align-items:center; gap:6px; font-size:0.85rem; font-weight:700; color:#1e293b; cursor:pointer;";
+      const capCheck = document.createElement('input');
+      capCheck.type = "radio";
+      capCheck.name = "cap_" + containerId; // Only one captain per list
+      capCheck.style.cssText = "width:18px; height:18px; accent-color:#4f46e5;";
+      capCheck.onchange = () => updatePlayerList(containerId, hiddenInputId);
+      capLabel.appendChild(capCheck);
+      capLabel.appendChild(document.createTextNode("Captain"));
+      
+      const delBtn = document.createElement('button');
+      delBtn.type = "button";
+      delBtn.innerHTML = "✖";
+      delBtn.style.cssText = "background:none; border:none; color:#ef4444; font-size:1.2rem; cursor:pointer; padding:4px;";
+      delBtn.onclick = () => { row.remove(); updatePlayerList(containerId, hiddenInputId); };
+      
+      row.appendChild(nameInput);
+      row.appendChild(roleSelect);
+      row.appendChild(capLabel);
+      row.appendChild(delBtn);
+      
+      container.appendChild(row);
+      updatePlayerList(containerId, hiddenInputId); // trigger update immediately
+    };
+
+    window.updatePlayerList = function(containerId, hiddenInputId) {
+      const container = document.getElementById(containerId);
+      const hidden = document.getElementById(hiddenInputId);
+      if (!container || !hidden) return;
+      
+      const players = [];
+      Array.from(container.children).forEach(row => {
+        const name = row.querySelector('input[type="text"]').value.trim();
+        const role = row.querySelector('select').value;
+        const isCap = row.querySelector('input[type="radio"]').checked;
+        if (name) {
+          players.push({ name, role, isCaptain: isCap });
+        }
+      });
+      hidden.value = JSON.stringify(players);
+    };
+
     function renderSuEventList() {
       const container = document.getElementById("suEventList");
       if (!container) return;
@@ -8081,6 +8150,20 @@
                 ${(f.options || []).map(o => `<label style="display:flex; align-items:center; gap:10px; font-size:0.95rem; font-weight:600; color:#1e293b; cursor:pointer;"><input type="checkbox" class="su-df-check" value="${o}" data-label="${f.label}" style="width:20px; height:20px; accent-color:#4f46e5;"> ${o}</label>`).join('')}
               </div>
             </div>
+          `;
+        } else if (f.type === 'player-list') {
+          const containerId = `${id}_container`;
+          html += `
+            <div style="margin-bottom:20px;">
+              <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+              <div id="${containerId}" style="display:flex; flex-direction:column; gap:12px; margin-top:8px;"></div>
+              <button type="button" class="btn btn-secondary" style="margin-top:12px; padding:10px 20px; font-size:0.9rem; border-radius:12px; background:#e2e8f0; color:#1e293b; border:1px solid #cbd5e1; cursor:pointer;" onclick="addPlayerListRow('${containerId}', '${id}')">➕ Add Player</button>
+              <input type="hidden" class="inp su-df" data-label="${f.label}" id="${id}" ${f.required?'required':''}>
+            </div>
+            <script>
+              // Add a default first row immediately
+              setTimeout(() => addPlayerListRow('${containerId}', '${id}'), 100);
+            </script>
           `;
         } else if (f.type === 'tc') {
           html += `
