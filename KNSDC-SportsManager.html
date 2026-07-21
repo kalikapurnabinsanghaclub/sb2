@@ -1353,6 +1353,53 @@
     </div>
   </div>
 
+  <!-- TEAM DETAILS MODAL -->
+  <div id="teamDetailsModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 700px; max-height: 90vh; display:flex; flex-direction:column; overflow:hidden;">
+      <!-- header -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
+        <div style="display:flex; gap:12px; align-items:center;">
+          <div id="tdm-color" style="width:40px; height:40px; border-radius:50%; box-shadow:0 4px 6px rgba(0,0,0,0.1); border:3px solid #fff;"></div>
+          <div>
+            <h2 id="tdm-name" style="margin:0; font-size:1.4rem; color:var(--text);">Team Name</h2>
+            <div id="tdm-phone" style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">Phone</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost" onclick="closeTeamDetailsModal()" style="font-size:1.2rem; padding:4px 8px;">✕</button>
+      </div>
+
+      <!-- body (scrollable) -->
+      <div style="flex:1; overflow-y:auto; padding-right:10px; margin-bottom:15px;">
+        <!-- Public Credentials Box -->
+        <div id="tdm-creds-box" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:15px; margin-bottom:20px;">
+          <div style="font-size:0.75rem; font-weight:800; color:#4f46e5; margin-bottom:10px; letter-spacing:1px;">PUBLIC REGISTRATION CREDENTIALS</div>
+          <div style="display:flex; flex-wrap:wrap; gap:15px;">
+            <div style="flex:1; min-width:150px;">
+              <label style="font-size:10px; color:var(--text-muted); margin-bottom:2px; display:block;">Email Address</label>
+              <div id="tdm-email" style="font-weight:700; font-size:13px; color:var(--text);">—</div>
+            </div>
+            <div style="flex:1; min-width:150px;">
+              <label style="font-size:10px; color:var(--text-muted); margin-bottom:2px; display:block;">Password</label>
+              <div id="tdm-pass" style="font-weight:700; font-size:13px; color:var(--text); font-family:var(--font-mono);">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Squad List -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+          <h3 style="font-size:0.9rem; color:var(--text); margin:0;">Squad Players</h3>
+          <button class="btn btn-outline" style="padding:4px 10px; font-size:11px;" onclick="tdmAddPlayer()">+ Add Player</button>
+        </div>
+        <div id="tdm-players-container" style="display:flex; flex-direction:column; gap:10px;">
+          <!-- players rendered here -->
+        </div>
+      </div>
+      <div style="text-align:right; border-top:1px solid #e2e8f0; padding-top:15px;">
+        <button class="btn btn-p" onclick="saveTeamDetailsModal()" style="font-size:1rem; padding:12px 24px;">💾 Save Changes</button>
+      </div>
+    </div>
+  </div>
+
   </main>
 
   <script>
@@ -1378,6 +1425,170 @@
         bowlingTeamName: "Team B",
         matchStatus: "First Innings"
       }
+    };
+
+    // --- UNIFIED TEAMS & MODAL LOGIC ---
+    let tdmCurrentTeam = null;
+    let tdmPlayersCache = [];
+
+    window.isSportsEvent = function(ev) {
+      if (!ev) return false;
+      const cat = (ev.cat || ev.type || ev.category || '').toLowerCase();
+      return cat === 'sports' || cat === 'cricket' || cat === 'sport' || cat === 'football';
+    };
+
+    function getUnifiedTeams() {
+      const combined = [...state.teams]; // internal teams
+      
+      if (window.syncEngine) {
+        const fullState = window.syncEngine.getData();
+        const pubTeams = (fullState.participants || []).filter(p => {
+          const ev = (fullState.events || []).find(e => String(e.id) === String(p.eventId));
+          return window.isSportsEvent(ev);
+        });
+        
+        pubTeams.forEach(pt => {
+          let players = [];
+          if (pt.formAnswers && pt.formAnswers['Squad Players']) {
+            try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
+          }
+          
+          players.forEach((pl, i) => { if (!pl.id) pl.id = pt.id + '_p_' + i; });
+          
+          combined.push({
+            id: pt.id,
+            isPublic: true,
+            name: (pt.formAnswers && pt.formAnswers['Team / Club Name']) || pt.name,
+            phone: (pt.formAnswers && pt.formAnswers['Contact Phone']) || pt.phone || '',
+            color: (pt.formAnswers && pt.formAnswers['Select Team Emblem Color']) || '#3b82f6',
+            players: players,
+            membersCount: players.length || 11,
+            email: pt.email,
+            password: pt.password
+          });
+        });
+      }
+      return combined;
+    }
+
+    function openTeamDetailsModal(teamId) {
+      const allTeams = getUnifiedTeams();
+      const team = allTeams.find(t => String(t.id) === String(teamId));
+      if (!team) return;
+      
+      tdmCurrentTeam = JSON.parse(JSON.stringify(team)); // deep copy
+      tdmPlayersCache = tdmCurrentTeam.players || [];
+      
+      document.getElementById('tdm-color').style.background = team.color;
+      document.getElementById('tdm-name').innerText = team.name;
+      document.getElementById('tdm-phone').innerText = team.phone || 'No Phone Number';
+      
+      const credsBox = document.getElementById('tdm-creds-box');
+      if (team.isPublic) {
+        credsBox.style.display = 'block';
+        document.getElementById('tdm-email').innerText = team.email || '—';
+        document.getElementById('tdm-pass').innerText = team.password || '—';
+      } else {
+        credsBox.style.display = 'none';
+      }
+      
+      renderTdmPlayers();
+      document.getElementById('teamDetailsModal').classList.add('active');
+    }
+
+    function closeTeamDetailsModal() {
+      document.getElementById('teamDetailsModal').classList.remove('active');
+      tdmCurrentTeam = null;
+    }
+
+    function renderTdmPlayers() {
+      const container = document.getElementById('tdm-players-container');
+      container.innerHTML = '';
+      if (tdmPlayersCache.length === 0) {
+        container.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic;">No players found.</div>';
+        return;
+      }
+      
+      tdmPlayersCache.forEach(p => {
+        const row = document.createElement('div');
+        row.style.cssText = "display:flex; gap:10px; align-items:center; background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0; flex-wrap:wrap;";
+        
+        const photoUrl = p.photo || \`https://ui-avatars.com/api/?name=\${encodeURIComponent(p.name || 'Player')}&background=random&color=fff&size=80\`;
+        
+        row.innerHTML = \`
+          <img src="\${photoUrl}" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid #fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);" onerror="this.src='https://ui-avatars.com/api/?name=Error&background=fca5a5&color=fff'">
+          <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-width:200px;">
+            <input type="text" placeholder="Player Name" value="\${p.name || ''}" onchange="tdmUpdatePlayer('\${p.id}', 'name', this.value)" style="padding:6px; font-size:13px; border-radius:6px; border:1px solid #cbd5e1; width:100%;">
+            <input type="text" placeholder="Photo URL (Optional)" value="\${p.photo || ''}" onchange="tdmUpdatePlayer('\${p.id}', 'photo', this.value)" style="padding:6px; font-size:11px; border-radius:6px; border:1px solid #cbd5e1; width:100%; color:#64748b;">
+          </div>
+          <select onchange="tdmUpdatePlayer('\${p.id}', 'role', this.value)" style="width:110px; padding:6px; font-size:13px; border-radius:6px; background:#fff; border:1px solid #cbd5e1;">
+            <option value="" \${p.role === '' ? 'selected' : ''}>-- Role --</option>
+            <option value="Batsman" \${p.role === 'Batsman' ? 'selected' : ''}>Batsman</option>
+            <option value="Bowler" \${p.role === 'Bowler' ? 'selected' : ''}>Bowler</option>
+            <option value="Allrounder" \${p.role === 'Allrounder' ? 'selected' : ''}>Allrounder</option>
+            <option value="Goalkeeper" \${p.role === 'Goalkeeper' ? 'selected' : ''}>Goalkeeper</option>
+          </select>
+          <label style="display:flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--text-muted); cursor:pointer;">
+            <input type="checkbox" \${p.isCaptain ? 'checked' : ''} onchange="tdmUpdatePlayer('\${p.id}', 'isCaptain', this.checked)"> Capt
+          </label>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="tdmRemovePlayer('\${p.id}')" style="color:#ef4444; padding:4px 8px; font-size:14px;">✕</button>
+        \`;
+        container.appendChild(row);
+      });
+    }
+
+    window.tdmUpdatePlayer = function(id, field, value) {
+      const p = tdmPlayersCache.find(x => String(x.id) === String(id));
+      if (p) {
+        p[field] = value;
+        if (field === 'photo' || field === 'name') renderTdmPlayers();
+      }
+    };
+
+    window.tdmRemovePlayer = function(id) {
+      tdmPlayersCache = tdmPlayersCache.filter(x => String(x.id) !== String(id));
+      renderTdmPlayers();
+    };
+
+    window.tdmAddPlayer = function() {
+      tdmPlayersCache.push({
+        id: 'new_p_' + Date.now(),
+        name: '',
+        role: '',
+        isCaptain: false,
+        photo: ''
+      });
+      renderTdmPlayers();
+    };
+
+    window.saveTeamDetailsModal = function() {
+      if (!tdmCurrentTeam) return;
+      
+      // Filter out empty names
+      tdmPlayersCache = tdmPlayersCache.filter(p => (p.name || '').trim() !== '');
+      
+      if (tdmCurrentTeam.isPublic && window.syncEngine) {
+         // Update in public participants array
+         window.syncEngine.setData(full => {
+            const p = full.participants.find(x => String(x.id) === String(tdmCurrentTeam.id));
+            if (p) {
+               if (!p.formAnswers) p.formAnswers = {};
+               p.formAnswers['Squad Players'] = JSON.stringify(tdmPlayersCache);
+            }
+            return full;
+         });
+      } else {
+         // Update in internal teams array
+         const t = state.teams.find(x => String(x.id) === String(tdmCurrentTeam.id));
+         if (t) {
+            t.players = tdmPlayersCache;
+            t.membersCount = tdmPlayersCache.length || 11;
+         }
+         saveState();
+      }
+      
+      closeTeamDetailsModal();
+      renderTeams();
     };
 
     // Color picker logic
@@ -1755,10 +1966,21 @@
     }
 
     function deleteTeam(teamId) {
-      state.teams = state.teams.filter(t => t.id !== teamId);
-      saveState();
-      renderTeams();
-      populateMatchSetupTeams();
+      if (confirm('Are you sure you want to delete this team? This action cannot be undone.')) {
+        // Try deleting from public participants first
+        if (window.syncEngine) {
+           window.syncEngine.setData(full => {
+              full.participants = (full.participants || []).filter(p => String(p.id) !== String(teamId));
+              return full;
+           });
+        }
+        
+        // Also try deleting from internal teams
+        state.teams = state.teams.filter(t => String(t.id) !== String(teamId));
+        saveState();
+        renderTeams();
+        populateMatchSetupTeams();
+      }
     }
 
     function renderTeams() {
@@ -1766,43 +1988,60 @@
       const emptyState = document.getElementById('teams-empty-state');
       const countEl = document.getElementById('registered-count');
       
+      const allTeams = getUnifiedTeams();
+      
       container.innerHTML = '';
-      countEl.innerText = state.teams.length;
+      countEl.innerText = allTeams.length;
 
-      if (state.teams.length === 0) {
+      if (allTeams.length === 0) {
         emptyState.classList.remove('hidden');
         return;
       }
       
       emptyState.classList.add('hidden');
 
-      state.teams.forEach(team => {
+      allTeams.forEach(team => {
         const item = document.createElement('div');
         item.className = 'team-card';
+        item.style.cursor = 'pointer';
+        item.onclick = (e) => {
+           // Prevent opening modal if clicking delete button
+           if (e.target.closest('.delete-btn')) return;
+           openTeamDetailsModal(team.id);
+        };
+        item.title = "Click to view and edit team details";
         
-        // Build players HTML
+        // Build players HTML summary
         let playersHtml = '';
         if (team.players && team.players.length > 0) {
            playersHtml = '<div style="margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 10px; font-size: 11px;">';
-           team.players.forEach(p => {
+           // Only show first 3 players in summary
+           const showPlayers = team.players.slice(0, 3);
+           showPlayers.forEach(p => {
               const badgeStyle = p.isCaptain ? 'background:#fef08a; color:#854d0e; padding:1px 4px; border-radius:3px; font-weight:800; margin-right:4px;' : 'background:#e2e8f0; color:#475569; padding:1px 4px; border-radius:3px; font-weight:700; margin-right:4px;';
               playersHtml += `<div style="margin-bottom:4px; display:flex; justify-content:space-between;">
-                <div><b>${p.name}</b> ${team.phone && p.isCaptain ? `<span style="color:#94a3b8">(${team.phone})</span>` : ''}</div>
+                <div><b>${p.name || 'Unnamed'}</b> ${team.phone && p.isCaptain ? `<span style="color:#94a3b8">(${team.phone})</span>` : ''}</div>
                 <div>
                   ${p.isCaptain ? `<span style="${badgeStyle}">C</span>` : ''}
                   <span style="color:#64748b;">${p.role || ''}</span>
                 </div>
               </div>`;
            });
+           if (team.players.length > 3) {
+             playersHtml += `<div style="color:#64748b; font-style:italic; margin-top:4px;">+ ${team.players.length - 3} more players</div>`;
+           }
            playersHtml += '</div>';
         }
 
         item.innerHTML = `
           <div class="team-info" style="align-items: flex-start;">
-            <div class="team-color-badge" style="background: ${team.color}; margin-top: 4px;"></div>
+            <div class="team-color-badge" style="background: ${team.color || '#3b82f6'}; margin-top: 4px;"></div>
             <div style="flex:1;">
-              <div class="team-name">${team.name}</div>
-              <div class="team-members-count">${team.membersCount} Squad Players ${team.phone && (!team.players || team.players.length===0) ? ` • 📞 ${team.phone}` : ''}</div>
+              <div class="team-name" style="display:flex; align-items:center; gap:8px;">
+                ${team.name}
+                ${team.isPublic ? '<span style="background:#e0e7ff; color:#4f46e5; font-size:9px; padding:2px 6px; border-radius:10px; font-weight:800;">PUBLIC</span>' : '<span style="background:#f1f5f9; color:#64748b; font-size:9px; padding:2px 6px; border-radius:10px; font-weight:800;">INTERNAL</span>'}
+              </div>
+              <div class="team-members-count">${team.membersCount} Squad Players ${team.phone ? ` • 📞 ${team.phone}` : ''}</div>
               ${playersHtml}
             </div>
           </div>
