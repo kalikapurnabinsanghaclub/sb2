@@ -6461,24 +6461,24 @@
 
       // Helper: returns true if an event is a sports-type event
       // (Sports events have their own live score section — never show in cultural #live section)
-      const isSportsEvent = (ev) => {
+      window.isSportsEvent = function(ev) {
         if (!ev) return false;
         const cat = (ev.cat || ev.type || ev.category || '').toLowerCase();
-        return cat === 'sports' || cat === 'cricket' || cat === 'sport';
+        return cat === 'sports' || cat === 'cricket' || cat === 'sport' || cat === 'football';
       };
 
       // 1. Prioritize explicitly active event from Monitor — but ONLY if it is NOT a sports event
       let liveEvent = null;
       if (state.activeEventId) {
         const candidate = EVENTS.find(e => String(e.id) === String(state.activeEventId));
-        if (candidate && !isSportsEvent(candidate)) {
+        if (candidate && !window.isSportsEvent(candidate)) {
           liveEvent = candidate;
         }
       }
 
       // 2. Fallback to today's cultural/non-sports event if no explicit active event
       if (!liveEvent) {
-        liveEvent = EVENTS.find(e => e.date === todayStr && !isSportsEvent(e));
+        liveEvent = EVENTS.find(e => e.date === todayStr && !window.isSportsEvent(e));
       }
 
       // Check if we have an active stage preview enabled (stagePreview must be explicitly true or not explicitly false)
@@ -8095,6 +8095,16 @@
         ];
       }
       
+      // Override explicitly for Sports Events to match the Sports Manager layout
+      if (window.isSportsEvent && window.isSportsEvent(ev)) {
+        fields = [
+          { type: 'text', label: 'Team / Club Name', required: true, placeholder: 'e.g. Kalikapur Fighters' },
+          { type: 'color-presets', label: 'Select Team Emblem Color', required: true },
+          { type: 'number', label: 'Contact Phone', required: true, placeholder: 'Captain/Manager Phone' },
+          { type: 'player-list', label: 'Squad Players', required: false }
+        ];
+      }
+      
       fields.forEach((f, idx) => {
         const id = `df_${idx}`;
         const labelStyle = `font-size:0.75rem; color:#4f46e5; font-weight:800; letter-spacing:1px; text-transform:uppercase; display:block; margin-bottom:8px; opacity: 0.9;`;
@@ -8149,6 +8159,21 @@
               <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
                 ${(f.options || []).map(o => `<label style="display:flex; align-items:center; gap:10px; font-size:0.95rem; font-weight:600; color:#1e293b; cursor:pointer;"><input type="checkbox" class="su-df-check" value="${o}" data-label="${f.label}" style="width:20px; height:20px; accent-color:#4f46e5;"> ${o}</label>`).join('')}
               </div>
+            </div>
+          `;
+        } else if (f.type === 'color-presets') {
+          html += `
+            <div class="fg" style="margin-bottom:20px;">
+              <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+              <div style="display:flex; gap:10px; margin-top:8px;" class="color-presets-container" id="${id}_container">
+                <div class="cp-color" style="width:36px; height:36px; border-radius:50%; background:#3b82f6; cursor:pointer; border:3px solid #1e293b; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" data-color="#3b82f6" onclick="window.selectColorPreset('${id}', this)"></div>
+                <div class="cp-color" style="width:36px; height:36px; border-radius:50%; background:#10b981; cursor:pointer; border:3px solid transparent; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" data-color="#10b981" onclick="window.selectColorPreset('${id}', this)"></div>
+                <div class="cp-color" style="width:36px; height:36px; border-radius:50%; background:#ef4444; cursor:pointer; border:3px solid transparent; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" data-color="#ef4444" onclick="window.selectColorPreset('${id}', this)"></div>
+                <div class="cp-color" style="width:36px; height:36px; border-radius:50%; background:#f59e0b; cursor:pointer; border:3px solid transparent; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" data-color="#f59e0b" onclick="window.selectColorPreset('${id}', this)"></div>
+                <div class="cp-color" style="width:36px; height:36px; border-radius:50%; background:#8b5cf6; cursor:pointer; border:3px solid transparent; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" data-color="#8b5cf6" onclick="window.selectColorPreset('${id}', this)"></div>
+                <div class="cp-color" style="width:36px; height:36px; border-radius:50%; background:#ec4899; cursor:pointer; border:3px solid transparent; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" data-color="#ec4899" onclick="window.selectColorPreset('${id}', this)"></div>
+              </div>
+              <input type="hidden" class="inp su-df" data-label="${f.label}" id="${id}" value="#3b82f6" ${f.required?'required':''}>
             </div>
           `;
         } else if (f.type === 'player-list') {
@@ -8237,6 +8262,14 @@
         });
       }
     }
+
+    window.selectColorPreset = function(hiddenId, el) {
+      const container = el.parentElement;
+      container.querySelectorAll('.cp-color').forEach(c => c.style.border = '3px solid transparent');
+      el.style.border = '3px solid #1e293b';
+      const hidden = document.getElementById(hiddenId);
+      if (hidden) hidden.value = el.dataset.color;
+    };
 
     window.calcPublicAge = function(dobString) {
       if(!dobString) return;
