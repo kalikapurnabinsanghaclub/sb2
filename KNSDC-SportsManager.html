@@ -1119,6 +1119,7 @@
         <div class="card-title"><span>⚙️</span> Match Configurator & Setup</div>
         
         <form id="match-setup-form" onsubmit="handleMatchSetup(event)">
+          <input type="hidden" id="matchVenue" value="KNS Community Ground">
           <div class="form-row">
             <div class="form-group">
               <label for="matchTeamA">Team A (Home / Batting first by default)</label>
@@ -1201,9 +1202,17 @@
           <!-- Live scoreboard -->
           <div class="scoreboard">
             <div class="scoreboard-meta" id="score-meta-display">INNINGS 1 • LOCAL CLUB CHAMPIONSHIP</div>
-            <div class="scoreboard-teams" id="score-teams-display">TEAM A vs TEAM B</div>
-            <div class="scoreboard-main">
-              <span id="score-runs">0</span>/<span id="score-wickets">0</span>
+            <div class="scoreboard-teams" id="score-teams-display" style="display:none;">TEAM A vs TEAM B</div>
+            
+            <div style="display: flex; align-items: center; justify-content: center; width: 100%; margin-bottom: 10px;">
+              <div id="score-batting-team" style="flex: 1; text-align: right; font-size: 22px; font-weight: 800; padding-right: 20px; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">TEAM A</div>
+              <div class="scoreboard-main" style="flex: 0 0 auto;">
+                <span id="score-runs">0</span>/<span id="score-wickets">0</span>
+              </div>
+              <div id="score-bowling-team" style="flex: 1; text-align: left; font-size: 16px; font-weight: 600; padding-left: 20px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; flex-direction: column; justify-content: center;">
+                <span>vs</span>
+                <span style="font-size: 14px; opacity: 0.8;">TEAM B</span>
+              </div>
             </div>
             <div class="scoreboard-overs">
               OVERS: <span id="score-overs">0.0</span> / <span id="score-total-overs">5</span>
@@ -2455,6 +2464,7 @@
       const teamASelect = document.getElementById('matchTeamA');
       const teamBSelect = document.getElementById('matchTeamB');
       
+      document.getElementById('matchVenue').value = fix.venue || 'KNS Community Ground';
       // Set values matching name
       Array.from(teamASelect.options).forEach(opt => {
         if (opt.text === fix.teamA.name) teamASelect.value = opt.value;
@@ -2528,13 +2538,16 @@
         bowlingTeam = winnerName;
       }
 
+      const groundName = document.getElementById('matchVenue').value || 'KNS Community Ground';
+
       state.matchSetup = {
         teamAName,
         teamBName,
         totalOvers,
         totalWickets,
         tossWinner: winnerName,
-        tossDecision: tossDec
+        tossDecision: tossDec,
+        groundName: groundName
       };
 
       // Reset Scorer
@@ -2710,9 +2723,18 @@
       const runsAt10RPO = Math.round(sc.runs + (10 * (totalOvers - oversBowled)));
       document.getElementById('score-proj-rpo').innerText = `${runsAt8RPO} / ${runsAt10RPO}`;
 
-      // Set teams display
-      document.getElementById('score-teams-display').innerText = `${sc.battingTeamName} vs ${sc.bowlingTeamName}`;
-      document.getElementById('score-meta-display').innerText = `${sc.matchStatus} • Venue: ${state.matchSetup ? state.matchSetup.groundName : 'Not Set'}`;
+      if (document.getElementById('score-teams-display')) {
+        document.getElementById('score-teams-display').innerText = `${sc.battingTeamName} vs ${sc.bowlingTeamName}`;
+      }
+      
+      if (document.getElementById('score-batting-team')) {
+        document.getElementById('score-batting-team').innerText = sc.battingTeamName;
+      }
+      if (document.getElementById('score-bowling-team')) {
+        document.getElementById('score-bowling-team').innerHTML = `<span>vs</span><span style="font-size: 14px; opacity: 0.8;">${sc.bowlingTeamName}</span>`;
+      }
+      
+      document.getElementById('score-meta-display').innerText = `${sc.matchStatus} • Venue: ${state.matchSetup ? state.matchSetup.groundName || 'Not Set' : 'Not Set'}`;
 
       // Update current over history balls
       const ballsRow = document.getElementById('current-over-balls');
