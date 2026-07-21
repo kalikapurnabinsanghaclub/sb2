@@ -1082,14 +1082,22 @@
           </div>
         </div>
 
-        <button onclick="generateTournamentSchedule()" class="btn btn-secondary" style="width: 100%;">
-          Generate Tournament Fixtures
-        </button>
+        <div style="display:flex; gap: 10px;">
+          <button onclick="generateTournamentSchedule()" class="btn btn-secondary" style="flex:1;">
+            Generate Tournament Fixtures
+          </button>
+          <button onclick="addCustomFixture()" class="btn btn-primary" style="flex:1; background: #0f172a;">
+            Add Custom Fixture
+          </button>
+        </div>
       </div>
 
       <!-- Generated Groups mapping display -->
       <div id="groups-container-card" class="card hidden">
-        <div class="card-title"><span>📋</span> Group Assignments</div>
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <div><span>📋</span> Group Assignments</div>
+          <button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px; color:#ef4444; border-color:#ef4444;" onclick="resetGroups()">Reset Groups</button>
+        </div>
         <div id="groups-list" class="groups-wrapper">
           <!-- Dynamically generated groups -->
         </div>
@@ -1832,6 +1840,7 @@
         }
       }
       renderTeams();
+      renderGroups();
       renderFixtures();
       populateMatchSetupTeams();
       updateScorerUI();
@@ -2131,42 +2140,25 @@
           }
         }
       } else if (state.format === 'group') {
-        // FIFA Group format (Create Group A & Group B and assign teams)
-        groupsContainer.classList.remove('hidden');
-        const groups = {
-          'Group A': [],
-          'Group B': []
-        };
-        
-        state.teams.forEach((team, index) => {
-          if (index % 2 === 0) {
-            groups['Group A'].push(team);
-          } else {
-            groups['Group B'].push(team);
-          }
-        });
-
-        // Render Groups
-        for (const [groupName, groupTeams] of Object.entries(groups)) {
-          const gBox = document.createElement('div');
-          gBox.className = 'group-box';
-          let teamListItems = '';
-          groupTeams.forEach(t => {
-            teamListItems += `
-              <li class="group-team-item">
-                <div class="team-color-badge" style="background: ${t.color}; width:16px; height:16px"></div>
-                ${t.name}
-              </li>`;
+        // FIFA Group format (Create Group A & Group B and assign teams if empty)
+        if (!state.groupMappings || Object.keys(state.groupMappings).length === 0) {
+          state.groupMappings = {
+            'Group A': [],
+            'Group B': []
+          };
+          unifiedTeams.forEach((team, index) => {
+            if (index % 2 === 0) {
+              state.groupMappings['Group A'].push(team);
+            } else {
+              state.groupMappings['Group B'].push(team);
+            }
           });
-          gBox.innerHTML = `
-            <div class="group-title">${groupName}</div>
-            <ul class="group-team-list">${teamListItems || 'No teams mapping'}</ul>
-          `;
-          groupsList.appendChild(gBox);
         }
 
+        renderGroups();
+
         // Generate Match fixtures for group stages
-        for (const [groupName, groupTeams] of Object.entries(groups)) {
+        for (const [groupName, groupTeams] of Object.entries(state.groupMappings)) {
           for (let i = 0; i < groupTeams.length; i++) {
             for (let j = i + 1; j < groupTeams.length; j++) {
               state.fixtures.push({
@@ -2226,6 +2218,96 @@
         `;
         container.appendChild(item);
       });
+    }
+
+    function addCustomFixture() {
+      state.fixtures.push({
+        id: 'fix_custom_' + Date.now(),
+        teamA: { name: 'TBD', id: 'tbd_a' },
+        teamB: { name: 'TBD', id: 'tbd_b' },
+        stage: 'Custom Match',
+        venue: 'KNS Community Ground'
+      });
+      saveState();
+      renderFixtures();
+      updateDashboardStats();
+    }
+
+    function renderGroups() {
+      const groupsContainer = document.getElementById('groups-container-card');
+      const groupsList = document.getElementById('groups-list');
+      
+      if (!state.groupMappings || Object.keys(state.groupMappings).length === 0) {
+        groupsContainer.classList.add('hidden');
+        return;
+      }
+      
+      groupsContainer.classList.remove('hidden');
+      groupsList.innerHTML = '';
+      
+      for (const [groupName, groupTeams] of Object.entries(state.groupMappings)) {
+        const gBox = document.createElement('div');
+        gBox.className = 'group-box';
+        let teamListItems = '';
+        groupTeams.forEach(t => {
+          teamListItems += `
+            <li class="group-team-item" style="display:flex; justify-content:space-between;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div class="team-color-badge" style="background: ${t.color || '#3b82f6'}; width:16px; height:16px"></div>
+                ${t.name}
+              </div>
+              <span style="color:#ef4444; cursor:pointer; font-weight:bold; padding:0 5px;" onclick="removeTeamFromGroup('${groupName}', '${t.id}')">×</span>
+            </li>`;
+        });
+        gBox.innerHTML = `
+          <div class="group-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>${groupName}</span>
+            <button class="btn btn-outline" style="padding: 2px 8px; font-size: 10px;" onclick="addTeamToGroup('${groupName}')">+ Add Team</button>
+          </div>
+          <ul class="group-team-list">${teamListItems || 'No teams mapping'}</ul>
+        `;
+        groupsList.appendChild(gBox);
+      }
+    }
+
+    function addTeamToGroup(groupName) {
+      if (!state.groupMappings) return;
+      const teamName = prompt(`Enter the name of the team to add to ${groupName}:`);
+      if (!teamName) return;
+      
+      const unifiedTeams = getUnifiedTeams();
+      const matchedTeam = unifiedTeams.find(t => t.name.toLowerCase() === teamName.trim().toLowerCase());
+      
+      if (matchedTeam) {
+        state.groupMappings[groupName].push(matchedTeam);
+      } else {
+        // Fallback for custom team name not in registration
+        state.groupMappings[groupName].push({
+          id: 'manual_' + Date.now(),
+          name: teamName.trim(),
+          color: '#64748b',
+          players: []
+        });
+      }
+      saveState();
+      renderGroups();
+      updateDashboardStats();
+    }
+
+    function resetGroups() {
+      if(confirm("Are you sure you want to completely reset and clear group mappings?")) {
+        state.groupMappings = {};
+        saveState();
+        renderGroups();
+      }
+    }
+
+    function removeTeamFromGroup(groupName, teamId) {
+      if (!state.groupMappings || !state.groupMappings[groupName]) return;
+      state.groupMappings[groupName] = state.groupMappings[groupName].filter(t => t.id !== teamId);
+      saveState();
+      renderGroups();
+      updateDashboardStats();
     }
 
     function deleteFixture(index) {
@@ -2811,6 +2893,7 @@
           window.syncEngine.subscribe(() => {
             loadAssignedEvent();
             renderTeams();
+            renderGroups();
             renderFixtures();
             updateScorerUI();
             updateDashboardStats();
