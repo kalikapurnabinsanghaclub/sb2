@@ -8968,20 +8968,38 @@
 
       // Check required fields
       const ev = EVENTS.find(e => String(e.id) === String(eventId));
+      
+      let fFields = [];
       if (ev && (ev.formFields || ev.form_fields)) {
-        let fFields = ev.formFields || ev.form_fields;
+        fFields = ev.formFields || ev.form_fields;
         if (typeof fFields === 'string') {
           try { fFields = JSON.parse(fFields); } catch(e) { fFields = []; }
         }
-        for (let f of fFields) {
-          if (f.required && !formData[f.label] && f.type !== 'tc') {
-            showToast("Required Field", `Please fill in: ${f.label}`, "⚠️");
-            return;
-          }
-        }
+      }
+      
+      if (!fFields || fFields.length === 0) {
+        fFields = [
+          { type: 'text', label: 'Full Name', required: true },
+          { type: 'radio', label: 'Gender', required: true },
+          { type: 'number', label: 'Phone Number', required: true }
+        ];
+      }
+      
+      if (window.isSportsEvent && window.isSportsEvent(ev)) {
+        fFields = [
+          { type: 'text', label: 'Team / Club Name', required: true },
+          { type: 'color-presets', label: 'Select Team Emblem Color', required: true },
+          { type: 'number', label: 'Contact Phone', required: true },
+          { type: 'player-list', label: 'Squad Players', required: false }
+        ];
       }
 
-      // Finalize Cat/Ven labels for storage (replace ID with Name)
+      for (let f of fFields) {
+        if (f.required && !formData[f.label] && f.type !== 'tc') {
+          showToast("Required Field", `Please fill in: ${f.label}`, "⚠️");
+          return;
+        }
+      }      // Finalize Cat/Ven labels for storage (replace ID with Name)
       if (catEl && catEl.value) {
         formData[catEl.getAttribute("data-label")] = catEl.options[catEl.selectedIndex].text;
       }
