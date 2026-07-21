@@ -217,6 +217,7 @@ class GlobalState(BaseModel):
     partnerAssignments: Optional[List[PartnerAssignment]] = []
     foodOrders: Optional[List[FoodOrder]] = []
     rideBookings: Optional[List[RideBooking]] = []
+    staff: Optional[List[Dict[str, Any]]] = []
 
 # --- STATE MANAGEMENT ---
 
