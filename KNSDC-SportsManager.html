@@ -1080,6 +1080,12 @@
             <div class="format-title">FIFA World Cup</div>
             <div class="format-desc">Group stages mapping teams into blocks followed by Knockout bracket.</div>
           </div>
+
+          <div class="format-card" onclick="selectFormat('pipeline')" id="format-pipeline">
+            <div class="format-icon">🚀</div>
+            <div class="format-title">Pipeline Bracket</div>
+            <div class="format-desc">1st Round → Qualified Round → Semifinal → Final with auto-advancing winners.</div>
+          </div>
         </div>
 
         <div style="display:flex; gap: 10px;">
@@ -1237,6 +1243,7 @@
       </div>
       <div style="padding: 20px; max-height: 80vh; overflow-y: auto;">
         <form id="match-setup-form" onsubmit="handleMatchSetup(event)">
+          <input type="hidden" id="matchFixtureId" value="">
           <input type="hidden" id="matchVenue" value="KNS Community Ground">
           <div class="form-row">
             <div class="form-group">
@@ -2374,6 +2381,95 @@
             });
           }
         }
+      } else if (state.format === 'pipeline') {
+        const teamCount = unifiedTeams.length;
+        if (teamCount < 2) return;
+        
+        let temp = teamCount;
+        let totalRounds = 0;
+        while(temp > 1) {
+            totalRounds++;
+            temp = Math.ceil(temp / 2);
+        }
+
+        const getRoundName = (rIdx, tRounds) => {
+            const roundsLeft = tRounds - rIdx;
+            if (roundsLeft === 1) return "Final";
+            if (roundsLeft === 2) return "Semifinal";
+            if (roundsLeft === 3) return "Qualified Round";
+            if (roundsLeft === 4) return "1st Round";
+            return "Round " + (rIdx + 1);
+        };
+
+        let rounds = [];
+        let currentSlotCount = teamCount;
+        
+        for (let r = 0; r < totalRounds; r++) {
+            const isFirstRound = (r === 0);
+            const matchesInRound = Math.floor(currentSlotCount / 2);
+            const hasBye = (currentSlotCount % 2 !== 0);
+            const nextSlotCount = matchesInRound + (hasBye ? 1 : 0);
+            
+            let roundMatches = [];
+            for (let i = 0; i < matchesInRound; i++) {
+                roundMatches.push({
+                    id: 'pipe_' + r + '_' + i + '_' + Date.now(),
+                    stage: getRoundName(r, totalRounds),
+                    venue: 'KNS Community Ground',
+                    time: 'TBD',
+                    teamA: isFirstRound ? unifiedTeams[i * 2] : { id: 'tbd', name: 'TBD' },
+                    teamB: isFirstRound ? unifiedTeams[i * 2 + 1] : { id: 'tbd', name: 'TBD' },
+                    isBye: false,
+                    nextMatchId: null,
+                    nextMatchSlot: null
+                });
+            }
+            if (hasBye) {
+                roundMatches.push({
+                    id: 'pipe_' + r + '_bye_' + Date.now(),
+                    stage: getRoundName(r, totalRounds) + ' (BYE)',
+                    venue: 'KNS Community Ground',
+                    time: 'TBD',
+                    teamA: isFirstRound ? unifiedTeams[currentSlotCount - 1] : { id: 'tbd', name: 'TBD' },
+                    teamB: { id: 'bye', name: 'BYE' },
+                    isBye: true,
+                    nextMatchId: null,
+                    nextMatchSlot: null
+                });
+            }
+            rounds.push(roundMatches);
+            currentSlotCount = nextSlotCount;
+        }
+
+        for (let r = 0; r < totalRounds - 1; r++) {
+            const currentRound = rounds[r];
+            const nextRound = rounds[r + 1];
+            for (let i = 0; i < currentRound.length; i++) {
+                const nextMatchIndex = Math.floor(i / 2);
+                const isTeamA = (i % 2 === 0);
+                if (nextRound[nextMatchIndex]) {
+                    currentRound[i].nextMatchId = nextRound[nextMatchIndex].id;
+                    currentRound[i].nextMatchSlot = isTeamA ? 'teamA' : 'teamB';
+                }
+            }
+        }
+        
+        for (let r = 0; r < totalRounds; r++) {
+            for (let m of rounds[r]) {
+                if (m.isBye && m.nextMatchId && m.teamA.id !== 'tbd') {
+                    let nextMatch = rounds[r+1].find(nx => nx.id === m.nextMatchId);
+                    if (nextMatch) nextMatch[m.nextMatchSlot] = m.teamA;
+                }
+            }
+        }
+
+        for (let r = 0; r < totalRounds; r++) {
+            for (let m of rounds[r]) {
+                if (!m.isBye) {
+                    state.fixtures.push(m);
+                }
+            }
+        }
       } else if (state.format === 'group') {
         // FIFA Group format (Create Group A & Group B and assign teams if empty)
         if (!state.groupMappings || Object.keys(state.groupMappings).length === 0) {
@@ -2913,6 +3009,7 @@
       const teamBSelect = document.getElementById('matchTeamB');
       
       document.getElementById('matchVenue').value = fix.venue || 'KNS Community Ground';
+      document.getElementById('matchFixtureId').value = fix.id || '';
       // Set values matching name
       Array.from(teamASelect.options).forEach(opt => {
         if (opt.text === fix.teamA.name) teamASelect.value = opt.value;
@@ -3027,6 +3124,7 @@
         bowlingTeamName: bowlingTeam,
         battingTeamId: battingTeamId,
         bowlingTeamId: bowlingTeamId,
+        fixtureId: document.getElementById('matchFixtureId').value || '',
         strikerId: '',
         nonStrikerId: '',
         bowlerId: '',
@@ -3702,6 +3800,24 @@
           matchPlayerStats: sc.matchPlayerStats ? JSON.parse(JSON.stringify(sc.matchPlayerStats)) : {},
           extrasBreakdown: sc.extrasBreakdown ? JSON.parse(JSON.stringify(sc.extrasBreakdown)) : {}
         });
+
+        // Pipeline Auto-Advancement Logic
+        if (state.format === 'pipeline' && winningTeam !== 'Tie' && sc.fixtureId) {
+          const currentFixture = state.fixtures.find(f => f.id === sc.fixtureId);
+          if (currentFixture && currentFixture.nextMatchId) {
+            const nextFixture = state.fixtures.find(f => f.id === currentFixture.nextMatchId);
+            const winnerTeamObj = state.teams.find(t => t.name === winningTeam);
+            if (nextFixture && winnerTeamObj) {
+              if (currentFixture.nextMatchSlot === 'teamA') {
+                nextFixture.teamA = winnerTeamObj;
+              } else if (currentFixture.nextMatchSlot === 'teamB') {
+                nextFixture.teamB = winnerTeamObj;
+              }
+              if (typeof renderFixtures === 'function') renderFixtures();
+            }
+          }
+        }
+
         saveState();
         if (typeof renderCompletedMatches === 'function') renderCompletedMatches();
         if (typeof renderTournamentStats === 'function') renderTournamentStats();
