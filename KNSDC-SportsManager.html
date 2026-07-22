@@ -1779,6 +1779,22 @@
     window.saveTeamDetailsModal = function() {
       if (!tdmCurrentTeam) return;
       
+      const container = document.getElementById('tdm-players-container');
+      if (container) {
+        const rows = container.children;
+        Array.from(rows).forEach((row, idx) => {
+          if (tdmPlayersCache[idx]) {
+            const inputs = row.querySelectorAll('input[type="text"]');
+            const select = row.querySelector('select');
+            const capt = row.querySelector('input[type="checkbox"]');
+            if (inputs[0]) tdmPlayersCache[idx].name = inputs[0].value.trim();
+            if (inputs[1]) tdmPlayersCache[idx].photo = inputs[1].value.trim();
+            if (select) tdmPlayersCache[idx].role = select.value;
+            if (capt) tdmPlayersCache[idx].isCaptain = capt.checked;
+          }
+        });
+      }
+
       // Filter out empty names
       tdmPlayersCache = tdmPlayersCache.filter(p => (p.name || '').trim() !== '');
       
@@ -2193,6 +2209,23 @@
 
     function handleTeamRegister(event) {
       event.preventDefault();
+      
+      // Harvest inputs directly from DOM elements in case onchange hasn't fired yet
+      const spList = document.getElementById('sp-list');
+      if (spList) {
+        const rows = spList.children;
+        Array.from(rows).forEach((row, idx) => {
+          if (squadPlayers[idx]) {
+            const nameInp = row.querySelector('input[type="text"]');
+            const roleSel = row.querySelector('select');
+            const captChk = row.querySelector('input[type="checkbox"]');
+            if (nameInp) squadPlayers[idx].name = nameInp.value.trim();
+            if (roleSel) squadPlayers[idx].role = roleSel.value;
+            if (captChk) squadPlayers[idx].isCaptain = captChk.checked;
+          }
+        });
+      }
+
       const input = document.getElementById('teamName');
       const phoneInput = document.getElementById('teamPhone');
       const name = input.value.trim();
@@ -2213,14 +2246,16 @@
       };
 
       state.teams.push(newTeam);
+      saveState();
+      renderTeams();
+      populateScorerPlayers();
+      populateMatchSetupTeams();
       
       input.value = '';
       if (phoneInput) phoneInput.value = '';
       squadPlayers = [];
       renderSquadPlayers();
-      
-      saveState();
-      renderTeams();
+    }
       populateMatchSetupTeams();
     }
 
