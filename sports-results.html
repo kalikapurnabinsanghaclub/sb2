@@ -230,19 +230,37 @@
             let players = [];
             if (pt.formAnswers && pt.formAnswers['Squad Players']) {
               try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
+            } else if (pt.formAnswers && pt.formAnswers['Player List (comma separated)']) {
+              const listStr = pt.formAnswers['Player List (comma separated)'];
+              players = listStr.split(',').map((n, i) => ({ id: pt.id + '_p_' + i, name: n.trim(), role: 'Player' })).filter(p => p.name);
             }
             if (players.length === 0 && pt.players) players = pt.players;
-            unifiedTeams.push({ name: pt.name || pt.formAnswers?.['Team / Club Name'], players: players });
+            players.forEach((pl, i) => { if (!pl.id) pl.id = pt.id + '_p_' + i; });
+
+            unifiedTeams.push({
+              id: pt.id,
+              name: (pt.formAnswers && pt.formAnswers['Team / Club Name']) || pt.name,
+              players: players
+            });
           });
         }
         
+        unifiedTeams.forEach(t => {
+          if (!t.players || t.players.length === 0) {
+            t.players = [];
+            for (let i = 1; i <= 11; i++) {
+              t.players.push({ id: t.id + '_p_' + i, name: 'Player ' + i });
+            }
+          }
+        });
+
         const players = [];
         for (const [playerId, stats] of Object.entries(match.matchPlayerStats)) {
           let playerName = "Unknown Player";
           let teamName = "Unknown Team";
           
           for (const team of unifiedTeams) {
-            const p = team.players && team.players.find(pl => pl.id === playerId);
+            const p = team.players && team.players.find(pl => String(pl.id) === String(playerId));
             if (p) {
               playerName = p.name;
               teamName = team.name;
