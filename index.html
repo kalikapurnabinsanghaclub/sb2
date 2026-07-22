@@ -6487,19 +6487,16 @@
       }
     }
     function showPublicResultsModal() {
-      let state = {};
-      try {
-        state = JSON.parse(localStorage.getItem('knsdc_sports_state')) || {};
-      } catch(e) {}
+      const state = syncEngine.getData();
       
       const container = document.getElementById('public-results-list');
       if (!container) return;
 
-      if (!state || !state.completedMatches || state.completedMatches.length === 0) {
+      if (!state || !state.sportCompletedMatches || state.sportCompletedMatches.length === 0) {
         container.innerHTML = '<div style="padding: 20px; text-align:center; color:var(--text-muted);">No matches have been completed yet.</div>';
       } else {
         container.innerHTML = '';
-        state.completedMatches.forEach((match, index) => {
+        state.sportCompletedMatches.forEach((match, index) => {
           container.innerHTML += `
             <div class="public-fixture-item" onclick="showPublicMatchSummaryModal(${index})">
               <div style="display:flex; flex-direction:column; gap:8px; flex:1;">
@@ -6524,12 +6521,9 @@
     }
 
     function showPublicMatchSummaryModal(index) {
-      let state = {};
-      try {
-        state = JSON.parse(localStorage.getItem('knsdc_sports_state')) || {};
-      } catch(e) {}
+      const state = syncEngine.getData();
       
-      const match = state.completedMatches && state.completedMatches[index];
+      const match = state.sportCompletedMatches && state.sportCompletedMatches[index];
       if (!match) return;
 
       const container = document.getElementById('public-match-summary-content');
@@ -6547,11 +6541,11 @@
         container.innerHTML += '<p style="text-align:center; font-size:13px; color:#94a3b8;">No detailed player stats recorded for this match.</p>';
       } else {
         const unifiedTeams = [];
-        if (state.customTeams) unifiedTeams.push(...state.customTeams);
-        // We won't perfectly reconstruct getUnifiedTeams (which fetches form answers), 
-        // but customTeams is usually enough. For pubTeams, we just use their raw array:
-        if (state.pubTeams) {
-          state.pubTeams.forEach(pt => {
+        // We will try to read pubTeams and customTeams from sport manager data if pushed,
+        // but if they are missing, the names will fallback nicely.
+        if (state.sportCustomTeams) unifiedTeams.push(...state.sportCustomTeams);
+        if (state.sportPubTeams) {
+          state.sportPubTeams.forEach(pt => {
             let players = [];
             if (pt.formAnswers && pt.formAnswers['Squad Players']) {
               try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
