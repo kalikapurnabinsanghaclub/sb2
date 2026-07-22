@@ -2046,6 +2046,34 @@
       // Push live scorer to syncEngine so public page can read it
       if (window.syncEngine) {
         const publicScoreOn = document.getElementById('public-score-toggle')?.checked || false;
+        
+        let activePlayers = null;
+        if (state.liveScorer && typeof getUnifiedTeams === 'function') {
+           const sc = state.liveScorer;
+           const unifiedTeams = getUnifiedTeams();
+           const batTeam = unifiedTeams.find(t => String(t.id) === String(sc.battingTeamId)) || unifiedTeams.find(t => String(t.name).trim() === String(sc.battingTeamName).trim());
+           const bowlTeam = unifiedTeams.find(t => String(t.id) === String(sc.bowlingTeamId)) || unifiedTeams.find(t => String(t.name).trim() === String(sc.bowlingTeamName).trim());
+           
+           let strikerName = '', nonStrikerName = '', bowlerName = '';
+           if (batTeam && batTeam.players) {
+              const str = batTeam.players.find(p => p.id === sc.strikerId);
+              const ns = batTeam.players.find(p => p.id === sc.nonStrikerId);
+              if (str) strikerName = str.name;
+              if (ns) nonStrikerName = ns.name;
+           }
+           if (bowlTeam && bowlTeam.players) {
+              const bl = bowlTeam.players.find(p => p.id === sc.bowlerId);
+              if (bl) bowlerName = bl.name;
+           }
+           const getStats = (id) => (sc.matchPlayerStats && sc.matchPlayerStats[id]) || { runs: 0, ballsFaced: 0, wickets: 0, runsConceded: 0, ballsBowled: 0 };
+           
+           activePlayers = {
+             striker: { name: strikerName, stats: getStats(sc.strikerId) },
+             nonStriker: { name: nonStrikerName, stats: getStats(sc.nonStrikerId) },
+             bowler: { name: bowlerName, stats: getStats(sc.bowlerId) }
+           };
+        }
+
         window.syncEngine.setData(s => ({
           ...s,
           sportLiveScore: {
@@ -2062,6 +2090,7 @@
             targetScore: state.liveScorer.targetScore,
             matchStatus: state.liveScorer.matchStatus,
             deliveries: state.liveScorer.deliveries,
+            activePlayers: activePlayers,
             updatedAt: Date.now()
           },
           sportCompletedMatches: state.completedMatches || [],
