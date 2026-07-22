@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Match Results & Statistics - Kalikapur Nabin Sangha</title>
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --bg: #0f172a;
+      --bg-panel: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+    }
+    .header {
+      background: linear-gradient(135deg, #1e3a5f, #0f2a4a);
+      padding: 30px 20px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .header h1 {
+      margin: 0;
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      color: #fff;
+    }
+    .container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .public-fixture-item {
+      background: var(--bg-panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+    .public-fixture-item:hover {
+      background: rgba(255,255,255,0.05);
+      transform: translateY(-2px);
+    }
+    
+    /* Modal styles */
+    #public-match-summary-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15,23,42,0.95);
+      z-index: 100000;
+      backdrop-filter: blur(8px);
+      padding: 20px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .modal-content {
+      background: var(--bg-panel);
+      max-width: 700px;
+      margin: 40px auto;
+      border-radius: 24px;
+      padding: 30px;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 25px 80px rgba(0,0,0,0.6);
+      position: relative;
+    }
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .close-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    .public-score-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-bottom: 10px;
+      text-align: left;
+    }
+    .public-score-table th, .public-score-table td {
+      padding: 8px 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .public-score-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🏆 Tournament Match Results</h1>
+  </div>
+
+  <div class="container" id="results-container">
+    <div class="loading">Loading match results from server...</div>
+  </div>
+
+  <!-- Public Match Summary Modal -->
+  <div id="public-match-summary-modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeModal()">✕</button>
+      <h2 style="color:#fff; font-size:1.5rem; margin-top:0; margin-bottom:20px; font-family:'Playfair Display',serif;">Match Scorecard</h2>
+      <div id="public-match-summary-content">
+        <!-- scorecard injected here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Supabase & SyncEngine -->
+  <script src="lib/supabase.js"></script>
+  <script src="lib/localSync-v4.js?v=99"></script>
+
+  <script>
+    const syncEngine = window.syncEngine || new (window.LocalSync || LocalSync)();
+    window.syncEngine = syncEngine;
+    
+    let currentState = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // SyncEngine will fetch initial data, then trigger subscribe
+      syncEngine.subscribe((state) => {
+        currentState = state;
+        renderResultsList();
+      });
+      
+      // If we already have data, render it
+      currentState = syncEngine.getData();
+      if (currentState && Object.keys(currentState).length > 0) {
+        renderResultsList();
+      }
+    });
+
+    function renderResultsList() {
+      const container = document.getElementById('results-container');
+      
+      if (!currentState || !currentState.sportCompletedMatches || currentState.sportCompletedMatches.length === 0) {
+        container.innerHTML = '<div style="padding: 40px; text-align:center; color:var(--text-muted); background:var(--bg-panel); border-radius:12px;">No matches have been completed yet.</div>';
+        return;
+      }
+      
+      let html = '';
+      currentState.sportCompletedMatches.forEach((match, index) => {
+        html += `
+          <div class="public-fixture-item" onclick="showMatchSummary(${index})">
+            <div style="display:flex; flex-direction:column; gap:8px; flex:1;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:12px; height:12px; border-radius:50%; background:${match.teamAColor || '#ef4444'};"></div>
+                <span style="color:#f8fafc; font-weight:700; font-size:1.1rem;">${match.teamA}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:12px; height:12px; border-radius:50%; background:${match.teamBColor || '#3b82f6'};"></div>
+                <span style="color:#f8fafc; font-weight:700; font-size:1.1rem;">${match.teamB}</span>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+              <div style="font-weight:900; color:#38bdf8; font-size:1.1rem;">🎉 ${match.winningTeam !== 'Tie' ? match.winningTeam + ' Won!' : 'Match Tied!'}</div>
+              <div style="font-size:0.85rem; color:#94a3b8; font-weight:600;">${match.margin}</div>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function showMatchSummary(index) {
+      if (!currentState) return;
+      const match = currentState.sportCompletedMatches[index];
+      if (!match) return;
+
+      const container = document.getElementById('public-match-summary-content');
+      container.innerHTML = '';
+      
+      const title = document.createElement('div');
+      title.style.fontWeight = 'bold';
+      title.style.fontSize = '18px';
+      title.style.marginBottom = '10px';
+      title.style.textAlign = 'center';
+      title.innerText = `${match.teamA} vs ${match.teamB}`;
+      container.appendChild(title);
+      
+      if (!match.matchPlayerStats || Object.keys(match.matchPlayerStats).length === 0) {
+        container.innerHTML += '<p style="text-align:center; font-size:14px; color:#94a3b8; padding:20px;">No detailed player stats recorded for this match.</p>';
+      } else {
+        const unifiedTeams = [];
+        if (currentState.sportCustomTeams) unifiedTeams.push(...currentState.sportCustomTeams);
+        if (currentState.sportPubTeams) {
+          currentState.sportPubTeams.forEach(pt => {
+            let players = [];
+            if (pt.formAnswers && pt.formAnswers['Squad Players']) {
+              try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
+            }
+            if (players.length === 0 && pt.players) players = pt.players;
+            unifiedTeams.push({ name: pt.name || pt.formAnswers?.['Team / Club Name'], players: players });
+          });
+        }
+        
+        const players = [];
+        for (const [playerId, stats] of Object.entries(match.matchPlayerStats)) {
+          let playerName = "Unknown Player";
+          let teamName = "Unknown Team";
+          
+          for (const team of unifiedTeams) {
+            const p = team.players && team.players.find(pl => pl.id === playerId);
+            if (p) {
+              playerName = p.name;
+              teamName = team.name;
+              break;
+            }
+          }
+          
+          players.push({ 
+            name: playerName, 
+            team: teamName,
+            runs: stats.runs || 0, 
+            wickets: stats.wickets || 0,
+            ballsFaced: stats.ballsFaced || 0,
+            fours: stats.fours || 0,
+            sixes: stats.sixes || 0,
+            ballsBowled: stats.ballsBowled || 0,
+            runsConceded: stats.runsConceded || 0
+          });
+        }
+        
+        // Group by team
+        const teamsPresent = [...new Set(players.map(p => p.team))];
+        
+        teamsPresent.forEach(teamName => {
+          const teamPlayers = players.filter(p => p.team === teamName);
+          const batters = teamPlayers.filter(p => p.runs > 0 || p.ballsFaced > 0).sort((a, b) => b.runs - a.runs);
+          const bowlers = teamPlayers.filter(p => p.ballsBowled > 0).sort((a, b) => b.wickets - a.wickets);
+          
+          if (batters.length === 0 && bowlers.length === 0) return;
+
+          let teamHTML = `<div style="margin-top:20px; padding:15px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px;">`;
+          teamHTML += `<h4 style="margin:0 0 15px 0; color:#38bdf8; font-size:16px; text-transform:uppercase; letter-spacing:1px;">🛡️ ${teamName}</h4>`;
+          
+          if (batters.length > 0) {
+            teamHTML += `<div style="font-weight:bold; font-size:13px; margin-bottom:8px; color:#94a3b8; letter-spacing:1px;">🏏 BATTING</div>`;
+            teamHTML += `
+              <table class="public-score-table">
+                <tr>
+                  <th>Batter</th>
+                  <th style="text-align:right;">R</th>
+                  <th style="text-align:right;">B</th>
+                  <th style="text-align:right;">4s</th>
+                  <th style="text-align:right;">6s</th>
+                  <th style="text-align:right;">SR</th>
+                </tr>
+            `;
+            batters.forEach(p => {
+              const sr = p.ballsFaced > 0 ? ((p.runs / p.ballsFaced) * 100).toFixed(1) : "0.0";
+              teamHTML += `
+                <tr>
+                  <td style="font-size:13px;">${p.name}</td>
+                  <td style="text-align:right; font-weight:bold; font-size:13px;">${p.runs}</td>
+                  <td style="text-align:right; font-size:13px;">${p.ballsFaced}</td>
+                  <td style="text-align:right; font-size:13px;">${p.fours}</td>
+                  <td style="text-align:right; font-size:13px;">${p.sixes}</td>
+                  <td style="text-align:right; font-size:13px;">${sr}</td>
+                </tr>
+              `;
+            });
+            teamHTML += `</table>`;
+          }
+          
+          if (bowlers.length > 0) {
+            teamHTML += `<div style="font-weight:bold; font-size:13px; margin-bottom:8px; margin-top:20px; color:#94a3b8; letter-spacing:1px;">🎯 BOWLING</div>`;
+            teamHTML += `
+              <table class="public-score-table">
+                <tr>
+                  <th>Bowler</th>
+                  <th style="text-align:right;">O</th>
+                  <th style="text-align:right;">M</th>
+                  <th style="text-align:right;">R</th>
+                  <th style="text-align:right;">W</th>
+                  <th style="text-align:right;">Econ</th>
+                </tr>
+            `;
+            bowlers.forEach(p => {
+              const overs = Math.floor(p.ballsBowled / 6) + (p.ballsBowled % 6) / 10;
+              const econ = p.ballsBowled > 0 ? (p.runsConceded / (p.ballsBowled / 6)).toFixed(1) : "0.0";
+              teamHTML += `
+                <tr>
+                  <td style="font-size:13px;">${p.name}</td>
+                  <td style="text-align:right; font-size:13px;">${overs}</td>
+                  <td style="text-align:right; font-size:13px;">0</td>
+                  <td style="text-align:right; font-size:13px;">${p.runsConceded}</td>
+                  <td style="text-align:right; font-weight:bold; font-size:13px; color:#ef4444;">${p.wickets}</td>
+                  <td style="text-align:right; font-size:13px;">${econ}</td>
+                </tr>
+              `;
+            });
+            teamHTML += `</table>`;
+          }
+          
+          teamHTML += `</div>`;
+          container.innerHTML += teamHTML;
+        });
+
+        if (match.matchPlayerStats && match.extrasBreakdown) {
+          const ex = match.extrasBreakdown;
+          const totalEx = (ex.WD || 0) + (ex.NB || 0) + (ex.B || 0) + (ex.LB || 0);
+          if (totalEx > 0) {
+            container.innerHTML += `<div style="font-size:13px; margin-top:15px; padding:15px; background:rgba(251,146,60,0.1); border-radius:8px; border:1px solid rgba(251,146,60,0.2); color:#fb923c; font-weight:bold;">
+              Extras: ${totalEx} (WD: ${ex.WD || 0}, NB: ${ex.NB || 0}, B: ${ex.B || 0}, LB: ${ex.LB || 0})
+            </div>`;
+          }
+        }
+      }
+      
+      document.getElementById('public-match-summary-modal').style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('public-match-summary-modal').style.display = 'none';
+    }
+  </script>
+</body>
+</html>
