@@ -1355,42 +1355,7 @@
       </div>
 
       <div class="fixture-list" id="match-results-list">
-        <!-- Mocked match result showing which team won -->
-        <div class="fixture-item" style="border-left: 4px solid var(--primary);">
-          <div class="fixture-teams">
-            <div class="fixture-team-block">
-              <div class="team-color-badge" style="background: #ef4444;"></div>
-              <span>Red Knights</span>
-            </div>
-            <div class="vs-divider" style="font-size: 10px;">VS</div>
-            <div class="fixture-team-block">
-              <div class="team-color-badge" style="background: #3b82f6;"></div>
-              <span>Blue Titans</span>
-            </div>
-          </div>
-          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-            <div style="font-weight:900; color:var(--primary); font-size:15px;">🎉 Blue Titans Won!</div>
-            <div style="font-size:12px; color:var(--text-muted); font-weight:600;">by 4 wickets (12.4 overs)</div>
-          </div>
-        </div>
-        
-        <div class="fixture-item" style="border-left: 4px solid var(--primary);">
-          <div class="fixture-teams">
-            <div class="fixture-team-block">
-              <div class="team-color-badge" style="background: #eab308;"></div>
-              <span>Yellow Strikers</span>
-            </div>
-            <div class="vs-divider" style="font-size: 10px;">VS</div>
-            <div class="fixture-team-block">
-              <div class="team-color-badge" style="background: #10b981;"></div>
-              <span>Green Bulls</span>
-            </div>
-          </div>
-          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-            <div style="font-weight:900; color:var(--primary); font-size:15px;">🎉 Yellow Strikers Won!</div>
-            <div style="font-size:12px; color:var(--text-muted); font-weight:600;">by 15 runs</div>
-          </div>
-        </div>
+        <!-- Dynamically populated completed matches -->
       </div>
       
       <div class="form-row" style="margin-top: 20px;">
@@ -1615,6 +1580,7 @@
       teams: [],
       format: 'round-robin',
       fixtures: [],
+      completedMatches: [],
       matchSetup: null,
       liveScorer: {
         runs: 0,
@@ -2377,7 +2343,42 @@
       renderFixtures();
     }
 
+    function renderCompletedMatches() {
+      const container = document.getElementById('match-results-list');
+      if (!container) return;
+      if (!state.completedMatches || state.completedMatches.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;"><p style="font-size:13px; color:var(--text-muted);">No matches have been completed yet.</p></div>';
+        return;
+      }
+      container.innerHTML = '';
+      state.completedMatches.forEach(match => {
+        const item = document.createElement('div');
+        item.className = 'fixture-item';
+        item.style.borderLeft = '4px solid var(--primary)';
+        
+        item.innerHTML = `
+          <div class="fixture-teams">
+            <div class="fixture-team-block">
+              <div class="team-color-badge" style="background: ${match.teamAColor || '#ef4444'};"></div>
+              <span>${match.teamA}</span>
+            </div>
+            <div class="vs-divider" style="font-size: 10px;">VS</div>
+            <div class="fixture-team-block">
+              <div class="team-color-badge" style="background: ${match.teamBColor || '#3b82f6'};"></div>
+              <span>${match.teamB}</span>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+            <div style="font-weight:900; color:var(--primary); font-size:15px;">🎉 ${match.winningTeam !== 'Tie' ? match.winningTeam + ' Won!' : 'Match Tied!'}</div>
+            <div style="font-size:12px; color:var(--text-muted); font-weight:600;">${match.margin}</div>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
     function renderFixtures() {
+      renderCompletedMatches();
       const container = document.getElementById('fixtures-container');
       const emptyState = document.getElementById('fixtures-empty-state');
       
@@ -3261,6 +3262,38 @@
         }
         alert(`Match Complete!\nResult: ${resultMsg}`);
         logCommentary(`🏁 Match Completed. ${resultMsg}`);
+
+        // Save to completed matches
+        if (!state.completedMatches) state.completedMatches = [];
+        
+        // Find team colors
+        const teamA = state.teams.find(t => t.name === sc.battingTeamName);
+        const teamB = state.teams.find(t => t.name === sc.bowlingTeamName);
+        
+        let winningTeam = sc.battingTeamName;
+        let margin = '';
+        if (sc.runs >= sc.targetScore) {
+          winningTeam = sc.battingTeamName;
+          margin = `by ${sc.wicketsLimit - sc.wickets} wicket(s)`;
+        } else if (sc.runs === sc.targetScore - 1) {
+          winningTeam = 'Tie';
+          margin = '';
+        } else {
+          winningTeam = sc.bowlingTeamName;
+          margin = `by ${scoreDiff} run(s)`;
+        }
+
+        state.completedMatches.push({
+          teamA: sc.battingTeamName,
+          teamAColor: teamA ? teamA.color : '#ef4444',
+          teamB: sc.bowlingTeamName,
+          teamBColor: teamB ? teamB.color : '#3b82f6',
+          resultMsg: resultMsg,
+          winningTeam: winningTeam,
+          margin: margin
+        });
+        saveState();
+        if (typeof renderCompletedMatches === 'function') renderCompletedMatches();
       }
     }
 
@@ -3271,6 +3304,7 @@
           teams: [],
           format: 'round-robin',
           fixtures: [],
+          completedMatches: [],
           matchSetup: null,
           liveScorer: {
             runs: 0,
