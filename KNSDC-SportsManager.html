@@ -1375,6 +1375,20 @@
     </div>
   </main>
 
+  <!-- Match Summary Modal Overlay -->
+  <div id="match-summary-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 500px; max-height: 80vh; overflow-y: auto;">
+      <div class="modal-header">
+        <div class="modal-title">📊 Match Summary</div>
+        <button class="close-btn" onclick="document.getElementById('match-summary-modal').classList.remove('active')">✕</button>
+      </div>
+      <div id="match-summary-content" style="display:flex; flex-direction:column; gap:12px;">
+        <!-- Dynamically populated -->
+      </div>
+      <button class="btn btn-primary" style="margin-top:20px;" onclick="document.getElementById('match-summary-modal').classList.remove('active')">Close Summary</button>
+    </div>
+  </div>
+
   <!-- User Profile Details Modal Overlay -->
   <div id="profile-details-modal" class="modal-overlay">
     <div class="modal-container" style="max-width: 400px;">
@@ -2362,10 +2376,12 @@
         return;
       }
       container.innerHTML = '';
-      state.completedMatches.forEach(match => {
+      state.completedMatches.forEach((match, index) => {
         const item = document.createElement('div');
         item.className = 'fixture-item';
         item.style.borderLeft = '4px solid var(--primary)';
+        item.style.cursor = 'pointer';
+        item.onclick = () => showMatchSummaryModal(index);
         
         item.innerHTML = `
           <div class="fixture-teams">
@@ -2469,6 +2485,64 @@
         wicketsContainer.classList.add('empty-state');
         wicketsContainer.style.padding = '20px';
       }
+    }
+
+    function showMatchSummaryModal(index) {
+      const match = state.completedMatches[index];
+      if (!match) return;
+
+      const container = document.getElementById('match-summary-content');
+      container.innerHTML = '';
+      
+      const title = document.createElement('div');
+      title.style.fontWeight = 'bold';
+      title.style.fontSize = '16px';
+      title.style.marginBottom = '10px';
+      title.style.textAlign = 'center';
+      title.innerText = `${match.teamA} vs ${match.teamB}`;
+      container.appendChild(title);
+      
+      if (!match.matchPlayerStats || Object.keys(match.matchPlayerStats).length === 0) {
+        container.innerHTML += '<p style="text-align:center; font-size:13px; color:var(--text-muted);">No player stats recorded for this match.</p>';
+      } else {
+        const unifiedTeams = getUnifiedTeams();
+        const players = [];
+        for (const [playerId, stats] of Object.entries(match.matchPlayerStats)) {
+          let playerName = "Unknown Player";
+          for (const team of unifiedTeams) {
+            const p = team.players.find(pl => pl.id === playerId);
+            if (p) {
+              playerName = p.name;
+              break;
+            }
+          }
+          players.push({ name: playerName, runs: stats.runs || 0, wickets: stats.wickets || 0 });
+        }
+        
+        // Batting
+        const batters = players.filter(p => p.runs > 0).sort((a, b) => b.runs - a.runs);
+        if (batters.length > 0) {
+          container.innerHTML += '<div style="font-weight:bold; color:var(--primary); margin-top:10px;">🏏 Top Scorers</div>';
+          batters.forEach(p => {
+            container.innerHTML += `<div style="display:flex; justify-content:space-between; font-size:14px; padding:4px 0; border-bottom:1px dashed var(--border);">
+              <span>${p.name}</span><strong>${p.runs}</strong>
+            </div>`;
+          });
+        }
+        
+        // Bowling
+        const bowlers = players.filter(p => p.wickets > 0).sort((a, b) => b.wickets - a.wickets);
+        if (bowlers.length > 0) {
+          container.innerHTML += '<div style="font-weight:bold; color:var(--primary); margin-top:10px;">🎯 Top Bowlers</div>';
+          bowlers.forEach(p => {
+            container.innerHTML += `<div style="display:flex; justify-content:space-between; font-size:14px; padding:4px 0; border-bottom:1px dashed var(--border);">
+              <span>${p.name}</span><strong>${p.wickets}</strong>
+            </div>`;
+          });
+        }
+      }
+      
+      document.getElementById('match-summary-modal').classList.add('active');
     }
 
     function renderFixtures() {
@@ -2820,7 +2894,8 @@
         strikerId: '',
         nonStrikerId: '',
         bowlerId: '',
-        matchStatus: customTarget ? "Second Innings" : "First Innings"
+        matchStatus: customTarget ? "Second Innings" : "First Innings",
+        matchPlayerStats: {}
       };
 
       saveState();
@@ -2867,6 +2942,10 @@
           if (!state.playerStats) state.playerStats = {};
           if (!state.playerStats[sc.strikerId]) state.playerStats[sc.strikerId] = { runs: 0, wickets: 0 };
           state.playerStats[sc.strikerId].runs += runVal;
+
+          if (!sc.matchPlayerStats) sc.matchPlayerStats = {};
+          if (!sc.matchPlayerStats[sc.strikerId]) sc.matchPlayerStats[sc.strikerId] = { runs: 0, wickets: 0 };
+          sc.matchPlayerStats[sc.strikerId].runs += runVal;
         }
 
         if (runVal % 2 !== 0) {
@@ -3066,6 +3145,10 @@
         if (!state.playerStats) state.playerStats = {};
         if (!state.playerStats[sc.bowlerId]) state.playerStats[sc.bowlerId] = { runs: 0, wickets: 0 };
         state.playerStats[sc.bowlerId].wickets += 1;
+
+        if (!sc.matchPlayerStats) sc.matchPlayerStats = {};
+        if (!sc.matchPlayerStats[sc.bowlerId]) sc.matchPlayerStats[sc.bowlerId] = { runs: 0, wickets: 0 };
+        sc.matchPlayerStats[sc.bowlerId].wickets += 1;
       }
       sc.deliveries.push("W");
       sc.currentOverDeliveries.push("W");
@@ -3410,7 +3493,8 @@
           teamBColor: teamB ? teamB.color : '#3b82f6',
           resultMsg: resultMsg,
           winningTeam: winningTeam,
-          margin: margin
+          margin: margin,
+          matchPlayerStats: sc.matchPlayerStats ? JSON.parse(JSON.stringify(sc.matchPlayerStats)) : {}
         });
         saveState();
         if (typeof renderCompletedMatches === 'function') renderCompletedMatches();
