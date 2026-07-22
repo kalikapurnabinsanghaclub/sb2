@@ -224,26 +224,29 @@
         container.innerHTML += '<p style="text-align:center; font-size:14px; color:#94a3b8; padding:20px;">No detailed player stats recorded for this match.</p>';
       } else {
         const unifiedTeams = [];
-        if (currentState.sportCustomTeams) unifiedTeams.push(...currentState.sportCustomTeams);
-        if (currentState.sportPubTeams) {
-          currentState.sportPubTeams.forEach(pt => {
-            let players = [];
-            if (pt.formAnswers && pt.formAnswers['Squad Players']) {
-              try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
-            } else if (pt.formAnswers && pt.formAnswers['Player List (comma separated)']) {
-              const listStr = pt.formAnswers['Player List (comma separated)'];
-              players = listStr.split(',').map((n, i) => ({ id: pt.id + '_p_' + i, name: n.trim(), role: 'Player' })).filter(p => p.name);
-            }
-            if (players.length === 0 && pt.players) players = pt.players;
-            players.forEach((pl, i) => { if (!pl.id) pl.id = pt.id + '_p_' + i; });
+        if (currentState.sportCustomTeams) unifiedTeams.push(...JSON.parse(JSON.stringify(currentState.sportCustomTeams)));
+        
+        const rawPubTeams = (currentState.participants && currentState.participants.length > 0) 
+                            ? currentState.participants 
+                            : (currentState.sportPubTeams || []);
+                            
+        rawPubTeams.forEach(pt => {
+          let players = [];
+          if (pt.formAnswers && pt.formAnswers['Squad Players']) {
+            try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
+          } else if (pt.formAnswers && pt.formAnswers['Player List (comma separated)']) {
+            const listStr = pt.formAnswers['Player List (comma separated)'];
+            players = listStr.split(',').map((n, i) => ({ id: pt.id + '_p_' + i, name: n.trim(), role: 'Player' })).filter(p => p.name);
+          }
+          if (players.length === 0 && pt.players) players = pt.players;
+          players.forEach((pl, i) => { if (!pl.id) pl.id = pt.id + '_p_' + i; });
 
-            unifiedTeams.push({
-              id: pt.id,
-              name: (pt.formAnswers && pt.formAnswers['Team / Club Name']) || pt.name,
-              players: players
-            });
+          unifiedTeams.push({
+            id: pt.id,
+            name: (pt.formAnswers && pt.formAnswers['Team / Club Name']) || pt.name,
+            players: players
           });
-        }
+        });
         
         unifiedTeams.forEach(t => {
           if (!t.players || t.players.length === 0) {
