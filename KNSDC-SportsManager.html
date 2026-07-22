@@ -2509,15 +2509,18 @@
         const players = [];
         for (const [playerId, stats] of Object.entries(match.matchPlayerStats)) {
           let playerName = "Unknown Player";
+          let teamName = "Unknown Team";
           for (const team of unifiedTeams) {
             const p = team.players.find(pl => pl.id === playerId);
             if (p) {
               playerName = p.name;
+              teamName = team.name;
               break;
             }
           }
           players.push({ 
             name: playerName, 
+            team: teamName,
             runs: stats.runs || 0, 
             wickets: stats.wickets || 0,
             ballsFaced: stats.ballsFaced || 0,
@@ -2528,68 +2531,81 @@
           });
         }
         
-        // Batting
-        const batters = players.filter(p => p.runs > 0 || p.ballsFaced > 0).sort((a, b) => b.runs - a.runs);
-        if (batters.length > 0) {
-          let batHTML = '<div style="font-weight:bold; color:var(--primary); margin-top:10px;">🏏 Batting</div>';
-          batHTML += `
-            <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:5px; text-align:left;">
-              <tr style="border-bottom:1px solid var(--border); color:var(--text-muted);">
-                <th style="padding:4px 0;">Batter</th>
-                <th style="padding:4px 0; text-align:right;">R</th>
-                <th style="padding:4px 0; text-align:right;">B</th>
-                <th style="padding:4px 0; text-align:right;">4s</th>
-                <th style="padding:4px 0; text-align:right;">6s</th>
-                <th style="padding:4px 0; text-align:right;">SR</th>
-              </tr>
-          `;
-          batters.forEach(p => {
-            const sr = p.ballsFaced > 0 ? ((p.runs / p.ballsFaced) * 100).toFixed(1) : "0.0";
-            batHTML += `
-              <tr style="border-bottom:1px dashed var(--border);">
-                <td style="padding:4px 0;">${p.name}</td>
-                <td style="padding:4px 0; text-align:right; font-weight:bold;">${p.runs}</td>
-                <td style="padding:4px 0; text-align:right;">${p.ballsFaced}</td>
-                <td style="padding:4px 0; text-align:right;">${p.fours}</td>
-                <td style="padding:4px 0; text-align:right;">${p.sixes}</td>
-                <td style="padding:4px 0; text-align:right;">${sr}</td>
-              </tr>
-            `;
-          });
-          batHTML += `</table>`;
-          container.innerHTML += batHTML;
-        }
+        // Group by team
+        const teamsPresent = [...new Set(players.map(p => p.team))];
         
-        // Bowling
-        const bowlers = players.filter(p => p.ballsBowled > 0).sort((a, b) => b.wickets - a.wickets);
-        if (bowlers.length > 0) {
-          let bowlHTML = '<div style="font-weight:bold; color:var(--primary); margin-top:15px;">🎯 Bowling</div>';
-          bowlHTML += `
-            <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:5px; text-align:left;">
-              <tr style="border-bottom:1px solid var(--border); color:var(--text-muted);">
-                <th style="padding:4px 0;">Bowler</th>
-                <th style="padding:4px 0; text-align:right;">O</th>
-                <th style="padding:4px 0; text-align:right;">R</th>
-                <th style="padding:4px 0; text-align:right;">W</th>
-                <th style="padding:4px 0; text-align:right;">Econ</th>
-              </tr>
-          `;
-          bowlers.forEach(p => {
-            const overs = Math.floor(p.ballsBowled / 6) + (p.ballsBowled % 6) / 10; // e.g. 1.2
-            const econ = p.ballsBowled > 0 ? (p.runsConceded / (p.ballsBowled / 6)).toFixed(1) : "0.0";
-            bowlHTML += `
-              <tr style="border-bottom:1px dashed var(--border);">
-                <td style="padding:4px 0;">${p.name}</td>
-                <td style="padding:4px 0; text-align:right;">${overs}</td>
-                <td style="padding:4px 0; text-align:right;">${p.runsConceded}</td>
-                <td style="padding:4px 0; text-align:right; font-weight:bold;">${p.wickets}</td>
-                <td style="padding:4px 0; text-align:right;">${econ}</td>
-              </tr>
+        teamsPresent.forEach(teamName => {
+          const teamPlayers = players.filter(p => p.team === teamName);
+          const batters = teamPlayers.filter(p => p.runs > 0 || p.ballsFaced > 0).sort((a, b) => b.runs - a.runs);
+          const bowlers = teamPlayers.filter(p => p.ballsBowled > 0).sort((a, b) => b.wickets - a.wickets);
+          
+          if (batters.length === 0 && bowlers.length === 0) return;
+
+          let teamHTML = `<div style="margin-top:15px; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">`;
+          teamHTML += `<h4 style="margin:0 0 10px 0; color:var(--primary); font-size:14px; text-transform:uppercase;">🛡️ ${teamName}</h4>`;
+          
+          if (batters.length > 0) {
+            teamHTML += `<div style="font-weight:bold; font-size:12px; margin-bottom:5px; color:var(--text-muted);">🏏 BATTING</div>`;
+            teamHTML += `
+              <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px; text-align:left;">
+                <tr style="border-bottom:1px solid var(--border); color:var(--text-muted);">
+                  <th style="padding:4px 0;">Batter</th>
+                  <th style="padding:4px 0; text-align:right;">R</th>
+                  <th style="padding:4px 0; text-align:right;">B</th>
+                  <th style="padding:4px 0; text-align:right;">4s</th>
+                  <th style="padding:4px 0; text-align:right;">6s</th>
+                  <th style="padding:4px 0; text-align:right;">SR</th>
+                </tr>
             `;
-          });
-          bowlHTML += `</table>`;
-          container.innerHTML += bowlHTML;
-        }
+            batters.forEach(p => {
+              const sr = p.ballsFaced > 0 ? ((p.runs / p.ballsFaced) * 100).toFixed(1) : "0.0";
+              teamHTML += `
+                <tr style="border-bottom:1px dashed var(--border);">
+                  <td style="padding:4px 0;">${p.name}</td>
+                  <td style="padding:4px 0; text-align:right; font-weight:bold;">${p.runs}</td>
+                  <td style="padding:4px 0; text-align:right;">${p.ballsFaced}</td>
+                  <td style="padding:4px 0; text-align:right;">${p.fours}</td>
+                  <td style="padding:4px 0; text-align:right;">${p.sixes}</td>
+                  <td style="padding:4px 0; text-align:right;">${sr}</td>
+                </tr>
+              `;
+            });
+            teamHTML += `</table>`;
+          }
+          
+          if (bowlers.length > 0) {
+            teamHTML += `<div style="font-weight:bold; font-size:12px; margin-bottom:5px; margin-top:10px; color:var(--text-muted);">🎯 BOWLING</div>`;
+            teamHTML += `
+              <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+                <tr style="border-bottom:1px solid var(--border); color:var(--text-muted);">
+                  <th style="padding:4px 0;">Bowler</th>
+                  <th style="padding:4px 0; text-align:right;">O</th>
+                  <th style="padding:4px 0; text-align:right;">M</th>
+                  <th style="padding:4px 0; text-align:right;">R</th>
+                  <th style="padding:4px 0; text-align:right;">W</th>
+                  <th style="padding:4px 0; text-align:right;">Econ</th>
+                </tr>
+            `;
+            bowlers.forEach(p => {
+              const overs = Math.floor(p.ballsBowled / 6) + (p.ballsBowled % 6) / 10;
+              const econ = p.ballsBowled > 0 ? (p.runsConceded / (p.ballsBowled / 6)).toFixed(1) : "0.0";
+              teamHTML += `
+                <tr style="border-bottom:1px dashed var(--border);">
+                  <td style="padding:4px 0;">${p.name}</td>
+                  <td style="padding:4px 0; text-align:right;">${overs}</td>
+                  <td style="padding:4px 0; text-align:right;">0</td>
+                  <td style="padding:4px 0; text-align:right;">${p.runsConceded}</td>
+                  <td style="padding:4px 0; text-align:right; font-weight:bold;">${p.wickets}</td>
+                  <td style="padding:4px 0; text-align:right;">${econ}</td>
+                </tr>
+              `;
+            });
+            teamHTML += `</table>`;
+          }
+          
+          teamHTML += `</div>`;
+          container.innerHTML += teamHTML;
+        });
 
         // Extras Breakdown
         if (match.matchPlayerStats && match.extrasBreakdown) {
