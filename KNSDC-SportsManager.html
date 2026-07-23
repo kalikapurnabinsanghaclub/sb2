@@ -4555,6 +4555,56 @@
       return defaultLabel;
     }
 
+    function initBracketSlots() {
+      const unifiedTeams = getUnifiedTeams();
+      const firstRoundCount = Math.max(1, Math.floor(unifiedTeams.length / 2));
+      state.bracketSlots = {
+        'ko_1st': firstRoundCount,
+        'ko_qf': 4,
+        'ko_sf': 2,
+        'ko_final': 1,
+        'gp_qf': 4,
+        'gp_sf': 2,
+        'gp_final': 1
+      };
+    }
+
+    function addBracketPair(slotKey) {
+      if (!state.bracketSlots) {
+        initBracketSlots();
+      }
+      state.bracketSlots[slotKey] = (state.bracketSlots[slotKey] || 0) + 1;
+      saveState();
+      renderBracketBuilder(state.ruleMode);
+    }
+
+    function removeBracketPair(slotKey, slotIndex, stageName) {
+      if (!state.bracketSlots) return;
+      if (state.bracketSlots[slotKey] > 1) {
+        state.bracketSlots[slotKey]--;
+        
+        const fixId = `fix_${slotKey}_${slotIndex}`;
+        
+        // Remove saved fixture
+        state.fixtures = state.fixtures.filter(f => String(f.id) !== String(fixId));
+        
+        // Shift remaining fixtures down
+        const count = state.bracketSlots[slotKey];
+        for (let idx = slotIndex; idx < count; idx++) {
+          const oldId = `fix_${slotKey}_${idx + 1}`;
+          const newId = `fix_${slotKey}_${idx}`;
+          const found = state.fixtures.find(f => String(f.id) === String(oldId));
+          if (found) {
+            found.id = newId;
+          }
+        }
+        
+        saveState();
+        renderFixtures();
+        renderBracketBuilder(state.ruleMode);
+      }
+    }
+
     function renderBracketBuilder(mode) {
       const container = document.getElementById('bracket-builder-container');
       if (!container) return;
@@ -4568,9 +4618,15 @@
       container.classList.remove('hidden');
       const unifiedTeams = getUnifiedTeams();
 
+      if (!state.bracketSlots) {
+        initBracketSlots();
+      }
+
       if (mode === 'knockout') {
-        const teamCount = unifiedTeams.length;
-        const firstRoundCount = Math.max(1, Math.floor(teamCount / 2));
+        const firstRoundCount = state.bracketSlots['ko_1st'] || 1;
+        const qfCount = state.bracketSlots['ko_qf'] || 4;
+        const sfCount = state.bracketSlots['ko_sf'] || 2;
+        const finalCount = state.bracketSlots['ko_final'] || 1;
         
         let html = `
           <h3 style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
@@ -4582,7 +4638,10 @@
         // 1. 1st Round Column
         html += `
           <div class="bracket-column">
-            <div class="bracket-column-title">1st Round</div>
+            <div class="bracket-column-title">
+              <span>1st Round</span>
+              <button onclick="addBracketPair('ko_1st')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+            </div>
         `;
         for (let i = 0; i < firstRoundCount; i++) {
           const fixId = `fix_ko_1st_${i}`;
@@ -4593,7 +4652,10 @@
 
           html += `
             <div class="bracket-match-slot">
-              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">PAIR ${i + 1}</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>PAIR ${i + 1}</span>
+                ${firstRoundCount > 1 ? `<button onclick="removeBracketPair('ko_1st', ${i}, '1st Round')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
               <div class="bracket-select-wrapper">
                 <span class="bracket-select-label">Team A</span>
                 <select id="ko-1st-${i}-A" class="bracket-select">
@@ -4623,9 +4685,12 @@
 
         html += `
           <div class="bracket-column">
-            <div class="bracket-column-title">Quarter Finals</div>
+            <div class="bracket-column-title">
+              <span>Quarter Finals</span>
+              <button onclick="addBracketPair('ko_qf')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+            </div>
         `;
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < qfCount; i++) {
           const fixId = `fix_ko_qf_${i}`;
           const existing = state.fixtures.find(f => String(f.id) === String(fixId));
           const selA = existing?.teamA?.name || '';
@@ -4634,7 +4699,10 @@
 
           html += `
             <div class="bracket-match-slot">
-              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">QF MATCH ${i + 1}</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>QF MATCH ${i + 1}</span>
+                ${qfCount > 1 ? `<button onclick="removeBracketPair('ko_qf', ${i}, 'Quarter Final')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
               <div class="bracket-select-wrapper">
                 <span class="bracket-select-label">Team A</span>
                 <select id="ko-qf-${i}-A" class="bracket-select">
@@ -4668,15 +4736,18 @@
 
         // 3. Semi Finals Column
         const sfWinners = [];
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < qfCount; i++) {
           sfWinners.push(getBracketWinner(`fix_ko_qf_${i}`, 'Quarter Final', `Winner QF ${i + 1}`));
         }
 
         html += `
           <div class="bracket-column">
-            <div class="bracket-column-title">Semi Finals</div>
+            <div class="bracket-column-title">
+              <span>Semi Finals</span>
+              <button onclick="addBracketPair('ko_sf')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+            </div>
         `;
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < sfCount; i++) {
           const fixId = `fix_ko_sf_${i}`;
           const existing = state.fixtures.find(f => String(f.id) === String(fixId));
           const selA = existing?.teamA?.name || '';
@@ -4685,7 +4756,10 @@
 
           html += `
             <div class="bracket-match-slot">
-              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">SF MATCH ${i + 1}</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>SF MATCH ${i + 1}</span>
+                ${sfCount > 1 ? `<button onclick="removeBracketPair('ko_sf', ${i}, 'Semi Final')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
               <div class="bracket-select-wrapper">
                 <span class="bracket-select-label">Team A</span>
                 <select id="ko-sf-${i}-A" class="bracket-select">
@@ -4719,51 +4793,59 @@
 
         // 4. Final Column
         const finalWinners = [];
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < sfCount; i++) {
           finalWinners.push(getBracketWinner(`fix_ko_sf_${i}`, 'Semi Final', `Winner SF ${i + 1}`));
         }
 
         html += `
           <div class="bracket-column">
-            <div class="bracket-column-title">Grand Finale</div>
+            <div class="bracket-column-title">
+              <span>Grand Finale</span>
+              <button onclick="addBracketPair('ko_final')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+            </div>
         `;
-        const finalFixId = `fix_ko_final`;
-        const finalExisting = state.fixtures.find(f => String(f.id) === String(finalFixId));
-        const finalSelA = finalExisting?.teamA?.name || '';
-        const finalSelB = finalExisting?.teamB?.name || '';
-        const finalTime = finalExisting?.time || '';
+        for (let i = 0; i < finalCount; i++) {
+          const finalFixId = `fix_ko_final_${i}`;
+          const finalExisting = state.fixtures.find(f => String(f.id) === String(finalFixId));
+          const finalSelA = finalExisting?.teamA?.name || '';
+          const finalSelB = finalExisting?.teamB?.name || '';
+          const finalTime = finalExisting?.time || '';
 
-        html += `
-          <div class="bracket-match-slot">
-            <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">FINAL MATCH</div>
-            <div class="bracket-select-wrapper">
-              <span class="bracket-select-label">Team A</span>
-              <select id="ko-final-A" class="bracket-select">
-                <option value="">-- Select Team --</option>
-                <optgroup label="SF Winners">
-                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelA ? 'selected' : ''}>${w}</option>`).join('')}
-                </optgroup>
-                <optgroup label="All Teams">
-                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelA ? 'selected' : ''}>${t.name}</option>`).join('')}
-                </optgroup>
-              </select>
+          html += `
+            <div class="bracket-match-slot">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>FINAL MATCH ${finalCount > 1 ? i + 1 : ''}</span>
+                ${finalCount > 1 ? `<button onclick="removeBracketPair('ko_final', ${i}, 'Final')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="ko-final-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="SF Winners">
+                    ${finalWinners.map(w => `<option value="${w}" ${w === finalSelA ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="ko-final-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="SF Winners">
+                    ${finalWinners.map(w => `<option value="${w}" ${w === finalSelB ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <input type="datetime-local" id="ko-final-${i}-time" value="${finalTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('Final', '${finalFixId}', 'ko-final-${i}-A', 'ko-final-${i}-B', 'ko-final-${i}-time')">Fix Match</button>
             </div>
-            <div class="bracket-select-wrapper">
-              <span class="bracket-select-label">Team B</span>
-              <select id="ko-final-B" class="bracket-select">
-                <option value="">-- Select Team --</option>
-                <optgroup label="SF Winners">
-                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelB ? 'selected' : ''}>${w}</option>`).join('')}
-                </optgroup>
-                <optgroup label="All Teams">
-                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelB ? 'selected' : ''}>${t.name}</option>`).join('')}
-                </optgroup>
-              </select>
-            </div>
-            <input type="datetime-local" id="ko-final-time" value="${finalTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
-            <button class="bracket-btn" onclick="fixCustomMatch('Final', '${finalFixId}', 'ko-final-A', 'ko-final-B', 'ko-final-time')">Fix Match</button>
-          </div>
-        `;
+          `;
+        }
         html += `</div></div>`;
         container.innerHTML = html;
       }
@@ -4772,6 +4854,9 @@
         if (!state.groupAdvancements) state.groupAdvancements = {};
 
         const createdGroups = Object.keys(state.groupMappings);
+        const qfCount = state.bracketSlots['gp_qf'] || 4;
+        const sfCount = state.bracketSlots['gp_sf'] || 2;
+        const finalCount = state.bracketSlots['gp_final'] || 1;
         
         let html = `
           <h3 style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--text); margin-bottom: 12px;">
@@ -4871,9 +4956,12 @@
           <div class="bracket-grid">
             <!-- Quarter Finals -->
             <div class="bracket-column">
-              <div class="bracket-column-title">Quarter Finals</div>
-        `;
-        for (let i = 0; i < 4; i++) {
+              <div class="bracket-column-title">
+                <span>Quarter Finals</span>
+                <button onclick="addBracketPair('gp_qf')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+              </div>
+          `;
+        for (let i = 0; i < qfCount; i++) {
           const fixId = `fix_gp_qf_${i}`;
           const existing = state.fixtures.find(f => String(f.id) === String(fixId));
           const selA = existing?.teamA?.name || '';
@@ -4882,7 +4970,10 @@
 
           html += `
             <div class="bracket-match-slot">
-              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">QF MATCH ${i + 1}</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>QF MATCH ${i + 1}</span>
+                ${qfCount > 1 ? `<button onclick="removeBracketPair('gp_qf', ${i}, 'Quarter Final')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
               <div class="bracket-select-wrapper">
                 <span class="bracket-select-label">Team A</span>
                 <select id="gp-qf-${i}-A" class="bracket-select">
@@ -4916,15 +5007,18 @@
 
         // Semi Finals
         const sfWinners = [];
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < qfCount; i++) {
           sfWinners.push(getBracketWinner(`fix_gp_qf_${i}`, 'Quarter Final', `Winner QF ${i + 1}`));
         }
 
         html += `
           <div class="bracket-column">
-            <div class="bracket-column-title">Semi Finals</div>
+            <div class="bracket-column-title">
+              <span>Semi Finals</span>
+              <button onclick="addBracketPair('gp_sf')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+            </div>
         `;
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < sfCount; i++) {
           const fixId = `fix_gp_sf_${i}`;
           const existing = state.fixtures.find(f => String(f.id) === String(fixId));
           const selA = existing?.teamA?.name || '';
@@ -4933,7 +5027,10 @@
 
           html += `
             <div class="bracket-match-slot">
-              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">SF MATCH ${i + 1}</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>SF MATCH ${i + 1}</span>
+                ${sfCount > 1 ? `<button onclick="removeBracketPair('gp_sf', ${i}, 'Semi Final')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
               <div class="bracket-select-wrapper">
                 <span class="bracket-select-label">Team A</span>
                 <select id="gp-sf-${i}-A" class="bracket-select">
@@ -4967,43 +5064,62 @@
 
         // Grand Finale
         const finalWinners = [];
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < sfCount; i++) {
           finalWinners.push(getBracketWinner(`fix_gp_sf_${i}`, 'Semi Final', `Winner SF ${i + 1}`));
         }
 
         html += `
           <div class="bracket-column">
-            <div class="bracket-column-title">Grand Finale</div>
-        `;
-        const finalFixId = `fix_gp_final`;
-        const finalExisting = state.fixtures.find(f => String(f.id) === String(finalFixId));
-        const finalSelA = finalExisting?.teamA?.name || '';
-        const finalSelB = finalExisting?.teamB?.name || '';
-        const finalTime = finalExisting?.time || '';
-
-        html += `
-          <div class="bracket-match-slot">
-            <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">FINAL MATCH</div>
-            <div class="bracket-select-wrapper">
-              <span class="bracket-select-label">Team A</span>
-              <select id="gp-final-A" class="bracket-select">
-                <option value="">-- Select Team --</option>
-                <optgroup label="SF Winners">
-                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelA ? 'selected' : ''}>${w}</option>`).join('')}
-                </optgroup>
-                <optgroup label="All Teams">
-                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelA ? 'selected' : ''}>${t.name}</option>`).join('')}
-                </optgroup>
-              </select>
+            <div class="bracket-column-title">
+              <span>Grand Finale</span>
+              <button onclick="addBracketPair('gp_final')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
             </div>
-            <div class="bracket-select-wrapper">
-              <span class="bracket-select-label">Team B</span>
-              <select id="gp-final-B" class="bracket-select">
-                <option value="">-- Select Team --</option>
-                <optgroup label="SF Winners">
-                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelB ? 'selected' : ''}>${w}</option>`).join('')}
-                </optgroup>
-                <optgroup label="All Teams">
+        `;
+        for (let i = 0; i < finalCount; i++) {
+          const finalFixId = `fix_gp_final_${i}`;
+          const finalExisting = state.fixtures.find(f => String(f.id) === String(finalFixId));
+          const finalSelA = finalExisting?.teamA?.name || '';
+          const finalSelB = finalExisting?.teamB?.name || '';
+          const finalTime = finalExisting?.time || '';
+
+          html += `
+            <div class="bracket-match-slot">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>FINAL MATCH ${finalCount > 1 ? i + 1 : ''}</span>
+                ${finalCount > 1 ? `<button onclick="removeBracketPair('gp_final', ${i}, 'Final')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="gp-final-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="SF Winners">
+                    ${finalWinners.map(w => `<option value="${w}" ${w === finalSelA ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="gp-final-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="SF Winners">
+                    ${finalWinners.map(w => `<option value="${w}" ${w === finalSelB ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <input type="datetime-local" id="gp-final-${i}-time" value="${finalTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('Final', '${finalFixId}', 'gp-final-${i}-A', 'gp-final-${i}-B', 'gp-final-${i}-time')">Fix Match</button>
+            </div>
+          `;
+        }
+        html += `</div></div>`;
+        container.innerHTML = html;
+      }  <optgroup label="All Teams">
                   ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelB ? 'selected' : ''}>${t.name}</option>`).join('')}
                 </optgroup>
               </select>
