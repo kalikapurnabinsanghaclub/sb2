@@ -369,7 +369,7 @@
 
     @media (min-width: 600px) {
       .format-grid {
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
       }
     }
 
@@ -1105,23 +1105,17 @@
             <div class="format-title">Round Robin</div>
             <div class="format-desc">Every registered team plays against every other team once.</div>
           </div>
-          
-          <div class="format-card" onclick="selectFormat('knockout')" id="format-knockout">
-            <div class="format-icon">⚡</div>
-            <div class="format-title">Knockout</div>
-            <div class="format-desc">Single elimination bracket structure (Semi Finals / Finals).</div>
+
+          <div class="format-card" onclick="selectFormat('1stround')" id="format-1stround">
+            <div class="format-icon">🥇</div>
+            <div class="format-title">1st Round Bracket</div>
+            <div class="format-desc">1st Round → Quarter Final → Semi Final → Final. Winners auto-qualify each stage.</div>
           </div>
 
-          <div class="format-card" onclick="selectFormat('group')" id="format-group">
-            <div class="format-icon">🌍</div>
-            <div class="format-title">FIFA World Cup</div>
-            <div class="format-desc">Group stages mapping teams into blocks followed by Knockout bracket.</div>
-          </div>
-
-          <div class="format-card" onclick="selectFormat('pipeline')" id="format-pipeline">
-            <div class="format-icon">🚀</div>
-            <div class="format-title">Pipeline Bracket</div>
-            <div class="format-desc">1st Round → Qualified Round → Semifinal → Final with auto-advancing winners.</div>
+          <div class="format-card" onclick="selectFormat('groupknockout')" id="format-groupknockout">
+            <div class="format-icon">🌐</div>
+            <div class="format-title">Group Stage Knockout</div>
+            <div class="format-desc">Teams split into groups. Top 2 from each group advance to Quarter Final cross-bracket.</div>
           </div>
         </div>
 
@@ -2399,11 +2393,16 @@
 
     // --- RULE SELECTION / TOURNAMENT TAB ---
     function selectFormat(formatType) {
+      // Migrate legacy removed format IDs to new equivalents
+      if (formatType === 'knockout') formatType = '1stround';
+      if (formatType === 'group') formatType = 'groupknockout';
+      
       state.format = formatType;
       document.querySelectorAll('.format-card').forEach(card => {
         card.classList.remove('active');
       });
-      document.getElementById('format-' + formatType).classList.add('active');
+      const el = document.getElementById('format-' + formatType);
+      if (el) el.classList.add('active');
       saveState();
     }
 
@@ -2433,37 +2432,62 @@
             });
           }
         }
-      } else if (state.format === 'knockout') {
-        // Simple Knockout Bracket Generators (Semi Finals setup or finals based on count)
+      } else if (state.format === '1stround') {
+        // 1st Round Bracket: pair all teams in 1st Round matches
+        // QF / SF / Final are added manually via Add Custom Fixture (smart team filter handles eligibility)
         const teamCount = unifiedTeams.length;
-        if (teamCount === 2) {
+        const matchesCount = Math.floor(teamCount / 2);
+        for (let i = 0; i < matchesCount; i++) {
           state.fixtures.push({
-            id: 'fix_final_' + Date.now(),
-            teamA: unifiedTeams[0],
-            teamB: unifiedTeams[1],
-            stage: 'Grand Finale',
-            venue: 'KNS Stadium Center'
+            id: 'fix_1st_' + i + '_' + Date.now(),
+            teamA: unifiedTeams[i * 2],
+            teamB: unifiedTeams[i * 2 + 1],
+            stage: '1st Round',
+            time: 'TBD',
+            venue: 'KNS Community Ground'
           });
-        } else {
-          // semi finals setup
-          const matchesCount = Math.floor(teamCount / 2);
-          for (let i = 0; i < matchesCount; i++) {
-            state.fixtures.push({
-              id: 'fix_semi_' + i + '_' + Date.now(),
-              teamA: unifiedTeams[i * 2],
-              teamB: unifiedTeams[i * 2 + 1],
-              stage: 'Semi Final ' + (i + 1),
-              venue: 'KNS Arena Ground'
-            });
-          }
-          if (teamCount % 2 !== 0) {
-            state.fixtures.push({
-              id: 'fix_bye_' + Date.now(),
-              teamA: unifiedTeams[teamCount - 1],
-              teamB: { name: 'BYE / Match Winner' },
-              stage: 'Qualifier Round',
-              venue: 'KNS Arena Ground'
-            });
+        }
+        // If odd number of teams, last team gets a bye (auto-qualifies to QF)
+        if (teamCount % 2 !== 0) {
+          state.fixtures.push({
+            id: 'fix_1st_bye_' + Date.now(),
+            teamA: unifiedTeams[teamCount - 1],
+            teamB: { id: 'bye', name: 'BYE (Auto-Qualify)' },
+            stage: '1st Round (BYE)',
+            time: 'TBD',
+            venue: 'KNS Community Ground'
+          });
+        }
+      } else if (state.format === 'groupknockout') {
+        // Group Stage Knockout: split into groups of 4 (Round Robin within), top 2 advance
+        if (!state.groupMappings || Object.keys(state.groupMappings).length === 0) {
+          const groupSize = 4;
+          const groupLabels = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P'];
+          state.groupMappings = {};
+          unifiedTeams.forEach((team, index) => {
+            const groupIndex = Math.floor(index / groupSize);
+            const groupName = 'Group ' + (groupLabels[groupIndex] || groupIndex + 1);
+            if (!state.groupMappings[groupName]) state.groupMappings[groupName] = [];
+            state.groupMappings[groupName].push(team);
+          });
+        }
+
+        renderGroups();
+        groupsContainer.classList.remove('hidden');
+
+        // Generate Round Robin fixtures within each group
+        for (const [groupName, groupTeams] of Object.entries(state.groupMappings)) {
+          for (let i = 0; i < groupTeams.length; i++) {
+            for (let j = i + 1; j < groupTeams.length; j++) {
+              state.fixtures.push({
+                id: 'fix_grp_' + groupName.replace(' ','') + '_' + i + '_' + j + '_' + Date.now(),
+                teamA: groupTeams[i],
+                teamB: groupTeams[j],
+                stage: groupName + ' Match',
+                time: 'TBD',
+                venue: 'KNS Community Ground'
+              });
+            }
           }
         }
       } else if (state.format === 'pipeline') {
@@ -2685,7 +2709,7 @@
       let championHtml = '';
       let championFound = false;
 
-      if (state.format === 'knockout' || state.format === 'pipeline' || state.format === 'group') {
+      if (state.format === '1stround' || state.format === 'groupknockout' || state.format === 'pipeline') {
         const finalRoundNames = ['grand finale', 'final', 'finals'];
         let finalMatch = null;
 
