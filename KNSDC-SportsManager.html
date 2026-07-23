@@ -1554,7 +1554,7 @@
         </div>
         <div class="form-group">
           <label>Stage / Pipeline</label>
-          <select id="fixture-stage" class="modal-input" required>
+          <select id="fixture-stage" class="modal-input" required onchange="updateFixtureModalTeams(this.value, document.getElementById('fixture-team-a').value, document.getElementById('fixture-team-b').value)">
             <option value="Group Stage">Group Stage</option>
             <option value="1st Round">1st Round</option>
             <option value="Qualifier Round">Qualifier Round</option>
@@ -3090,6 +3090,107 @@
 
     let currentEditingFixtureIndex = null;
 
+    function updateFixtureModalTeams(selectedStage, selectedTeamAId = '', selectedTeamBId = '') {
+      const teamASelect = document.getElementById('fixture-team-a');
+      const teamBSelect = document.getElementById('fixture-team-b');
+      if (!teamASelect || !teamBSelect) return;
+
+      const unifiedTeams = getUnifiedTeams();
+      let filteredTeams = unifiedTeams;
+      const stageLower = (selectedStage || '').toLowerCase();
+
+      if (stageLower.includes('quarter')) {
+        // Quarter Final: Teams that won 1st Round OR top 2 teams from Group Stage groups
+        const firstRoundWinners = (state.completedMatches || [])
+          .filter(m => {
+            const mStage = (m.stage || '').toLowerCase();
+            return mStage.includes('1st round') || mStage.includes('round 1');
+          })
+          .map(m => m.winningTeam)
+          .filter(w => w && w !== 'Tie');
+
+        // Group Stage Points Calculation
+        const groupPoints = {};
+        if (state.groupMappings) {
+          for (const [groupName, groupTeams] of Object.entries(state.groupMappings)) {
+            groupTeams.forEach(t => {
+              groupPoints[t.name] = 0;
+            });
+          }
+        }
+
+        (state.completedMatches || []).forEach(match => {
+          const matchStageLower = (match.stage || '').toLowerCase();
+          if (matchStageLower.includes('group') || matchStageLower.includes('grop')) {
+            if (groupPoints[match.teamA] === undefined) groupPoints[match.teamA] = 0;
+            if (groupPoints[match.teamB] === undefined) groupPoints[match.teamB] = 0;
+            
+            if (match.winningTeam === 'Tie') {
+              groupPoints[match.teamA] += 1;
+              groupPoints[match.teamB] += 1;
+            } else {
+              groupPoints[match.winningTeam] += 2;
+            }
+          }
+        });
+
+        const topGroupTeams = [];
+        if (state.groupMappings && Object.keys(state.groupMappings).length > 0) {
+          for (const [groupName, groupTeams] of Object.entries(state.groupMappings)) {
+            const sorted = [...groupTeams].sort((a, b) => {
+              const pA = groupPoints[a.name] || 0;
+              const pB = groupPoints[b.name] || 0;
+              return pB - pA;
+            });
+            // Select top 2 teams from each group
+            sorted.slice(0, 2).forEach(t => topGroupTeams.push(t.name));
+          }
+        }
+
+        const validTeams = new Set([...firstRoundWinners, ...topGroupTeams]);
+        if (validTeams.size > 0) {
+          filteredTeams = unifiedTeams.filter(t => validTeams.has(t.name));
+        }
+
+      } else if (stageLower.includes('semi')) {
+        // Semi Final: Teams that won Quarter Final
+        const quarterWinners = (state.completedMatches || [])
+          .filter(m => (m.stage || '').toLowerCase().includes('quarter'))
+          .map(m => m.winningTeam)
+          .filter(w => w && w !== 'Tie');
+
+        const validTeams = new Set(quarterWinners);
+        if (validTeams.size > 0) {
+          filteredTeams = unifiedTeams.filter(t => validTeams.has(t.name));
+        }
+
+      } else if (stageLower === 'final') {
+        // Final: Teams that won Semi Final
+        const semiWinners = (state.completedMatches || [])
+          .filter(m => (m.stage || '').toLowerCase().includes('semi'))
+          .map(m => m.winningTeam)
+          .filter(w => w && w !== 'Tie');
+
+        const validTeams = new Set(semiWinners);
+        if (validTeams.size > 0) {
+          filteredTeams = unifiedTeams.filter(t => validTeams.has(t.name));
+        }
+      }
+
+      // Populate Team options
+      let teamOptions = '<option value="">-- Select Team --</option>';
+      filteredTeams.forEach(t => {
+        teamOptions += `<option value="${t.id}">${t.name}</option>`;
+      });
+
+      teamASelect.innerHTML = teamOptions;
+      teamBSelect.innerHTML = teamOptions;
+
+      // Restore values if they are still present in options
+      if (selectedTeamAId) teamASelect.value = selectedTeamAId;
+      if (selectedTeamBId) teamBSelect.value = selectedTeamBId;
+    }
+
     function openFixtureModal(index = null) {
       currentEditingFixtureIndex = index;
       const modal = document.getElementById('fixture-modal');
@@ -3100,30 +3201,26 @@
       const datetimeInput = document.getElementById('fixture-datetime');
       const venueInput = document.getElementById('fixture-venue');
 
-      // Populate dropdowns
-      const unifiedTeams = getUnifiedTeams();
-      let teamOptions = '<option value="">-- Select Team --</option>';
-      unifiedTeams.forEach(t => {
-        teamOptions += `<option value="${t.id}">${t.name}</option>`;
-      });
-      teamASelect.innerHTML = teamOptions;
-      teamBSelect.innerHTML = teamOptions;
-
       if (index !== null) {
         // Editing existing
         title.innerText = "Edit Fixture";
         const fix = state.fixtures[index];
-        teamASelect.value = fix.teamA.id || '';
-        teamBSelect.value = fix.teamB.id || '';
-        stageSelect.value = fix.stage || 'Custom Match';
+        const initialStage = fix.stage || 'Custom Match';
+        stageSelect.value = initialStage;
+        
+        // Populate and filter teams dynamically based on stage
+        updateFixtureModalTeams(initialStage, fix.teamA.id || '', fix.teamB.id || '');
+        
         venueInput.value = fix.venue || 'KNS Community Ground';
         datetimeInput.value = fix.time && fix.time !== 'TBD' ? fix.time : '';
       } else {
         // Adding new custom
         title.innerText = "Add Custom Fixture";
-        teamASelect.value = '';
-        teamBSelect.value = '';
         stageSelect.value = 'Custom Match';
+        
+        // Populate with all teams by default
+        updateFixtureModalTeams('Custom Match', '', '');
+        
         datetimeInput.value = '';
         venueInput.value = 'KNS Community Ground';
       }
