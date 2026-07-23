@@ -1055,7 +1055,8 @@
       
       const offlineIndicator = document.getElementById('scorer-offline-indicator');
       if (offlineIndicator) {
-        offlineIndicator.style.display = (state.systemStatus === 'offline') ? 'inline-block' : 'none';
+        const engineState = window.syncEngine ? window.syncEngine.getData() : {};
+        offlineIndicator.style.display = (engineState.systemStatus === 'offline') ? 'inline-block' : 'none';
       }
 
       document.getElementById('score-runs').innerText = sc.runs;
