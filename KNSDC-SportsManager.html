@@ -909,6 +909,45 @@
       margin-bottom: 8px;
       border: 1px solid var(--border);
     }
+    
+    /* Tournament Winners & Standings styling */
+    .winners-wrapper {
+      margin-top: 10px;
+    }
+    .winner-item {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .winner-item:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: 0 8px 16px -4px rgba(16, 185, 129, 0.12), 0 2px 4px -2px rgba(0,0,0,0.02);
+    }
+    .champion-banner {
+      background: linear-gradient(135deg, #fef08a 0%, #fef9c3 100%);
+      border: 2px solid #eab308;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 10px 25px -5px rgba(234, 179, 8, 0.15);
+      animation: pulse-champion 2.5s infinite;
+      transition: all 0.3s;
+    }
+    @keyframes pulse-champion {
+      0% { box-shadow: 0 10px 25px -5px rgba(234, 179, 8, 0.15); }
+      50% { box-shadow: 0 10px 25px -2px rgba(234, 179, 8, 0.35); }
+      100% { box-shadow: 0 10px 25px -5px rgba(234, 179, 8, 0.15); }
+    }
   </style>
 </head>
 <body>
@@ -1093,6 +1132,16 @@
           <button onclick="addCustomFixture()" class="btn btn-primary" style="flex:1; background: #0f172a;">
             Add Custom Fixture
           </button>
+        </div>
+
+        <!-- Tournament Champions & Round Winners Section -->
+        <div id="tournament-winners-section" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+          <div style="font-size: 15px; font-weight: 800; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>🏆</span> Tournament Winners & Standings
+          </div>
+          <div id="tournament-winners-container">
+            <!-- Dynamically populated -->
+          </div>
         </div>
       </div>
 
@@ -2549,36 +2598,217 @@
       if (!container) return;
       if (!state.completedMatches || state.completedMatches.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding: 20px;"><p style="font-size:13px; color:var(--text-muted);">No matches have been completed yet.</p></div>';
-        return;
+      } else {
+        container.innerHTML = '';
+        state.completedMatches.forEach((match, index) => {
+          const item = document.createElement('div');
+          item.className = 'fixture-item';
+          item.style.borderLeft = '4px solid var(--primary)';
+          item.style.cursor = 'pointer';
+          item.onclick = () => showMatchSummaryModal(index);
+          
+          item.innerHTML = `
+            <div class="fixture-teams">
+              <div class="fixture-team-block">
+                <div class="team-color-badge" style="background: ${match.teamAColor || '#ef4444'};"></div>
+                <span>${match.teamA}</span>
+              </div>
+              <div class="vs-divider" style="font-size: 10px;">VS</div>
+              <div class="fixture-team-block">
+                <div class="team-color-badge" style="background: ${match.teamBColor || '#3b82f6'};"></div>
+                <span>${match.teamB}</span>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+              <div style="font-weight:900; color:var(--primary); font-size:15px;" onclick="event.stopPropagation(); showMatchSummaryModal(${index});">🎉 ${match.winningTeam !== 'Tie' ? match.winningTeam + ' Won!' : 'Match Tied!'}</div>
+              <div style="font-size:12px; color:var(--text-muted); font-weight:600; margin-bottom: 8px;">${match.margin}</div>
+              <button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px; color:#ef4444; border-color:#ef4444; align-self: flex-end;" onclick="event.stopPropagation(); deleteCompletedMatch(${index})">Delete Match</button>
+            </div>
+          `;
+          container.appendChild(item);
+        });
       }
-      container.innerHTML = '';
-      state.completedMatches.forEach((match, index) => {
-        const item = document.createElement('div');
-        item.className = 'fixture-item';
-        item.style.borderLeft = '4px solid var(--primary)';
-        item.style.cursor = 'pointer';
-        item.onclick = () => showMatchSummaryModal(index);
-        
-        item.innerHTML = `
-          <div class="fixture-teams">
-            <div class="fixture-team-block">
-              <div class="team-color-badge" style="background: ${match.teamAColor || '#ef4444'};"></div>
-              <span>${match.teamA}</span>
-            </div>
-            <div class="vs-divider" style="font-size: 10px;">VS</div>
-            <div class="fixture-team-block">
-              <div class="team-color-badge" style="background: ${match.teamBColor || '#3b82f6'};"></div>
-              <span>${match.teamB}</span>
-            </div>
-          </div>
-          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
-            <div style="font-weight:900; color:var(--primary); font-size:15px;" onclick="event.stopPropagation(); showMatchSummaryModal(${index});">🎉 ${match.winningTeam !== 'Tie' ? match.winningTeam + ' Won!' : 'Match Tied!'}</div>
-            <div style="font-size:12px; color:var(--text-muted); font-weight:600; margin-bottom: 8px;">${match.margin}</div>
-            <button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px; color:#ef4444; border-color:#ef4444; align-self: flex-end;" onclick="event.stopPropagation(); deleteCompletedMatch(${index})">Delete Match</button>
+
+      if (typeof renderTournamentWinners === 'function') {
+        renderTournamentWinners();
+      }
+    }
+
+    function renderTournamentWinners() {
+      const container = document.getElementById('tournament-winners-container');
+      if (!container) return;
+
+      if (!state.completedMatches || state.completedMatches.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding: 20px 0; border: 1.5px dashed var(--border); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+            <div style="font-size: 24px;">🏆</div>
+            <p style="font-size: 13px; color: var(--text-muted); margin: 0; font-weight: 500;">No matches completed yet.</p>
+            <p style="font-size: 11px; color: var(--text-muted); opacity: 0.8; margin: 0;">Play tournament fixtures to determine round and tournament winners.</p>
           </div>
         `;
-        container.appendChild(item);
+        return;
+      }
+
+      // Group completed matches by stage/round and count wins
+      const stageWinners = {};
+      const winsCount = {};
+
+      state.completedMatches.forEach(match => {
+        if (match.winningTeam && match.winningTeam !== 'Tie') {
+          winsCount[match.winningTeam] = (winsCount[match.winningTeam] || 0) + 1;
+        }
+
+        let stage = match.stage;
+        if (!stage) {
+          const fix = state.fixtures.find(f => 
+            (f.teamA.name === match.teamA && f.teamB.name === match.teamB) ||
+            (f.teamA.name === match.teamB && f.teamB.name === match.teamA)
+          );
+          stage = fix ? (fix.stage || 'Tournament Match') : 'Custom Match';
+        }
+
+        if (!stageWinners[stage]) {
+          stageWinners[stage] = [];
+        }
+
+        const isTeamA = match.winningTeam.trim() === match.teamA.trim();
+        stageWinners[stage].push({
+          winningTeam: match.winningTeam,
+          winningTeamColor: isTeamA ? match.teamAColor : match.teamBColor,
+          margin: match.margin,
+          opponent: isTeamA ? match.teamB : match.teamA,
+          resultMsg: match.resultMsg
+        });
       });
+
+      // 1. Check for overall champion (Knockout/Pipeline/Group final)
+      let championHtml = '';
+      let championFound = false;
+
+      if (state.format === 'knockout' || state.format === 'pipeline' || state.format === 'group') {
+        const finalRoundNames = ['grand finale', 'final', 'finals'];
+        let finalMatch = null;
+
+        for (const match of state.completedMatches) {
+          let stageName = '';
+          if (match.stage) {
+            stageName = match.stage.toLowerCase();
+          } else {
+            const fix = state.fixtures.find(f => 
+              (f.teamA.name === match.teamA && f.teamB.name === match.teamB) ||
+              (f.teamA.name === match.teamB && f.teamB.name === match.teamA)
+            );
+            stageName = fix && fix.stage ? fix.stage.toLowerCase() : '';
+          }
+
+          if (finalRoundNames.some(name => stageName === name || stageName.includes('grand final') || (stageName.includes('final') && !stageName.includes('semi') && !stageName.includes('quarter')))) {
+            finalMatch = match;
+            break;
+          }
+        }
+
+        if (finalMatch && finalMatch.winningTeam !== 'Tie') {
+          championFound = true;
+          const isTeamA = finalMatch.winningTeam.trim() === finalMatch.teamA.trim();
+          const champColor = isTeamA ? finalMatch.teamAColor : finalMatch.teamBColor;
+          const stageLabel = finalMatch.stage || 'Grand Finale';
+          
+          championHtml = `
+            <div class="champion-banner">
+              <div style="font-size: 38px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));">👑</div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; font-weight: 900; color: #854d0e; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 2px;">Tournament Champion</div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <div style="width: 14px; height: 14px; border-radius: 50%; background: ${champColor}; border: 1.5px solid rgba(0,0,0,0.2);"></div>
+                  <div style="font-size: 22px; font-weight: 900; color: #1e293b; letter-spacing: -0.5px;">${finalMatch.winningTeam}</div>
+                </div>
+                <div style="font-size: 12px; color: #713f12; font-weight: 600;">
+                  Won the tournament in the <span style="background: rgba(234, 179, 8, 0.25); padding: 2px 6px; border-radius: 4px; font-weight: 800; color: #854d0e;">${stageLabel}</span> ${finalMatch.margin ? `(${finalMatch.margin})` : ''}!
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      // 2. If no champion found yet (or for Round Robin), determine the standings leader
+      if (!championFound && Object.keys(winsCount).length > 0) {
+        let maxWins = 0;
+        let leaders = [];
+        for (const [teamName, wins] of Object.entries(winsCount)) {
+          if (wins > maxWins) {
+            maxWins = wins;
+            leaders = [teamName];
+          } else if (wins === maxWins) {
+            leaders.push(teamName);
+          }
+        }
+
+        if (leaders.length > 0) {
+          const leaderName = leaders[0];
+          const leaderTeam = state.teams.find(t => t.name === leaderName);
+          const leaderColor = leaderTeam ? leaderTeam.color : '#3b82f6';
+          
+          let leaderMsg = '';
+          if (leaders.length === 1) {
+            leaderMsg = `Currently leading the standings with <b>${maxWins} win(s)</b> out of ${state.completedMatches.length} completed matches.`;
+          } else {
+            leaderMsg = `Tied for first place between <b>${leaders.join(' & ')}</b> with ${maxWins} win(s) each.`;
+          }
+
+          championHtml = `
+            <div style="background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%); border: 1.5px solid #0284c7; border-radius: 14px; padding: 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; box-shadow: 0 6px 20px -5px rgba(2, 132, 199, 0.15);">
+              <div style="font-size: 32px;">📈</div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; font-weight: 900; color: #0369a1; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 2px;">Standings Leader</div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <div style="width: 12px; height: 12px; border-radius: 50%; background: ${leaderColor}; border: 1.5px solid rgba(0,0,0,0.1);"></div>
+                  <div style="font-size: 18px; font-weight: 900; color: #0f172a;">${leaders.length === 1 ? leaderName : leaders.join(' / ')}</div>
+                </div>
+                <div style="font-size: 12px; color: #0369a1; font-weight: 600;">
+                  ${leaderMsg}
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      // 3. Build list of round winners
+      let roundsHtml = '';
+      for (const [stage, matches] of Object.entries(stageWinners)) {
+        matches.forEach((m, idx) => {
+          const matchLabel = matches.length > 1 ? `${stage} (Match ${idx + 1})` : stage;
+          roundsHtml += `
+            <div class="winner-item">
+              <div>
+                <div style="font-size: 10px; font-weight: 900; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.5px;">
+                  <span>${matchLabel}</span>
+                  <span style="background: var(--primary-light); color: var(--primary-dark); font-size: 9px; padding: 2px 6px; border-radius: 6px; font-weight: 900; letter-spacing: 0.5px;">ROUND WINNER</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                  <div class="team-color-badge" style="background: ${m.winningTeamColor || '#94a3b8'}; width: 12px; height: 12px; border-radius: 3px; margin: 0;"></div>
+                  <div style="font-weight: 800; font-size: 14px; color: var(--text);">${m.winningTeam}</div>
+                </div>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); font-weight: 500; margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <span>vs ${m.opponent}</span>
+                <span style="font-weight: 700; color: var(--primary-dark);">${m.margin || 'Won'}</span>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      container.innerHTML = `
+        ${championHtml}
+        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; margin-top: 10px;">
+          Completed Rounds Breakdown
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;">
+          ${roundsHtml}
+        </div>
+      `;
     }
 
     function deleteCompletedMatch(index) {
@@ -3830,6 +4060,14 @@
           margin = `by ${scoreDiff} run(s)`;
         }
 
+        let matchStage = 'Custom Match';
+        if (sc.fixtureId) {
+          const fixture = state.fixtures.find(f => String(f.id) === String(sc.fixtureId));
+          if (fixture && fixture.stage) {
+            matchStage = fixture.stage;
+          }
+        }
+
         state.completedMatches.push({
           teamA: sc.battingTeamName,
           teamAColor: teamA ? teamA.color : '#ef4444',
@@ -3838,6 +4076,7 @@
           resultMsg: resultMsg,
           winningTeam: winningTeam,
           margin: margin,
+          stage: matchStage,
           matchPlayerStats: sc.matchPlayerStats ? JSON.parse(JSON.stringify(sc.matchPlayerStats)) : {},
           extrasBreakdown: sc.extrasBreakdown ? JSON.parse(JSON.stringify(sc.extrasBreakdown)) : {}
         });
