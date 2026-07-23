@@ -120,6 +120,28 @@
       padding: 40px;
       color: var(--text-muted);
     }
+    .sport-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px 20px;
+      border-radius: 20px;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sport-tab:hover {
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+    }
+    .sport-tab.active {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
   </style>
 </head>
 <body>
@@ -128,6 +150,15 @@
     <div style="max-width: 800px; margin: 0 auto; display: flex; align-items: center; position: relative;">
       <a href="index.html" style="position: absolute; left: 0; color: #fff; text-decoration: none; font-weight: bold; background: rgba(255,255,255,0.15); padding: 8px 16px; border-radius: 20px; transition: background 0.2s; font-size: 0.9rem;">← Back</a>
       <h1 style="width: 100%; text-align: center;">🏆 Match Results</h1>
+    </div>
+  </div>
+
+  <div class="container" style="margin-bottom: 20px; margin-top: 20px;">
+    <div style="display:flex; gap:12px; background:var(--bg-panel); padding:12px; border-radius:24px; border:1px solid rgba(255,255,255,0.08); overflow-x:auto; scrollbar-width: none;">
+      <button class="sport-tab active" onclick="filterSport('cricket')">Cricket</button>
+      <button class="sport-tab" onclick="filterSport('football')">Football</button>
+      <button class="sport-tab" onclick="filterSport('volleyball')">Volleyball</button>
+      <button class="sport-tab" onclick="filterSport('other')">Other</button>
     </div>
   </div>
 
@@ -159,6 +190,18 @@
     window.syncEngine = syncEngine;
     
     let currentState = null;
+    let currentSportFilter = 'cricket';
+
+    function filterSport(sport) {
+      currentSportFilter = sport;
+      document.querySelectorAll('.sport-tab').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.innerText.toLowerCase() === sport.toLowerCase()) {
+          btn.classList.add('active');
+        }
+      });
+      renderResultsList();
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
       // SyncEngine will fetch initial data, then trigger subscribe
@@ -177,13 +220,14 @@
     function renderResultsList() {
       const container = document.getElementById('results-container');
       
-      let matchesToRender = [];
+      let allMatches = [];
       if (currentState.sportLiveScore && currentState.sportLiveScore.public) {
         const sc = currentState.sportLiveScore;
         const balls = sc.ballsCount || 0;
         const overs = `${Math.floor(balls / 6)}.${balls % 6}`;
-        matchesToRender.push({
+        allMatches.push({
           isLive: true,
+          sportType: sc.sportType || 'cricket',
           teamA: sc.battingTeam || 'Batting Team',
           teamB: sc.bowlingTeam || 'Bowling Team',
           teamAColor: '#10b981',
@@ -196,8 +240,22 @@
       }
       
       if (currentState.sportCompletedMatches && currentState.sportCompletedMatches.length > 0) {
-        matchesToRender.push(...currentState.sportCompletedMatches);
+        allMatches.push(...currentState.sportCompletedMatches);
       }
+      
+      // Filter matches based on the selected sport tab
+      let matchesToRender = allMatches.filter(match => {
+        const sport = (match.sportType || match.stage || 'cricket').toLowerCase();
+        
+        // As a fallback for older data that doesn't have a clean sportType, we assume cricket if it has wickets/runs
+        const isLikelyCricket = sport.includes('cricket') || (match.margin && match.margin.includes('wicket')) || (match.margin && match.margin.includes('run'));
+        const effectiveSport = isLikelyCricket ? 'cricket' : sport;
+        
+        if (currentSportFilter === 'other') {
+          return !['cricket', 'football', 'volleyball'].includes(effectiveSport);
+        }
+        return effectiveSport === currentSportFilter;
+      });
       
       window.currentRenderedMatches = matchesToRender;
       
