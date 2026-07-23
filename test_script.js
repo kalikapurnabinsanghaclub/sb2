@@ -432,7 +432,11 @@
       updateDashboardStats();
       // Push live scorer to syncEngine so public page can read it
       if (window.syncEngine) {
-        const publicScoreOn = document.getElementById('public-score-toggle')?.checked || false;
+        let publicScoreOn = window.syncEngine.getData()?.sportLiveScore?.public || false;
+        if (window.explicitTogglePublic !== undefined) {
+            publicScoreOn = window.explicitTogglePublic;
+        }
+        
         window.syncEngine.setData(s => ({
           ...s,
           sportLiveScore: {
@@ -1049,6 +1053,11 @@
     function updateScorerUI() {
       const sc = state.liveScorer;
       
+      const offlineIndicator = document.getElementById('scorer-offline-indicator');
+      if (offlineIndicator) {
+        offlineIndicator.style.display = (state.systemStatus === 'offline') ? 'inline-block' : 'none';
+      }
+
       document.getElementById('score-runs').innerText = sc.runs;
       document.getElementById('score-wickets').innerText = sc.wickets;
       
