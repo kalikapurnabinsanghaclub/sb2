@@ -4568,6 +4568,7 @@
         'ko_qf': 4,
         'ko_sf': 2,
         'ko_final': 1,
+        'gp_qual': 8,
         'gp_qf': 4,
         'gp_sf': 2,
         'gp_final': 1
@@ -4859,6 +4860,7 @@
         if (!state.groupAdvancements) state.groupAdvancements = {};
 
         const createdGroups = Object.keys(state.groupMappings);
+        const qualCount = state.bracketSlots['gp_qual'] || 8;
         const qfCount = state.bracketSlots['gp_qf'] || 4;
         const sfCount = state.bracketSlots['gp_sf'] || 2;
         const finalCount = state.bracketSlots['gp_final'] || 1;
@@ -4908,7 +4910,7 @@
             <button class="btn btn-primary" onclick="createVisualGroup()" style="padding: 6px 12px; font-size: 11px; background: var(--secondary); border:none; border-radius: 6px; color:#ffffff; font-weight:800; cursor:pointer;">Generate Group & 6 Fixtures</button>
           </div>
         `;
-
+ 
         // 2. Render Existing Groups and their Top 2 advancing selectors
         if (createdGroups.length > 0) {
           html += `
@@ -4918,7 +4920,7 @@
           createdGroups.forEach(gName => {
             const gTeams = state.groupMappings[gName] || [];
             const adv = state.groupAdvancements[gName] || { top1: '', top2: '' };
-
+ 
             html += `
               <div class="bracket-group-card">
                 <div class="bracket-group-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -4947,25 +4949,83 @@
           });
           html += `</div>`;
         }
-
-        // 3. Playoff Brackets (QF -> SF -> Final)
+ 
+        // 3. Playoff Brackets (Qualified Round -> QF -> SF -> Final)
         const advancingTeams = [];
         createdGroups.forEach(gName => {
           const adv = state.groupAdvancements[gName] || {};
           if (adv.top1) advancingTeams.push({ name: adv.top1, source: `${gName} 1st` });
           if (adv.top2) advancingTeams.push({ name: adv.top2, source: `${gName} 2nd` });
         });
-
+ 
         html += `
           <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;">Playoff Bracket Setup</div>
           <div class="bracket-grid">
-            <!-- Quarter Finals -->
+            <!-- Qualified Round -->
             <div class="bracket-column">
               <div class="bracket-column-title">
-                <span>Quarter Finals</span>
-                <button onclick="addBracketPair('gp_qf')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+                <span>Qualified Round</span>
+                <button onclick="addBracketPair('gp_qual')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
               </div>
           `;
+        for (let i = 0; i < qualCount; i++) {
+          const fixId = `fix_gp_qual_${i}`;
+          const existing = state.fixtures.find(f => String(f.id) === String(fixId));
+          const selA = existing?.teamA?.name || '';
+          const selB = existing?.teamB?.name || '';
+          const scheduledTime = existing?.time || '';
+
+          html += `
+            <div class="bracket-match-slot">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px;">
+                <span>PAIR ${i + 1}</span>
+                ${qualCount > 1 ? `<button onclick="removeBracketPair('gp_qual', ${i}, 'Qualified Round')" style="background:none; border:none; color:var(--danger); font-size:9px; cursor:pointer; font-weight:800; padding:0;">Remove</button>` : ''}
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="gp-qual-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="Advancing Group Teams">
+                    ${advancingTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name} (${t.source})</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="gp-qual-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="Advancing Group Teams">
+                    ${advancingTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name} (${t.source})</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <input type="datetime-local" id="gp-qual-${i}-time" value="${scheduledTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('Qualified Round', '${fixId}', 'gp-qual-${i}-A', 'gp-qual-${i}-B', 'gp-qual-${i}-time')">Fix Match</button>
+            </div>
+          `;
+        }
+        html += `</div>`;
+
+        // Quarter Finals
+        const qualWinners = [];
+        for (let i = 0; i < qualCount; i++) {
+          qualWinners.push(getBracketWinner(`fix_gp_qual_${i}`, 'Qualified Round', `Winner Pair ${i + 1}`));
+        }
+
+        html += `
+          <!-- Quarter Finals -->
+          <div class="bracket-column">
+            <div class="bracket-column-title">
+              <span>Quarter Finals</span>
+              <button onclick="addBracketPair('gp_qf')" style="background:none; border:none; color:var(--secondary); font-size:10px; font-weight:800; cursor:pointer; padding:0;">+ Add Pair</button>
+            </div>
+        `;
         for (let i = 0; i < qfCount; i++) {
           const fixId = `fix_gp_qf_${i}`;
           const existing = state.fixtures.find(f => String(f.id) === String(fixId));
@@ -4983,6 +5043,9 @@
                 <span class="bracket-select-label">Team A</span>
                 <select id="gp-qf-${i}-A" class="bracket-select">
                   <option value="">-- Select Team --</option>
+                  <optgroup label="Qualified Round Winners">
+                    ${qualWinners.map(w => `<option value="${w}" ${w === selA ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
                   <optgroup label="Advancing Group Teams">
                     ${advancingTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name} (${t.source})</option>`).join('')}
                   </optgroup>
@@ -4995,6 +5058,9 @@
                 <span class="bracket-select-label">Team B</span>
                 <select id="gp-qf-${i}-B" class="bracket-select">
                   <option value="">-- Select Team --</option>
+                  <optgroup label="Qualified Round Winners">
+                    ${qualWinners.map(w => `<option value="${w}" ${w === selB ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
                   <optgroup label="Advancing Group Teams">
                     ${advancingTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name} (${t.source})</option>`).join('')}
                   </optgroup>
