@@ -175,13 +175,37 @@
     function renderResultsList() {
       const container = document.getElementById('results-container');
       
-      if (!currentState || !currentState.sportCompletedMatches || currentState.sportCompletedMatches.length === 0) {
-        container.innerHTML = '<div style="padding: 40px; text-align:center; color:var(--text-muted); background:var(--bg-panel); border-radius:12px;">No matches have been completed yet.</div>';
+      let matchesToRender = [];
+      if (currentState.sportLiveScore && currentState.sportLiveScore.public) {
+        const sc = currentState.sportLiveScore;
+        const balls = sc.ballsCount || 0;
+        const overs = `${Math.floor(balls / 6)}.${balls % 6}`;
+        matchesToRender.push({
+          isLive: true,
+          teamA: sc.battingTeam || 'Batting Team',
+          teamB: sc.bowlingTeam || 'Bowling Team',
+          teamAColor: '#10b981',
+          teamBColor: '#f59e0b',
+          winningTeam: 'Ongoing',
+          margin: `${sc.runs}/${sc.wickets} in ${overs} ovs`,
+          matchPlayerStats: sc.matchPlayerStats || {},
+          extrasBreakdown: sc.extrasBreakdown || {}
+        });
+      }
+      
+      if (currentState.sportCompletedMatches && currentState.sportCompletedMatches.length > 0) {
+        matchesToRender.push(...currentState.sportCompletedMatches);
+      }
+      
+      window.currentRenderedMatches = matchesToRender;
+      
+      if (matchesToRender.length === 0) {
+        container.innerHTML = '<div style="padding: 40px; text-align:center; color:var(--text-muted); background:var(--bg-panel); border-radius:12px;">No match results available yet.</div>';
         return;
       }
       
       let html = '';
-      currentState.sportCompletedMatches.forEach((match, index) => {
+      matchesToRender.forEach((match, index) => {
         html += `
           <div class="public-fixture-item" onclick="showMatchSummary(${index})">
             <div style="display:flex; flex-direction:column; gap:8px; flex:1;">
@@ -195,18 +219,26 @@
               </div>
             </div>
             <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-              <div style="font-weight:900; color:#38bdf8; font-size:1.1rem;">🎉 ${match.winningTeam !== 'Tie' ? match.winningTeam + ' Won!' : 'Match Tied!'}</div>
+              <div style="font-weight:900; font-size:1.1rem; color:${match.isLive ? '#ef4444' : '#38bdf8'}; ${match.isLive ? 'animation: pulseLive 1.5s infinite;' : ''}">${match.isLive ? '🔴 LIVE' : (match.winningTeam !== 'Tie' ? '🎉 ' + match.winningTeam + ' Won!' : '🤝 Match Tied!')}</div>
               <div style="font-size:0.85rem; color:#94a3b8; font-weight:600;">${match.margin}</div>
             </div>
           </div>
         `;
       });
       container.innerHTML = html;
+      
+      // Add pulse animation if missing
+      if (!document.getElementById('livePulseStyle')) {
+        const style = document.createElement('style');
+        style.id = 'livePulseStyle';
+        style.textContent = `@keyframes pulseLive { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }`;
+        document.head.appendChild(style);
+      }
     }
 
     function showMatchSummary(index) {
-      if (!currentState) return;
-      const match = currentState.sportCompletedMatches[index];
+      if (!window.currentRenderedMatches) return;
+      const match = window.currentRenderedMatches[index];
       if (!match) return;
 
       const container = document.getElementById('public-match-summary-content');

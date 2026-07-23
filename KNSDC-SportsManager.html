@@ -2411,6 +2411,8 @@
             deliveries: state.liveScorer.deliveries,
             currentOverDeliveries: state.liveScorer.currentOverDeliveries,
             activePlayers: activePlayers,
+            matchPlayerStats: state.liveScorer.matchPlayerStats,
+            extrasBreakdown: state.liveScorer.extrasBreakdown,
             updatedAt: Date.now()
           },
           sportCompletedMatches: state.completedMatches || [],
@@ -2792,14 +2794,39 @@
     function renderCompletedMatches() {
       const container = document.getElementById('match-results-list');
       if (!container) return;
-      if (!state.completedMatches || state.completedMatches.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;"><p style="font-size:13px; color:var(--text-muted);">No matches have been completed yet.</p></div>';
+      
+      let matchesToRender = [];
+      if (state.sportLiveScore && state.sportLiveScore.public) {
+        const sc = state.sportLiveScore;
+        const balls = sc.ballsCount || 0;
+        const overs = `${Math.floor(balls / 6)}.${balls % 6}`;
+        matchesToRender.push({
+          isLive: true,
+          teamA: sc.battingTeam || 'Batting Team',
+          teamB: sc.bowlingTeam || 'Bowling Team',
+          teamAColor: '#10b981',
+          teamBColor: '#f59e0b',
+          winningTeam: 'Ongoing',
+          margin: `${sc.runs}/${sc.wickets} in ${overs} ovs`,
+          matchPlayerStats: sc.matchPlayerStats || {},
+          extrasBreakdown: sc.extrasBreakdown || {}
+        });
+      }
+      
+      if (state.completedMatches && state.completedMatches.length > 0) {
+        matchesToRender.push(...state.completedMatches);
+      }
+      
+      window.currentRenderedMatchesAdmin = matchesToRender;
+      
+      if (matchesToRender.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 20px;"><p style="font-size:13px; color:var(--text-muted);">No match results available yet.</p></div>';
       } else {
         container.innerHTML = '';
-        state.completedMatches.forEach((match, index) => {
+        matchesToRender.forEach((match, index) => {
           const item = document.createElement('div');
           item.className = 'fixture-item';
-          item.style.borderLeft = '4px solid var(--primary)';
+          item.style.borderLeft = match.isLive ? '4px solid #ef4444' : '4px solid var(--primary)';
           item.style.cursor = 'pointer';
           item.onclick = () => showMatchSummaryModal(index);
 
@@ -2816,9 +2843,9 @@
               </div>
             </div>
             <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
-              <div style="font-weight:900; color:var(--primary); font-size:15px;" onclick="event.stopPropagation(); showMatchSummaryModal(${index});">🎉 ${match.winningTeam !== 'Tie' ? match.winningTeam + ' Won!' : 'Match Tied!'}</div>
+              <div style="font-weight:900; color:${match.isLive ? '#ef4444' : 'var(--primary)'}; font-size:15px;" onclick="event.stopPropagation(); showMatchSummaryModal(${index});">${match.isLive ? '🔴 LIVE' : (match.winningTeam !== 'Tie' ? '🎉 ' + match.winningTeam + ' Won!' : 'Match Tied!')}</div>
               <div style="font-size:12px; color:var(--text-muted); font-weight:600; margin-bottom: 8px;">${match.margin}</div>
-              <button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px; color:#ef4444; border-color:#ef4444; align-self: flex-end;" onclick="event.stopPropagation(); deleteCompletedMatch(${index})">Delete Match</button>
+              ${match.isLive ? '' : `<button class="btn btn-outline" style="padding: 4px 10px; font-size: 11px; color:#ef4444; border-color:#ef4444; align-self: flex-end;" onclick="event.stopPropagation(); deleteCompletedMatch(${index})">Delete Match</button>`}
             </div>
           `;
           container.appendChild(item);
@@ -3100,7 +3127,8 @@
     }
 
     function showMatchSummaryModal(index) {
-      const match = state.completedMatches[index];
+      if (!window.currentRenderedMatchesAdmin) return;
+      const match = window.currentRenderedMatchesAdmin[index];
       if (!match) return;
 
       const container = document.getElementById('match-summary-content');
