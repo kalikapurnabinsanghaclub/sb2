@@ -133,6 +133,8 @@
 
 
 
+  <div class="container" id="leaderboard-container" style="display:none; margin-bottom: 20px;"></div>
+
   <div class="container" id="results-container">
     <div class="loading">Loading match results from server...</div>
   </div>
@@ -201,8 +203,11 @@
       
       if (matchesToRender.length === 0) {
         container.innerHTML = '<div style="padding: 40px; text-align:center; color:var(--text-muted); background:var(--bg-panel); border-radius:12px;">No match results available yet.</div>';
+        document.getElementById('leaderboard-container').style.display = 'none';
         return;
       }
+      
+      renderLeaderboard(matchesToRender);
       
       let html = '';
       matchesToRender.forEach((match, index) => {
@@ -234,6 +239,109 @@
         style.textContent = `@keyframes pulseLive { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }`;
         document.head.appendChild(style);
       }
+    }
+
+    function renderLeaderboard(matches) {
+      const container = document.getElementById('leaderboard-container');
+      const unifiedTeams = [];
+      if (currentState.sportCustomTeams) unifiedTeams.push(...JSON.parse(JSON.stringify(currentState.sportCustomTeams)));
+      
+      const rawPubTeams = (currentState.participants && currentState.participants.length > 0) 
+                          ? currentState.participants 
+                          : (currentState.sportPubTeams || []);
+                          
+      rawPubTeams.forEach(pt => {
+        let players = [];
+        if (pt.formAnswers && pt.formAnswers['Squad Players']) {
+          try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
+        } else if (pt.formAnswers && pt.formAnswers['Player List (comma separated)']) {
+          const listStr = pt.formAnswers['Player List (comma separated)'];
+          players = listStr.split(',').map((n, i) => ({ id: pt.id + '_p_' + i, name: n.trim(), role: 'Player' })).filter(p => p.name);
+        }
+        if (players.length === 0 && pt.players) players = pt.players;
+        players.forEach((pl, i) => { if (!pl.id) pl.id = pt.id + '_p_' + i; });
+
+        unifiedTeams.push({
+          id: pt.id,
+          name: (pt.formAnswers && pt.formAnswers['Team / Club Name']) || pt.name,
+          players: players
+        });
+      });
+      
+      unifiedTeams.forEach((t, tIdx) => {
+        if (!t.id) t.id = 'team_' + tIdx + '_' + Date.now();
+      });
+
+      const playerAgg = {};
+
+      matches.forEach(match => {
+        if (!match.matchPlayerStats) return;
+        for (const [playerId, stats] of Object.entries(match.matchPlayerStats)) {
+          if (!playerAgg[playerId]) {
+            let playerName = "Unknown Player";
+            let teamName = "Unknown Team";
+            for (const team of unifiedTeams) {
+              const p = team.players && team.players.find(pl => String(pl.id) === String(playerId));
+              if (p) {
+                playerName = p.name || playerName;
+                teamName = team.name;
+                break;
+              }
+            }
+            if (teamName === "Unknown Team") teamName = match.teamA || "Team A";
+
+            playerAgg[playerId] = { name: playerName, team: teamName, runs: 0, wickets: 0 };
+          }
+          playerAgg[playerId].runs += (stats.runs || 0);
+          playerAgg[playerId].wickets += (stats.wickets || 0);
+        }
+      });
+
+      const allPlayers = Object.values(playerAgg);
+      const topRunScorers = [...allPlayers].filter(p => p.runs > 0).sort((a, b) => b.runs - a.runs).slice(0, 3);
+      const topWicketTakers = [...allPlayers].filter(p => p.wickets > 0).sort((a, b) => b.wickets - a.wickets).slice(0, 3);
+
+      if (topRunScorers.length === 0 && topWicketTakers.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'flex';
+      container.style.gap = '20px';
+      container.style.flexWrap = 'wrap';
+
+      const renderPlayerRows = (players, statKey, statLabel) => {
+        if (players.length === 0) return '<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:10px;">No stats available</div>';
+        return players.map((p, i) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); ${i===players.length-1 ? 'border-bottom:none;' : ''}">
+            <div style="display:flex; align-items:center; gap: 12px;">
+              <div style="width:24px; height:24px; border-radius:50%; background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; color:var(--text-muted);">${i+1}</div>
+              <div>
+                <div style="font-weight:700; font-size:14px; color:var(--text);">${p.name}</div>
+                <div style="font-size:11px; color:var(--text-muted);">${p.team}</div>
+              </div>
+            </div>
+            <div style="font-weight:900; font-size:16px; color:var(--primary);">${p[statKey]} <span style="font-size:10px; font-weight:600; color:var(--text-muted);">${statLabel}</span></div>
+          </div>
+        `).join('');
+      };
+
+      container.innerHTML = `
+        <div style="flex: 1; min-width: 300px; background:var(--bg-panel); border-radius:12px; border:1px solid rgba(255,255,255,0.08); padding:20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 16px;">
+            <div style="font-size:18px;">🏏</div>
+            <h3 style="margin:0; font-family:'Playfair Display',serif; font-size:18px; color:#fff;">Top Run Scorers</h3>
+          </div>
+          ${renderPlayerRows(topRunScorers, 'runs', 'RUNS')}
+        </div>
+        <div style="flex: 1; min-width: 300px; background:var(--bg-panel); border-radius:12px; border:1px solid rgba(255,255,255,0.08); padding:20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 16px;">
+            <div style="font-size:18px;">🎯</div>
+            <h3 style="margin:0; font-family:'Playfair Display',serif; font-size:18px; color:#fff;">Top Wicket Takers</h3>
+          </div>
+          ${renderPlayerRows(topWicketTakers, 'wickets', 'WKT')}
+        </div>
+      `;
     }
 
     function showMatchSummary(index) {
