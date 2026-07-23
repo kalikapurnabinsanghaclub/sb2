@@ -1010,6 +1010,96 @@
         box-shadow: 0 10px 25px -5px rgba(234, 179, 8, 0.15);
       }
     }
+
+    /* Bracket Architect Styling */
+    .bracket-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 15px;
+    }
+    .bracket-column {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .bracket-column-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--secondary-dark);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      border-bottom: 2px solid #eff6ff;
+      padding-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bracket-match-slot {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .bracket-match-slot:last-child {
+      margin-bottom: 0;
+    }
+    .bracket-select-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .bracket-select-label {
+      font-size: 9px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    .bracket-select {
+      font-size: 11px !important;
+      padding: 6px 8px !important;
+      border-radius: 6px !important;
+      height: 28px !important;
+      border: 1px solid #cbd5e1 !important;
+      background: #ffffff !important;
+    }
+    .bracket-btn {
+      font-size: 10px !important;
+      padding: 5px 8px !important;
+      font-weight: 700 !important;
+      background: var(--primary) !important;
+      color: #ffffff !important;
+      border: none !important;
+      border-radius: 6px !important;
+      cursor: pointer !important;
+      text-align: center !important;
+      transition: all 0.2s !important;
+    }
+    .bracket-btn:hover {
+      background: var(--primary-dark) !important;
+    }
+    .bracket-group-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.01);
+    }
+    .bracket-group-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 4px;
+    }
   </style>
 </head>
 
@@ -1206,7 +1296,17 @@
       <div class="card">
         <div class="card-title"
           style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-          <div><span>📅</span> Match Fixtures & Schedule</div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span>📅</span> Match Fixtures & Schedule
+            <div style="display:flex; align-items:center; gap:6px; background:#f1f5f9; padding:4px 8px; border-radius:8px; border:1px solid #cbd5e1;">
+              <label for="rules-selector" style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin:0;">Rule:</label>
+              <select id="rules-selector" onchange="handleRuleChange(this.value)" style="border:none; background:transparent; font-size:11px; font-weight:800; color:var(--text); cursor:pointer; padding:0; width:auto; outline:none; height:auto;">
+                <option value="none">-- Select Rule --</option>
+                <option value="groupstage">Group Stage</option>
+                <option value="knockout">Knockout</option>
+              </select>
+            </div>
+          </div>
           <div style="display:flex; gap:10px; align-items:center;">
             <button onclick="addCustomFixture()" class="btn btn-primary"
               style="padding: 6px 12px; font-size: 11px; background: #0f172a; border-radius: 6px;">+ Add Custom Fixture</button>
@@ -1215,6 +1315,12 @@
               onclick="removeAllFixtures()">Remove All</button>
           </div>
         </div>
+        
+        <!-- Interactive Bracket Builder Panel -->
+        <div id="bracket-builder-container" class="hidden" style="margin-top: 15px; margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1.5px solid #e2e8f0;">
+          <!-- Bracket sections dynamically generated -->
+        </div>
+
         <div id="fixtures-container" class="fixture-list">
           <!-- Dynamically populated fixtures -->
         </div>
@@ -2239,6 +2345,14 @@
 
       // Select appropriate format UI based on saved state
       selectFormat(state.format);
+
+      if (state.ruleMode) {
+        const rulesSelector = document.getElementById('rules-selector');
+        if (rulesSelector) {
+          rulesSelector.value = state.ruleMode;
+        }
+        renderBracketBuilder(state.ruleMode);
+      }
     });
 
     function saveState() {
@@ -2513,6 +2627,10 @@
         `;
         container.appendChild(item);
       });
+
+      if (typeof renderBracketBuilder === 'function') {
+        renderBracketBuilder(state.ruleMode);
+      }
     }
 
     // --- RULE SELECTION / TOURNAMENT TAB ---
@@ -3159,6 +3277,10 @@
         `;
         container.appendChild(item);
       });
+
+      if (typeof renderBracketBuilder === 'function') {
+        renderBracketBuilder(state.ruleMode);
+      }
     }
 
     let currentEditingFixtureIndex = null;
@@ -4263,6 +4385,7 @@
         }
 
         state.completedMatches.push({
+          fixtureId: sc.fixtureId || null,
           teamA: sc.battingTeamName,
           teamAColor: teamA ? teamA.color : '#ef4444',
           teamB: sc.bowlingTeamName,
@@ -4393,6 +4516,641 @@
         renderCompletedMatches();
         if (typeof renderTournamentStats === 'function') renderTournamentStats();
       }
+    }
+
+    // --- TOURNAMENT BRACKET ARCHITECT CONTROLLERS ---
+
+    function handleRuleChange(value) {
+      state.ruleMode = value;
+      saveState();
+      renderBracketBuilder(value);
+    }
+
+    function getBracketWinner(fixtureId, stageName, defaultLabel) {
+      if (!state.completedMatches) return defaultLabel;
+      
+      // Match by fixture ID
+      if (fixtureId) {
+        const found = state.completedMatches.find(m => String(m.fixtureId) === String(fixtureId));
+        if (found && found.winningTeam && found.winningTeam !== 'Tie') {
+          return found.winningTeam;
+        }
+      }
+      
+      // Match by stage and teams if we can find it
+      const fixture = state.fixtures && state.fixtures.find(f => String(f.id) === String(fixtureId));
+      if (fixture && fixture.teamA && fixture.teamB) {
+        const teamAName = fixture.teamA.name;
+        const teamBName = fixture.teamB.name;
+        const found = state.completedMatches.find(m => 
+          String(m.stage).toLowerCase() === String(stageName).toLowerCase() && 
+          ((String(m.teamA).toLowerCase() === String(teamAName).toLowerCase() && String(m.teamB).toLowerCase() === String(teamBName).toLowerCase()) ||
+           (String(m.teamA).toLowerCase() === String(teamBName).toLowerCase() && String(m.teamB).toLowerCase() === String(teamAName).toLowerCase()))
+        );
+        if (found && found.winningTeam && found.winningTeam !== 'Tie') {
+          return found.winningTeam;
+        }
+      }
+      
+      return defaultLabel;
+    }
+
+    function renderBracketBuilder(mode) {
+      const container = document.getElementById('bracket-builder-container');
+      if (!container) return;
+
+      if (!mode || mode === 'none') {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+      }
+
+      container.classList.remove('hidden');
+      const unifiedTeams = getUnifiedTeams();
+
+      if (mode === 'knockout') {
+        const teamCount = unifiedTeams.length;
+        const firstRoundCount = Math.max(1, Math.floor(teamCount / 2));
+        
+        let html = `
+          <h3 style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+            <span>🏆</span> Knockout Bracket Architect
+          </h3>
+          <div class="bracket-grid">
+        `;
+
+        // 1. 1st Round Column
+        html += `
+          <div class="bracket-column">
+            <div class="bracket-column-title">1st Round</div>
+        `;
+        for (let i = 0; i < firstRoundCount; i++) {
+          const fixId = `fix_ko_1st_${i}`;
+          const existing = state.fixtures.find(f => String(f.id) === String(fixId));
+          const selA = existing?.teamA?.name || '';
+          const selB = existing?.teamB?.name || '';
+          const scheduledTime = existing?.time || '';
+
+          html += `
+            <div class="bracket-match-slot">
+              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">PAIR ${i + 1}</div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="ko-1st-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="ko-1st-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </select>
+              </div>
+              <input type="datetime-local" id="ko-1st-${i}-time" value="${scheduledTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('1st Round', '${fixId}', 'ko-1st-${i}-A', 'ko-1st-${i}-B', 'ko-1st-${i}-time')">Fix Match</button>
+            </div>
+          `;
+        }
+        html += `</div>`;
+
+        // 2. Quarter Finals Column
+        const qfWinners = [];
+        for (let i = 0; i < firstRoundCount; i++) {
+          qfWinners.push(getBracketWinner(`fix_ko_1st_${i}`, '1st Round', `Winner Pair ${i + 1}`));
+        }
+
+        html += `
+          <div class="bracket-column">
+            <div class="bracket-column-title">Quarter Finals</div>
+        `;
+        for (let i = 0; i < 4; i++) {
+          const fixId = `fix_ko_qf_${i}`;
+          const existing = state.fixtures.find(f => String(f.id) === String(fixId));
+          const selA = existing?.teamA?.name || '';
+          const selB = existing?.teamB?.name || '';
+          const scheduledTime = existing?.time || '';
+
+          html += `
+            <div class="bracket-match-slot">
+              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">QF MATCH ${i + 1}</div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="ko-qf-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="1st Round Winners">
+                    ${qfWinners.map(w => `<option value="${w}" ${w === selA ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="ko-qf-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="1st Round Winners">
+                    ${qfWinners.map(w => `<option value="${w}" ${w === selB ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <input type="datetime-local" id="ko-qf-${i}-time" value="${scheduledTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('Quarter Final', '${fixId}', 'ko-qf-${i}-A', 'ko-qf-${i}-B', 'ko-qf-${i}-time')">Fix Match</button>
+            </div>
+          `;
+        }
+        html += `</div>`;
+
+        // 3. Semi Finals Column
+        const sfWinners = [];
+        for (let i = 0; i < 4; i++) {
+          sfWinners.push(getBracketWinner(`fix_ko_qf_${i}`, 'Quarter Final', `Winner QF ${i + 1}`));
+        }
+
+        html += `
+          <div class="bracket-column">
+            <div class="bracket-column-title">Semi Finals</div>
+        `;
+        for (let i = 0; i < 2; i++) {
+          const fixId = `fix_ko_sf_${i}`;
+          const existing = state.fixtures.find(f => String(f.id) === String(fixId));
+          const selA = existing?.teamA?.name || '';
+          const selB = existing?.teamB?.name || '';
+          const scheduledTime = existing?.time || '';
+
+          html += `
+            <div class="bracket-match-slot">
+              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">SF MATCH ${i + 1}</div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="ko-sf-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="QF Winners">
+                    ${sfWinners.map(w => `<option value="${w}" ${w === selA ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="ko-sf-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="QF Winners">
+                    ${sfWinners.map(w => `<option value="${w}" ${w === selB ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <input type="datetime-local" id="ko-sf-${i}-time" value="${scheduledTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('Semi Final', '${fixId}', 'ko-sf-${i}-A', 'ko-sf-${i}-B', 'ko-sf-${i}-time')">Fix Match</button>
+            </div>
+          `;
+        }
+        html += `</div>`;
+
+        // 4. Final Column
+        const finalWinners = [];
+        for (let i = 0; i < 2; i++) {
+          finalWinners.push(getBracketWinner(`fix_ko_sf_${i}`, 'Semi Final', `Winner SF ${i + 1}`));
+        }
+
+        html += `
+          <div class="bracket-column">
+            <div class="bracket-column-title">Grand Finale</div>
+        `;
+        const finalFixId = `fix_ko_final`;
+        const finalExisting = state.fixtures.find(f => String(f.id) === String(finalFixId));
+        const finalSelA = finalExisting?.teamA?.name || '';
+        const finalSelB = finalExisting?.teamB?.name || '';
+        const finalTime = finalExisting?.time || '';
+
+        html += `
+          <div class="bracket-match-slot">
+            <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">FINAL MATCH</div>
+            <div class="bracket-select-wrapper">
+              <span class="bracket-select-label">Team A</span>
+              <select id="ko-final-A" class="bracket-select">
+                <option value="">-- Select Team --</option>
+                <optgroup label="SF Winners">
+                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelA ? 'selected' : ''}>${w}</option>`).join('')}
+                </optgroup>
+                <optgroup label="All Teams">
+                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </optgroup>
+              </select>
+            </div>
+            <div class="bracket-select-wrapper">
+              <span class="bracket-select-label">Team B</span>
+              <select id="ko-final-B" class="bracket-select">
+                <option value="">-- Select Team --</option>
+                <optgroup label="SF Winners">
+                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelB ? 'selected' : ''}>${w}</option>`).join('')}
+                </optgroup>
+                <optgroup label="All Teams">
+                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </optgroup>
+              </select>
+            </div>
+            <input type="datetime-local" id="ko-final-time" value="${finalTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+            <button class="bracket-btn" onclick="fixCustomMatch('Final', '${finalFixId}', 'ko-final-A', 'ko-final-B', 'ko-final-time')">Fix Match</button>
+          </div>
+        `;
+        html += `</div></div>`;
+        container.innerHTML = html;
+      }
+      else if (mode === 'groupstage') {
+        if (!state.groupMappings) state.groupMappings = {};
+        if (!state.groupAdvancements) state.groupAdvancements = {};
+
+        const createdGroups = Object.keys(state.groupMappings);
+        
+        let html = `
+          <h3 style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--text); margin-bottom: 12px;">
+            📋 Group Stage & Playoff Architect
+          </h3>
+          
+          <!-- 1. Group Creator -->
+          <div style="background: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;">Create a Group (Select 4 Teams)</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px;">
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Group Name</span>
+                <input type="text" id="grp-creator-name" placeholder="e.g. Group A" value="Group ${String.fromCharCode(65 + createdGroups.length)}" style="padding: 6px 8px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 6px; height: 28px;">
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team 1</span>
+                <select id="grp-creator-t1" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  ${unifiedTeams.map(t => `<option value="${t.name}">${t.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team 2</span>
+                <select id="grp-creator-t2" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  ${unifiedTeams.map(t => `<option value="${t.name}">${t.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team 3</span>
+                <select id="grp-creator-t3" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  ${unifiedTeams.map(t => `<option value="${t.name}">${t.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team 4</span>
+                <select id="grp-creator-t4" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  ${unifiedTeams.map(t => `<option value="${t.name}">${t.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="createVisualGroup()" style="padding: 6px 12px; font-size: 11px; background: var(--secondary); border:none; border-radius: 6px; color:#ffffff; font-weight:800; cursor:pointer;">Generate Group & 6 Fixtures</button>
+          </div>
+        `;
+
+        // 2. Render Existing Groups and their Top 2 advancing selectors
+        if (createdGroups.length > 0) {
+          html += `
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;">Group Advancements (Top 2 each Group)</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px;">
+          `;
+          createdGroups.forEach(gName => {
+            const gTeams = state.groupMappings[gName] || [];
+            const adv = state.groupAdvancements[gName] || { top1: '', top2: '' };
+
+            html += `
+              <div class="bracket-group-card">
+                <div class="bracket-group-title" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>📋 ${gName}</span>
+                  <button onclick="deleteVisualGroup('${gName}')" style="background:none; border:none; color:var(--danger); font-size:10px; font-weight:800; cursor:pointer;">Delete</button>
+                </div>
+                <div style="font-size:11px; margin-bottom:10px; color:var(--text-muted);">
+                  Teams: ${gTeams.map(t => t.name).join(', ')}
+                </div>
+                <div class="bracket-select-wrapper" style="margin-bottom: 8px;">
+                  <span class="bracket-select-label" style="color:var(--primary-dark)">1st Place (QF Slot)</span>
+                  <select id="adv-${gName.replace(/\s+/g, '')}-top1" class="bracket-select" onchange="saveGroupAdvancement('${gName}', 'top1', this.value)">
+                    <option value="">-- Select Winner --</option>
+                    ${gTeams.map(t => `<option value="${t.name}" ${t.name === adv.top1 ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="bracket-select-wrapper">
+                  <span class="bracket-select-label" style="color:var(--secondary)">2nd Place (QF Slot)</span>
+                  <select id="adv-${gName.replace(/\s+/g, '')}-top2" class="bracket-select" onchange="saveGroupAdvancement('${gName}', 'top2', this.value)">
+                    <option value="">-- Select Runner-up --</option>
+                    ${gTeams.map(t => `<option value="${t.name}" ${t.name === adv.top2 ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        // 3. Playoff Brackets (QF -> SF -> Final)
+        const advancingTeams = [];
+        createdGroups.forEach(gName => {
+          const adv = state.groupAdvancements[gName] || {};
+          if (adv.top1) advancingTeams.push({ name: adv.top1, source: `${gName} 1st` });
+          if (adv.top2) advancingTeams.push({ name: adv.top2, source: `${gName} 2nd` });
+        });
+
+        html += `
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;">Playoff Bracket Setup</div>
+          <div class="bracket-grid">
+            <!-- Quarter Finals -->
+            <div class="bracket-column">
+              <div class="bracket-column-title">Quarter Finals</div>
+        `;
+        for (let i = 0; i < 4; i++) {
+          const fixId = `fix_gp_qf_${i}`;
+          const existing = state.fixtures.find(f => String(f.id) === String(fixId));
+          const selA = existing?.teamA?.name || '';
+          const selB = existing?.teamB?.name || '';
+          const scheduledTime = existing?.time || '';
+
+          html += `
+            <div class="bracket-match-slot">
+              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">QF MATCH ${i + 1}</div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="gp-qf-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="Advancing Group Teams">
+                    ${advancingTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name} (${t.source})</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="gp-qf-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="Advancing Group Teams">
+                    ${advancingTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name} (${t.source})</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <input type="datetime-local" id="gp-qf-${i}-time" value="${scheduledTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('Quarter Final', '${fixId}', 'gp-qf-${i}-A', 'gp-qf-${i}-B', 'gp-qf-${i}-time')">Fix Match</button>
+            </div>
+          `;
+        }
+        html += `</div>`;
+
+        // Semi Finals
+        const sfWinners = [];
+        for (let i = 0; i < 4; i++) {
+          sfWinners.push(getBracketWinner(`fix_gp_qf_${i}`, 'Quarter Final', `Winner QF ${i + 1}`));
+        }
+
+        html += `
+          <div class="bracket-column">
+            <div class="bracket-column-title">Semi Finals</div>
+        `;
+        for (let i = 0; i < 2; i++) {
+          const fixId = `fix_gp_sf_${i}`;
+          const existing = state.fixtures.find(f => String(f.id) === String(fixId));
+          const selA = existing?.teamA?.name || '';
+          const selB = existing?.teamB?.name || '';
+          const scheduledTime = existing?.time || '';
+
+          html += `
+            <div class="bracket-match-slot">
+              <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">SF MATCH ${i + 1}</div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team A</span>
+                <select id="gp-sf-${i}-A" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="QF Winners">
+                    ${sfWinners.map(w => `<option value="${w}" ${w === selA ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div class="bracket-select-wrapper">
+                <span class="bracket-select-label">Team B</span>
+                <select id="gp-sf-${i}-B" class="bracket-select">
+                  <option value="">-- Select Team --</option>
+                  <optgroup label="QF Winners">
+                    ${sfWinners.map(w => `<option value="${w}" ${w === selB ? 'selected' : ''}>${w}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="All Teams">
+                    ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === selB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <input type="datetime-local" id="gp-sf-${i}-time" value="${scheduledTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+              <button class="bracket-btn" onclick="fixCustomMatch('Semi Final', '${fixId}', 'gp-sf-${i}-A', 'gp-sf-${i}-B', 'gp-sf-${i}-time')">Fix Match</button>
+            </div>
+          `;
+        }
+        html += `</div>`;
+
+        // Grand Finale
+        const finalWinners = [];
+        for (let i = 0; i < 2; i++) {
+          finalWinners.push(getBracketWinner(`fix_gp_sf_${i}`, 'Semi Final', `Winner SF ${i + 1}`));
+        }
+
+        html += `
+          <div class="bracket-column">
+            <div class="bracket-column-title">Grand Finale</div>
+        `;
+        const finalFixId = `fix_gp_final`;
+        const finalExisting = state.fixtures.find(f => String(f.id) === String(finalFixId));
+        const finalSelA = finalExisting?.teamA?.name || '';
+        const finalSelB = finalExisting?.teamB?.name || '';
+        const finalTime = finalExisting?.time || '';
+
+        html += `
+          <div class="bracket-match-slot">
+            <div style="font-size: 10px; font-weight: 800; color: var(--text-muted);">FINAL MATCH</div>
+            <div class="bracket-select-wrapper">
+              <span class="bracket-select-label">Team A</span>
+              <select id="gp-final-A" class="bracket-select">
+                <option value="">-- Select Team --</option>
+                <optgroup label="SF Winners">
+                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelA ? 'selected' : ''}>${w}</option>`).join('')}
+                </optgroup>
+                <optgroup label="All Teams">
+                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelA ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </optgroup>
+              </select>
+            </div>
+            <div class="bracket-select-wrapper">
+              <span class="bracket-select-label">Team B</span>
+              <select id="gp-final-B" class="bracket-select">
+                <option value="">-- Select Team --</option>
+                <optgroup label="SF Winners">
+                  ${finalWinners.map(w => `<option value="${w}" ${w === finalSelB ? 'selected' : ''}>${w}</option>`).join('')}
+                </optgroup>
+                <optgroup label="All Teams">
+                  ${unifiedTeams.map(t => `<option value="${t.name}" ${t.name === finalSelB ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </optgroup>
+              </select>
+            </div>
+            <input type="datetime-local" id="gp-final-time" value="${finalTime}" style="padding: 4px 8px; font-size: 11px; height: 26px; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%;">
+            <button class="bracket-btn" onclick="fixCustomMatch('Final', '${finalFixId}', 'gp-final-A', 'gp-final-B', 'gp-final-time')">Fix Match</button>
+          </div>
+        `;
+        html += `</div></div>`;
+        container.innerHTML = html;
+      }
+    }
+
+    function fixCustomMatch(stageName, fixId, selectAId, selectBId, timeInputId) {
+      const selectA = document.getElementById(selectAId);
+      const selectB = document.getElementById(selectBId);
+      const timeInput = document.getElementById(timeInputId);
+
+      if (!selectA || !selectB) return;
+
+      const teamAName = selectA.value;
+      const teamBName = selectB.value;
+
+      if (!teamAName || !teamBName) {
+        alert("Please select both Team A and Team B.");
+        return;
+      }
+      if (teamAName === teamBName) {
+        alert("Team A and Team B cannot be the same team.");
+        return;
+      }
+
+      const unifiedTeams = getUnifiedTeams();
+      const teamAObj = unifiedTeams.find(t => t.name === teamAName) || { id: 'c_A_' + Date.now(), name: teamAName };
+      const teamBObj = unifiedTeams.find(t => t.name === teamBName) || { id: 'c_B_' + Date.now(), name: teamBName };
+
+      const existingIndex = state.fixtures.findIndex(f => String(f.id) === String(fixId));
+
+      const newFixture = {
+        id: fixId,
+        teamA: teamAObj,
+        teamB: teamBObj,
+        stage: stageName,
+        time: timeInput.value || 'TBD',
+        venue: 'KNS Community Ground'
+      };
+
+      if (existingIndex > -1) {
+        state.fixtures[existingIndex] = newFixture;
+      } else {
+        state.fixtures.push(newFixture);
+      }
+
+      saveState();
+      renderFixtures();
+      renderBracketBuilder(state.ruleMode);
+      alert(`Match for ${stageName} fixed successfully!`);
+    }
+
+    function createVisualGroup() {
+      const nameInput = document.getElementById('grp-creator-name');
+      const t1Select = document.getElementById('grp-creator-t1');
+      const t2Select = document.getElementById('grp-creator-t2');
+      const t3Select = document.getElementById('grp-creator-t3');
+      const t4Select = document.getElementById('grp-creator-t4');
+
+      const groupName = nameInput.value.trim();
+      const t1Name = t1Select.value;
+      const t2Name = t2Select.value;
+      const t3Name = t3Select.value;
+      const t4Name = t4Select.value;
+
+      if (!groupName) {
+        alert("Please specify a Group Name.");
+        return;
+      }
+      if (!t1Name || !t2Name || !t3Name || !t4Name) {
+        alert("Please select 4 teams to form the group.");
+        return;
+      }
+
+      const names = [t1Name, t2Name, t3Name, t4Name];
+      if (new Set(names).size < 4) {
+        alert("Please select 4 unique teams.");
+        return;
+      }
+
+      const unifiedTeams = getUnifiedTeams();
+      const groupTeams = names.map(name => unifiedTeams.find(t => t.name === name)).filter(Boolean);
+
+      if (!state.groupMappings) state.groupMappings = {};
+      state.groupMappings[groupName] = groupTeams;
+
+      const pairs = [
+        [0, 1], [0, 2], [0, 3],
+        [1, 2], [1, 3],
+        [2, 3]
+      ];
+
+      const fixturesToAdd = [];
+      pairs.forEach(([i, j]) => {
+        fixturesToAdd.push({
+          id: `fix_group_${groupName.replace(/\s+/g, '')}_${i}_${j}_${Date.now()}`,
+          teamA: groupTeams[i],
+          teamB: groupTeams[j],
+          stage: `${groupName} Match`,
+          time: 'TBD',
+          venue: 'KNS Community Ground'
+        });
+      });
+
+      state.fixtures.push(...fixturesToAdd);
+      saveState();
+      renderFixtures();
+      renderBracketBuilder(state.ruleMode);
+      alert(`Group "${groupName}" successfully created and 6 fixtures generated!`);
+    }
+
+    function deleteVisualGroup(groupName) {
+      if (confirm(`Are you sure you want to delete ${groupName}? This will also delete any fixtures related to this group.`)) {
+        if (state.groupMappings && state.groupMappings[groupName]) {
+          delete state.groupMappings[groupName];
+        }
+        if (state.groupAdvancements && state.groupAdvancements[groupName]) {
+          delete state.groupAdvancements[groupName];
+        }
+
+        const targetStageLower = `${groupName.toLowerCase()} match`;
+        state.fixtures = state.fixtures.filter(f => {
+          const fStage = (f.stage || '').toLowerCase();
+          return fStage !== targetStageLower;
+        });
+
+        saveState();
+        renderFixtures();
+        renderBracketBuilder(state.ruleMode);
+      }
+    }
+
+    function saveGroupAdvancement(groupName, field, value) {
+      if (!state.groupAdvancements) state.groupAdvancements = {};
+      if (!state.groupAdvancements[groupName]) {
+        state.groupAdvancements[groupName] = { top1: '', top2: '' };
+      }
+      state.groupAdvancements[groupName][field] = value;
+      saveState();
+      renderBracketBuilder(state.ruleMode);
     }
   </script>
 
