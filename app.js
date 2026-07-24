@@ -38,7 +38,18 @@ const renderApp = (isUpdate = false) => {
     // If we're in dashboard, we need to handle the whole page differently
     // For now, let's just use the portal.html for dashboards or a dedicated overlay
     console.log("Dashboard view requested for role:", state.role);
-    window.location.href = `KNSDC-${state.role.charAt(0).toUpperCase() + state.role.slice(1)}.html`;
+    const portalMap = {
+      'admin': 'KNSDC-Admin.html',
+      'host': 'KNSDC-Host.html',
+      'judge': 'KNSDC-Judge.html',
+      'monitor': 'KNSDC-Monitor.html',
+      'sportsmanager': 'KNSDC-umpior.html',
+      'umpire': 'KNSDC-umpior.html',
+      'referee': 'KNSDC-Referee.html',
+      'food_partner': 'KNSDC-Services.html',
+      'transport_partner': 'KNSDC-Services.html'
+    };
+    window.location.href = portalMap[state.role] || `KNSDC-${state.role.charAt(0).toUpperCase() + state.role.slice(1)}.html`;
     return;
   }
 
