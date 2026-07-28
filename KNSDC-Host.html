@@ -1059,7 +1059,9 @@ function setRoundPresent(p, round, isPresent) {
 }
 
 window.hostChangeRound = function(val) {
+  window._hostRoundManuallySet = true; // prevent auto-detect from overriding manual selection
   hostSelectedRound = val || 'audition';
+  currentLeaderRound = val || 'audition';
   renderDashboard();
   renderStage();
 };
@@ -1256,7 +1258,31 @@ syncEngine.subscribe((state) => {
     ensureRoundPresence(p);
     return p;
   });
-  
+
+  // ── AUTO-DETECT ACTIVE ROUND ─────────────────────────────────────
+  // Pick the round with the most participants for this host's assignment.
+  // This prevents the portal from showing blank when everyone is already
+  // on a later round (e.g. 'semifinal') while the default is 'audition'.
+  // Only auto-switch if the host has not manually changed the round.
+  if (!window._hostRoundManuallySet && participants.length > 0) {
+    const roundCounts = {};
+    participants.forEach(p => {
+      const r = p.round || 'audition';
+      roundCounts[r] = (roundCounts[r] || 0) + 1;
+    });
+    const dominantRound = Object.keys(roundCounts).reduce((a, b) => roundCounts[a] >= roundCounts[b] ? a : b);
+    if (dominantRound && dominantRound !== hostSelectedRound) {
+      hostSelectedRound = dominantRound;
+      currentLeaderRound = dominantRound;
+      const sel = document.getElementById('host-round-sel');
+      if (sel) sel.value = dominantRound;
+      const lbBtns = document.querySelectorAll('#sec-leaderboard .btn-outline');
+      lbBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${dominantRound}'`));
+      });
+    }
+  }
+
   const events = state.events || [];
   let hostEmail = '';
   try { hostEmail = JSON.parse(localStorage.getItem('kns_user')).email; } catch(e){}
@@ -1288,7 +1314,11 @@ syncEngine.subscribe((state) => {
 
   const assignedNameEl = document.getElementById('assigned-event-name');
   if (assignedNameEl) {
-    let disp = activeEv ? activeEv.name : 'No Event Assigned';
+    // Prefer event name from loaded events; fall back to hostAssignment data or activeEventId
+    let disp = activeEv ? activeEv.name
+              : (state.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === hostEmail.toLowerCase())?.eventId
+                ? ('Event #' + hostAssignedEventId)
+                : 'No Event Assigned';
     if (hostAssignedVenueName) {
       disp += ` (${hostAssignedVenueName})`;
     }
@@ -1723,7 +1753,11 @@ window.dropToQueue = (id) => {
 };
 
 window.switchLeaderRound = (round) => {
+    window._hostRoundManuallySet = true;
     currentLeaderRound = round;
+    hostSelectedRound = round;
+    const sel = document.getElementById('host-round-sel');
+    if (sel) sel.value = round;
     renderLeaderboard();
 };
 
