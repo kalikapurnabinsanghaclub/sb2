@@ -649,6 +649,7 @@ window.syncEngine = new (window.LocalSync || LocalSync)();
 
 let CURRENT_USER = null;
 let lastStageStatus = null;
+let lastRound = null;
 let initialSyncFired = false;
 let vibrationInterval = null;
 
@@ -1997,7 +1998,27 @@ if (window.syncEngine) {
       // Prevent ringing on initial page load if already in queue
       if (!initialSyncFired) {
         lastStageStatus = p.stageStatus;
+        lastRound = p.round || 'audition';
         initialSyncFired = true;
+        
+        // Initial load check: if they are already done, or if the round in the DB has changed
+        // compared to what was last saved in localStorage while the app was closed.
+        const savedLastRound = localStorage.getItem('knsdc_last_known_round_' + CURRENT_USER);
+        let initialResetNeeded = false;
+        
+        if (p.stageStatus === 'done' && p.isReady) {
+          console.log('[Sync] Participant is done. Resetting ready status on load.');
+          initialResetNeeded = true;
+        } else if (savedLastRound && savedLastRound !== (p.round || 'audition') && p.isReady) {
+          console.log(`[Sync] Round changed from ${savedLastRound} to ${p.round || 'audition'}. Resetting ready status on load.`);
+          initialResetNeeded = true;
+        }
+        
+        localStorage.setItem('knsdc_last_known_round_' + CURRENT_USER, p.round || 'audition');
+        
+        if (initialResetNeeded) {
+          window.syncEngine.updateParticipant(CURRENT_USER, { isReady: false }).catch(e => console.error(e));
+        }
       }
 
       // --- VIBRATION & READY RESET LOGIC ---
@@ -2019,9 +2040,28 @@ if (window.syncEngine) {
         setTimeout(() => { stopVibration(); }, 15000);
       }
 
-      // Always track stage status (outside any guard)
+      // Reset isReady if round changed in real-time or if stageStatus became 'done'
+      let runtimeResetNeeded = false;
+      const currentRound = p.round || 'audition';
+      if (lastRound !== null && lastRound !== currentRound) {
+        console.log(`[Sync] Round changed in real-time from ${lastRound} to ${currentRound}.`);
+        runtimeResetNeeded = true;
+      }
+      if (lastStageStatus !== null && lastStageStatus !== 'done' && p.stageStatus === 'done') {
+        console.log('[Sync] Stage status changed to done in real-time.');
+        runtimeResetNeeded = true;
+      }
+
+      // Always track stage status and round (outside any guard)
       if (p.stageStatus !== undefined) {
         lastStageStatus = p.stageStatus;
+      }
+      lastRound = currentRound;
+      localStorage.setItem('knsdc_last_known_round_' + CURRENT_USER, currentRound);
+
+      if (runtimeResetNeeded && p.isReady) {
+        console.log('[Sync] Resetting ready status to false.');
+        window.syncEngine.updateParticipant(CURRENT_USER, { isReady: false }).catch(e => console.error(e));
       }
 
       if (p.stageStatus) {

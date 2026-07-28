@@ -209,6 +209,7 @@
     color: var(--text); 
     background: linear-gradient(135deg, #2563eb, #7c3aed);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
   }
   .logo-sub { 
@@ -3721,7 +3722,14 @@ function clearScorePanel() {
 
 async function submitFinalScores() {
   if (confirm("Are you sure you want to make a final submission of all your scores? After submission, you will be able to download the consolidated score reports.")) {
-    toast("Finalizing and syncing scores...");
+    
+    // Check if offline
+    if (!navigator.onLine) {
+      toast("⚠️ Offline: Cannot push scores to database. Please connect to the internet first.");
+      return;
+    }
+
+    toast("🔄 Finalizing and syncing scores to database...");
     
     const now = Date.now();
     if (window.syncEngine) {
@@ -3731,14 +3739,40 @@ async function submitFinalScores() {
       const scoredParts = participants.filter(p => p.scores && p.scores[JUDGE.id] && Object.keys(p.scores[JUDGE.id]).length > 0);
       
       let pushCount = 0;
+      let failedPushes = [];
+      
       for (const p of scoredParts) {
-        const ok = await syncEngine.updateParticipant(p.id, p);
-        if (ok) pushCount++;
+        let success = false;
+        if (syncEngine.supabase) {
+          try {
+            const dbObj = {
+              scores: p.scores,
+              round_scores: p.roundScores || null,
+              round_comments: p.roundComments || null
+            };
+            const { error } = await syncEngine.supabase.from('public_registrations').update(dbObj).eq('id', p.id);
+            if (!error) {
+              success = true;
+            } else {
+              console.error('[Judge Submit] Error updating participant:', p.id, error);
+            }
+          } catch (err) {
+            console.error('[Judge Submit] Exception updating participant:', p.id, err);
+          }
+        }
+        
+        if (success) {
+          pushCount++;
+        } else {
+          failedPushes.push(p.name || p.id);
+        }
       }
       
       console.log(`[Judge] Final Submit: Pushed ${pushCount}/${scoredParts.length} scored participants.`);
-      if (scoredParts.length > 0 && pushCount < scoredParts.length) {
-        toast(`⚠️ Warning: Some scores failed to push. Retrying in background.`);
+      
+      if (scoredParts.length > 0 && failedPushes.length > 0) {
+        toast(`❌ Failed to push scores for ${failedPushes.length} participants. Please check your connection and try again.`);
+        return;
       }
 
       // 2. Mark judge as submitted in sync_state
@@ -3755,19 +3789,13 @@ async function submitFinalScores() {
       if (success) {
         localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
         localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
-        toast("✅ Final scores submitted & synced to server!");
+        toast("✅ Successfully pushed all scores to database! Reports unlocked.");
         renderDashboard();
       } else {
-        toast("⚠️ Sync error, but scores saved locally. Retrying in background.");
-        localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
-        localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
-        renderDashboard();
+        toast("❌ Sync error: Failed to save final state. Please check your internet connection.");
       }
     } else {
-      localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
-      localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
-      toast("⚠️ Offline: scores stored locally.");
-      renderDashboard();
+      toast("❌ Connection Error: Sync engine not initialized. Please try reloading the page.");
     }
   }
 }
