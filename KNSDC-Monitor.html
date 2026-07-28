@@ -5472,10 +5472,28 @@ function getLogoBase64() {
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
+        const size = Math.min(img.naturalWidth, img.naturalHeight);
+        canvas.width = size;
+        canvas.height = size;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
+        
+        // Circular clipping mask to guarantee circle shape without black corners
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.clip();
+        
+        // Draw centered and cropped
+        ctx.drawImage(
+          img,
+          (img.naturalWidth - size) / 2,
+          (img.naturalHeight - size) / 2,
+          size,
+          size,
+          0,
+          0,
+          size,
+          size
+        );
         resolve(canvas.toDataURL('image/png'));
       } catch (e) {
         console.warn("getLogoBase64: Error converting image to base64", e);
@@ -5731,8 +5749,9 @@ async function downloadRankingsJPG() {
     div.innerHTML = `
       <div style="background:#f8fafc; padding:24px; border-radius:12px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; border:1px solid #e2e8f0;">
         <div style="display:flex; gap:8px; align-items:center;">
-          <img src="logo.png" style="width:54px; height:54px; border-radius:50%; object-fit:cover; border:2px solid #2563eb;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-          <div style="width:54px; height:54px; border-radius:50%; background:#2563eb; color:#fff; display:none; align-items:center; justify-content:center; font-weight:bold; font-size:18px;">KNS</div>
+        <div style="width:54px; height:54px; border-radius:50%; background-image:url('logo.png'); background-size:cover; background-position:center; border:2px solid #2563eb; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+          <img src="logo.png" style="display:none;" onerror="const parent=this.parentElement; parent.style.backgroundImage='none'; parent.style.background='#2563eb'; parent.innerHTML='KNS'; parent.style.color='#fff'; parent.style.fontWeight='bold'; parent.style.fontSize='18px';" />
+        </div>
           <div>
             <div style="font-size:22px; font-weight:800; color:#0f172a; text-transform:uppercase">${eventName}</div>
             <div style="font-size:13px; color:#64748b; margin-top:4px; font-weight:500;">Organized by: ${organizer}</div>
@@ -5771,8 +5790,8 @@ async function downloadRankingsJPG() {
     await new Promise((resolve) => {
       html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
         const link = document.createElement('a');
-        link.download = `Rankings_${currentLeaderRound}_${cat.name.replace(/\s+/g, '_')}_${new Date().getTime()}.jpg`;
-        link.href = canvas.toDataURL('image/jpeg', 0.95);
+        link.download = `Rankings_${currentLeaderRound}_${cat.name.replace(/\s+/g, '_')}_${new Date().getTime()}.png`;
+        link.href = canvas.toDataURL('image/png');
         link.click();
         document.body.removeChild(div);
         resolve();
@@ -11114,8 +11133,9 @@ function downloadPromoJPG(){
   div.innerHTML = `
     <div style="background:#f8fafc; padding:20px; border-radius:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
       <div style="display:flex; gap:12px; align-items:center;">
-        <img src="logo.png" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid #1e40af;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-        <div style="display:none; width:48px; height:48px; border-radius:50%; background:#1e40af; color:#fff; align-items:center; justify-content:center; font-weight:bold; font-size:16px;">KNS</div>
+        <div style="width:48px; height:48px; border-radius:50%; background-image:url('logo.png'); background-size:cover; background-position:center; border:2px solid #1e40af; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+          <img src="logo.png" style="display:none;" onerror="const parent=this.parentElement; parent.style.backgroundImage='none'; parent.style.background='#1e40af'; parent.innerHTML='KNS'; parent.style.color='#fff'; parent.style.fontWeight='bold'; parent.style.fontSize='16px';" />
+        </div>
         <div>
           <div style="font-size:24px; font-weight:800; color:#0f172a; text-transform:uppercase">${eventName}</div>
           <div style="font-size:14px; color:#64748b; margin-top:4px;">Organized by: ${organizer}</div>
@@ -11146,13 +11166,13 @@ function downloadPromoJPG(){
   `;
   document.body.appendChild(div);
   
-  html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
-    const link = document.createElement('a');
-    link.download = `Promotion_${toRound}_${new Date().getTime()}.jpg`;
-    link.href = canvas.toDataURL('image/jpeg', 0.9);
-    link.click();
-    document.body.removeChild(div);
-    toast('✅ Downloaded JPG!');
+    html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
+      const link = document.createElement('a');
+      link.download = `Promotion_${toRound}_${new Date().getTime()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      document.body.removeChild(div);
+      toast('✅ Downloaded PNG!');
   });
 }
 
@@ -11170,10 +11190,10 @@ function exportStatistics() {
   html2canvas(statsContainer, { scale: 2, useCORS: true, logging: false }).then(canvas => {
     statsContainer.style.background = originalBg;
     const link = document.createElement('a');
-    link.download = `Statistics_${currentStatsTab.toUpperCase()}_${new Date().getTime()}.jpg`;
-    link.href = canvas.toDataURL('image/jpeg', 0.9);
+    link.download = `Statistics_${currentStatsTab.toUpperCase()}_${new Date().getTime()}.png`;
+    link.href = canvas.toDataURL('image/png');
     link.click();
-    toast('✅ Downloaded Statistics JPG!');
+    toast('✅ Downloaded Statistics PNG!');
   }).catch(err => {
     statsContainer.style.background = originalBg;
     console.error(err);
