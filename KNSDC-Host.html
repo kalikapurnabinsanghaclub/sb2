@@ -664,6 +664,9 @@
     <div class="nav-item" onclick="showTab('leaderboard',this)">
       <div class="nav-dot" style="background:var(--amber2)"></div> <span class="nav-text">Live Ranking</span>
     </div>
+    <div class="nav-item" onclick="showTab('sponsors',this)">
+      <div class="nav-dot" style="background:var(--purple2)"></div> <span class="nav-text">Sponsors</span>
+    </div>
 
     <div class="nav-item" onclick="toggleChat()">
       <div class="nav-dot" style="background:var(--cyan2)"></div> <span class="nav-text">Chat Support</span>
@@ -765,6 +768,40 @@
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('final'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Final</button>
          </div>
          <div id="leaderboard-content"></div>
+      </div>
+    </div>
+    
+    <div id="sec-sponsors" class="section">
+      <div class="g2">
+        <div class="card">
+           <div class="card-header">
+              <div class="card-title">Sponsors Directory</div>
+              <button class="btn btn-ghost btn-sm" onclick="renderHostSponsors()">Refresh</button>
+           </div>
+           <div id="host-sponsor-list" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="background: linear-gradient(90deg, var(--amber), var(--orange)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Add Sponsor</div>
+          </div>
+          
+          <div class="fg"><label class="fl">Partner Name</label><input id="host-ad-partner" type="text" placeholder="e.g. Red Bull" class="form-input"/></div>
+          <div class="fg"><label class="fl">Tagline (Optional)</label><input id="host-ad-tagline" type="text" placeholder="e.g. Gives You Wings" class="form-input"/></div>
+          <div class="fg"><label class="fl">Proprietor Name</label><input id="host-ad-proprietor" type="text" placeholder="e.g. John Doe" class="form-input"/></div>
+          <div class="fg"><label class="fl">Address</label><input id="host-ad-address" type="text" placeholder="e.g. 123 Main St, City" class="form-input"/></div>
+          <div class="fg"><label class="fl">Phone Number</label><input id="host-ad-phone" type="tel" placeholder="e.g. 9876543210" class="form-input"/></div>
+          <div class="fg">
+            <label class="fl">Logo Upload (Optional)</label>
+            <div style="display:flex; gap:10px;">
+              <input id="host-ad-logo-file" type="file" accept="image/*" style="flex:1; padding:10px; border:1px dashed var(--border2); border-radius:8px; background: var(--surface2); cursor: pointer; transition: all 0.3s ease;" />
+            </div>
+          </div>
+          
+          <button id="host-deploy-ad-btn" class="btn" style="background: linear-gradient(135deg, var(--amber), var(--orange)); color:#fff; border-radius:12px; width:100%; font-weight:800; margin-top:10px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="hostDeploySponsor()">
+            <span class="btn-text">ADD SPONSOR</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1341,6 +1378,7 @@ syncEngine.subscribe((state) => {
     if (sectionId === 'dashboard') renderDashboard();
     if (sectionId === 'stage') renderStage();
     if (sectionId === 'leaderboard') renderLeaderboard();
+    if (sectionId === 'sponsors') renderHostSponsors();
   } else {
     renderDashboard();
     renderStage();
@@ -2075,6 +2113,121 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('touchmove', onDragMove, {passive: false});
   document.addEventListener('touchend', onDragEnd);
 });
+
+// ════════════════════════════════════════
+// HOST SPONSOR MANAGEMENT
+// ════════════════════════════════════════
+function renderHostSponsors() {
+  const listEl = document.getElementById('host-sponsor-list');
+  if(!listEl) return;
+  const state = window.syncEngine ? window.syncEngine.getData() : {};
+  const activeEvId = state.activeEventId;
+  const eventSwitches = state.eventSwitches || {};
+  const activeSwitches = eventSwitches[activeEvId] || {};
+  const sponsors = activeSwitches.sponsors || [];
+  
+  if(sponsors.length === 0) {
+    listEl.innerHTML = '<div style="color:var(--text-muted); font-size:12px; font-style:italic;">No active sponsors deployed yet.</div>';
+    return;
+  }
+  
+  listEl.innerHTML = sponsors.map(sp => `
+    <div style="display:flex; align-items:center; gap:10px; background:var(--surface2); border:1px solid var(--border); padding:12px; border-radius:12px;">
+      ${sp.logo ? `<img src="${sp.logo}" alt="Logo" style="width:40px; height:40px; object-fit:contain; border-radius:6px; background:#fff; border:1px solid rgba(0,0,0,0.1);"/>` : `<div style="width:40px; height:40px; border-radius:6px; background:var(--surface3); border:1px dashed var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:10px;">No Logo</div>`}
+      <div style="flex:1;">
+        <div style="font-weight:800; font-size:14px; color:var(--text);">${sp.name}</div>
+        ${sp.tagline ? `<div style="font-size:10px; color:var(--text-muted); margin-bottom:2px;"><i>"${sp.tagline}"</i></div>` : ''}
+        ${sp.proprietor ? `<div style="font-size:10px; color:var(--text-dim);">👤 ${sp.proprietor}</div>` : ''}
+        ${sp.phone ? `<div style="font-size:10px; color:var(--text-dim);">📞 ${sp.phone}</div>` : ''}
+        ${sp.address ? `<div style="font-size:10px; color:var(--text-dim);">📍 ${sp.address}</div>` : ''}
+      </div>
+      <button class="btn-delete-fancy" onclick="hostDeleteSponsor('${sp.id}')" title="Delete" style="width:40px; height:24px;">
+        <svg viewBox="0 0 448 512" class="svgIcon"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+let hostDeployingSponsor = false;
+async function hostDeploySponsor() {
+  if (hostDeployingSponsor) return;
+  
+  const name = document.getElementById('host-ad-partner').value.trim();
+  const btn = document.getElementById('host-deploy-ad-btn');
+  const btnText = btn ? btn.querySelector('.btn-text') : null;
+  
+  if (!name) return alert('Partner Name is required!');
+  
+  hostDeployingSponsor = true;
+  if (btn) {
+    btn.disabled = true;
+    if(btnText) btnText.innerText = 'ADDING...';
+  }
+  
+  try {
+    const tagline = document.getElementById('host-ad-tagline').value.trim();
+    const proprietor = document.getElementById('host-ad-proprietor').value.trim();
+    const address = document.getElementById('host-ad-address').value.trim();
+    const phone = document.getElementById('host-ad-phone').value.trim();
+    const fileInput = document.getElementById('host-ad-logo-file');
+    
+    let logoData = null;
+    const state = window.syncEngine ? window.syncEngine.getData() : {};
+    const activeEvId = state.activeEventId;
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      const file = fileInput.files[0];
+      alert('Uploading logo to Storage...');
+      logoData = await window.syncEngine.uploadFile(file, `events/${activeEvId}/sponsors/`);
+    }
+    
+    const sponsor = {
+      id: 'sp_' + Date.now(),
+      name, tagline, proprietor, address, phone, logo: logoData, addedAt: Date.now()
+    };
+    
+    if (window.syncEngine) {
+      window.syncEngine.setData(st => {
+        if (!st.eventSwitches) st.eventSwitches = {};
+        if (!st.eventSwitches[activeEvId]) st.eventSwitches[activeEvId] = {};
+        if (!st.eventSwitches[activeEvId].sponsors) st.eventSwitches[activeEvId].sponsors = [];
+        st.eventSwitches[activeEvId].sponsors.push(sponsor);
+        return st;
+      });
+      // Await sync if applicable, though typically host portal syncs continuously or manually
+      
+      alert('✅ Sponsor added globally!');
+      document.getElementById('host-ad-partner').value = '';
+      document.getElementById('host-ad-tagline').value = '';
+      document.getElementById('host-ad-proprietor').value = '';
+      document.getElementById('host-ad-address').value = '';
+      document.getElementById('host-ad-phone').value = '';
+      if (fileInput) fileInput.value = '';
+      renderHostSponsors();
+    }
+  } finally {
+    hostDeployingSponsor = false;
+    if (btn) {
+      btn.disabled = false;
+      if(btnText) btnText.innerText = 'ADD SPONSOR';
+    }
+  }
+}
+
+async function hostDeleteSponsor(id) {
+  if(!confirm('Delete this sponsor?')) return;
+  const state = window.syncEngine ? window.syncEngine.getData() : {};
+  const activeEvId = state.activeEventId;
+  
+  if (window.syncEngine) {
+    window.syncEngine.setData(st => {
+      if (st.eventSwitches && st.eventSwitches[activeEvId] && st.eventSwitches[activeEvId].sponsors) {
+        st.eventSwitches[activeEvId].sponsors = st.eventSwitches[activeEvId].sponsors.filter(s => s.id !== id);
+      }
+      return st;
+    });
+    renderHostSponsors();
+  }
+}
 
 // ════════════════════════════════════════
 // THEME TOGGLE (DARK MODE)
