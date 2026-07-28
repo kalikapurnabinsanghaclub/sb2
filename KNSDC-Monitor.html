@@ -10944,7 +10944,7 @@ async function promoteSelected() {
   toast(`🔺 ${count} participant${count>1?'s':''} promoted to ${toRound.toUpperCase()}!`);
 }
 
-function downloadPromoPDF(){
+async function downloadPromoPDF(){
   if (!window.jspdf || !window.jspdf.jsPDF) { toast('PDF library not loaded yet.'); return; }
   
   const fromRound = document.getElementById('promo-from-round').value;
@@ -10974,6 +10974,9 @@ function downloadPromoPDF(){
     return;
   }
 
+  toast('Generating promotion PDF...');
+  const logoBase64 = await getLogoBase64();
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF('p', 'mm', 'a4'); // Portrait
   
@@ -10982,13 +10985,26 @@ function downloadPromoPDF(){
     doc.setFillColor(248, 250, 252);
     doc.rect(0, 0, 210, 40, 'F');
     
-    // Logo Placeholder
-    doc.setFillColor(30, 64, 175); // Blue
-    doc.circle(25, 20, 8, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.text('KNS', 20.5, 21.5);
+    // Logo
+    if (logoBase64) {
+      try {
+        doc.addImage(logoBase64, 'JPEG', 14, 9, 22, 22);
+      } catch (err) {
+        doc.setFillColor(30, 64, 175); // Blue
+        doc.circle(25, 20, 8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.text('KNS', 20.5, 21.5);
+      }
+    } else {
+      doc.setFillColor(30, 64, 175); // Blue
+      doc.circle(25, 20, 8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.text('KNS', 20.5, 21.5);
+    }
     
     // Event Details
     doc.setTextColor(15, 23, 42);
@@ -11097,8 +11113,9 @@ function downloadPromoJPG(){
 
   div.innerHTML = `
     <div style="background:#f8fafc; padding:20px; border-radius:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
-      <div style="display:flex; gap:8px; align-items:center;">
-        <div style="width:48px; height:48px; border-radius:50%; background:#1e40af; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:16px;">KNS</div>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <img src="logo.png" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid #1e40af;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div style="display:none; width:48px; height:48px; border-radius:50%; background:#1e40af; color:#fff; align-items:center; justify-content:center; font-weight:bold; font-size:16px;">KNS</div>
         <div>
           <div style="font-size:24px; font-weight:800; color:#0f172a; text-transform:uppercase">${eventName}</div>
           <div style="font-size:14px; color:#64748b; margin-top:4px;">Organized by: ${organizer}</div>
