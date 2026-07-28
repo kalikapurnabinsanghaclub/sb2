@@ -3283,7 +3283,18 @@ function renderOnStage() {
   }
 
   // Load this participant into scoring
-  loadScorePanel(p.id);
+  // Guard: don't wipe the scoring panel if the judge is currently interacting with a slider/input
+  // UNLESS this is a brand-new participant (different from who we were scoring before)
+  const _activeEl = document.activeElement;
+  const _isEditingNow = _activeEl && (
+    _activeEl.classList.contains('score-num-input') ||
+    _activeEl.classList.contains('score-slider') ||
+    _activeEl.id === 'judge-comment'
+  );
+  const _currentPanelId = window._scorePanelParticipantId || null;
+  if (!_isEditingNow || _currentPanelId !== p.id) {
+    loadScorePanel(p.id);
+  }
 }
 
 // --- AUDIO MARKER LOGIC ---
@@ -3471,6 +3482,9 @@ window.renderAudioMarks = function(participantId, trackIdx) {
 
 function loadScorePanel(id) {
   scoringParticipantId = id;
+  // Track which participant is currently displayed in the panel
+  window._scorePanelParticipantId = id;
+
   const p = participants.find(x=>x.id===id);
   if(!p) return;
 
@@ -3478,6 +3492,23 @@ function loadScorePanel(id) {
   if (!p.roundScores) p.roundScores = {};
   if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
   p.scores = p.roundScores[p.round];
+
+  // ── PRESERVE LIVE IN-PROGRESS VALUES ─────────────────────────────────────
+  // Before we wipe the DOM, read any values the judge has already dragged/typed
+  // so we can restore them if it's the same participant panel being refreshed.
+  const _liveValues = {};
+  const _existingWrap = document.getElementById('score-inputs-wrap');
+  if (_existingWrap && window._scorePanelParticipantId === id) {
+    _existingWrap.querySelectorAll('input[type="range"].score-slider').forEach(sl => {
+      const slId = sl.id.replace('slider-', '');
+      _liveValues[slId] = parseFloat(sl.value) || 0;
+    });
+    _existingWrap.querySelectorAll('input.score-num-input').forEach(ni => {
+      const niId = ni.id.replace('num-', '');
+      _liveValues[niId] = parseFloat(ni.value) || 0;
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const cat = CATEGORIES.find(c=>String(c.id)===String(p.catId));
   const myScores = p.scores[JUDGE.id] || {};
@@ -3510,7 +3541,11 @@ function loadScorePanel(id) {
   // Score inputs
   const wrap = document.getElementById('score-inputs-wrap');
   wrap.innerHTML = SUBJECTS.map(s => {
-    const val = myScores[s.id] || 0;
+    // Use live in-progress value if the judge has moved the slider but not saved yet;
+    // fall back to the synced/saved value, then 0.
+    const savedVal = myScores[s.id] || 0;
+    const liveVal  = _liveValues.hasOwnProperty(String(s.id)) ? _liveValues[String(s.id)] : null;
+    const val      = (liveVal !== null) ? liveVal : savedVal;
     const pct = Math.round(val/s.maxMarks*100);
     const color = pct>=70?'var(--green2)':pct>=50?'var(--gold2)':'var(--red2)';
     return `<div class="subj-score-card" id="subj-card-${s.id}">
@@ -4437,7 +4472,8 @@ syncEngine.subscribe((state) => {
   // Auto-follow logic: If auto-follow is enabled, update scoringParticipantId to the new on-stage performer
   const autoFollowEl = document.getElementById('auto-follow-toggle');
   const autoFollowEnabled = autoFollowEl ? autoFollowEl.checked : true;
-  if (autoFollowEnabled && currentOnStage && currentOnStage !== prevOnStage) {
+  const _isNewParticipant = currentOnStage && currentOnStage !== prevOnStage;
+  if (autoFollowEnabled && _isNewParticipant) {
     scoringParticipantId = currentOnStage;
   }
   if (state.switchStates) switchStates = state.switchStates;
@@ -4549,7 +4585,18 @@ syncEngine.subscribe((state) => {
     // Note: renderParticipantsTable() targets scoring-page DOM elements and must NOT be called here
   }
   if (currentPage === 'scoring') {
+    // renderOnStage() internally decides whether to reload the score panel
+    // based on isEditing state and whether the participant has changed.
     renderOnStage();
+
+    // If a brand-new participant just arrived on stage, always load their panel
+    // (even if judge was mid-interaction with the old participant's sliders).
+    if (_isNewParticipant && scoringParticipantId) {
+      loadScorePanel(scoringParticipantId);
+      return;
+    }
+
+    // Otherwise: only reload if the judge is NOT currently dragging/typing
     const activeEl = document.activeElement;
     const isEditing = activeEl && (
       activeEl.classList.contains('score-num-input') || 
