@@ -868,7 +868,10 @@
 <script src="lib/localSync-v4.js?v=99"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
-const syncEngine = new (window.LocalSync || LocalSync)();
+// Reuse the authenticated syncEngine created by localSync-v4.js.
+// Creating a new instance would produce an unauthenticated Supabase client
+// that fails loadEvents() due to RLS (events table requires auth.uid()).
+const syncEngine = window.syncEngine || new (window.LocalSync || LocalSync)();
 
 // Authentication Guard
 function showUnauthorizedOverlay(message) {
@@ -1292,7 +1295,8 @@ syncEngine.subscribe((state) => {
     assignedNameEl.textContent = disp;
   }
 
-  categories = activeEv ? (activeEv.categories || []) : [];
+  // Use categories from the matched event, or fall back to global state.categories
+  categories = activeEv ? (activeEv.categories || state.categories || []) : (state.categories || []);
   subjects = state.subjects || [];
   judges = state.judges || [];
   judgeAgreements = state.judgeAgreements || state.agreements || [];
