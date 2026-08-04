@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Workshop Organizer Portal | Kalikapur Nabin Sangha</title>
+  <title>KNSDC Workshop Organizer Hub | Kalikapur Nabin Sangha</title>
   
   <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Outfit:wght@400;600;800;900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Nunito:wght@400;600;800;900&display=swap" rel="stylesheet">
@@ -93,7 +93,7 @@
 
     .btn-purple:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(124, 58, 237, 0.3);
+      box-shadow: 0 8px 24px rgba(124, 58, 237, 0.4);
     }
 
     .btn-ghost {
@@ -303,20 +303,6 @@
       margin-bottom: 30px;
     }
 
-    .logo-badge {
-      background: linear-gradient(135deg, #FF6B35, #E91E8C);
-      color: #fff;
-      font-size: 1.5rem;
-      width: 48px;
-      height: 48px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 900;
-      box-shadow: 0 4px 15px rgba(255, 107, 53, 0.2);
-    }
-
     .logo-text-title {
       font-family: 'Outfit', sans-serif;
       font-weight: 800;
@@ -341,9 +327,9 @@
   <header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
     <div style="max-width: 1200px; margin: 0 auto; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;">
       <a href="index.html" class="logo-container" style="margin-bottom: 0;">
-        <div class="logo-badge">🛡️</div>
+        <img src="logo.png" alt="KNSDC Logo" style="height:48px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);"/>
         <div>
-          <div class="logo-text-title">Organizer Hub</div>
+          <div class="logo-text-title">KNSDC Workshop Organizer Hub</div>
           <div class="logo-text-subtitle">Kalikapur Nabin Sangha</div>
         </div>
       </a>
@@ -421,9 +407,9 @@
       <!-- Main Content Bento Grid -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 30px; align-items: start;">
         
-        <!-- Left: Create Form -->
+        <!-- Left: Create/Edit Form -->
         <div class="glass-card">
-          <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.25rem; font-weight: 800; color: #FF6B35; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Create Workshop</h3>
+          <h3 id="form-title" style="font-family: 'Outfit', sans-serif; font-size: 1.25rem; font-weight: 800; color: #FF6B35; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Create Workshop</h3>
           
           <div class="form-group">
             <label class="form-label">Workshop Title</label>
@@ -457,8 +443,21 @@
             <label class="form-label">Registration Fee (₹)</label>
             <input type="number" id="ws-input-fee" class="form-input" placeholder="0 for Free" min="0">
           </div>
+
+          <!-- Media Covers -->
+          <div class="form-group">
+            <label class="form-label">Image Cover (Max 10MB)</label>
+            <input type="file" id="ws-input-image" accept="image/*" class="form-input">
+            <div id="ws-image-preview" style="font-size:0.75rem; color:#64748b; margin-top:4px;"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Video Cover (Max 100MB)</label>
+            <input type="file" id="ws-input-video" accept="video/*" class="form-input">
+            <div id="ws-video-preview" style="font-size:0.75rem; color:#64748b; margin-top:4px;"></div>
+          </div>
           
-          <button class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="createWorkshop()">Create Workshop</button>
+          <button id="ws-submit-btn" class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="saveWorkshopForm()">Create Workshop</button>
+          <button id="ws-cancel-edit-btn" class="btn btn-ghost" style="width: 100%; margin-top: 10px; display: none;" onclick="cancelEditMode()">Cancel Edit</button>
         </div>
 
         <!-- Right: Workshops and Timelines -->
@@ -518,6 +517,7 @@
     // State variables
     let activeOrganizerEmail = '';
     let selectedOrgWorkshopId = null;
+    let editingWorkshopId = null;
     let EVENTS = [];
 
     // CouchbaseSyncEngine Inline Definition (For Global/Local Offline Capability)
@@ -946,7 +946,59 @@
     };
 
     // Workshop CRUD
-    window.createWorkshop = async function() {
+    window.startEditWorkshop = async function(workshopId) {
+      const workshops = await window.couchbaseEngine.getWorkshops();
+      const ws = workshops.find(w => w.id === workshopId);
+      if (!ws) return;
+
+      editingWorkshopId = workshopId;
+      document.getElementById('form-title').innerText = 'Edit Workshop';
+      document.getElementById('ws-submit-btn').innerText = 'Save Changes';
+      document.getElementById('ws-cancel-edit-btn').style.display = 'block';
+
+      // Populate fields
+      document.getElementById('ws-input-name').value = ws.name || '';
+      document.getElementById('ws-input-guest').value = ws.guest_name || '';
+      document.getElementById('ws-input-start').value = ws.start_date || '';
+      document.getElementById('ws-input-end').value = ws.end_date || '';
+      document.getElementById('ws-input-contact').value = ws.contact_number || '';
+      document.getElementById('ws-input-address').value = ws.address || '';
+      document.getElementById('ws-input-fee').value = ws.fee || 0;
+
+      // Reset files
+      document.getElementById('ws-input-image').value = '';
+      document.getElementById('ws-input-video').value = '';
+
+      // Set previews if files exist
+      document.getElementById('ws-image-preview').innerText = ws.image_url ? 'Current Image Cover: ' + ws.image_url.split('/').pop() : '';
+      document.getElementById('ws-video-preview').innerText = ws.video_url ? 'Current Video Cover: ' + ws.video_url.split('/').pop() : '';
+      
+      // Scroll to form nicely
+      document.getElementById('form-title').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    window.cancelEditMode = function() {
+      editingWorkshopId = null;
+      document.getElementById('form-title').innerText = 'Create Workshop';
+      document.getElementById('ws-submit-btn').innerText = 'Create Workshop';
+      document.getElementById('ws-cancel-edit-btn').style.display = 'none';
+
+      // Clear fields
+      document.getElementById('ws-input-name').value = '';
+      document.getElementById('ws-input-guest').value = '';
+      document.getElementById('ws-input-start').value = '';
+      document.getElementById('ws-input-end').value = '';
+      document.getElementById('ws-input-contact').value = '';
+      document.getElementById('ws-input-address').value = '';
+      document.getElementById('ws-input-fee').value = '';
+      
+      document.getElementById('ws-input-image').value = '';
+      document.getElementById('ws-input-video').value = '';
+      document.getElementById('ws-image-preview').innerText = '';
+      document.getElementById('ws-video-preview').innerText = '';
+    };
+
+    window.saveWorkshopForm = async function() {
       const name = document.getElementById('ws-input-name').value.trim();
       const guest = document.getElementById('ws-input-guest').value.trim();
       const start = document.getElementById('ws-input-start').value;
@@ -960,8 +1012,51 @@
         return;
       }
 
+      let imageUrl = null;
+      let videoUrl = null;
+
+      // Keep existing URLs if we are editing
+      if (editingWorkshopId) {
+        const workshops = await window.couchbaseEngine.getWorkshops();
+        const existingWs = workshops.find(w => w.id === editingWorkshopId);
+        if (existingWs) {
+          imageUrl = existingWs.image_url || null;
+          videoUrl = existingWs.video_url || null;
+        }
+      }
+
+      const imageFile = document.getElementById('ws-input-image').files[0];
+      const videoFile = document.getElementById('ws-input-video').files[0];
+
+      if (imageFile) {
+        if (imageFile.size > 10 * 1024 * 1024) {
+          showToast('File Too Large', 'Image cover must be under 10 MB!', '⚠️');
+          return;
+        }
+        showToast('Uploading Image', 'Uploading cover image...', '🔄');
+        imageUrl = await window.syncEngine.uploadFile(imageFile, 'workshop_covers');
+        if (!imageUrl) {
+          showToast('Upload Failed', 'Failed to upload cover image.', '❌');
+          return;
+        }
+      }
+
+      if (videoFile) {
+        if (videoFile.size > 100 * 1024 * 1024) {
+          showToast('File Too Large', 'Video cover must be under 100 MB!', '⚠️');
+          return;
+        }
+        showToast('Uploading Video', 'Uploading cover video...', '🔄');
+        videoUrl = await window.syncEngine.uploadFile(videoFile, 'workshop_covers');
+        if (!videoUrl) {
+          showToast('Upload Failed', 'Failed to upload cover video.', '❌');
+          return;
+        }
+      }
+
+      const wsId = editingWorkshopId || ('ws_' + Date.now());
       const workshop = {
-        id: 'ws_' + Date.now(),
+        id: wsId,
         name,
         guest_name: guest,
         start_date: start,
@@ -969,22 +1064,18 @@
         contact_number: contact,
         address,
         fee,
-        creator_email: activeOrganizerEmail
+        creator_email: activeOrganizerEmail,
+        image_url: imageUrl,
+        video_url: videoUrl
       };
 
       const success = await window.couchbaseEngine.saveWorkshop(workshop);
       if (success) {
-        showToast('Success', 'Workshop created successfully!', '✅');
-        document.getElementById('ws-input-name').value = '';
-        document.getElementById('ws-input-guest').value = '';
-        document.getElementById('ws-input-start').value = '';
-        document.getElementById('ws-input-end').value = '';
-        document.getElementById('ws-input-contact').value = '';
-        document.getElementById('ws-input-address').value = '';
-        document.getElementById('ws-input-fee').value = '';
+        showToast('Success', editingWorkshopId ? 'Workshop updated successfully!' : 'Workshop created successfully!', '✅');
+        cancelEditMode();
         renderOrganizerWorkshops();
       } else {
-        showToast('Error', 'Failed to create workshop. Try again.', '❌');
+        showToast('Error', 'Failed to save workshop. Try again.', '❌');
       }
     };
 
@@ -1027,8 +1118,9 @@
             <h4 style="margin:0 0 4px 0; font-weight:800; color:#1e293b; font-size:0.95rem;">${ws.name}</h4>
             <span style="font-size:0.75rem; color:#64748b;">📅 ${ws.start_date} to ${ws.end_date}</span>
           </div>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-outline" style="padding:6px 12px; font-size:0.75rem; border-radius:8px;" onclick="selectOrganizerWorkshop('${ws.id}', '${ws.name.replace(/'/g, "\\'")}')">View Attendees</button>
+          <div style="display:flex; gap:6px; flex-wrap: wrap;">
+            <button class="btn btn-outline" style="padding:6px 12px; font-size:0.75rem; border-radius:8px;" onclick="selectOrganizerWorkshop('${ws.id}', '${ws.name.replace(/'/g, "\\'")}')">Attendees</button>
+            <button class="btn btn-ghost" style="padding:6px 12px; font-size:0.75rem; border-radius:8px;" onclick="startEditWorkshop('${ws.id}')">Edit ✏️</button>
             <button class="btn" style="padding:6px 12px; font-size:0.75rem; border-radius:8px; background:#ef4444; color:#ffffff;" onclick="deleteOrganizerWorkshop('${ws.id}')">Delete 🗑️</button>
           </div>
         </div>
