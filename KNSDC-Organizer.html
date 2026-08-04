@@ -409,6 +409,15 @@
         
         <!-- Left: Create/Edit Form -->
         <div class="glass-card">
+          <!-- Database Storage Guide -->
+          <div style="margin-bottom: 20px; border: 1px solid #bfdbfe; background: #eff6ff; padding:16px; border-radius:12px;">
+            <h4 style="color: #1e3a8a; font-weight: 800; font-size: 0.85rem; margin-bottom: 6px;">📦 Couchbase Cloud Storage Guide</h4>
+            <p style="font-size: 0.75rem; color: #1e40af; line-height: 1.4;">
+              Cover images (up to 10MB) and videos (up to 100MB) are automatically encoded and uploaded directly as inline binary attachments in your <strong>Couchbase Database</strong> document. 
+              Offline uploads are safely cached in your local browser's IndexedDB sandbox.
+            </p>
+          </div>
+
           <h3 id="form-title" style="font-family: 'Outfit', sans-serif; font-size: 1.25rem; font-weight: 800; color: #FF6B35; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Create Workshop</h3>
           
           <div class="form-group">
@@ -568,6 +577,82 @@
         }
       }
 
+      // IndexedDB Helper
+      _openDB() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open('kns_media_db', 1);
+          request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('media')) {
+              db.createObjectStore('media');
+            }
+          };
+          request.onsuccess = (e) => resolve(e.target.result);
+          request.onerror = (e) => reject(e.target.error);
+        });
+      }
+
+      async saveLocalMedia(key, blob) {
+        try {
+          const db = await this._openDB();
+          const tx = db.transaction('media', 'readwrite');
+          const store = tx.objectStore('media');
+          store.put(blob, key);
+          return new Promise((resolve) => {
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+          });
+        } catch(e) {
+          console.error('[SyncEngine] IndexedDB save error:', e);
+          return false;
+        }
+      }
+
+      async getLocalMedia(key) {
+        try {
+          const db = await this._openDB();
+          const tx = db.transaction('media', 'readonly');
+          const store = tx.objectStore('media');
+          const request = store.get(key);
+          return new Promise((resolve) => {
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => resolve(null);
+          });
+        } catch(e) {
+          console.error('[SyncEngine] IndexedDB read error:', e);
+          return null;
+        }
+      }
+
+      async deleteLocalMedia(key) {
+        try {
+          const db = await this._openDB();
+          const tx = db.transaction('media', 'readwrite');
+          const store = tx.objectStore('media');
+          store.delete(key);
+          return new Promise((resolve) => {
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+          });
+        } catch(e) {
+          console.error('[SyncEngine] IndexedDB delete error:', e);
+          return false;
+        }
+      }
+
+      async resolveMediaUrl(url) {
+        if (!url) return '';
+        if (url.startsWith('local_db:')) {
+          const key = url.replace('local_db:', '');
+          const blob = await this.getLocalMedia(key);
+          if (blob) {
+            return URL.createObjectURL(blob);
+          }
+          return '';
+        }
+        return url;
+      }
+
       async getWorkshops() {
         if (!this.isConfigured()) {
           return JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
@@ -585,38 +670,113 @@
         }
       }
 
-      async saveWorkshop(ws) {
+      async saveWorkshop(ws, imageFile = null, videoFile = null) {
         ws.type = 'workshop';
+        
+        if (imageFile) {
+          await this.saveLocalMedia(ws.id + '_image', imageFile);
+          ws.image_url = 'local_db:' + ws.id + '_image';
+        }
+        if (videoFile) {
+          await this.saveLocalMedia(ws.id + '_video', videoFile);
+          ws.video_url = 'local_db:' + ws.id + '_video';
+        }
+
         const list = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
         const idx = list.findIndex(w => w.id === ws.id);
-        if (idx !== -1) list[idx] = ws;
-        else list.push(ws);
+        if (idx !== -1) {
+          if (!imageFile) ws.image_url = list[idx].image_url || ws.image_url;
+          if (!videoFile) ws.video_url = list[idx].video_url || ws.video_url;
+          list[idx] = ws;
+        } else {
+          list.push(ws);
+        }
         localStorage.setItem(this.localWorkshopsKey, JSON.stringify(list));
 
         if (!this.isConfigured()) return true;
+
         try {
-          const res = await fetch(`${this.endpoint}/${ws.id}`, {
+          let docToSave = { ...ws };
+          let attachments = {};
+          
+          if (imageFile) {
+            const base64Img = await this._fileToBase64(imageFile);
+            attachments['cover.jpg'] = {
+              content_type: imageFile.type,
+              data: base64Img
+            };
+            docToSave.image_url = `${this.endpoint}/${ws.id}/cover.jpg`;
+          }
+          
+          if (videoFile) {
+            const base64Vid = await this._fileToBase64(videoFile);
+            attachments['cover.mp4'] = {
+              content_type: videoFile.type,
+              data: base64Vid
+            };
+            docToSave.video_url = `${this.endpoint}/${ws.id}/cover.mp4`;
+          }
+
+          if (Object.keys(attachments).length > 0) {
+            docToSave._attachments = attachments;
+          }
+
+          let url = `${this.endpoint}/${ws.id}`;
+          let headers = this._getHeaders();
+          const getRes = await fetch(url, { headers });
+          if (getRes.ok) {
+            const existingDoc = await getRes.json();
+            docToSave._rev = existingDoc._rev;
+          }
+
+          const res = await fetch(url, {
             method: 'PUT',
-            headers: this._getHeaders(),
-            body: JSON.stringify(ws)
+            headers,
+            body: JSON.stringify(docToSave)
           });
+          
+          if (res.ok) {
+            ws.image_url = docToSave.image_url;
+            ws.video_url = docToSave.video_url;
+            
+            const currentList = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
+            const currentIdx = currentList.findIndex(w => w.id === ws.id);
+            if (currentIdx !== -1) {
+              currentList[currentIdx] = ws;
+              localStorage.setItem(this.localWorkshopsKey, JSON.stringify(currentList));
+            }
+          }
+          
           return res.ok;
         } catch(e) {
-          console.error('[Couchbase] Error saving workshop:', e);
+          console.error('[Couchbase] Error saving workshop to cloud:', e);
           return false;
         }
       }
 
+      _fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+          };
+          reader.onerror = error => reject(error);
+        });
+      }
+
       async deleteWorkshop(workshopId) {
-        // 1. Remove from local storage
         const list = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
         const updated = list.filter(w => w.id !== workshopId);
         localStorage.setItem(this.localWorkshopsKey, JSON.stringify(updated));
 
-        // 2. Remove associated registrations to prevent orphaned data
         const regs = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
         const updatedRegs = regs.filter(r => r.workshop_id !== workshopId);
         localStorage.setItem(this.localRegistrationsKey, JSON.stringify(updatedRegs));
+
+        await this.deleteLocalMedia(workshopId + '_image');
+        await this.deleteLocalMedia(workshopId + '_video');
 
         if (!this.isConfigured()) return true;
         
@@ -732,37 +892,6 @@
       }
     }
     window.couchbaseEngine = new CouchbaseSyncEngine();
-
-    // Initialize Toast system
-    function showToast(title, text, icon) {
-      const container = document.getElementById('toastContainer') || createToastContainer();
-      const toast = document.createElement('div');
-      toast.className = 'toast-notif';
-      toast.onclick = () => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 400);
-      };
-      toast.innerHTML = `
-        <div class="toast-icon">${icon}</div>
-        <div style="flex: 1;">
-          <div class="toast-title">${title}</div>
-          <div class="toast-text">${text}</div>
-        </div>
-      `;
-      container.appendChild(toast);
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 400);
-      }, 6000);
-    }
-
-    function createToastContainer() {
-      const div = document.createElement('div');
-      div.id = 'toastContainer';
-      div.className = 'toast-container';
-      document.body.appendChild(div);
-      return div;
-    }
 
     // Toggle Sign In vs Sign Up forms
     window.switchAuthSubtab = function(mode) {
@@ -1012,46 +1141,17 @@
         return;
       }
 
-      let imageUrl = null;
-      let videoUrl = null;
-
-      // Keep existing URLs if we are editing
-      if (editingWorkshopId) {
-        const workshops = await window.couchbaseEngine.getWorkshops();
-        const existingWs = workshops.find(w => w.id === editingWorkshopId);
-        if (existingWs) {
-          imageUrl = existingWs.image_url || null;
-          videoUrl = existingWs.video_url || null;
-        }
-      }
-
       const imageFile = document.getElementById('ws-input-image').files[0];
       const videoFile = document.getElementById('ws-input-video').files[0];
 
-      if (imageFile) {
-        if (imageFile.size > 10 * 1024 * 1024) {
-          showToast('File Too Large', 'Image cover must be under 10 MB!', '⚠️');
-          return;
-        }
-        showToast('Uploading Image', 'Uploading cover image...', '🔄');
-        imageUrl = await window.syncEngine.uploadFile(imageFile, 'workshop_covers');
-        if (!imageUrl) {
-          showToast('Upload Failed', 'Failed to upload cover image.', '❌');
-          return;
-        }
+      if (imageFile && imageFile.size > 10 * 1024 * 1024) {
+        showToast('File Too Large', 'Image cover must be under 10 MB!', '⚠️');
+        return;
       }
 
-      if (videoFile) {
-        if (videoFile.size > 100 * 1024 * 1024) {
-          showToast('File Too Large', 'Video cover must be under 100 MB!', '⚠️');
-          return;
-        }
-        showToast('Uploading Video', 'Uploading cover video...', '🔄');
-        videoUrl = await window.syncEngine.uploadFile(videoFile, 'workshop_covers');
-        if (!videoUrl) {
-          showToast('Upload Failed', 'Failed to upload cover video.', '❌');
-          return;
-        }
+      if (videoFile && videoFile.size > 100 * 1024 * 1024) {
+        showToast('File Too Large', 'Video cover must be under 100 MB!', '⚠️');
+        return;
       }
 
       const wsId = editingWorkshopId || ('ws_' + Date.now());
@@ -1064,12 +1164,11 @@
         contact_number: contact,
         address,
         fee,
-        creator_email: activeOrganizerEmail,
-        image_url: imageUrl,
-        video_url: videoUrl
+        creator_email: activeOrganizerEmail
       };
 
-      const success = await window.couchbaseEngine.saveWorkshop(workshop);
+      showToast('Saving Workshop', 'Processing workshop details and media attachments...', '🔄');
+      const success = await window.couchbaseEngine.saveWorkshop(workshop, imageFile, videoFile);
       if (success) {
         showToast('Success', editingWorkshopId ? 'Workshop updated successfully!' : 'Workshop created successfully!', '✅');
         cancelEditMode();

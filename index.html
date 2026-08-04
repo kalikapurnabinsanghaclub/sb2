@@ -10673,8 +10673,6 @@
         this.localWorkshopsKey = 'kns_cb_workshops';
         this.localRegistrationsKey = 'kns_cb_registrations';
         this.localLogsKey = 'kns_cb_tournament_logs';
-        
-        // Seed demo workshops if localStorage is empty
         this._initDemoData();
       }
 
@@ -10714,6 +10712,82 @@
         }
       }
 
+      // IndexedDB Helper
+      _openDB() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open('kns_media_db', 1);
+          request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('media')) {
+              db.createObjectStore('media');
+            }
+          };
+          request.onsuccess = (e) => resolve(e.target.result);
+          request.onerror = (e) => reject(e.target.error);
+        });
+      }
+
+      async saveLocalMedia(key, blob) {
+        try {
+          const db = await this._openDB();
+          const tx = db.transaction('media', 'readwrite');
+          const store = tx.objectStore('media');
+          store.put(blob, key);
+          return new Promise((resolve) => {
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+          });
+        } catch(e) {
+          console.error('[SyncEngine] IndexedDB save error:', e);
+          return false;
+        }
+      }
+
+      async getLocalMedia(key) {
+        try {
+          const db = await this._openDB();
+          const tx = db.transaction('media', 'readonly');
+          const store = tx.objectStore('media');
+          const request = store.get(key);
+          return new Promise((resolve) => {
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => resolve(null);
+          });
+        } catch(e) {
+          console.error('[SyncEngine] IndexedDB read error:', e);
+          return null;
+        }
+      }
+
+      async deleteLocalMedia(key) {
+        try {
+          const db = await this._openDB();
+          const tx = db.transaction('media', 'readwrite');
+          const store = tx.objectStore('media');
+          store.delete(key);
+          return new Promise((resolve) => {
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+          });
+        } catch(e) {
+          console.error('[SyncEngine] IndexedDB delete error:', e);
+          return false;
+        }
+      }
+
+      async resolveMediaUrl(url) {
+        if (!url) return '';
+        if (url.startsWith('local_db:')) {
+          const key = url.replace('local_db:', '');
+          const blob = await this.getLocalMedia(key);
+          if (blob) {
+            return URL.createObjectURL(blob);
+          }
+          return '';
+        }
+        return url;
+      }
+
       async getWorkshops() {
         if (!this.isConfigured()) {
           return JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
@@ -10726,30 +10800,134 @@
           const data = await res.json();
           return data.rows.map(r => r.doc).filter(d => d && d.type === 'workshop');
         } catch(e) {
-          console.warn('[Couchbase] Falling back to local workshops storage:', e);
+          console.warn('[Couchbase] Fallback to local workshops:', e);
           return JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
         }
       }
 
-      async saveWorkshop(ws) {
+      async saveWorkshop(ws, imageFile = null, videoFile = null) {
         ws.type = 'workshop';
-        // Always save to local fallback first
+        
+        if (imageFile) {
+          await this.saveLocalMedia(ws.id + '_image', imageFile);
+          ws.image_url = 'local_db:' + ws.id + '_image';
+        }
+        if (videoFile) {
+          await this.saveLocalMedia(ws.id + '_video', videoFile);
+          ws.video_url = 'local_db:' + ws.id + '_video';
+        }
+
         const list = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
         const idx = list.findIndex(w => w.id === ws.id);
-        if (idx !== -1) list[idx] = ws;
-        else list.push(ws);
+        if (idx !== -1) {
+          if (!imageFile) ws.image_url = list[idx].image_url || ws.image_url;
+          if (!videoFile) ws.video_url = list[idx].video_url || ws.video_url;
+          list[idx] = ws;
+        } else {
+          list.push(ws);
+        }
         localStorage.setItem(this.localWorkshopsKey, JSON.stringify(list));
 
         if (!this.isConfigured()) return true;
+
         try {
-          const res = await fetch(`${this.endpoint}/${ws.id}`, {
+          let docToSave = { ...ws };
+          let attachments = {};
+          
+          if (imageFile) {
+            const base64Img = await this._fileToBase64(imageFile);
+            attachments['cover.jpg'] = {
+              content_type: imageFile.type,
+              data: base64Img
+            };
+            docToSave.image_url = `${this.endpoint}/${ws.id}/cover.jpg`;
+          }
+          
+          if (videoFile) {
+            const base64Vid = await this._fileToBase64(videoFile);
+            attachments['cover.mp4'] = {
+              content_type: videoFile.type,
+              data: base64Vid
+            };
+            docToSave.video_url = `${this.endpoint}/${ws.id}/cover.mp4`;
+          }
+
+          if (Object.keys(attachments).length > 0) {
+            docToSave._attachments = attachments;
+          }
+
+          let url = `${this.endpoint}/${ws.id}`;
+          let headers = this._getHeaders();
+          const getRes = await fetch(url, { headers });
+          if (getRes.ok) {
+            const existingDoc = await getRes.json();
+            docToSave._rev = existingDoc._rev;
+          }
+
+          const res = await fetch(url, {
             method: 'PUT',
-            headers: this._getHeaders(),
-            body: JSON.stringify(ws)
+            headers,
+            body: JSON.stringify(docToSave)
           });
+          
+          if (res.ok) {
+            ws.image_url = docToSave.image_url;
+            ws.video_url = docToSave.video_url;
+            
+            const currentList = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
+            const currentIdx = currentList.findIndex(w => w.id === ws.id);
+            if (currentIdx !== -1) {
+              currentList[currentIdx] = ws;
+              localStorage.setItem(this.localWorkshopsKey, JSON.stringify(currentList));
+            }
+          }
+          
           return res.ok;
         } catch(e) {
-          console.error('[Couchbase] Error saving workshop:', e);
+          console.error('[Couchbase] Error saving workshop to cloud:', e);
+          return false;
+        }
+      }
+
+      _fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+          };
+          reader.onerror = error => reject(error);
+        });
+      }
+
+      async deleteWorkshop(workshopId) {
+        const list = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
+        const updated = list.filter(w => w.id !== workshopId);
+        localStorage.setItem(this.localWorkshopsKey, JSON.stringify(updated));
+
+        const regs = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
+        const updatedRegs = regs.filter(r => r.workshop_id !== workshopId);
+        localStorage.setItem(this.localRegistrationsKey, JSON.stringify(updatedRegs));
+
+        await this.deleteLocalMedia(workshopId + '_image');
+        await this.deleteLocalMedia(workshopId + '_video');
+
+        if (!this.isConfigured()) return true;
+        
+        try {
+          const getRes = await fetch(`${this.endpoint}/${workshopId}`, { headers: this._getHeaders() });
+          if (getRes.ok) {
+            const doc = await getRes.json();
+            const res = await fetch(`${this.endpoint}/${workshopId}?rev=${doc._rev}`, {
+              method: 'DELETE',
+              headers: this._getHeaders()
+            });
+            return res.ok;
+          }
+          return true;
+        } catch(e) {
+          console.error('[Couchbase] Error deleting workshop from cloud:', e);
           return false;
         }
       }
@@ -10767,7 +10945,7 @@
           const data = await res.json();
           return data.rows.map(r => r.doc).filter(d => d && d.type === 'registration' && d.workshop_id === workshopId);
         } catch(e) {
-          console.warn('[Couchbase] Falling back to local registrations storage:', e);
+          console.warn('[Couchbase] Fallback to local registrations:', e);
           const list = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
           return list.filter(r => r.workshop_id === workshopId);
         }
@@ -10835,7 +11013,7 @@
             .filter(d => d && d.type === 'tournament_log' && d.eventId === eventId)
             .sort((a,b) => b.timestamp - a.timestamp);
         } catch(e) {
-          console.warn('[Couchbase] Falling back to local tournament logs:', e);
+          console.warn('[Couchbase] Fallback to local tournament logs:', e);
           const list = JSON.parse(localStorage.getItem(this.localLogsKey) || '[]');
           return list.filter(l => l.eventId === eventId).sort((a,b) => b.timestamp - a.timestamp);
         }
@@ -10856,15 +11034,13 @@
           });
           return res.ok;
         } catch(e) {
-          console.error('[Couchbase] Error saving tournament log:', e);
+          console.error('[Couchbase] Error saving log:', e);
           return false;
         }
       }
 
       _getHeaders() {
-        const headers = {
-          'Content-Type': 'application/json'
-        };
+        const headers = { 'Content-Type': 'application/json' };
         if (this.username && this.password) {
           headers['Authorization'] = 'Basic ' + btoa(`${this.username}:${this.password}`);
         }
