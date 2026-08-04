@@ -11417,6 +11417,27 @@
  
     window.checkAuthSession = async function(interactiveCheck = false) {
       if (!window.syncEngine || !window.syncEngine.supabase) return;
+
+      // Detect PKCE authorization code on redirect and exchange it to verify email
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      if (code) {
+        // Clear code from URL so refreshing doesn't replay it
+        const newUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        try {
+          showToast("Verifying Email", "Exchanging confirmation code...", "🔄");
+          const { data: exchangeData, error: exchangeErr } = await window.syncEngine.supabase.auth.exchangeCodeForSession(code);
+          if (exchangeErr) {
+            showToast("Verification Error", exchangeErr.message, "❌");
+          } else {
+            showToast("Success", "Email verified and signed in!", "✅");
+          }
+        } catch (e) {
+          console.error('[LocalSync] Error exchanging PKCE code:', e);
+        }
+      }
       
       if (interactiveCheck) {
         try {
