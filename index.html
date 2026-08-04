@@ -10711,83 +10711,6 @@
           localStorage.setItem(this.localWorkshopsKey, JSON.stringify(demoWorkshops));
         }
       }
-
-      // IndexedDB Helper
-      _openDB() {
-        return new Promise((resolve, reject) => {
-          const request = indexedDB.open('kns_media_db', 1);
-          request.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains('media')) {
-              db.createObjectStore('media');
-            }
-          };
-          request.onsuccess = (e) => resolve(e.target.result);
-          request.onerror = (e) => reject(e.target.error);
-        });
-      }
-
-      async saveLocalMedia(key, blob) {
-        try {
-          const db = await this._openDB();
-          const tx = db.transaction('media', 'readwrite');
-          const store = tx.objectStore('media');
-          store.put(blob, key);
-          return new Promise((resolve) => {
-            tx.oncomplete = () => resolve(true);
-            tx.onerror = () => resolve(false);
-          });
-        } catch(e) {
-          console.error('[SyncEngine] IndexedDB save error:', e);
-          return false;
-        }
-      }
-
-      async getLocalMedia(key) {
-        try {
-          const db = await this._openDB();
-          const tx = db.transaction('media', 'readonly');
-          const store = tx.objectStore('media');
-          const request = store.get(key);
-          return new Promise((resolve) => {
-            request.onsuccess = () => resolve(request.result || null);
-            request.onerror = () => resolve(null);
-          });
-        } catch(e) {
-          console.error('[SyncEngine] IndexedDB read error:', e);
-          return null;
-        }
-      }
-
-      async deleteLocalMedia(key) {
-        try {
-          const db = await this._openDB();
-          const tx = db.transaction('media', 'readwrite');
-          const store = tx.objectStore('media');
-          store.delete(key);
-          return new Promise((resolve) => {
-            tx.oncomplete = () => resolve(true);
-            tx.onerror = () => resolve(false);
-          });
-        } catch(e) {
-          console.error('[SyncEngine] IndexedDB delete error:', e);
-          return false;
-        }
-      }
-
-      async resolveMediaUrl(url) {
-        if (!url) return '';
-        if (url.startsWith('local_db:')) {
-          const key = url.replace('local_db:', '');
-          const blob = await this.getLocalMedia(key);
-          if (blob) {
-            return URL.createObjectURL(blob);
-          }
-          return '';
-        }
-        return url;
-      }
-
       async getWorkshops() {
         if (!this.isConfigured()) {
           return JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
@@ -10807,15 +10730,6 @@
 
       async saveWorkshop(ws, imageFile = null, videoFile = null) {
         ws.type = 'workshop';
-        
-        if (imageFile) {
-          await this.saveLocalMedia(ws.id + '_image', imageFile);
-          ws.image_url = 'local_db:' + ws.id + '_image';
-        }
-        if (videoFile) {
-          await this.saveLocalMedia(ws.id + '_video', videoFile);
-          ws.video_url = 'local_db:' + ws.id + '_video';
-        }
 
         const list = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
         const idx = list.findIndex(w => w.id === ws.id);
@@ -10909,9 +10823,6 @@
         const regs = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
         const updatedRegs = regs.filter(r => r.workshop_id !== workshopId);
         localStorage.setItem(this.localRegistrationsKey, JSON.stringify(updatedRegs));
-
-        await this.deleteLocalMedia(workshopId + '_image');
-        await this.deleteLocalMedia(workshopId + '_video');
 
         if (!this.isConfigured()) return true;
         
