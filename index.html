@@ -6673,14 +6673,11 @@
         sponsors = ev.switchStates.sponsors;
       }
 
+      sponsors = sponsors.filter(s => s.isActive !== false);
+
       if (sponsors.length === 0) {
-        sponsors = [
-          { name: "Kolkata Municipal Corp.", color: "#0ea5e9", tagline: "Serving the City of Joy", icon: "fas fa-landmark" },
-          { name: "State Bank of India", color: "#2563eb", tagline: "With You All The Way", icon: "fas fa-university" },
-          { name: "Apollo Hospitals", color: "#dc2626", tagline: "Touching Lives", icon: "fas fa-hospital" },
-          { name: "Tata Trust", color: "#0891b2", tagline: "For the Nation's Progress", icon: "fas fa-hands-helping" },
-          { name: "Bandhan Bank", color: "#004b87", tagline: "Aapka Bhala, Sabki Deeksha", icon: "fas fa-building" }
-        ];
+        marqueeContainer.style.display = 'none';
+        return;
       }
       
       marqueeContainer.style.display = 'block';
@@ -8572,31 +8569,53 @@
       const grid = document.getElementById("partnersGrid");
       if (!grid) return;
       
-      const partnersList = [
-        { name: "Kolkata Municipal Corp.", icon: "fas fa-landmark", color: "#0ea5e9", tagline: "Serving the City of Joy" },
-        { name: "State Bank of India", icon: "fas fa-university", color: "#2563eb", tagline: "With You All The Way" },
-        { name: "Apollo Hospitals", icon: "fas fa-hospital", color: "#dc2626", tagline: "Touching Lives" },
-        { name: "Jadavpur University", icon: "fas fa-graduation-cap", color: "#7c3aed", tagline: "To Know Is to Grow" },
-        { name: "Tata Trust", icon: "fas fa-hands-helping", color: "#0891b2", tagline: "For the Nation's Progress" },
-        { name: "Bengal Chamber", icon: "fas fa-briefcase", color: "#d97706", tagline: "Connecting Business" },
-        { name: "Indian Oil Corp.", icon: "fas fa-gas-pump", color: "#059669", tagline: "In Service to the Nation" },
-        { name: "Rotary Club Kolkata", icon: "fas fa-globe", color: "#e11d48", tagline: "Service Above Self" },
-        { name: "Bandhan Bank", icon: "fas fa-building", color: "#004b87", tagline: "Aapka Bhala, Sabki Deeksha" },
-        { name: "Techno India Group", icon: "fas fa-university", color: "#eab308", tagline: "Empowering Minds" },
-        { name: "Amrit Cement", icon: "fas fa-hard-hat", color: "#b91c1c", tagline: "Solid Strength, Trusted Bonds" },
-        { name: "Peerless Hospital", icon: "fas fa-plus-square", color: "#15803d", tagline: "Care You Can Trust" }
-      ];
-      
-      grid.innerHTML = partnersList.map(p => `
-        <div class="partner-card" onclick="window.KNS && window.KNS.showToast ? window.KNS.showToast('Visiting ${p.name}...', 'info') : alert('Visiting ${p.name}...')">
-          <div class="card-glow" style="position: absolute; inset: 0; background: radial-gradient(circle at 50% -20%, ${p.color}15, transparent 60%); opacity: 0; transition: opacity 0.3s ease;"></div>
-          <div class="partner-icon" style="background: ${p.color}15; color: ${p.color}; width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; transition: all 0.3s ease; border: 1px solid ${p.color}30; margin-bottom: 8px;">
-            <i class="${p.icon}"></i>
+      const state = syncEngine.getData();
+      let activeEvId = state.activeEventId;
+      if (!activeEvId) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const ev = EVENTS.find(e => e.date === todayStr) || EVENTS.find(e => e.date > todayStr);
+        if (ev) activeEvId = ev.id;
+      }
+
+      const ev = EVENTS.find(e => String(e.id) === String(activeEvId));
+      let sponsors = [];
+      if (state.eventSwitches && state.eventSwitches[activeEvId] && state.eventSwitches[activeEvId].sponsors) {
+        sponsors = state.eventSwitches[activeEvId].sponsors;
+      } else if (ev && ev.switchStates && ev.switchStates.sponsors) {
+        sponsors = ev.switchStates.sponsors;
+      }
+
+      const activeSponsors = sponsors.filter(s => s.isActive !== false);
+      const partnersSection = document.getElementById("partners");
+      const navElements = document.querySelectorAll('.nl[data-section="partners"], .side-dot[data-section="partners"]');
+
+      if (activeSponsors.length === 0) {
+        if (partnersSection) partnersSection.style.display = 'none';
+        navElements.forEach(el => el.style.display = 'none');
+        grid.innerHTML = "";
+        return;
+      }
+
+      if (partnersSection) partnersSection.style.display = 'block';
+      navElements.forEach(el => el.style.display = '');
+
+      grid.innerHTML = activeSponsors.map(sp => {
+        const color = sp.color || "#8B5CF6";
+        const iconClass = sp.icon || "fas fa-handshake";
+        const imgHtml = sp.logo ? `<img src="${sp.logo}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: rgba(255,255,255,0.8); padding: 2px;" />` : `<i class="${iconClass}"></i>`;
+        const clickAction = sp.link ? `window.open('${sp.link}', '_blank')` : `window.KNS && window.KNS.showToast ? window.KNS.showToast('Visiting ${sp.name}...', 'info') : alert('Visiting ${sp.name}...')`;
+
+        return `
+          <div class="partner-card" onclick="${clickAction}">
+            <div class="card-glow" style="position: absolute; inset: 0; background: radial-gradient(circle at 50% -20%, ${color}15, transparent 60%); opacity: 0; transition: opacity 0.3s ease;"></div>
+            <div class="partner-icon" style="background: ${color}15; color: ${color}; width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; transition: all 0.3s ease; border: 1px solid ${color}30; margin-bottom: 8px;">
+              ${imgHtml}
+            </div>
+            <h3 class="partner-name" style="font-size: 1.05rem; font-weight: 800; color: #1e293b; text-align: center; margin-bottom: 4px;">${sp.name}</h3>
+            ${sp.tagline ? `<p class="partner-tagline" style="font-size: 0.8rem; color: #64748b; font-style: italic; text-align: center; margin: 0;">${sp.tagline}</p>` : ''}
           </div>
-          <h3 class="partner-name" style="font-size: 1.05rem; font-weight: 800; color: #1e293b; text-align: center; margin-bottom: 4px;">${p.name}</h3>
-          <p class="partner-tagline" style="font-size: 0.8rem; color: #64748b; font-style: italic; text-align: center; margin: 0;">${p.tagline}</p>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     // ════════════ ROLES ════════════
