@@ -343,7 +343,7 @@
     <!-- Signed Out: Authentication Screen -->
     <section id="organizer-auth-container" style="max-width: 460px; margin: 60px auto 0;">
       <div class="glass-card">
-        <div class="auth-tab-buttons">
+        <div class="auth-tab-buttons" id="auth-subtabs-row">
           <button id="auth-subtab-login" onclick="switchAuthSubtab('login')" class="auth-tab-btn active">Login</button>
           <button id="auth-subtab-signup" onclick="switchAuthSubtab('signup')" class="auth-tab-btn">Sign Up</button>
         </div>
@@ -359,6 +359,7 @@
             <input type="password" id="organizer-pass-login" class="form-input" placeholder="••••••••">
           </div>
           <button class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="organizerLogin()">LOGIN</button>
+          <a href="#" onclick="showForgotPasswordForm(event)" style="color: #FF6B35; font-size: 0.85rem; font-weight: 700; text-decoration: none; display: block; text-align: center; margin-top: 15px;">Forgot Password?</a>
         </div>
 
         <!-- Signup Form -->
@@ -377,6 +378,18 @@
           </div>
           <button class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="organizerSignUp()">CREATE ACCOUNT</button>
         </div>
+
+        <!-- Forgot Password Email Link Form -->
+        <div id="auth-form-forgot" style="display: none;">
+          <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.25rem; font-weight: 800; color: #FF6B35; margin-bottom: 12px;">Reset Password</h3>
+          <p style="color: #64748b; font-size: 0.85rem; line-height: 1.5; margin-bottom: 20px;">Enter your email address below, and we'll email you a secure link to reset your account password.</p>
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="organizer-email-forgot" class="form-input" placeholder="name@domain.com">
+          </div>
+          <button class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="sendResetPasswordEmail()">SEND RESET LINK</button>
+          <button class="btn btn-ghost" style="width: 100%; margin-top: 10px;" onclick="cancelForgotPassword(event)">Cancel</button>
+        </div>
       </div>
     </section>
 
@@ -392,16 +405,48 @@
       </div>
     </section>
 
+    <!-- Password Recovery Reset Form -->
+    <section id="organizer-recovery-container" style="display: none; max-width: 460px; margin: 80px auto 0;">
+      <div class="glass-card">
+        <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 800; color: #FF6B35; margin-bottom: 12px; text-align: center;">Create New Password</h3>
+        <p style="color: #64748b; font-size: 0.85rem; line-height: 1.5; margin-bottom: 20px; text-align: center;">Your verification check passed. Please type your new password below.</p>
+        
+        <div class="form-group">
+          <label class="form-label">New Password</label>
+          <input type="password" id="organizer-pass-recovery" class="form-input" placeholder="At least 6 characters">
+        </div>
+        <button class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="updateRecoveryPassword()">UPDATE PASSWORD</button>
+      </div>
+    </section>
+
     <!-- Signed In: Organizer Dashboard -->
     <section id="organizer-dashboard-container" style="display: none; grid-template-columns: 1fr; gap: 30px;">
       
       <!-- Top Row: Welcome Card -->
-      <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
-        <div>
-          <h2 style="font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.6rem; color: #0f172a;">Workshop Manager Console</h2>
-          <p style="color: #475569; margin-top: 4px;" id="welcome-message">Logged in as: organizer@domain.com</p>
+      <div class="glass-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+          <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.6rem; color: #0f172a;">Workshop Manager Console</h2>
+            <p style="color: #475569; margin-top: 4px;" id="welcome-message">Logged in as: organizer@domain.com</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-outline" onclick="toggleChangePasswordPanel(true)">Change Password 🔑</button>
+            <button class="btn btn-ghost" onclick="organizerLogout()">Logout 🚪</button>
+          </div>
         </div>
-        <button class="btn btn-ghost" onclick="organizerLogout()">Logout 🚪</button>
+
+        <!-- Inline Direct Change Password Panel (initially hidden) -->
+        <div id="direct-change-password-panel" style="display: none; border-top: 1px solid #e2e8f0; margin-top: 20px; padding-top: 20px; max-width: 400px;">
+          <h4 style="font-family: 'Outfit', sans-serif; font-weight: 800; color: #FF6B35; font-size: 1.05rem; margin-bottom: 15px;">Update Password</h4>
+          <div class="form-group">
+            <label class="form-label">New Password</label>
+            <input type="password" id="organizer-direct-new-pass" class="form-input" placeholder="At least 6 characters">
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-primary" style="padding: 10px 20px; font-size: 0.85rem;" onclick="changeOrganizerPassword()">Update Credentials</button>
+            <button class="btn btn-ghost" style="padding: 10px 20px; font-size: 0.85rem;" onclick="toggleChangePasswordPanel(false)">Cancel</button>
+          </div>
+        </div>
       </div>
       
       <!-- Main Content Bento Grid -->
@@ -714,7 +759,7 @@
           const res = await fetch(`${this.endpoint}/${reg.id}`, {
             method: 'PUT',
             headers: this._getHeaders(),
-            body: JSON.stringify(reg)
+            body: JSON.stringify(reg);
           });
           return res.ok;
         } catch(e) {
@@ -811,23 +856,132 @@
       return div;
     }
 
-    // Toggle Sign In vs Sign Up forms
+    // Toggle Sign In vs Sign Up vs Forgot password forms
     window.switchAuthSubtab = function(mode) {
       const loginBtn = document.getElementById('auth-subtab-login');
       const signupBtn = document.getElementById('auth-subtab-signup');
       const loginForm = document.getElementById('auth-form-login');
       const signupForm = document.getElementById('auth-form-signup');
+      const forgotForm = document.getElementById('auth-form-forgot');
+      const tabsRow = document.getElementById('auth-subtabs-row');
+
+      tabsRow.style.display = 'flex';
 
       if (mode === 'login') {
         loginBtn.classList.add('active');
         signupBtn.classList.remove('active');
         loginForm.style.display = 'block';
         signupForm.style.display = 'none';
+        forgotForm.style.display = 'none';
       } else {
         signupBtn.classList.add('active');
         loginBtn.classList.remove('active');
         signupForm.style.display = 'block';
         loginForm.style.display = 'none';
+        forgotForm.style.display = 'none';
+      }
+    };
+
+    window.showForgotPasswordForm = function(e) {
+      if (e) e.preventDefault();
+      document.getElementById('auth-form-login').style.display = 'none';
+      document.getElementById('auth-form-signup').style.display = 'none';
+      document.getElementById('auth-form-forgot').style.display = 'block';
+      document.getElementById('auth-subtabs-row').style.display = 'none';
+    };
+
+    window.cancelForgotPassword = function(e) {
+      if (e) e.preventDefault();
+      switchAuthSubtab('login');
+    };
+
+    window.sendResetPasswordEmail = async function() {
+      const email = document.getElementById('organizer-email-forgot').value.trim();
+      if (!email) {
+        showToast('Email Required', 'Please enter your email address.', '⚠️');
+        return;
+      }
+
+      if (!window.syncEngine || !window.syncEngine.supabase) {
+        showToast('Error', 'Supabase Auth connection not initialized.', '❌');
+        return;
+      }
+
+      try {
+        showToast('Sending Request', 'Sending reset instructions...', '🔄');
+        const redirectToUrl = window.location.origin + window.location.pathname + '?type=recovery';
+        const { error } = await window.syncEngine.supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: redirectToUrl
+        });
+        if (error) throw error;
+        showToast('Link Sent', 'Check your email inbox for the reset link.', '✅');
+        cancelForgotPassword();
+      } catch(e) {
+        showToast('Request Failed', e.message, '❌');
+      }
+    };
+
+    window.updateRecoveryPassword = async function() {
+      const pass = document.getElementById('organizer-pass-recovery').value;
+      if (!pass || pass.length < 6) {
+        showToast('Weak Password', 'Password must be at least 6 characters.', '⚠️');
+        return;
+      }
+
+      if (!window.syncEngine || !window.syncEngine.supabase) {
+        showToast('Error', 'Supabase Auth connection not initialized.', '❌');
+        return;
+      }
+
+      try {
+        showToast('Updating Password', 'Saving new credentials...', '🔄');
+        const { error } = await window.syncEngine.supabase.auth.updateUser({ password: pass });
+        if (error) throw error;
+
+        showToast('Success', 'Password updated successfully!', '✅');
+        
+        // Clean URL params and route to login/dashboard
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        
+        document.getElementById('organizer-recovery-container').style.display = 'none';
+        checkAuthSession();
+      } catch(e) {
+        showToast('Update Failed', e.message, '❌');
+      }
+    };
+
+    window.toggleChangePasswordPanel = function(show = true) {
+      const panel = document.getElementById('direct-change-password-panel');
+      if (show) {
+        panel.style.display = 'block';
+        document.getElementById('organizer-direct-new-pass').value = '';
+      } else {
+        panel.style.display = 'none';
+      }
+    };
+
+    window.changeOrganizerPassword = async function() {
+      const pass = document.getElementById('organizer-direct-new-pass').value;
+      if (!pass || pass.length < 6) {
+        showToast('Weak Password', 'Password must be at least 6 characters.', '⚠️');
+        return;
+      }
+
+      if (!window.syncEngine || !window.syncEngine.supabase) {
+        showToast('Error', 'Supabase Auth connection not initialized.', '❌');
+        return;
+      }
+
+      try {
+        showToast('Updating Password', 'Saving new credentials...', '🔄');
+        const { error } = await window.syncEngine.supabase.auth.updateUser({ password: pass });
+        if (error) throw error;
+
+        showToast('Success', 'Your password has been changed successfully.', '✅');
+        toggleChangePasswordPanel(false);
+      } catch(e) {
+        showToast('Change Failed', e.message, '❌');
       }
     };
 
@@ -900,25 +1054,30 @@
       document.getElementById('organizer-auth-container').style.display = 'block';
       document.getElementById('organizer-unverified-container').style.display = 'none';
       document.getElementById('organizer-dashboard-container').style.display = 'none';
+      toggleChangePasswordPanel(false);
     };
 
     window.checkAuthSession = async function(interactiveCheck = false) {
       if (!window.syncEngine || !window.syncEngine.supabase) return;
 
-      // Detect PKCE code parameters on redirect
       const urlParams = new URLSearchParams(window.location.search);
+      const type = urlParams.get('type');
       const code = urlParams.get('code');
+
       if (code) {
-        const newUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
+        const cleanParams = new URLSearchParams(window.location.search);
+        cleanParams.delete('code');
+        const nextQuery = cleanParams.toString();
+        const nextUrl = window.location.origin + window.location.pathname + (nextQuery ? '?' + nextQuery : '');
+        window.history.replaceState({}, document.title, nextUrl);
         
         try {
-          showToast("Verifying Email", "Exchanging confirmation code...", "🔄");
+          showToast("Verifying Session", "Exchanging confirmation credentials...", "🔄");
           const { data, error } = await window.syncEngine.supabase.auth.exchangeCodeForSession(code);
           if (error) {
-            showToast("Verification Error", error.message, "❌");
+            showToast("Session Error", error.message, "❌");
           } else {
-            showToast("Success", "Email verified and signed in!", "✅");
+            showToast("Authenticated", "Credentials exchange completed.", "✅");
           }
         } catch (e) {
           console.error(e);
@@ -938,7 +1097,18 @@
       const authContainer = document.getElementById('organizer-auth-container');
       const unverifiedContainer = document.getElementById('organizer-unverified-container');
       const dashboardContainer = document.getElementById('organizer-dashboard-container');
+      const recoveryContainer = document.getElementById('organizer-recovery-container');
       const timelineLogsCard = document.getElementById('org-tournament-logs-card');
+
+      if (type === 'recovery') {
+        authContainer.style.display = 'none';
+        unverifiedContainer.style.display = 'none';
+        dashboardContainer.style.display = 'none';
+        recoveryContainer.style.display = 'block';
+        return;
+      }
+
+      recoveryContainer.style.display = 'none';
 
       if (!session) {
         authContainer.style.display = 'block';
