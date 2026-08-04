@@ -6551,6 +6551,22 @@ function toggleSwitch(sw, cb){
   switchStates[stateKey] = cb.checked;
   
   syncAll();
+
+  // Persist switch changes directly to the Supabase event columns for public view
+  if (activeEventId) {
+    const eventUpdate = {
+      switchStates: { ...switchStates }
+    };
+    if (stateKey === 'publicReg') eventUpdate.publicReg = cb.checked;
+    if (stateKey === 'stagePreview') eventUpdate.stagePreview = cb.checked;
+    if (stateKey === 'resultPublic') eventUpdate.resultPublic = cb.checked;
+    if (stateKey === 'promoPublic') eventUpdate.promoPublic = cb.checked;
+
+    syncEngine.updateEvent(activeEventId, eventUpdate).catch(err => {
+      console.error('[Monitor] Failed to sync event switches to Supabase events table:', err);
+    });
+  }
+
   toast(`${cb.checked?'✅ Enabled':'🔒 Disabled'}: ${sw.replace('-',' ')}`);
 }
 
