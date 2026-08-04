@@ -400,7 +400,8 @@
         <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.7rem; font-weight: 800; color: #ef4444; margin-bottom: 12px;">Email Verification Required</h3>
         <p style="color: #64748b; font-size: 1rem; line-height: 1.6; margin-bottom: 24px;">Your account has been created, but your email is unconfirmed. Check your inbox and click the verification link sent by Supabase.</p>
         
-        <button class="btn btn-outline" style="width: 100%; margin-bottom: 15px;" onclick="checkAuthSession(true)">I've Confirmed my Email (Check Status)</button>
+        <button class="btn btn-outline" style="width: 100%; margin-bottom: 12px;" onclick="checkAuthSession(true)">I've Confirmed my Email (Check Status)</button>
+        <button class="btn btn-ghost" style="width: 100%; margin-bottom: 12px;" onclick="resendVerificationEmail()">Resend Verification Email 📧</button>
         <button class="btn btn-ghost" style="width: 100%;" onclick="organizerLogout()">Logout 🚪</button>
       </div>
     </section>
@@ -957,16 +958,53 @@
         const { error } = await window.syncEngine.supabase.auth.updateUser({ password: pass });
         if (error) throw error;
 
-        showToast('Success', 'Password updated successfully!', '✅');
+        showToast('Password Updated! 🎉', 'Your new password has been saved. Please log in.', '✅');
         
-        // Clean URL params and route to login/dashboard
+        // Reset recovery state and clean URL
+        _isPasswordRecoverySession = false;
         const cleanUrl = window.location.origin + window.location.pathname;
         window.history.replaceState({}, document.title, cleanUrl);
+
+        // Sign out so user logs in fresh with new password
+        await window.syncEngine.supabase.auth.signOut();
         
         document.getElementById('organizer-recovery-container').style.display = 'none';
-        checkAuthSession();
+        document.getElementById('organizer-auth-container').style.display = 'block';
+        // Pre-fill login email if we know it
+        const emailInput = document.getElementById('organizer-email-login');
+        if (emailInput && activeOrganizerEmail) emailInput.value = activeOrganizerEmail;
+        switchAuthSubtab('login');
       } catch(e) {
         showToast('Update Failed', e.message, '❌');
+      }
+    };
+
+    // Resend verification email for unverified accounts
+    window.resendVerificationEmail = async function() {
+      if (!window.syncEngine || !window.syncEngine.supabase) {
+        showToast('Error', 'Supabase Auth connection not initialized.', '❌');
+        return;
+      }
+
+      // Get current user session to know the email
+      const { data: { session } } = await window.syncEngine.supabase.auth.getSession();
+      if (!session || !session.user || !session.user.email) {
+        showToast('Error', 'Cannot identify your email. Please log out and log in again.', '❌');
+        return;
+      }
+
+      try {
+        showToast('Sending...', 'Requesting a new verification email...', '🔄');
+        const redirectTo = window.location.origin + window.location.pathname;
+        const { error } = await window.syncEngine.supabase.auth.resend({
+          type: 'signup',
+          email: session.user.email,
+          options: { emailRedirectTo: redirectTo }
+        });
+        if (error) throw error;
+        showToast('Email Sent! ✉️', `Verification link sent to ${session.user.email}. Check your inbox.`, '✅');
+      } catch(e) {
+        showToast('Failed to Resend', e.message, '❌');
       }
     };
 
@@ -1076,31 +1114,103 @@
       toggleChangePasswordPanel(false);
     };
 
+    // Track recovery session state
+    let _isPasswordRecoverySession = false;
+
+    // Show the password recovery reset form
+    function showRecoveryForm() {
+      _isPasswordRecoverySession = true;
+      const authContainer = document.getElementById('organizer-auth-container');
+      const unverifiedContainer = document.getElementById('organizer-unverified-container');
+      const dashboardContainer = document.getElementById('organizer-dashboard-container');
+      const recoveryContainer = document.getElementById('organizer-recovery-container');
+      if (authContainer) authContainer.style.display = 'none';
+      if (unverifiedContainer) unverifiedContainer.style.display = 'none';
+      if (dashboardContainer) dashboardContainer.style.display = 'none';
+      if (recoveryContainer) recoveryContainer.style.display = 'block';
+    }
+
+    // Listen for Supabase PASSWORD_RECOVERY event (fires when user clicks reset link)
+    function setupAuthStateListener() {
+      if (!window.syncEngine || !window.syncEngine.supabase) return;
+      window.syncEngine.supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('[Auth] onAuthStateChange event:', event);
+        if (event === 'PASSWORD_RECOVERY') {
+          // User clicked the reset password link — show the new-password form
+          showRecoveryForm();
+          showToast('Reset Link Verified', 'Please enter your new password below.', '🔑');
+        } else if (event === 'SIGNED_IN' && !_isPasswordRecoverySession) {
+          // Normal sign-in — refresh the UI
+          checkAuthSession();
+        } else if (event === 'SIGNED_OUT') {
+          _isPasswordRecoverySession = false;
+          const authContainer = document.getElementById('organizer-auth-container');
+          if (authContainer) authContainer.style.display = 'block';
+          const dashboardContainer = document.getElementById('organizer-dashboard-container');
+          if (dashboardContainer) dashboardContainer.style.display = 'none';
+          const recoveryContainer = document.getElementById('organizer-recovery-container');
+          if (recoveryContainer) recoveryContainer.style.display = 'none';
+        }
+      });
+    }
+
     window.checkAuthSession = async function(interactiveCheck = false) {
       if (!window.syncEngine || !window.syncEngine.supabase) return;
 
       const urlParams = new URLSearchParams(window.location.search);
+      // Read type BEFORE cleaning URL — this is the key fix
       const type = urlParams.get('type');
       const code = urlParams.get('code');
 
+      // --- PKCE Code Exchange ---
       if (code) {
+        // Strip code from URL immediately so it isn't re-processed on refresh
         const cleanParams = new URLSearchParams(window.location.search);
         cleanParams.delete('code');
+        cleanParams.delete('type');
         const nextQuery = cleanParams.toString();
         const nextUrl = window.location.origin + window.location.pathname + (nextQuery ? '?' + nextQuery : '');
         window.history.replaceState({}, document.title, nextUrl);
         
         try {
-          showToast("Verifying Session", "Exchanging confirmation credentials...", "🔄");
+          showToast('Verifying Link', 'Authenticating your reset link...', '🔄');
           const { data, error } = await window.syncEngine.supabase.auth.exchangeCodeForSession(code);
           if (error) {
-            showToast("Session Error", error.message, "❌");
+            showToast('Session Error', error.message, '❌');
           } else {
-            showToast("Authenticated", "Credentials exchange completed.", "✅");
+            // PKCE returns redirectType: 'recovery' when it's a password reset link
+            const redirectType = data?.redirectType || type;
+            if (redirectType === 'recovery') {
+              showRecoveryForm();
+              showToast('Reset Link Verified', 'Please enter your new password below.', '🔑');
+              return;
+            }
+            showToast('Authenticated', 'Credentials verified successfully.', '✅');
           }
         } catch (e) {
-          console.error(e);
+          console.error('[Auth] Code exchange error:', e);
+          showToast('Verification Failed', 'Could not process reset link. Please try again.', '❌');
         }
+      }
+
+      // --- Hash-based implicit flow (legacy fallback) ---
+      const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
+      const hashType = hashParams.get('type');
+      if (hashType === 'recovery') {
+        // Clear hash
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showRecoveryForm();
+        showToast('Reset Link Verified', 'Please enter your new password below.', '🔑');
+        return;
+      }
+
+      // --- If recovery mode was already activated, keep form visible ---
+      if (_isPasswordRecoverySession) {
+        const recoveryContainer = document.getElementById('organizer-recovery-container');
+        if (recoveryContainer && recoveryContainer.style.display !== 'block') {
+          showRecoveryForm();
+        }
+        return;
       }
 
       if (interactiveCheck) {
@@ -1119,14 +1229,7 @@
       const recoveryContainer = document.getElementById('organizer-recovery-container');
       const timelineLogsCard = document.getElementById('org-tournament-logs-card');
 
-      if (type === 'recovery') {
-        authContainer.style.display = 'none';
-        unverifiedContainer.style.display = 'none';
-        dashboardContainer.style.display = 'none';
-        recoveryContainer.style.display = 'block';
-        return;
-      }
-
+      // Hide recovery form if not in recovery mode
       recoveryContainer.style.display = 'none';
 
       if (!session) {
@@ -1442,6 +1545,9 @@
 
     // Load engine and check state
     setTimeout(() => {
+      // Set up the Supabase auth state listener BEFORE initial session check
+      // This catches PASSWORD_RECOVERY events when user lands via reset email link
+      setupAuthStateListener();
       checkAuthSession();
     }, 1000);
   </script>
