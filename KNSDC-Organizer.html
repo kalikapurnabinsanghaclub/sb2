@@ -619,6 +619,9 @@
 
       async getWorkshops() {
         if (!this.isConfigured()) {
+          if (window.syncEngine && window.syncEngine.state && window.syncEngine.state.cb_workshops) {
+            return window.syncEngine.state.cb_workshops;
+          }
           return JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
         }
         try {
@@ -639,6 +642,14 @@
         
         const list = JSON.parse(localStorage.getItem(this.localWorkshopsKey) || '[]');
         const idx = list.findIndex(w => w.id === ws.id);
+        
+        if (imageFile && window.syncEngine && window.syncEngine.uploadFile) {
+           ws.image_url = await window.syncEngine.uploadFile(imageFile, 'workshops/');
+        }
+        if (videoFile && window.syncEngine && window.syncEngine.uploadFile) {
+           ws.video_url = await window.syncEngine.uploadFile(videoFile, 'workshops/');
+        }
+        
         if (idx !== -1) {
           if (!imageFile) ws.image_url = list[idx].image_url || ws.image_url;
           if (!videoFile) ws.video_url = list[idx].video_url || ws.video_url;
@@ -647,6 +658,10 @@
           list.push(ws);
         }
         localStorage.setItem(this.localWorkshopsKey, JSON.stringify(list));
+        
+        if (window.syncEngine && window.syncEngine.setData) {
+          window.syncEngine.setData(s => ({ ...s, cb_workshops: list }));
+        }
 
         if (!this.isConfigured()) return true;
 
@@ -729,6 +744,10 @@
         const regs = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
         const updatedRegs = regs.filter(r => r.workshop_id !== workshopId);
         localStorage.setItem(this.localRegistrationsKey, JSON.stringify(updatedRegs));
+        
+        if (window.syncEngine && window.syncEngine.setData) {
+          window.syncEngine.setData(s => ({ ...s, cb_workshops: updated, cb_registrations: updatedRegs }));
+        }
 
         if (!this.isConfigured()) return true;
         
@@ -751,7 +770,12 @@
 
       async getRegistrations(workshopId) {
         if (!this.isConfigured()) {
-          const list = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
+          let list = [];
+          if (window.syncEngine && window.syncEngine.state && window.syncEngine.state.cb_registrations) {
+            list = window.syncEngine.state.cb_registrations;
+          } else {
+            list = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
+          }
           return list.filter(r => r.workshop_id === workshopId);
         }
         try {
@@ -770,9 +794,20 @@
 
       async saveRegistration(reg) {
         reg.type = 'registration';
-        const list = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
+        
+        let list = [];
+        if (window.syncEngine && window.syncEngine.state && window.syncEngine.state.cb_registrations) {
+           list = [...window.syncEngine.state.cb_registrations];
+        } else {
+           list = JSON.parse(localStorage.getItem(this.localRegistrationsKey) || '[]');
+        }
         list.push(reg);
+        
         localStorage.setItem(this.localRegistrationsKey, JSON.stringify(list));
+        
+        if (window.syncEngine && window.syncEngine.setData) {
+          window.syncEngine.setData(s => ({ ...s, cb_registrations: list }));
+        }
 
         if (!this.isConfigured()) return true;
         try {
