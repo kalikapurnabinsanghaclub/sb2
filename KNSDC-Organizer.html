@@ -576,13 +576,32 @@
     // CouchbaseSyncEngine Inline Definition (For Global/Local Offline Capability)
     class CouchbaseSyncEngine {
       constructor() {
-        this.endpoint = localStorage.getItem('kns_couchbase_url') || '';
-        this.username = localStorage.getItem('kns_couchbase_user') || '';
-        this.password = localStorage.getItem('kns_couchbase_pass') || '';
+        this._loadCredentials();
+        if (window.syncEngine) {
+          window.syncEngine.subscribe(() => {
+            this._loadCredentials();
+          });
+        }
         this.localWorkshopsKey = 'kns_cb_workshops';
         this.localRegistrationsKey = 'kns_cb_registrations';
         this.localLogsKey = 'kns_cb_tournament_logs';
         this._initDemoData();
+      }
+
+      _loadCredentials() {
+        let url = localStorage.getItem('kns_couchbase_url') || '';
+        let user = localStorage.getItem('kns_couchbase_user') || '';
+        let pass = localStorage.getItem('kns_couchbase_pass') || '';
+
+        if (!url && window.syncEngine && window.syncEngine.state) {
+          url = window.syncEngine.state.kns_couchbase_url || '';
+          user = window.syncEngine.state.kns_couchbase_user || '';
+          pass = window.syncEngine.state.kns_couchbase_pass || '';
+        }
+
+        this.endpoint = url;
+        this.username = user;
+        this.password = pass;
       }
 
       isConfigured() {
@@ -1134,6 +1153,9 @@
       document.getElementById('welcome-message').innerText = `Logged in as: ${user.email}`;
       authContainer.style.display = 'none';
       unverifiedContainer.style.display = 'none';
+      if (window.syncCouchbaseConfigToSupabase) {
+        window.syncCouchbaseConfigToSupabase();
+      }
       dashboardContainer.style.display = 'grid';
 
       if (interactiveCheck) {
@@ -1393,6 +1415,28 @@
         textarea.value = '';
       } else {
         showToast('Error', 'Failed to publish log update.', '❌');
+      }
+    };
+
+    window.syncCouchbaseConfigToSupabase = async function() {
+      if (!window.syncEngine || !window.syncEngine.supabase) return;
+      
+      const localUrl = localStorage.getItem('kns_couchbase_url') || '';
+      const localUser = localStorage.getItem('kns_couchbase_user') || '';
+      const localPass = localStorage.getItem('kns_couchbase_pass') || '';
+
+      if (!localUrl) return;
+
+      const state = window.syncEngine.state;
+      if (state.kns_couchbase_url !== localUrl || state.kns_couchbase_user !== localUser || state.kns_couchbase_pass !== localPass) {
+        console.log('[SyncEngine] Uploading Couchbase configuration credentials to Supabase for global visitor access...');
+        
+        window.syncEngine.setData(s => ({
+          ...s,
+          kns_couchbase_url: localUrl,
+          kns_couchbase_user: localUser,
+          kns_couchbase_pass: localPass
+        }));
       }
     };
 
