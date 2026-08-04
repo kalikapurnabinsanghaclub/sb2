@@ -65,7 +65,6 @@ CREATE POLICY "donations_all_auth" ON public.donations FOR ALL TO authenticated 
 
 -- 3. ecosystem_log
 CREATE POLICY "ecosystem_log_select_public" ON public.ecosystem_log FOR SELECT USING (true);
-CREATE POLICY "ecosystem_log_insert_anon" ON public.ecosystem_log FOR INSERT TO anon WITH CHECK (length(log_text) > 0);
 CREATE POLICY "ecosystem_log_all_auth" ON public.ecosystem_log FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- 4. events
@@ -87,7 +86,6 @@ CREATE POLICY "judge_credentials_all_auth" ON public.judge_credentials FOR ALL T
 
 -- 8. knsdc-registration (Workshop registrations)
 CREATE POLICY "knsdc_registration_select_public" ON public."knsdc-registration" FOR SELECT USING (true);
-CREATE POLICY "knsdc_registration_insert_anon" ON public."knsdc-registration" FOR INSERT TO anon WITH CHECK (length(participant_name) > 0 AND length(phone_number) > 0);
 CREATE POLICY "knsdc_registration_all_auth" ON public."knsdc-registration" FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- 9. notices
@@ -102,19 +100,18 @@ CREATE POLICY "partners_all_auth" ON public.partners FOR ALL TO authenticated US
 CREATE POLICY "past_events_select_public" ON public.past_events FOR SELECT USING (true);
 CREATE POLICY "past_events_all_auth" ON public.past_events FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- 12. public_messages (Contact Form)
+-- 12. public_messages (Contact Form - Anon can insert)
 CREATE POLICY "public_messages_insert_anon" ON public.public_messages FOR INSERT TO anon WITH CHECK (length(name) > 0 AND length(email) > 0);
 CREATE POLICY "public_messages_select_auth" ON public.public_messages FOR SELECT TO authenticated USING (true);
 CREATE POLICY "public_messages_all_auth" ON public.public_messages FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- 13. public_ratings (Workshop Feedback Ratings)
+-- 13. public_ratings (Workshop Feedback Ratings - Anon can insert)
 CREATE POLICY "public_ratings_insert_anon" ON public.public_ratings FOR INSERT TO anon WITH CHECK (rating >= 1 AND rating <= 5);
 CREATE POLICY "public_ratings_select_auth" ON public.public_ratings FOR SELECT TO authenticated USING (true);
 CREATE POLICY "public_ratings_all_auth" ON public.public_ratings FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- 14. public_registrations (Tournament Participants)
 CREATE POLICY "public_registrations_select_public" ON public.public_registrations FOR SELECT USING (true);
-CREATE POLICY "public_registrations_insert_auth" ON public.public_registrations FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "public_registrations_all_auth" ON public.public_registrations FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- 15. scoring_subjects
