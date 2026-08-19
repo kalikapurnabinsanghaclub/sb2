@@ -1,0 +1,4099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KNSDC — Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Barlow:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script>
+  window.addEventListener('error', function(e) {
+    const div = document.createElement('div');
+    div.id = 'runtime-error-overlay';
+    div.style.cssText = 'position:fixed; top:0; left:0; right:0; background:#ef4444; color:white; z-index:100000; padding:20px; font-family:monospace; font-size:14px; word-break:break-all; border-bottom:4px solid #991b1b; box-shadow:0 10px 30px rgba(0,0,0,0.5)';
+    div.innerHTML = `
+      <div style="font-weight:bold; font-size:18px; margin-bottom:10px">⚠️ Admin Panel Error</div>
+      <div style="margin-bottom:10px">Message: ${e.message}</div>
+      <div style="font-size:12px; opacity:0.8">Source: ${e.filename}:${e.lineno}</div>
+      <button onclick="this.parentElement.remove()" style="margin-top:15px; padding:8px 16px; background:#991b1b; color:white; border:none; border-radius:4px; cursor:pointer">Close Overlay</button>
+    `;
+    document.body ? document.body.appendChild(div) : document.documentElement.appendChild(div);
+  });
+  
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    window.addEventListener('DOMContentLoaded', () => {
+      const warn = document.createElement('div');
+      warn.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:white;text-align:center;padding:12px;z-index:9999;font-weight:bold;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.2)';
+      warn.innerHTML = '⚠️ WARNING: You are using LOCALHOST. Please run <b>LAUNCH.bat</b> for the stable Offline Admin Panel.';
+      document.body.prepend(warn);
+    });
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #FF6B35;
+    --primary-dark: #e55a2b;
+    --accent: #2563eb;
+    --bg: #f4f7f9;
+    --bg2: #f1f5f9;
+    --surface: #ffffff;
+    --surface2: #f8fafc;
+    --surface3: #e2e8f0;
+    --text: #1e293b;
+    --text-dim: #334155;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --border2: #cbd5e1;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-md: 0 10px 20px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.02);
+
+    --amber: #d97706; --amber2: #f59e0b; --amber3: #fbbf24;
+    --blue: #3b82f6; --blue2: #2563eb; --blue3: #60a5fa;
+    --green: #059669; --green2: #10b981;
+    --red: #dc2626; --red2: #ef4444;
+    --purple: #7c3aed; --purple2: #8b5cf6;
+    --orange: #ea580c; --orange2: #f97316;
+    --cyan: #0891b2; --cyan2: #06b6d4;
+
+    --fh: 'Inter', sans-serif;
+    --fb: 'Inter', sans-serif;
+    --fm: 'monospace';
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--fb); background: linear-gradient(135deg, #f3f7fa 0%, #e9eff5 100%); color: var(--text); overflow: hidden; height: 100vh; display: flex; -webkit-font-smoothing: antialiased; }
+
+  /* SIDEBAR PREMIUM */
+  .sidebar { 
+    width: 260px; 
+    min-width: 260px; 
+    background: #ffffff; 
+    border-right: 1px solid #e2e8f0; 
+    display: flex; 
+    flex-direction: column; 
+    z-index: 100; 
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: sticky;
+    top: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+    box-shadow: 10px 0 40px rgba(0, 0, 0, 0.05); 
+  }
+  .logo { 
+    padding: 24px; 
+    border-bottom: 1px solid #e2e8f0; 
+    margin-bottom: 16px; 
+  }
+  .logo-mark { 
+    font-family: var(--fh); 
+    font-weight: 900; 
+    font-size: 22px; 
+    letter-spacing: 0.5px; 
+    color: #1e293b; 
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .logo-sub { 
+    font-size: 10px; 
+    color: #64748b; 
+    font-weight: 800; 
+    text-transform: uppercase; 
+    letter-spacing: 2px; 
+    margin-top: 4px; 
+  }
+  
+  .event-selector { padding: 0 20px; margin-bottom: 24px; }
+  .event-selector label { font-size: 9px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 1.5px; margin-bottom: 8px; display: block; padding-left: 8px; }
+  .event-selector select { 
+    background: #f8fafc!important; 
+    border: 1px solid #e2e8f0!important; 
+    font-weight: 700; 
+    color: #1e293b!important; 
+    border-radius: 12px!important; 
+    padding: 10px 14px!important; 
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .event-selector select:hover {
+    border-color: #cbd5e1!important;
+  }
+  .event-selector select:focus {
+    border-color: #3b82f6!important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2)!important;
+  }
+
+  .nav-section { flex: none; overflow-y: visible; padding: 0 16px; margin-bottom: 16px; }
+  .nav-section::-webkit-scrollbar { width: 4px; }
+  .nav-section::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 4px; }
+  .nav-label { font-size: 9px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 2px; margin: 20px 0 12px 12px; }
+  .nav-item { 
+    display: flex; 
+    align-items: center; 
+    gap: 12px; 
+    padding: 12px 16px; 
+    border-radius: 12px; 
+    cursor: pointer; 
+    color: #64748b; 
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
+    font-size: 13px; 
+    font-weight: 600; 
+    margin-bottom: 6px; 
+    position: relative; 
+  }
+  .nav-item:hover { 
+    background: #f1f5f9; 
+    color: #1e293b; 
+  }
+  .nav-item.active { 
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(139, 92, 246, 0.12)); 
+    color: #3b82f6; 
+    font-weight: 700; 
+  }
+  .nav-item.active::before { 
+    content: ''; 
+    position: absolute; 
+    left: -4px; 
+    top: 12px; 
+    bottom: 12px; 
+    width: 4px; 
+    background: #3b82f6; 
+    border-radius: 0 4px 4px 0; 
+    box-shadow: 0 0 10px #3b82f6;
+  }
+  .nav-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .nbadge { margin-left: auto; background: var(--red); color: #fff; font-size: 9px; padding: 2px 7px; border-radius: 10px; font-weight: 900; box-shadow: 0 2px 5px rgba(220,38,38,0.3); }
+
+  /* MAIN AREA */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+  .topbar { 
+    height: 70px; 
+    background: rgba(255, 255, 255, 0.7); 
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.8); 
+    display: flex; 
+    align-items: center; 
+    padding: 0 32px; 
+    gap: 20px; 
+    z-index: 10; 
+    box-shadow: 0 4px 30px rgba(0,0,0,0.01); 
+  }
+  .topbar-title { font-family: var(--fh); font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: 0.5px; }
+  .topbar-event { 
+    font-size: 11px; 
+    color: var(--blue); 
+    font-family: var(--fm); 
+    background: rgba(59, 130, 246, 0.08); 
+    padding: 6px 14px; 
+    border-radius: 20px; 
+    border: 1px solid rgba(59, 130, 246, 0.15); 
+    font-weight: 700; 
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.04);
+  }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green2); animation: blink 1.5s infinite; }
+  @keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: 0.4 } }
+  .content { flex: 1; overflow-y: auto; padding: 32px; scroll-behavior: smooth; }
+  .content::-webkit-scrollbar { width: 6px; }
+  .content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+  .content::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+
+  /* BUTTONS */
+  .btn { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 8px; 
+    padding: 10px 20px; 
+    border-radius: 12px; 
+    border: none; 
+    font-family: var(--fb); 
+    font-size: 13px; 
+    font-weight: 600; 
+    cursor: pointer; 
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
+    white-space: nowrap; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.03); 
+    position: relative;
+  }
+  .btn-amber { 
+    background: linear-gradient(135deg, #2563eb, #1d4ed8); 
+    color: #fff; 
+    box-shadow: 0 4px 14px rgba(37,99,235,0.25); 
+  }
+  .btn-amber:hover { 
+    box-shadow: 0 6px 20px rgba(37,99,235,0.35); 
+    transform: translateY(-2px); 
+  }
+  .btn-ghost { 
+    background: rgba(255, 255, 255, 0.8); 
+    color: var(--text-dim); 
+    border: 1px solid var(--border); 
+    box-shadow: none; 
+    backdrop-filter: blur(8px);
+  }
+  .btn-ghost:hover { 
+    background: #ffffff; 
+    color: var(--blue); 
+    border-color: var(--blue); 
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+  }
+  .btn-danger { 
+    background: rgba(220,38,38,0.05); 
+    color: var(--red); 
+    border: 1px solid rgba(220,38,38,0.15); 
+  }
+  .btn-danger:hover { 
+    background: var(--red); 
+    color: #fff; 
+    box-shadow: 0 4px 12px rgba(220,38,38,0.2);
+    transform: translateY(-1px);
+  }
+  .btn-success { 
+    background: rgba(5,150,105,0.05); 
+    color: var(--green); 
+    border: 1px solid rgba(5,150,105,0.15); 
+  }
+  .btn-success:hover {
+    background: var(--green);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(5,150,105,0.2);
+    transform: translateY(-1px);
+  }
+  .btn-blue { 
+    background: rgba(37,99,235,0.05); 
+    color: var(--blue); 
+    border: 1px solid rgba(37,99,235,0.15); 
+  }
+  .btn-blue:hover {
+    background: var(--blue);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.2);
+    transform: translateY(-1px);
+  }
+  .btn-purple { 
+    background: rgba(124,58,237,0.05); 
+    color: var(--purple); 
+    border: 1px solid rgba(124,58,237,0.15); 
+  }
+  .btn-purple:hover {
+    background: var(--purple);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(124,58,237,0.2);
+    transform: translateY(-1px);
+  }
+  .btn-orange { 
+    background: rgba(234,88,12,0.05); 
+    color: var(--orange); 
+    border: 1px solid rgba(234,88,12,0.15); 
+  }
+  .btn-orange:hover {
+    background: var(--orange);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(234,88,12,0.2);
+    transform: translateY(-1px);
+  }
+  .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
+  .btn-xs { padding: 6px 12px; font-size: 11px; border-radius: 8px; }
+  .btn-icon { width: 38px; height: 38px; padding: 0; justify-content: center; border-radius: 50%; }
+
+  /* CARDS PREMIUM */
+  .card { 
+    background: rgba(255, 255, 255, 0.7); 
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.5); 
+    border-radius: 24px; 
+    padding: 28px; 
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.02); 
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+    position: relative; 
+    overflow: hidden; 
+  }
+  .card:hover {
+    box-shadow: 0 15px 35px rgba(15, 23, 42, 0.05);
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.8);
+  }
+  .card-lg { padding: 36px; }
+  .card-title { 
+    font-family: var(--fh); 
+    font-size: 13px; 
+    font-weight: 800; 
+    letter-spacing: 1.5px; 
+    text-transform: uppercase; 
+    color: var(--text-muted); 
+    margin-bottom: 20px; 
+    display: flex; 
+    align-items: center; 
+    gap: 10px; 
+  }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+
+  /* GRIDS */
+  .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px; }
+  .g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+  .g5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
+
+  /* STAT BOXES PREMIUM */
+  .stat { 
+    background: rgba(255, 255, 255, 0.8); 
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.5); 
+    border-radius: 24px; 
+    padding: 24px; 
+    position: relative; 
+    overflow: hidden; 
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03); 
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .stat::before { 
+    content: ''; 
+    position: absolute; 
+    top: -15px; 
+    right: -15px; 
+    width: 100px; 
+    height: 100px; 
+    border-radius: 50%; 
+    opacity: 0.08; 
+    z-index: 0; 
+    filter: blur(15px);
+    transition: all 0.4s ease;
+  }
+  .stat.amber::before { background: var(--amber2); }
+  .stat.green::before { background: var(--green2); }
+  .stat.blue::before { background: var(--blue2); }
+  .stat.red::before { background: var(--red2); }
+  .stat.purple::before { background: var(--purple2); }
+  .stat.orange::before { background: var(--orange2); }
+  .stat.cyan::before { background: var(--cyan2); }
+  
+  .stat-num { font-family: var(--fh); font-size: 40px; font-weight: 900; line-height: 1.1; color: #0f172a; position: relative; z-index: 1; }
+  .stat-lbl { font-size: 9px; color: var(--text-muted); margin-top: 10px; text-transform: uppercase; letter-spacing: 2px; font-weight: 800; position: relative; z-index: 1; }
+  .stat-icon { font-size: 28px; margin-bottom: 12px; position: relative; z-index: 1; }
+  .stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 10px; font-weight: 600; }
+
+  /* FORMS */
+  .fg { margin-bottom: 18px; }
+  .fl { display: block; font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-family: var(--fb); }
+  input, select, textarea { 
+    background: rgba(255, 255, 255, 0.85)!important; 
+    border: 1px solid rgba(226, 232, 240, 0.8)!important; 
+    color: #0f172a!important; 
+    border-radius: 12px!important; 
+    padding: 12px 16px!important; 
+    font-family: var(--fb)!important; 
+    font-size: 13px!important; 
+    width: 100%!important; 
+    outline: none!important; 
+    transition: all 0.2s ease;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);
+  }
+  input:focus, select:focus, textarea:focus { 
+    border-color: var(--blue)!important; 
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15)!important; 
+    background: #fff!important;
+  }
+  textarea { resize: vertical; min-height: 90px; }
+  select option { background: #fff; color: var(--text); }
+  input[type=range] { padding: 6px 0!important; cursor: pointer; accent-color: var(--blue); }
+  input[type=checkbox], input[type=radio] { width: auto!important; accent-color: var(--blue); width: 16px!important; height: 16px!important; cursor: pointer; }
+
+  /* TABLE */
+  .tbl-wrap { 
+    overflow-x: auto; 
+    border-radius: 16px; 
+    border: 1px solid rgba(226, 232, 240, 0.8); 
+    background: rgba(255, 255, 255, 0.8); 
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+  }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  thead th { 
+    padding: 14px 20px; 
+    text-align: left; 
+    font-size: 9px; 
+    letter-spacing: 2px; 
+    text-transform: uppercase; 
+    color: var(--text-muted); 
+    font-family: var(--fm); 
+    background: rgba(248, 250, 252, 0.6); 
+    border-bottom: 1px solid rgba(226, 232, 240, 0.8); 
+    font-weight: 700; 
+  }
+  tbody td { 
+    padding: 16px 20px; 
+    border-bottom: 1px solid rgba(226, 232, 240, 0.5); 
+    font-size: 13px; 
+    vertical-align: middle; 
+    color: var(--text); 
+    transition: all 0.2s ease;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { transition: all 0.25s; }
+  tbody tr:hover { background: rgba(59, 130, 246, 0.04); }
+  tbody tr:hover td { color: var(--blue); }
+
+  /* BADGES */
+  .badge { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 5px; 
+    padding: 4px 12px; 
+    border-radius: 20px; 
+    font-size: 9px; 
+    font-weight: 800; 
+    letter-spacing: 1px; 
+    text-transform: uppercase; 
+    font-family: var(--fm); 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  }
+  .b-amber { background: rgba(245, 158, 11, 0.08); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.15); }
+  .b-green { background: rgba(16, 185, 129, 0.08); color: #059669; border: 1px solid rgba(16, 185, 129, 0.15); }
+  .b-blue { background: rgba(59, 130, 246, 0.08); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.15); }
+  .b-red { background: rgba(239, 68, 68, 0.08); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.15); }
+  .b-purple { background: rgba(139, 92, 246, 0.08); color: #7c3aed; border: 1px solid rgba(139, 92, 246, 0.15); }
+  .b-orange { background: rgba(249, 115, 22, 0.08); color: #ea580c; border: 1px solid rgba(249, 115, 22, 0.15); }
+  .b-cyan { background: rgba(6, 182, 212, 0.08); color: #0891b2; border: 1px solid rgba(6, 182, 212, 0.15); }
+  .b-gray { background: rgba(148, 163, 184, 0.08); color: #475569; border: 1px solid rgba(148, 163, 184, 0.15); }
+
+  /* SWITCH TOGGLE */
+  .sw-row { 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    padding: 16px 20px; 
+    border-radius: 16px; 
+    background: rgba(255,255,255,0.7); 
+    border: 1px solid rgba(226, 232, 240, 0.8); 
+    margin-bottom: 12px; 
+    transition: all 0.25s ease; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.01); 
+  }
+  .sw-row:hover {
+    background: #fff;
+    border-color: rgba(255, 107, 53, 0.2);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+  }
+  .sw-row.on { border-color: rgba(255,107,53,0.3); background: rgba(255,107,53,0.03); }
+  .sw-left { display: flex; align-items: center; gap: 14px; }
+  .sw-icon { font-size: 20px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05)); }
+  .sw-label { font-size: 13px; font-weight: 700; font-family: var(--fh); letter-spacing: 0.5px; text-transform: uppercase; color: #0f172a; }
+  .sw-desc { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .toggle { position: relative; width: 50px; height: 28px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .tslider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; border-radius: 30px; transition: 0.3s; }
+  .tslider:before { content: ''; position: absolute; width: 22px; height: 22px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .toggle input:checked+.tslider { background: linear-gradient(135deg, #FF6B35, #e55a2b); }
+  .toggle input:checked+.tslider:before { transform: translateX(22px); }
+
+  /* STAGE CARD */
+  .stage-card { 
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%); 
+    border: 1.5px solid rgba(59, 130, 246, 0.25); 
+    border-radius: 24px; 
+    padding: 26px; 
+    position: relative; 
+    overflow: hidden; 
+    box-shadow: 0 12px 36px rgba(59, 130, 246, 0.08); 
+    transition: all 0.3s ease; 
+  }
+  .stage-card::before { 
+    content: 'ON STAGE'; 
+    position: absolute; 
+    top: 16px; 
+    right: 18px; 
+    font-family: var(--fm); 
+    font-size: 9px; 
+    color: #2563eb; 
+    letter-spacing: 3px; 
+    font-weight: 800; 
+    background: rgba(59, 130, 246, 0.12);
+    padding: 4px 10px;
+    border-radius: 6px;
+    animation: blink 2s infinite; 
+  }
+  .stage-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 48px rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
+  .upcoming-card { 
+    background: rgba(255,255,255,0.7); 
+    border: 1px solid rgba(226, 232, 240, 0.8); 
+    border-radius: 16px; 
+    padding: 16px 20px; 
+    margin-bottom: 12px; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.01); 
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: all 0.2s;
+  }
+  .upcoming-card:hover {
+    background: #fff;
+    transform: translateX(4px);
+    border-color: rgba(59, 130, 246, 0.2);
+  }
+  .upcoming-num { 
+    width: 32px; 
+    height: 32px; 
+    border-radius: 10px; 
+    background: rgba(59, 130, 246, 0.08); 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    font-family: var(--fm); 
+    font-size: 13px; 
+    font-weight: 800; 
+    color: var(--blue); 
+    flex-shrink: 0; 
+  }
+
+  /* ROUND PIPELINE */
+  .round-pipeline { display: flex; gap: 8px; margin: 20px 0; }
+  .rp-step { flex: 1; text-align: center; position: relative; }
+  .rp-step::after { content: '→'; position: absolute; right: -8px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--border2); z-index: 1; font-weight: 800; }
+  .rp-step:last-child::after { display: none; }
+  .rp-box { background: rgba(255,255,255,0.5); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 16px; padding: 18px 10px; margin: 0 4px; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
+  .rp-box.active { border-color: var(--blue); background: rgba(59, 130, 246, 0.06); box-shadow: 0 8px 24px rgba(59, 130, 246, 0.1); transform: translateY(-2px); }
+  .rp-box.done { border-color: var(--green); background: rgba(16, 185, 129, 0.04); }
+  .rp-num { font-family: var(--fh); font-size: 28px; font-weight: 900; line-height: 1; color: #0f172a; }
+  .rp-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 6px; font-family: var(--fm); font-weight: 700; }
+
+  /* SCORE BAR */
+  .score-bar-wrap { margin-bottom: 12px; }
+  .score-bar-top { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; font-weight: 600; color: var(--text-dim); }
+  .score-bar { height: 8px; background: rgba(226, 232, 240, 0.8); border-radius: 10px; overflow: hidden; }
+  .score-bar-fill { height: 100%; border-radius: 10px; transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+
+  /* JUDGE SCORE TABLE */
+  .judge-row { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 16px; background: rgba(255,255,255,0.7); border: 1px solid rgba(226, 232, 240, 0.8); margin-bottom: 12px; transition: all 0.2s; }
+  .judge-row:hover { background: #fff; border-color: rgba(59, 130, 246, 0.2); }
+  .judge-avatar { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--fh); font-size: 18px; font-weight: 800; flex-shrink: 0; color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+
+  /* FORM BUILDER */
+  .fb-field { background: rgba(255,255,255,0.5); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 16px; padding: 18px; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 14px; transition: all 0.2s; }
+  .fb-field:hover { background: #fff; border-color: rgba(59, 130, 246, 0.2); }
+  .fb-drag { color: var(--text-muted); cursor: grab; font-size: 18px; margin-top: 2px; }
+  .fb-field-body { flex: 1; }
+  .fb-type-badge { font-size: 9px; font-family: var(--fm); background: rgba(226, 232, 240, 0.8); color: var(--text-dim); padding: 3px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
+
+  /* VENUE LANE */
+  .venue-lane { background: rgba(255,255,255,0.7); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 20px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.01); }
+  .venue-lane-head { background: rgba(248, 250, 252, 0.8); padding: 16px 24px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid rgba(226, 232, 240, 0.8); }
+  .venue-name { font-family: var(--fh); font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--blue); }
+  .participant-row { display: flex; align-items: center; gap: 14px; padding: 14px 24px; border-bottom: 1px solid rgba(226, 232, 240, 0.5); transition: all 0.25s; }
+  .participant-row:hover { background: rgba(59, 130, 246, 0.03); }
+  .participant-row:last-child { border-bottom: none; }
+  .p-num { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: var(--fm); font-size: 13px; font-weight: 800; flex-shrink: 0; }
+
+  /* PROMOTION CARD */
+  .promo-card { background: rgba(255,255,255,0.7); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 16px; padding: 18px; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; transition: all 0.25s; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
+  .promo-card:hover { border-color: var(--blue); transform: translateX(6px); background: #fff; }
+  .promo-check { width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--border2); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.2s; background: #fff; }
+  .promo-check.checked { background: var(--blue); border-color: var(--blue); color: #fff; font-size: 14px; }
+
+  /* PREMIUM ENHANCEMENTS */
+  .podium-wrap { display: flex; align-items: flex-end; justify-content: center; gap: 16px; margin: 30px 0 40px; padding: 20px; perspective: 1000px; }
+  .podium-item { display: flex; flex-direction: column; align-items: center; position: relative; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.15); }
+  .podium-item:hover { transform: translateY(-10px); }
+  .podium-base { width: 120px; background: linear-gradient(180deg, #e2e8f0, #cbd5e1); border-radius: 16px 16px 8px 8px; display: flex; align-items: center; justify-content: center; font-family: var(--fh); font-size: 36px; font-weight: 900; color: rgba(15, 23, 42, 0.15); box-shadow: 0 10px 25px rgba(15,23,42,0.05); }
+  .p-1st { height: 150px; background: linear-gradient(180deg, var(--amber2), var(--amber)); color: #fff!important; }
+  .p-2nd { height: 110px; background: linear-gradient(180deg, var(--blue2), var(--blue)); color: #fff!important; }
+  .p-3rd { height: 80px; background: linear-gradient(180deg, var(--cyan2), var(--cyan)); color: #fff!important; }
+  .podium-player { margin-bottom: 14px; text-align: center; }
+  .podium-avatar { width: 60px; height: 60px; border-radius: 50%; border: 4px solid #fff; box-shadow: 0 8px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; font-family: var(--fh); font-size: 24px; font-weight: 800; margin: 0 auto 10px; background: #fff; }
+  .podium-name { font-family: var(--fh); font-size: 13px; font-weight: 800; text-transform: uppercase; color: #0f172a; margin-bottom: 2px; }
+  .podium-score { font-family: var(--fm); font-size: 11px; color: var(--text-muted); font-weight: 700; }
+
+  .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); }
+  .card-hover:hover { box-shadow: 0 15px 35px rgba(0,0,0,0.06); transform: translateY(-3px); }
+
+  /* CHAT STYLES */
+  .cmsg.sos { border-left: 4px solid var(--red); color: var(--red); font-weight: 800; }
+  .at-m { color: var(--green2, #10b981); font-weight: 700; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 6px; }
+
+  /* TABS */
+  .tabs { display: flex; gap: 6px; background: rgba(226, 232, 240, 0.6); padding: 6px; border-radius: 16px; margin-bottom: 24px; border: 1px solid rgba(226, 232, 240, 0.8); backdrop-filter: blur(8px); width: fit-content; }
+  .tab { padding: 10px 22px; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 700; color: var(--text-muted); transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); font-family: var(--fh); letter-spacing: 1px; text-transform: uppercase; }
+  .tab.active { background: #fff; color: var(--blue); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+  .tab:hover:not(.active) { color: #0f172a; background: rgba(255, 255, 255, 0.5); }
+
+  /* SEARCH BOX */
+  .sbox { position: relative; }
+  .sbox input { padding-left: 44px!important; border-radius: 14px!important; }
+  .sicon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 15px; pointer-events: none; }
+
+  /* PANEL PAGES */
+  .pp { display: none; }
+  .pp.active { display: block; animation: fadeUp 0.4s ease-out; }
+
+  /* CHIP */
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 24px; font-size: 11px; cursor: pointer; border: 1px solid rgba(226, 232, 240, 0.8); color: var(--text-dim); transition: all 0.2s; font-weight: 700; background: #fff; }
+  .chip.sel { background: rgba(59, 130, 246, 0.08); border-color: var(--blue); color: var(--blue); box-shadow: 0 2px 8px rgba(59, 130, 246, 0.05); }
+  .chip:hover { border-color: var(--blue); background: var(--surface2); }
+  .chip-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+  /* TOAST */
+  #toast { position: fixed; bottom: 32px; right: 32px; background: rgba(255,255,255,0.9); backdrop-filter: blur(12px); border: 1px solid var(--blue); color: #0f172a; padding: 16px 28px; border-radius: 16px; font-size: 14px; z-index: 1002; display: none; box-shadow: 0 12px 36px rgba(37,99,235,0.15); font-family: var(--fb); font-weight: 600; animation: slideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+  /* DIVIDER */
+  hr { border: none; border-top: 1px solid rgba(226, 232, 240, 0.8); margin: 24px 0; }
+
+  /* QR PLACEHOLDER */
+  .qr-box { width: 160px; height: 160px; background: #fff; border: 2px dashed rgba(226, 232, 240, 0.8); border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 56px; color: var(--surface3); }
+
+  /* SCORE INPUT CELL */
+  .score-cell input { width: 70px!important; text-align: center; font-family: var(--fm)!important; font-size: 14px!important; padding: 8px!important; border-radius: 8px!important; }
+
+  /* FLOWCHART */
+  .flow-node { background: #fff; border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 14px; padding: 14px 20px; text-align: center; font-size: 12px; font-family: var(--fh); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
+  .flow-node.active { border-color: var(--blue); background: rgba(59, 130, 246, 0.05); color: var(--blue); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1); }
+  .flow-node.done { border-color: var(--green); background: rgba(16, 185, 129, 0.02); color: var(--green); }
+  .flow-arrow { font-size: 20px; color: var(--border2); flex-shrink: 0; align-self: center; }
+
+  /* CHART CONTAINER */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes sosPulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220,38,38,0.4); } 50% { transform: scale(1.03); box-shadow: 0 0 0 10px rgba(220,38,38,0); } }
+  @keyframes glowBlue { 0%, 100% { box-shadow: 0 4px 15px rgba(59,130,246,0.05); } 50% { box-shadow: 0 10px 25px rgba(59,130,246,0.2); } }
+  @keyframes slideRight { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* ── CHATBOX ── */
+  .chat-fab { position: fixed; bottom: 32px; right: 32px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), #1d4ed8); border: none; cursor: pointer; font-size: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(37,99,235,0.3); z-index: 500; transition: all 0.3s; }
+  .chat-fab:hover { transform: scale(1.1) rotate(-5deg); box-shadow: 0 10px 30px rgba(37,99,235,0.4); }
+  .unread-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--red); position: absolute; top: 10px; right: 10px; display: none; border: 2px solid #fff; }
+  .chat-float { position: fixed; bottom: 104px; right: 32px; width: 380px; max-height: 550px; background: rgba(255,255,255,0.9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 24px; box-shadow: 0 20px 50px rgba(15,23,42,0.12); z-index: 500; display: flex; flex-direction: column; overflow: hidden; animation: slideRight 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+  .chat-float.hidden { display: none; }
+  .chat-hd { padding: 18px 24px; border-bottom: 1px solid rgba(226, 232, 240, 0.8); background: rgba(248, 250, 252, 0.6); display: flex; align-items: center; justify-content: space-between; }
+  .chat-hd-title { font-family: var(--fh); font-size: 14px; font-weight: 800; color: var(--blue); text-transform: uppercase; letter-spacing: 1px; }
+  .chat-msgs { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; min-height: 200px; max-height: 300px; }
+  .chat-msgs::-webkit-scrollbar { width: 4px; }
+  .chat-msgs::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 10px; }
+  .cmsg { padding: 12px 16px; border-radius: 16px; font-size: 13px; line-height: 1.5; max-width: 85%; animation: fadeUp 0.25s ease-out; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+  .cmsg.out { background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.1); align-self: flex-end; color: #0f172a; border-bottom-right-radius: 4px; }
+  .cmsg.in { background: #fff; border: 1px solid rgba(226, 232, 240, 0.8); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .cmsg.mentioned { background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important; }
+  .cmsg.sos { color: var(--red); font-weight: 800; animation: blink 1s infinite; }
+  .cmsg .cmeta { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-family: var(--fm); font-weight: 700; }
+  .chat-mention-bar { display: flex; gap: 6px; padding: 10px 20px; background: rgba(248, 250, 252, 0.6); border-top: 1px solid rgba(226, 232, 240, 0.8); flex-wrap: wrap; }
+  .mchip { padding: 5px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; background: #fff; border: 1px solid rgba(226, 232, 240, 0.8); color: var(--text-dim); transition: all 0.2s; font-family: var(--fb); font-weight: 700; }
+  .mchip:hover { border-color: var(--blue); color: var(--blue); background: rgba(59, 130, 246, 0.04); }
+  .chat-input-row { display: flex; gap: 10px; padding: 16px; border-top: 1px solid rgba(226, 232, 240, 0.8); background: #fff; }
+  .chat-input-row input { flex: 1; background: rgba(241, 245, 249, 0.6)!important; border: 1px solid rgba(226, 232, 240, 0.8)!important; color: #0f172a!important; border-radius: 12px!important; padding: 10px 16px!important; font-size: 13px!important; }
+  .sos-btn-float { width: 40px; height: 40px; border-radius: 12px; background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.15); color: var(--red); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; animation: sosPulse 2s infinite; flex-shrink: 0; transition: all 0.2s; }
+  .send-btn-chat { width: 40px; height: 40px; border-radius: 12px; background: var(--blue); border: none; color: #fff; cursor: pointer; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2); }
+
+  /* ── JUDGE ASSIGNMENT ── */
+  .judge-assign-card { background: rgba(255,255,255,0.75); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 20px; padding: 20px; margin-bottom: 16px; transition: all 0.3s; box-shadow: 0 4px 12px rgba(15,23,42,0.01); }
+  .judge-assign-card:hover { border-color: rgba(59, 130, 246, 0.3); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(15,23,42,0.04); }
+  .judge-assign-card.confirmed { border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.02); }
+  .judge-assign-card.pending { border-color: rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.02); }
+  .avatar-circle { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--fh); font-size: 20px; font-weight: 900; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .live-photo { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: 0.3s; }
+  .live-photo:hover { transform: scale(1.1); }
+  .agree-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 20px; font-size: 9px; font-weight: 800; font-family: var(--fm); text-transform: uppercase; letter-spacing: 1px; }
+  .agree-status.matched { background: rgba(16, 185, 129, 0.08); color: #059669; border: 1px solid rgba(16, 185, 129, 0.15); }
+  .agree-status.pending { background: rgba(59, 130, 246, 0.08); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.15); }
+  .agree-status.none { background: rgba(148, 163, 184, 0.08); color: #475569; border: 1px solid rgba(148, 163, 184, 0.15); }
+  .payment-progress { height: 8px; background: rgba(226, 232, 240, 0.8); border-radius: 10px; overflow: hidden; margin-top: 8px; }
+  .payment-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--cyan2)); border-radius: 10px; transition: width 0.8s ease; }
+
+  .bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.05);
+    z-index: 1000;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .bottom-nav-item {
+    background: transparent;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    flex: 1;
+    height: 100%;
+    gap: 4px;
+    transition: all 0.2s;
+  }
+  .bottom-nav-item .nav-icon {
+    font-size: 20px;
+  }
+  .bottom-nav-item.active {
+    color: #2563eb;
+  }
+
+  /* Bottom sheet style for "More Options" */
+  .more-sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 2100;
+    display: none;
+    align-items: flex-end;
+  }
+  .more-sheet-overlay.show {
+    display: flex;
+  }
+  .more-sheet {
+    width: 100%;
+    background: #fff;
+    border-radius: 24px 24px 0 0;
+    padding: 24px 16px 40px;
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.1);
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .more-sheet-overlay.show .more-sheet {
+    transform: translateY(0);
+  }
+  .more-sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 0 8px;
+  }
+  .more-sheet-title {
+    font-family: var(--fh);
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .more-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .more-sheet-item {
+    background: var(--surface2);
+    border: 1px solid rgba(226,232,240,0.8);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 8px;
+    gap: 8px;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .more-sheet-item:hover {
+    background: #fff;
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+  .more-sheet-item .item-icon {
+    font-size: 24px;
+  }
+
+  @media(max-width:768px) {
+    body { flex-direction: column !important; overflow: hidden !important; height: 100vh !important; }
+    .sidebar { display: none !important; }
+    .bottom-nav { display: flex; }
+    .main { height: calc(100vh - 64px) !important; overflow: hidden !important; }
+    .topbar { height: 60px !important; padding: 0 16px !important; flex-wrap: nowrap !important; gap: 10px !important; }
+    .topbar-title { font-size: 18px !important; }
+    .content { padding: 16px !important; overflow-y: auto !important; height: calc(100% - 60px) !important; padding-bottom: 32px !important; }
+    
+    .g2, .g3, .g4, .g5 { grid-template-columns: 1fr !important; gap: 16px !important; }
+    .modal { max-height: 90vh !important; }
+    .mbody { overflow-y: auto !important; }
+    .tabs { flex-wrap: wrap !important; width: 100% !important; }
+    .tab { flex: 1 !important; text-align: center !important; padding: 10px 12px !important; }
+    .podium-wrap { flex-direction: column !important; align-items: center !important; gap: 24px !important; }
+    .podium-base { width: 100% !important; max-width: 200px !important; }
+  }
+  .dot-offline { background: #94a3b8 !important; box-shadow: none !important; animation: none !important; }
+
+  /* MODAL GLASSMORPHISM AND ANIMATIONS */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    animation: fadeInOverlay 0.3s forwards cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .modal {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 28px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+    transform: scale(0.95) translateY(10px);
+    animation: slideInModal 0.3s forwards cubic-bezier(0.34, 1.56, 0.64, 1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-head {
+    padding: 24px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  .modal-title {
+    font-family: var(--fh);
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .modal-body {
+    padding: 28px;
+    overflow-y: auto;
+    max-height: 70vh;
+  }
+  .modal-foot {
+    padding: 20px 28px;
+    background: rgba(248, 250, 252, 0.5);
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  @keyframes fadeInOverlay {
+    to { opacity: 1; }
+  }
+  @keyframes slideInModal {
+    to { transform: scale(1) translateY(0); }
+  }
+
+  /* Refresh Portal spin animation */
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .spinning {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+
+</style>
+</head>
+<body>
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="logo" style="display:flex;align-items:center;gap:10px">
+    <img src="logo.png" alt="Logo" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
+    <div>
+      <div class="logo-mark">KNSDC</div>
+      <div class="logo-sub">Admin Panel</div>
+    </div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Event Lifecycle</div>
+    <div class="nav-item" onclick="openCreateEventModal()">
+      <div class="nav-dot" style="background:var(--blue)"></div> ＋ Create New Event
+    </div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Management</div>
+    <div class="nav-item active" onclick="nav('dashboard',this)"><div class="nav-dot" style="background:var(--blue2)"></div> Dashboard</div>
+    <div class="nav-item" onclick="nav('events',this)"><div class="nav-dot" style="background:var(--orange2)"></div> Events</div>
+    <div class="nav-item" onclick="nav('participants',this)"><div class="nav-dot" style="background:var(--purple2)"></div> Total Registration <span class="nbadge" id="nb-public-reg">0</span></div>
+    <!-- <div class="nav-item" onclick="nav('donations',this)"><div class="nav-dot" style="background:var(--amber2)"></div> Donations</div> -->
+    <div class="nav-item" onclick="nav('statistics',this)"><div class="nav-dot" style="background:var(--orange2)"></div> Statistics</div>
+    <div class="nav-item" onclick="nav('chat',this)"><div class="nav-dot" style="background:var(--cyan2)"></div> Team Chat 💬</div>
+    <div class="nav-item" onclick="nav('staff',this)"><div class="nav-dot" style="background:var(--green2,#10b981)"></div> 👥 Staff & Roles</div>
+    <div class="nav-item" onclick="nav('feedback',this)"><div class="nav-dot" style="background:var(--pink2,#f472b6)"></div> 📨 Feedback</div>
+  </div>
+  <div style="margin-top:auto;padding:16px;border-top:1px solid var(--border);position:sticky;bottom:0;background:#fff;z-index:10">
+    <div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:8px;font-family:var(--fm);letter-spacing:1px;text-transform:uppercase">Admin Session</div>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;color:#dc2626;border-color:rgba(220,38,38,0.25);background:rgba(220,38,38,0.04);font-weight:700;border-radius:10px;padding:10px" onclick="logout()">🚪 Logout</button>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div style="display:none; flex-direction:column; gap:2px" id="topbar-event-info">
+      <div class="topbar-event" id="topbar-event-name" style="font-family:var(--fh);font-size:14px;font-weight:800;color:var(--text)">Loading...</div>
+      <div id="topbar-event-meta" style="font-size:10px; color:var(--text-dim); font-family:var(--fm)">Organized by...</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px" id="admin-status-wrap">
+      <div id="admin-status-dot" class="live-dot"></div>
+      <span id="admin-status-text" style="font-size:11px;color:var(--text-dim);font-family:var(--fm)">LIVE</span>
+    </div>
+    <button class="btn btn-ghost btn-sm" style="border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:6px;font-weight:700" onclick="refreshPortal(this)">
+      <span class="refresh-icon">🔄</span> Refresh Portal
+    </button>
+  </div>
+
+  <div class="content">
+
+  <!-- ════════════════ DASHBOARD ════════════════ -->
+  <div class="pp active" id="pp-dashboard">
+
+    <!-- NEW DASHBOARD GRID -->
+    <div class="g2" style="margin-bottom:20px">
+
+
+      <!-- Section: Event Timeline -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:15px">📅 Event Timeline</div>
+        <div class="g2">
+          <div id="nearest-upcoming-card" style="background:rgba(37,99,235,0.05); border:1px solid var(--blue); border-radius:12px; padding:15px">
+             <div style="font-size:10px; color:var(--blue); font-weight:800; letter-spacing:1px; margin-bottom:5px">🚀 NEAREST UPCOMING</div>
+             <div id="upcoming-name" style="font-weight:700; font-size:16px">No events planned</div>
+             <div id="upcoming-meta" style="font-size:11px; color:var(--text-dim); margin-top:3px">Check event registry</div>
+          </div>
+          <div id="recently-completed-card" style="background:rgba(5,150,105,0.05); border:1px solid var(--green); border-radius:12px; padding:15px">
+             <div style="font-size:10px; color:var(--green); font-weight:800; letter-spacing:1px; margin-bottom:5px">✅ RECENTLY COMPLETED</div>
+             <div id="completed-name" style="font-weight:700; font-size:16px">N/A</div>
+             <div id="completed-meta" style="font-size:11px; color:var(--text-dim); margin-top:3px">History empty</div>
+          </div>
+        </div>
+        <div id="ongoing-event-card" style="background:rgba(16,185,129,0.05); border:1px solid var(--green2); border-radius:12px; padding:15px; margin-top:15px">
+           <div style="font-size:10px; color:var(--green2); font-weight:800; letter-spacing:1px; margin-bottom:5px">🟢 ON GOING EVENT</div>
+           <div id="ongoing-name" style="font-weight:700; font-size:16px">No ongoing event</div>
+           <div id="ongoing-meta" style="font-size:11px; color:var(--text-dim); margin-top:3px">Select active event from the events panel</div>
+        </div>
+      </div>
+
+      <!-- Section: Registration Distribution -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:15px">📊 Registration Analytics</div>
+        <div class="chart-wrap" style="height:150px">
+          <canvas id="reg-pie-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- STATS ROW -->
+    <div class="g2" style="margin-bottom:16px" id="dash-stats"></div>
+
+    <!-- DATABASE HEALTH CARD -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title" style="margin-bottom:15px">🗄️ Database Health & Status</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px">
+        <div class="stat" style="background:rgba(59,130,246,0.05); border:1px solid rgba(59,130,246,0.1)">
+          <div class="stat-num" id="db-stat-status" style="font-size:18px; color:var(--blue)">Connecting...</div>
+          <div class="stat-lbl">Connection Status</div>
+        </div>
+        <div class="stat" style="cursor:pointer" onclick="nav('events')">
+          <div class="stat-num" id="db-stat-events">0</div>
+          <div class="stat-lbl">Total Events</div>
+        </div>
+        <div class="stat" style="cursor:pointer" onclick="nav('staff')">
+          <div class="stat-num" id="db-stat-staff">0</div>
+          <div class="stat-lbl">Staff & Judges</div>
+        </div>
+        <div class="stat" style="cursor:pointer" onclick="nav('participants')">
+          <div class="stat-num" id="db-stat-pending">0</div>
+          <div class="stat-lbl">Pending Registrations</div>
+        </div>
+        <div class="stat" style="cursor:pointer" onclick="nav('participants')">
+          <div class="stat-num" id="db-stat-approved">0</div>
+          <div class="stat-lbl">Approved Participants</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════════ EVENTS ════════════════ -->
+  <div class="pp" id="pp-events">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div class="card-title">🎪 Event Registry</div>
+        <button class="btn btn-amber btn-sm" onclick="openCreateEventModal()">＋ Create New Event</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:16px"></th>
+              <th>Event Name</th>
+              <th>Organizer</th>
+              <th>Date / Time</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="events-page-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+
+  </div>
+
+  <!-- ════════════════ TOTAL REGISTRATION ════════════════ -->
+  <div class="pp" id="pp-participants">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">👥 Total Registration</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:2px">All public applications and approved participants</div>
+        </div>
+        <div style="display:flex; gap:10px">
+          <div class="sbox"><span class="sicon">🔍</span><input type="text" id="admin-p-search" placeholder="Name or Phone..." oninput="renderAdminParticipants()"/></div>
+          <select id="admin-p-event-filter" onchange="renderAdminParticipants()" style="width:150px!important"></select>
+          <button class="btn btn-ghost btn-sm" onclick="refreshPortal(this)">🔄 Refresh</button>
+        </div>
+      </div>
+      <div class="tbl-wrap" style="max-height:600px; overflow-y:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Contact</th>
+              <th>Event</th>
+            </tr>
+          </thead>
+          <tbody id="admin-p-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════ STATISTICS ════════════════ -->
+  <div class="pp" id="pp-statistics">
+    <div class="tabs">
+      <div class="tab active" onclick="statsTab('overview',this)">📊 Overview</div>
+    </div>
+
+    <!-- OVERVIEW -->
+    <div id="st-overview">
+      <div style="margin-bottom:14px; display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px" id="stats-overview-cards">
+        <div class="stat orange">
+          <div class="stat-num" id="stat-top-event" style="font-size:22px; line-height:1.3; word-break:break-word; font-weight:800">—</div>
+          <div class="stat-lbl">Most Popular Event</div>
+        </div>
+        <div class="stat blue">
+          <div class="stat-num" id="stat-total-reg" style="font-size:22px; line-height:1.3; font-weight:800">0</div>
+          <div class="stat-lbl">Total Registrations</div>
+        </div>
+        <div class="stat green">
+          <div class="stat-num" id="stat-total-present" style="font-size:22px; line-height:1.3; font-weight:800">0</div>
+          <div class="stat-lbl">Total Present</div>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px; margin-bottom:20px;">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">Registration Distribution (By Event)</div>
+          <div class="chart-wrap" style="position:relative; height:250px; width:100%;"><canvas id="event-freq-chart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">Attendance & Completion (By Event)</div>
+          <div class="chart-wrap" style="position:relative; height:250px; width:100%;"><canvas id="event-present-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+
+
+
+  <!-- ════════════════ DONATIONS ════════════════ -->
+  <div class="pp" id="pp-donations" style="display: none !important;">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">🙏 Donation Campaigns</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:2px">Set up donation campaigns, goal amounts, track progress and total raised</div>
+        </div>
+        <button class="btn btn-amber btn-sm" onclick="openCreateDonationModal()">＋ Create Campaign</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Campaign Name</th>
+              <th>Goal / Target</th>
+              <th>Total Raised</th>
+              <th>Progress Tracker</th>
+              <th>Icon</th>
+              <th>Card Theme Color</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="donations-page-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════ CHAT ════════════════ -->
+  <div class="pp" id="pp-chat">
+    <div style="height:calc(100vh - 120px)">
+      <div class="card" style="display:flex;flex-direction:column;padding:0;overflow:hidden;height:100%">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex; align-items:center; gap:12px">
+            <div>
+              <div class="card-title" style="font-size:14px">Staff Communication</div>
+              <div style="font-size:10px;color:var(--text-muted);font-family:var(--fm);margin-top:2px">@judge @admin @host mentions available</div>
+            </div>
+            <select id="chat-event-sel" onchange="switchEvent(this.value)" style="background:rgba(59,130,246,0.05); border:1px solid rgba(59,130,246,0.1); border-radius:8px; padding:4px 8px; font-family:var(--fh); font-size:12px; font-weight:800; color:var(--blue); cursor:pointer; outline:none;">
+              <option value="">Switch Event...</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:7px">
+            <button id="page-sos-btn" onclick="triggerSOS()" class="btn btn-danger btn-sm" style="animation:sosPulse 2s infinite">🚨 SOS Broadcast</button>
+            <button id="page-stop-sos" onclick="stopSOS()" class="btn btn-success btn-sm" style="display:none">■ Stop SOS</button>
+          </div>
+        </div>
+        <div class="chat-mention-bar">
+          <span style="font-size:10px;color:var(--text-muted);align-self:center">Mention:</span>
+          <span class="mchip" onclick="insPageMention('@judge')">@judge</span>
+          <span class="mchip" onclick="insPageMention('@admin')">@admin</span>
+          <span class="mchip" onclick="insPageMention('@host')">@host</span>
+        </div>
+        <div class="chat-msgs" id="page-chat-msgs" style="max-height:none;flex:1"></div>
+        <div class="chat-input-row">
+          <input type="text" id="page-chat-inp" placeholder="Type your message… use @judge @admin @host" onkeydown="if(event.key==='Enter')sendPageMsg()"/>
+          <button class="send-btn-chat" onclick="sendPageMsg()">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- STAFF MANAGEMENT PAGE -->
+  <div class="pp" id="pp-staff">
+    <div class="card" style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div class="card-title">👥 Staff & Role Management</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Add monitor, host, judge, admin accounts. Users log in from the main website.</div>
+        </div>
+        <button class="btn btn-amber" onclick="openAddStaffModal()">＋ Add Staff Member</button>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="tbl" style="width:100%">
+        <thead><tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Assignment</th>
+          <th>Role</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr></thead>
+        <tbody id="staff-tbody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <div class="pp" id="pp-feedback">
+    <div class="card" style="margin-bottom: 24px;">
+      <h2 style="font-size:1.5rem;font-weight:800;color:var(--text-main);margin-bottom:8px;">Public Ratings & Messages</h2>
+      <p style="color:var(--text-muted);font-size:0.9rem;">View feedback and contact form submissions from the public portal.</p>
+    </div>
+    
+    <div class="grid-2" style="margin-bottom: 24px;">
+      <div class="card" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 40px;">
+        <h3 style="font-size:1rem; color:var(--text-muted); margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; font-weight:700;">Average Rating</h3>
+        <div id="fb-avg-rating" style="font-size:3.5rem; font-weight:900; color:var(--text-main); line-height:1;">-</div>
+        <div id="fb-stars" style="font-size:1.5rem; margin-top:8px;">⭐⭐⭐⭐⭐</div>
+        <div id="fb-total-ratings" style="font-size:0.85rem; color:var(--text-muted); margin-top:12px;">0 total ratings</div>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; justify-content:center; padding: 40px;">
+        <h3 style="font-size:1rem; color:var(--text-muted); margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; font-weight:700;">Quick Stats</h3>
+        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:1.1rem; font-weight:600; color:var(--text-main);">
+          <span>Total Messages:</span>
+          <span id="fb-total-msgs">0</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:1.1rem; font-weight:600; color:var(--text-main);">
+          <span>Recent (last 7 days):</span>
+          <span id="fb-recent-msgs">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding: 0;">
+      <div style="padding: 24px; border-bottom: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:1.1rem;font-weight:700;">Recent Messages</h3>
+        <button class="btn btn-primary" onclick="refreshFeedback(this)">🔄 Refresh</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr>
+            <th>Date</th>
+            <th>Sender</th>
+            <th>Subject</th>
+            <th>Message</th>
+            <th>Actions</th>
+          </tr></thead>
+          <tbody id="fb-tbody"><tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  </div> <!-- /content -->
+</div> <!-- /main -->
+
+<!-- MODALS -->
+
+<!-- ADD STAFF MODAL -->
+<div class="modal-overlay" id="add-staff-modal" style="display:none" onclick="closeOnBg(event,'add-staff-modal')">
+  <div class="modal" style="max-width:480px" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <div class="modal-title">👥 Add Staff Member</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeM('add-staff-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Full Name *</label><input type="text" id="ns-name" placeholder="e.g. Rahul Sharma" autocomplete="off"/></div>
+      <div class="fg"><label class="fl">Email *</label><input type="email" id="ns-email" placeholder="e.g. rahul@kns.org" autocomplete="off"/></div>
+      <div class="fg"><label class="fl">Password *</label><input type="password" id="ns-pass" placeholder="Set a login password" autocomplete="new-password"/></div>
+      <div class="fg">
+        <label class="fl">Role *</label>
+        <select id="ns-role">
+          <option value="monitor">🖥️ Monitor</option>
+          <option value="host">🎤 Host</option>
+          <option value="judge">⚖️ Judge</option>
+          <option value="admin">🛡️ Admin</option>
+          <option value="umpire">🏏 Cricket Umpire</option>
+          <option value="referee">⚽ Football Referee</option>
+        </select>
+      </div>
+      <div class="fg" id="ns-event-group" style="display:none; margin-top:15px;">
+        <label class="fl">Assign Event (Locks staff to this event)</label>
+        <select id="ns-event">
+          <option value="">-- All Events / No Specific Event --</option>
+        </select>
+      </div>
+      <div id="ns-error" style="color:var(--red);font-size:12px;display:none"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('add-staff-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveNewStaff()">💾 Add Member</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN PROFILE MODAL -->
+<div class="modal-overlay" id="admin-profile-modal" style="display:none; z-index:2500;" onclick="closeOnBg(event,'admin-profile-modal')">
+  <div class="modal" style="max-width:400px" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <div class="modal-title">👤 Admin Profile</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeM('admin-profile-modal')" style="border-radius:50%; width:32px; height:32px; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center; padding: 24px;">
+      <div style="width:80px;height:80px;border-radius:50%;background:rgba(37,99,235,0.1);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 15px;">👤</div>
+      <h3 id="admin-profile-name" style="margin-bottom:5px; font-size: 18px; font-weight: 700;">Admin User</h3>
+      <p id="admin-profile-email" style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">admin@knsdc.com</p>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;color:#dc2626;border-color:rgba(220,38,38,0.25);background:rgba(220,38,38,0.04);font-weight:700;border-radius:10px;padding:10px" onclick="logout()">🚪 Logout Session</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT STAFF MODAL -->
+<div class="modal-overlay" id="edit-staff-modal" style="display:none" onclick="closeOnBg(event,'edit-staff-modal')">
+  <div class="modal" style="max-width:400px" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <div class="modal-title">👤 Edit Staff Profile</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeM('edit-staff-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-staff-email"/>
+      <input type="hidden" id="edit-staff-current-image"/>
+      <div class="fg"><label class="fl">Staff Name *</label><input type="text" id="edit-staff-name" placeholder="Full name"/></div>
+      <div class="fg">
+        <label class="fl">Profile Image (Optional)</label>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+          <img id="edit-staff-img-preview" src="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;display:none;border:1px solid var(--border)">
+          <input type="file" id="edit-staff-image-file" accept="image/*" style="font-size:12px"/>
+        </div>
+      </div>
+      <div class="fg" style="margin-top:20px; padding-top:15px; border-top:1px solid var(--border)">
+        <label class="fl">Set New Password</label>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Leave blank to keep the current password. (Current passwords cannot be viewed for security).</div>
+        <input type="password" id="edit-staff-pass" placeholder="Enter new password"/>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('edit-staff-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveStaffDetails()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD REG MODAL (Unified Dynamic Version) -->
+<div class="modal-overlay" id="add-reg-modal" style="display:none" onclick="closeOnBg(event,'add-reg-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:600px">
+    <div class="modal-head">
+      <div class="modal-title" style="display:flex;align-items:center;gap:10px">
+         <span style="font-size:24px">🟣</span>
+         <div>
+            <div style="font-size:16px;font-weight:900">Add New Registration</div>
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px" id="ar-event-name-sub">For Selected Event</div>
+         </div>
+      </div>
+      <button class="btn btn-icon btn-ghost" onclick="closeM('add-reg-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="background:var(--surface2)">
+      <div id="ar-dynamic-form" class="g2" style="background:#fff; padding:20px; border-radius:16px; border:1px solid var(--border)">
+         <div style="grid-column:1/-1; text-align:center; padding:20px; color:var(--text-muted)">Loading event form...</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('add-reg-modal')">Cancel</button>
+      <button class="btn btn-amber" id="ar-submit-btn" onclick="saveNewReg()" style="padding:12px 30px; font-weight:800; border-radius:12px">Register Participant</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT REG MODAL -->
+<div class="modal-overlay" id="edit-reg-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Edit Registration</div><button class="btn btn-ghost btn-icon" onclick="closeM('edit-reg-modal')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="er-id"/>
+      <div class="fg"><label class="fl">Full Name</label><input type="text" id="er-name"/></div>
+      <div class="fg"><label class="fl">Phone</label><input type="text" id="er-phone"/></div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Age</label><input type="number" id="er-age"/></div>
+        <div class="fg"><label class="fl">Category</label><select id="er-cat"></select></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Venue</label><select id="er-venue"></select></div>
+        <div class="fg"><label class="fl">Present Status</label><select id="er-present"><option value="true">✓ Present</option><option value="false">✗ Absent</option></select></div>
+      </div>
+      <div id="er-custom-fields" style="margin-top: 15px; padding: 15px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px dashed #cbd5e1; display: none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('edit-reg-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveEditReg()">Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAT MODAL -->
+<div class="modal-overlay" id="cat-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title" id="cat-modal-title">Add Category</div><button class="btn btn-ghost btn-icon" onclick="closeM('cat-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Category Name</label><input type="text" id="cm-name"/></div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Min Age</label><input type="number" id="cm-agemin"/></div>
+        <div class="fg"><label class="fl">Max Age</label><input type="number" id="cm-agemax"/></div>
+      </div>
+      <div class="fg"><label class="fl">Color Theme</label><select id="cm-color"><option value="b-amber">Amber</option><option value="b-blue">Blue</option><option value="b-purple">Purple</option><option value="b-orange">Orange</option><option value="b-green">Green</option><option value="b-cyan">Cyan</option></select></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveCat()">Save Category</button></div>
+  </div>
+</div>
+
+<!-- VENUE MODAL -->
+<div class="modal-overlay" id="venue-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title" id="vm-title">Add Venue</div><button class="btn btn-ghost btn-icon" onclick="closeM('venue-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Venue Name</label><input type="text" id="vm-name"/></div>
+      <div class="fg"><label class="fl">Location</label><input type="text" id="vm-loc"/></div>
+      <div class="fg">
+        <label class="fl">Dates (comma separated)</label><input type="text" id="vm-dates" placeholder="2025-12-20, 2025-12-21"/>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveVenue()">Save Venue</button></div>
+  </div>
+</div>
+
+<!-- SUBJECT MODAL -->
+<div class="modal-overlay" id="subject-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Add/Edit Subject</div><button class="btn btn-ghost btn-icon" onclick="closeM('subject-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Subject Name</label><input type="text" id="sm-name"/></div>
+      <div class="fg"><label class="fl">Max Marks</label><input type="number" id="sm-max" value="10"/></div>
+      <div class="fg"><label class="fl">Description</label><textarea id="sm-desc"></textarea></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveSubject()">Save Subject</button></div>
+  </div>
+</div>
+
+<!-- SCORE MODAL (Admin Entry) -->
+<div class="modal-overlay" id="score-modal" style="display:none">
+  <div class="modal" style="max-width:800px">
+    <div class="modal-head"><div class="modal-title">Score Entry Matrix</div><button class="btn btn-ghost btn-icon" onclick="closeM('score-modal')">✕</button></div>
+    <div class="modal-body">
+      <div id="score-modal-participant"></div>
+      <div id="score-modal-body"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveScores()">Save All Scores</button></div>
+  </div>
+</div>
+
+<!-- AGREEMENT MODAL -->
+<div class="modal-overlay" id="agreement-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">New Judge Agreement</div><button class="btn btn-ghost btn-icon" onclick="closeM('agreement-modal')">✕</button></div>
+    <div class="modal-body">
+       <div class="fg"><label class="fl">Judge Name</label><input type="text" id="jm-name" placeholder="Dr. Sarah Johnson"/></div>
+       <div class="fg"><label class="fl">Phone / ID</label><input type="text" id="jm-id" placeholder="JUDGE-001"/></div>
+       <div class="fg">
+          <label class="fl">Assigned Subject</label>
+          <select id="jm-subject"></select>
+       </div>
+       <div class="fg">
+          <label class="fl">Assigned Category</label>
+          <select id="jm-category"></select>
+       </div>
+       <div class="fg">
+          <label class="fl">Payment Amount (₹)</label>
+          <input type="number" id="jm-payment" value="5000"/>
+       </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveAgreement()">Generate & Send</button></div>
+  </div>
+</div>
+
+<!-- ADD JUDGE MODAL -->
+<div class="modal-overlay" id="add-judge-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Add Judge</div><button class="btn btn-ghost btn-icon" onclick="closeM('add-judge-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Judge Name</label><input type="text" id="aj-name" placeholder="Dr. Sarah Johnson"/></div>
+      <div class="fg"><label class="fl">ID / Role</label><input type="text" id="aj-role" placeholder="JUDGE-001"/></div>
+      <div class="fg"><label class="fl">Specialty</label><input type="text" id="aj-spec" placeholder="Classical Dance"/></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('add-judge-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveNewJudge()">Add Judge</button>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE EVENT MODAL -->
+<div class="modal-overlay" id="create-event-modal" style="display:none" onclick="closeOnBg(event,'create-event-modal')">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head">
+      <div class="modal-title">🎪 Create New Event</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeM('create-event-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Banner Preview -->
+      <div id="ev-banner-preview" style="width:100%;height:160px;border-radius:12px;background:linear-gradient(135deg,#1e3a5f,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:18px;overflow:hidden;border:1px solid var(--border);position:relative">
+        <img id="ev-banner-img" src="" alt="" style="width:100%;height:100%;object-fit:cover;display:none" onerror="this.style.display='none'"/>
+        <div id="ev-banner-placeholder" style="text-align:center;color:rgba(255,255,255,0.7)">
+          <div style="font-size:36px">🎪</div>
+          <div style="font-size:12px;font-family:var(--fm);letter-spacing:2px;margin-top:6px">EVENT BANNER</div>
+        </div>
+      </div>
+
+      <div class="g2">
+        <div class="fg"><label class="fl">Event Name *</label><input type="text" id="cev-name" placeholder="Enter Event Name" oninput="previewEventBanner()"/></div>
+        <div class="fg"><label class="fl">Organizer Name *</label><input type="text" id="cev-org" placeholder="e.g. Kalikapur Nabin Sangha"/></div>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">Event Type</label>
+          <select id="cev-type" onchange="document.getElementById('monitor-assignment-block').style.display = this.value === 'Sports' ? 'none' : 'block'; document.getElementById('round-schedules-block').style.display = this.value === 'Sports' ? 'none' : 'block';">
+            <option value="Cultural">Cultural</option>
+            <option value="Sports">Sports</option>
+            <option value="Social">Social</option>
+            <option value="Workshop">Workshop</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Venue / Location *</label><input type="text" id="cev-venue" placeholder="Main Auditorium, KNSDC Hall"/></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Start Date *</label><input type="date" id="cev-start"/></div>
+        <div class="fg"><label class="fl">Start Time *</label><input type="time" id="cev-time"/></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">End Date *</label><input type="date" id="cev-end"/></div>
+        <div class="fg"><label class="fl">End Time *</label><input type="time" id="cev-endtime"/></div>
+      </div>
+      <div class="fg"><label class="fl">Expected Participants</label><input type="number" id="cev-capacity" placeholder="500"/></div>
+      <div class="fg">
+        <label class="fl">Upload Banner Image</label>
+        <input type="file" id="cev-banner-file" accept="image/*" multiple onchange="handleBannerUpload(event, 'cev-banner')"/>
+        <input type="hidden" id="cev-banner"/>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:4px;font-family:var(--fm)">Tip: Upload an image file to preview as the banner</div>
+      </div>
+      <div class="fg">
+        <label class="fl">Description</label>
+        <textarea id="cev-desc" placeholder="Brief description of this event…" style="min-height:60px"></textarea>
+      </div>
+
+      <!-- EVENT MONITOR ASSIGNMENT -->
+      <div id="monitor-assignment-block" style="margin-top:20px; padding-top:15px; border-top:1px dashed var(--border)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+           <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm); letter-spacing:1px; text-transform:uppercase; font-weight:800">🖥️ Event Monitor Assignment (Optional)</div>
+           <div style="font-size:10px; color:var(--blue);">Will auto-sync to Staff & Role Mgmt</div>
+        </div>
+        <div class="g2">
+          <div class="fg" style="margin:0"><label class="fl">Monitor Name</label><input type="text" id="cev-monitor-name" placeholder="e.g. Rahul Monitor"/></div>
+          <div class="fg" style="margin:0"><label class="fl">Monitor Email</label><input type="email" id="cev-monitor-email" placeholder="monitor@kns.org"/></div>
+        </div>
+        <div class="fg" style="margin-top:12px; margin-bottom:0"><label class="fl">Monitor Login Password</label><input type="password" id="cev-monitor-pass" placeholder="Set a strong password"/></div>
+      </div>
+      
+
+      
+      <!-- ROUND SCHEDULES SECTION -->
+      <div id="round-schedules-block" style="margin-top:20px; padding-top:15px; border-top:1px dashed var(--border)">
+        <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm); letter-spacing:1px; text-transform:uppercase; margin-bottom:12px; font-weight:800">📅 Round Schedules (Multi-Venue/Date Support)</div>
+        <div style="display:flex; flex-direction:column; gap:12px">
+          <!-- Audition Round -->
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)">
+            <div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">audition Round</div>
+            <div class="g3">
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="cev-round-audition-venue" placeholder="Hall A / Room 2"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="cev-round-audition-date"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="cev-round-audition-time"/></div>
+            </div>
+          </div>
+          <!-- Qualified Round -->
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)">
+            <div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">qualified Round</div>
+            <div class="g3">
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="cev-round-qualified-venue" placeholder="Hall A / Room 2"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="cev-round-qualified-date"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="cev-round-qualified-time"/></div>
+            </div>
+          </div>
+          <!-- Semifinal Round -->
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)">
+            <div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">semifinal Round</div>
+            <div class="g3">
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="cev-round-semifinal-venue" placeholder="Hall A / Room 2"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="cev-round-semifinal-date"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="cev-round-semifinal-time"/></div>
+            </div>
+          </div>
+          <!-- Final Round -->
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)">
+            <div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">final Round</div>
+            <div class="g3">
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="cev-round-final-venue" placeholder="Hall A / Room 2"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="cev-round-final-date"/></div>
+              <div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="cev-round-final-time"/></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('create-event-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveNewEvent(this)">💾 Create Event</button>
+    </div>
+  </div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+
+
+<!-- ADD REG MODAL (Unified Dynamic Version) -->
+<div class="modal-overlay" id="add-reg-modal" style="display:none" onclick="closeOnBg(event,'add-reg-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:600px">
+    <div class="modal-head">
+      <div class="modal-title" style="display:flex;align-items:center;gap:10px">
+         <span style="font-size:24px">🟣</span>
+         <div>
+            <div style="font-size:16px;font-weight:900">Add New Registration</div>
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px" id="ar-event-name-sub">For Selected Event</div>
+         </div>
+      </div>
+      <button class="btn btn-icon btn-ghost" onclick="closeM('add-reg-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="background:var(--surface2)">
+      <div id="ar-dynamic-form" class="g2" style="background:#fff; padding:20px; border-radius:16px; border:1px solid var(--border)">
+         <div style="grid-column:1/-1; text-align:center; padding:20px; color:var(--text-muted)">Loading event form...</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('add-reg-modal')">Cancel</button>
+      <button class="btn btn-amber" id="ar-submit-btn" onclick="saveNewReg()" style="padding:12px 30px; font-weight:800; border-radius:12px">Register Participant</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT REG MODAL -->
+<div class="modal-overlay" id="edit-reg-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Edit Registration</div><button class="btn btn-ghost btn-icon" onclick="closeM('edit-reg-modal')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="er-id"/>
+      <div class="fg"><label class="fl">Full Name</label><input type="text" id="er-name"/></div>
+      <div class="fg"><label class="fl">Phone</label><input type="text" id="er-phone"/></div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Age</label><input type="number" id="er-age"/></div>
+        <div class="fg"><label class="fl">Category</label><select id="er-cat"></select></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Venue</label><select id="er-venue"></select></div>
+        <div class="fg"><label class="fl">Present Status</label><select id="er-present"><option value="true">✓ Present</option><option value="false">✗ Absent</option></select></div>
+      </div>
+      <div id="er-custom-fields" style="margin-top: 15px; padding: 15px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px dashed #cbd5e1; display: none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('edit-reg-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveEditReg()">Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAT MODAL -->
+<div class="modal-overlay" id="cat-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title" id="cat-modal-title">Add Category</div><button class="btn btn-ghost btn-icon" onclick="closeM('cat-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Category Name</label><input type="text" id="cm-name"/></div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Min Age</label><input type="number" id="cm-agemin"/></div>
+        <div class="fg"><label class="fl">Max Age</label><input type="number" id="cm-agemax"/></div>
+      </div>
+      <div class="fg"><label class="fl">Color Theme</label><select id="cm-color"><option value="b-amber">Amber</option><option value="b-blue">Blue</option><option value="b-purple">Purple</option><option value="b-orange">Orange</option><option value="b-green">Green</option><option value="b-cyan">Cyan</option></select></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveCat()">Save Category</button></div>
+  </div>
+</div>
+
+<!-- VENUE MODAL -->
+<div class="modal-overlay" id="venue-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title" id="vm-title">Add Venue</div><button class="btn btn-ghost btn-icon" onclick="closeM('venue-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Venue Name</label><input type="text" id="vm-name"/></div>
+      <div class="fg"><label class="fl">Location</label><input type="text" id="vm-loc"/></div>
+      <div class="fg">
+        <label class="fl">Dates (comma separated)</label><input type="text" id="vm-dates" placeholder="2025-12-20, 2025-12-21"/>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveVenue()">Save Venue</button></div>
+  </div>
+</div>
+
+<!-- SUBJECT MODAL -->
+<div class="modal-overlay" id="subject-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Add/Edit Subject</div><button class="btn btn-ghost btn-icon" onclick="closeM('subject-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Subject Name</label><input type="text" id="sm-name"/></div>
+      <div class="fg"><label class="fl">Max Marks</label><input type="number" id="sm-max" value="10"/></div>
+      <div class="fg"><label class="fl">Description</label><textarea id="sm-desc"></textarea></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveSubject()">Save Subject</button></div>
+  </div>
+</div>
+
+<!-- SCORE MODAL (Admin Entry) -->
+<div class="modal-overlay" id="score-modal" style="display:none">
+  <div class="modal" style="max-width:800px">
+    <div class="modal-head"><div class="modal-title">Score Entry Matrix</div><button class="btn btn-ghost btn-icon" onclick="closeM('score-modal')">✕</button></div>
+    <div class="modal-body">
+      <div id="score-modal-participant"></div>
+      <div id="score-modal-body"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveScores()">Save All Scores</button></div>
+  </div>
+</div>
+
+<!-- AGREEMENT MODAL -->
+<div class="modal-overlay" id="agreement-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">New Judge Agreement</div><button class="btn btn-ghost btn-icon" onclick="closeM('agreement-modal')">✕</button></div>
+    <div class="modal-body">
+       <div class="fg"><label class="fl">Judge Name</label><input type="text" id="jm-name" placeholder="Dr. Sarah Johnson"/></div>
+       <div class="fg"><label class="fl">Phone / ID</label><input type="text" id="jm-id" placeholder="JUDGE-001"/></div>
+       <div class="fg">
+          <label class="fl">Assigned Subject</label>
+          <select id="jm-subject"></select>
+       </div>
+       <div class="fg">
+          <label class="fl">Assigned Category</label>
+          <select id="jm-category"></select>
+       </div>
+       <div class="fg">
+          <label class="fl">Payment Amount (₹)</label>
+          <input type="number" id="jm-payment" value="5000"/>
+       </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-amber" onclick="saveAgreement()">Generate & Send</button></div>
+  </div>
+</div>
+
+<!-- ADD JUDGE MODAL -->
+<div class="modal-overlay" id="add-judge-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Add Judge</div><button class="btn btn-ghost btn-icon" onclick="closeM('add-judge-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label class="fl">Judge Name</label><input type="text" id="aj-name" placeholder="Dr. Sarah Johnson"/></div>
+      <div class="fg"><label class="fl">ID / Role</label><input type="text" id="aj-role" placeholder="JUDGE-001"/></div>
+      <div class="fg"><label class="fl">Specialty</label><input type="text" id="aj-spec" placeholder="Classical Dance"/></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('add-judge-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveNewJudge()">Add Judge</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- CREATE DONATION MODAL -->
+<div class="modal-overlay" id="create-donation-modal" style="display:none" onclick="closeOnBg(event,'create-donation-modal')">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-head">
+      <div class="modal-title">🙏 Create Donation Campaign</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeM('create-donation-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label class="fl">Campaign Name *</label>
+        <input type="text" id="cdon-name" placeholder="e.g. Annual Medical Camp"/>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">Goal / Target Amount (₹) *</label>
+          <input type="number" id="cdon-target" placeholder="100000" value="100000"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Total Raised Amount (₹)</label>
+          <input type="number" id="cdon-raised" value="0"/>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">Campaign Icon / Emoji</label>
+          <select id="cdon-icon">
+            <option value="🎯">🎯 Goal / Target</option>
+            <option value="🙏">🙏 Hope / Prayer</option>
+            <option value="💃">💃 Cultural / Dance</option>
+            <option value="⚽">⚽ Sports / Health</option>
+            <option value="🏛️">🏛️ Club House / Infra</option>
+            <option value="🎓">🎓 Scholarship / Youth</option>
+            <option value="💖">💖 Charity / Love</option>
+            <option value="🏥">🏥 Medical Camp</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">Theme Color</label>
+          <select id="cdon-color">
+            <option value="#FF6B35" style="background:#FF6B35;color:white">Orange (#FF6B35)</option>
+            <option value="#7B2D8B" style="background:#7B2D8B;color:white">Purple (#7B2D8B)</option>
+            <option value="#10B981" style="background:#10B981;color:white">Green (#10B981)</option>
+            <option value="#F59E0B" style="background:#F59E0B;color:white">Amber (#F59E0B)</option>
+            <option value="#E91E8C" style="background:#E91E8C;color:white">Pink (#E91E8C)</option>
+            <option value="#2563EB" style="background:#2563EB;color:white">Blue (#2563EB)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('create-donation-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveNewDonation()">💾 Create Campaign</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT DONATION MODAL -->
+<div class="modal-overlay" id="edit-donation-modal" style="display:none" onclick="closeOnBg(event,'edit-donation-modal')">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-head">
+      <div class="modal-title">✏️ Edit Donation Campaign</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeM('edit-donation-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-don-id"/>
+      <div class="fg">
+        <label class="fl">Campaign Name *</label>
+        <input type="text" id="edit-don-name"/>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">Goal / Target Amount (₹) *</label>
+          <input type="number" id="edit-don-target"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Total Raised Amount (₹) *</label>
+          <input type="number" id="edit-don-raised"/>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">Campaign Icon / Emoji</label>
+          <select id="edit-don-icon">
+            <option value="🎯">🎯 Goal / Target</option>
+            <option value="🙏">🙏 Hope / Prayer</option>
+            <option value="💃">💃 Cultural / Dance</option>
+            <option value="⚽">⚽ Sports / Health</option>
+            <option value="🏛️">🏛️ Club House / Infra</option>
+            <option value="🎓">🎓 Scholarship / Youth</option>
+            <option value="💖">💖 Charity / Love</option>
+            <option value="🏥">🏥 Medical Camp</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">Theme Color</label>
+          <select id="edit-don-color">
+            <option value="#FF6B35" style="background:#FF6B35;color:white">Orange (#FF6B35)</option>
+            <option value="#7B2D8B" style="background:#7B2D8B;color:white">Purple (#7B2D8B)</option>
+            <option value="#10B981" style="background:#10B981;color:white">Green (#10B981)</option>
+            <option value="#F59E0B" style="background:#F59E0B;color:white">Amber (#F59E0B)</option>
+            <option value="#E91E8C" style="background:#E91E8C;color:white">Pink (#E91E8C)</option>
+            <option value="#2563EB" style="background:#2563EB;color:white">Blue (#2563EB)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('edit-donation-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveEditedDonation()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT EVENT MODAL -->
+<div class="modal-overlay" id="edit-event-modal" style="display:none" onclick="closeOnBg(event,'edit-event-modal')">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head">
+      <div class="modal-title">✏️ Edit Event</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeM('edit-event-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-ev-id"/>
+      <div class="g2">
+        <div class="fg"><label class="fl">Event Name *</label><input type="text" id="edit-cev-name" placeholder="Enter Event Name"/></div>
+        <div class="fg"><label class="fl">Organizer Name *</label><input type="text" id="edit-cev-org" placeholder="e.g. Kalikapur Nabin Sangha"/></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Event Type</label><select id="edit-cev-type"><option value="Cultural">Cultural</option><option value="Sports">Sports</option><option value="Social">Social</option><option value="Workshop">Workshop</option></select></div>
+        <div class="fg"><label class="fl">Venue / Location *</label><input type="text" id="edit-cev-venue" placeholder="Main Auditorium, KNSDC Hall"/></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">Start Date *</label><input type="date" id="edit-cev-start"/></div>
+        <div class="fg"><label class="fl">Start Time *</label><input type="time" id="edit-cev-time"/></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label class="fl">End Date *</label><input type="date" id="edit-cev-end"/></div>
+        <div class="fg"><label class="fl">End Time *</label><input type="time" id="edit-cev-endtime"/></div>
+      </div>
+      <div class="fg"><label class="fl">Expected Participants</label><input type="number" id="edit-cev-capacity" placeholder="500"/></div>
+      <div class="fg">
+        <label class="fl">Upload Banner Image</label>
+        <input type="file" id="edit-cev-banner-file" accept="image/*" multiple onchange="handleBannerUpload(event, 'edit-cev-banner')"/>
+        <input type="hidden" id="edit-cev-banner"/>
+        <div id="edit-ev-banner-preview" style="width:100%;height:100px;border-radius:10px;margin-top:8px;overflow:hidden;display:none;border:1px solid var(--border)"><img id="edit-ev-banner-img" src="" alt="" style="width:100%;height:100%;object-fit:cover"/></div>
+      </div>
+      <div class="fg"><label class="fl">Description</label><textarea id="edit-cev-desc" style="min-height:60px"></textarea></div>
+      <div style="margin-top:20px; padding-top:15px; border-top:1px dashed var(--border)">
+        <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm); letter-spacing:1px; text-transform:uppercase; margin-bottom:12px; font-weight:800">📅 Round Schedules</div>
+        <div style="display:flex; flex-direction:column; gap:12px">
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)"><div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">Audition Round</div><div class="g3"><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="edit-cev-round-audition-venue"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="edit-cev-round-audition-date"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="edit-cev-round-audition-time"/></div></div></div>
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)"><div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">Qualified Round</div><div class="g3"><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="edit-cev-round-qualified-venue"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="edit-cev-round-qualified-date"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="edit-cev-round-qualified-time"/></div></div></div>
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)"><div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">Semifinal Round</div><div class="g3"><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="edit-cev-round-semifinal-venue"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="edit-cev-round-semifinal-date"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="edit-cev-round-semifinal-time"/></div></div></div>
+          <div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px; border:1px solid var(--border)"><div style="font-weight:800; font-size:12px; margin-bottom:8px; color:var(--blue); text-transform:uppercase">Final Round</div><div class="g3"><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Venue</label><input type="text" id="edit-cev-round-final-venue"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Date</label><input type="date" id="edit-cev-round-final-date"/></div><div class="fg" style="margin:0"><label class="fl" style="font-size:10px">Time</label><input type="time" id="edit-cev-round-final-time"/></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('edit-event-modal')">Cancel</button>
+      <button class="btn btn-amber" onclick="saveEditedEvent()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="lib/supabase.js"></script>
+<script src="lib/localSync-v4.js?v=120"></script>
+<script src="lib/staffAudio.js"></script>
+<script src="lib/sampleDataLocal.js"></script>
+<script>
+// ── Banner Upload & Preview ──
+window.handleBannerUpload = async (evt, hiddenId) => {
+  const files = evt.target.files;
+  if (!files || files.length === 0) {
+    document.getElementById(hiddenId).value = '';
+    if (hiddenId === 'cev-banner') previewEventBanner();
+    if (hiddenId === 'edit-cev-banner') previewEditEventBanner();
+    return;
+  }
+  
+  toast(`📤 Uploading ${files.length} banner(s)...`);
+  const urls = [];
+  
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (window.syncEngine && window.syncEngine.uploadFile) {
+      const url = await window.syncEngine.uploadFile(file);
+      if (url) {
+        urls.push(url);
+      }
+    } else {
+      const p = new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          resolve(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      });
+      urls.push(await p);
+    }
+  }
+
+  if (urls.length > 0) {
+    const finalUrls = urls.join(',');
+    document.getElementById(hiddenId).value = finalUrls;
+    toast(`✅ ${urls.length} banner(s) uploaded!`);
+    if (hiddenId === 'cev-banner') previewEventBanner();
+    if (hiddenId === 'edit-cev-banner') previewEditEventBanner();
+  }
+};
+
+window.previewEventBanner = () => {
+  const urlVal = document.getElementById('cev-banner').value.trim();
+  const name = document.getElementById('cev-name').value.trim();
+  const preview = document.getElementById('ev-banner-preview');
+  const img = document.getElementById('ev-banner-img');
+  const ph = document.getElementById('ev-banner-placeholder');
+  
+  const existingGrid = document.getElementById('ev-banner-grid-preview');
+  if (existingGrid) existingGrid.remove();
+  
+  if (urlVal) {
+    const urls = urlVal.split(',').filter(Boolean);
+    img.style.display = 'none';
+    ph.style.display = 'none';
+    const grid = document.createElement('div');
+    grid.id = 'ev-banner-grid-preview';
+    grid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:#000;z-index:5;overflow-y:auto;';
+    urls.forEach((url, idx) => {
+      const container = document.createElement('div');
+      container.style.cssText = 'position:relative;width:60px;height:60px;border-radius:4px;overflow:hidden;border:1px solid rgba(255,255,255,0.2);';
+      
+      const itemImg = document.createElement('img');
+      itemImg.src = url;
+      itemImg.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      
+      const delBtn = document.createElement('button');
+      delBtn.innerHTML = '&times;';
+      delBtn.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(239,68,68,0.9);color:white;border:none;border-radius:50%;width:16px;height:16px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:bold;line-height:1;';
+      delBtn.type = 'button';
+      delBtn.onclick = (e) => {
+        e.preventDefault();
+        const updatedUrls = urls.filter((_, i) => i !== idx);
+        document.getElementById('cev-banner').value = updatedUrls.join(',');
+        previewEventBanner();
+      };
+      
+      container.appendChild(itemImg);
+      container.appendChild(delBtn);
+      grid.appendChild(container);
+    });
+    preview.appendChild(grid);
+  } else {
+    img.style.display = 'none';
+    ph.style.display = 'block';
+    ph.innerHTML = name ? '<div style="font-family:var(--fh);font-size:22px;font-weight:800;color:#fff;letter-spacing:1px">'+name.toUpperCase()+'</div>' : '<div style="font-size:36px">🎪</div><div style="font-size:12px;font-family:var(--fm);letter-spacing:2px;margin-top:6px;color:rgba(255,255,255,0.7)">EVENT BANNER</div>';
+  }
+};
+
+window.previewEditEventBanner = () => {
+  const urlVal = document.getElementById('edit-cev-banner').value.trim();
+  const preview = document.getElementById('edit-ev-banner-preview');
+  const img = document.getElementById('edit-ev-banner-img');
+  
+  const existingGrid = document.getElementById('edit-ev-banner-grid-preview');
+  if (existingGrid) existingGrid.remove();
+  
+  if (urlVal) {
+    const urls = urlVal.split(',').filter(Boolean);
+    preview.style.display = 'block';
+    img.style.display = 'none';
+    const grid = document.createElement('div');
+    grid.id = 'edit-ev-banner-grid-preview';
+    grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:rgba(0,0,0,0.02);border-radius:8px;border:1px dashed var(--border);margin-top:8px;';
+    urls.forEach((url, idx) => {
+      const container = document.createElement('div');
+      container.style.cssText = 'position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 4px rgba(0,0,0,0.05);';
+      
+      const itemImg = document.createElement('img');
+      itemImg.src = url;
+      itemImg.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      
+      const delBtn = document.createElement('button');
+      delBtn.innerHTML = '&times;';
+      delBtn.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(239,68,68,0.9);color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:bold;line-height:1;box-shadow:0 1px 3px rgba(0,0,0,0.3);';
+      delBtn.title = 'Remove banner';
+      delBtn.type = 'button';
+      delBtn.onclick = (e) => {
+        e.preventDefault();
+        const updatedUrls = urls.filter((_, i) => i !== idx);
+        document.getElementById('edit-cev-banner').value = updatedUrls.join(',');
+        previewEditEventBanner();
+      };
+      
+      container.appendChild(itemImg);
+      container.appendChild(delBtn);
+      grid.appendChild(container);
+    });
+    preview.appendChild(grid);
+  } else {
+    img.src = '';
+    preview.style.display = 'none';
+  }
+};
+
+window.renderEventsPage = (state) => {
+  const tbody = document.getElementById('events-page-tbody');
+  if (!tbody) return;
+  const evs = state.events || [];
+  if (evs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">No events found. Create one!</td></tr>';
+    return;
+  }
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  tbody.innerHTML = evs.map(e => {
+    const startDate = e.startDate ? new Date(e.startDate) : null;
+    const endDate   = e.endDate   ? new Date(e.endDate)   : startDate;
+    if (startDate) startDate.setHours(0,0,0,0);
+    if (endDate)   endDate.setHours(0,0,0,0);
+
+    let status = 'upcoming';
+    if (startDate && endDate) {
+      if (today > endDate)         status = 'completed';
+      else if (today >= startDate) status = 'ongoing';
+      else                         status = 'upcoming';
+    }
+
+    const squareColor = status === 'completed' ? '#ef4444'
+                       : status === 'ongoing'   ? '#22c55e'
+                       : '#f59e0b';
+    const statusLabel = status === 'completed' ? 'Completed'
+                       : status === 'ongoing'   ? 'Ongoing'
+                       : 'Upcoming';
+    const statusBg    = status === 'completed' ? 'rgba(239,68,68,0.1)'
+                       : status === 'ongoing'   ? 'rgba(34,197,94,0.1)'
+                       : 'rgba(245,158,11,0.1)';
+
+    return `
+    <tr>
+      <td><div style="width:14px;height:14px;border-radius:3px;background:${squareColor};flex-shrink:0"></div></td>
+      <td><span style="font-weight:700;color:var(--blue)">${e.name}</span>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${e.type || ''} &bull; ID: ${e.id}</div></td>
+      <td>${e.org || e.organizer || 'KNSDC'}</td>
+      <td><span style="font-size:11px;background:#f1f5f9;padding:4px 8px;border-radius:4px;font-weight:700">${e.startDate || 'TBA'} ${e.startTime || ''}</span>
+          ${e.endDate ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Ends: ${e.endDate} ${e.endTime || ''}</div>` : ''}</td>
+      <td><span style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;background:${statusBg};color:${squareColor}">${statusLabel}</span></td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-xs" onclick="editEvent('${e.id}')">✏ Edit</button>
+          <button class="btn btn-ghost btn-xs" style="color:red" onclick="deleteEvent('${e.id}')">🗑 Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+};
+
+window.refreshUI = (pageId) => {
+  const state = window.syncEngine ? window.syncEngine.getData() : null;
+  if (!state) return;
+  if ((!pageId || pageId === 'dashboard') && window.renderDashboard) window.renderDashboard(state);
+  if ((!pageId || pageId === 'events') && window.renderEventsPage) window.renderEventsPage(state);
+  if ((!pageId || pageId === 'staff') && window.renderStaffPage) window.renderStaffPage(state);
+  if ((!pageId || pageId === 'participants') && window.renderAdminParticipants) window.renderAdminParticipants(state);
+  if ((!pageId || pageId === 'feedback') && window.renderFeedback) window.renderFeedback(state);
+  if ((!pageId || pageId === 'statistics') && window.renderStatistics) window.renderStatistics(state);
+};
+
+window.renderDashboard = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  if (!state) return;
+  const events = state.events || [];
+  
+  const upcomingName = document.getElementById('upcoming-name');
+  const upcomingMeta = document.getElementById('upcoming-meta');
+  const completedName = document.getElementById('completed-name');
+  const completedMeta = document.getElementById('completed-meta');
+  const ongoingName = document.getElementById('ongoing-name');
+  const ongoingMeta = document.getElementById('ongoing-meta');
+
+  const nowStr = new Date().toISOString().slice(0, 10);
+  const upcoming = events.filter(e => (e.startDate || e.date || '') >= nowStr).sort((a,b) => (a.startDate || a.date || '').localeCompare(b.startDate || b.date || ''));
+  const completed = events.filter(e => (e.startDate || e.date || '') < nowStr && (e.startDate || e.date || '') !== '').sort((a,b) => (b.startDate || b.date || '').localeCompare(a.startDate || a.date || ''));
+  
+  if (upcoming.length > 0) {
+    if (upcomingName) upcomingName.textContent = upcoming[0].name;
+    if (upcomingMeta) upcomingMeta.textContent = upcoming[0].startDate || upcoming[0].date || 'No Date';
+  } else {
+    if (upcomingName) upcomingName.textContent = 'No events planned';
+    if (upcomingMeta) upcomingMeta.textContent = 'Check event registry';
+  }
+  
+  if (completed.length > 0) {
+    if (completedName) completedName.textContent = completed[0].name;
+    if (completedMeta) completedMeta.textContent = completed[0].startDate || completed[0].date || 'No Date';
+  } else {
+    if (completedName) completedName.textContent = 'N/A';
+    if (completedMeta) completedMeta.textContent = 'History empty';
+  }
+  
+  const activeEvent = events.find(e => String(e.id) === String(state.activeEventId));
+  if (activeEvent) {
+    if (ongoingName) ongoingName.textContent = activeEvent.name;
+    if (ongoingMeta) ongoingMeta.textContent = `Active ID: ${activeEvent.id}`;
+  } else {
+    if (ongoingName) ongoingName.textContent = 'No ongoing event';
+    if (ongoingMeta) ongoingMeta.textContent = 'Select active event from the events panel';
+  }
+
+  const dbStatus = document.getElementById('db-stat-status');
+  if (dbStatus) {
+    dbStatus.textContent = state.systemStatus === 'OFFLINE' ? 'OFFLINE' : 'LIVE';
+    dbStatus.style.color = state.systemStatus === 'OFFLINE' ? 'var(--red)' : 'var(--blue)';
+  }
+  const dbEvents = document.getElementById('db-stat-events');
+  if (dbEvents) dbEvents.textContent = events.length;
+  
+  const dbStaff = document.getElementById('db-stat-staff');
+  if (dbStaff) {
+    if (window.syncEngine && window.syncEngine.listStaffMembers) {
+      window.syncEngine.listStaffMembers().then(staffList => {
+        dbStaff.textContent = staffList ? staffList.length : 0;
+      }).catch(() => {
+        dbStaff.textContent = (state.staff || []).length + (state.judges || []).length;
+      });
+    } else {
+      dbStaff.textContent = (state.staff || []).length + (state.judges || []).length;
+    }
+  }
+
+  const dbPending = document.getElementById('db-stat-pending');
+  if (dbPending) dbPending.textContent = (state.publicRegistrations || []).length;
+  const dbApproved = document.getElementById('db-stat-approved');
+  if (dbApproved) dbApproved.textContent = (state.participants || []).length;
+};
+
+window.renderFeedback = async (state) => {
+  const tbody = document.getElementById('fb-tbody');
+  if (!tbody) return;
+  
+  if (!window.syncEngine || !window.syncEngine.fetchContactMessages) {
+    if (tbody.innerHTML.includes('Loading...')) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr>';
+    }
+    return;
+  }
+  
+  try {
+    const msgs = await window.syncEngine.fetchContactMessages();
+    const fbCount = document.getElementById('fb-recent-msgs');
+    if (fbCount) fbCount.textContent = msgs ? msgs.length : 0;
+    
+    if (!msgs || msgs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No feedback received yet.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = msgs.map(m => {
+      const isRead = localStorage.getItem('msg_read_' + m.id) === 'true';
+      return `
+      <tr style="opacity: ${isRead ? '0.6' : '1'}">
+        <td>${m.created_at ? new Date(m.created_at).toLocaleDateString() : '-'}</td>
+        <td style="font-weight:700">${m.name || 'Anonymous'} <div style="font-size:10px; color:var(--text-dim)">${m.email || ''}</div></td>
+        <td style="font-weight:600">${m.subject || '-'}</td>
+        <td>${m.message || '-'}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="markMsgRead('${m.id}')" style="font-size:11px; padding:4px 8px; margin-right:4px;" ${isRead ? 'disabled' : ''}>${isRead ? 'Read' : 'Mark Read'}</button>
+          <button class="btn btn-red btn-sm" onclick="deleteMsg('${m.id}')" style="font-size:11px; padding:4px 8px;">Delete</button>
+        </td>
+      </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error(e);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:red">Error loading feedback.</td></tr>';
+  }
+};
+
+window.markMsgRead = (id) => {
+  localStorage.setItem('msg_read_' + id, 'true');
+  toast('Message marked as read');
+  window.renderFeedback();
+};
+
+window.refreshFeedback = async (btn) => {
+  const original = btn.innerHTML;
+  btn.innerHTML = '🔄 Refreshing...';
+  btn.disabled = true;
+  await window.renderFeedback();
+  btn.innerHTML = original;
+  btn.disabled = false;
+  toast('Feedback refreshed!');
+};
+
+window.deleteMsg = async (id) => {
+  if (!confirm('Are you sure you want to delete this message?')) return;
+  
+  if (window.syncEngine && window.syncEngine.deleteContactMessage) {
+    const success = await window.syncEngine.deleteContactMessage(id);
+    if (success) {
+      toast('Message deleted');
+      window.renderFeedback();
+    } else {
+      alert('Failed to delete message. Check console.');
+    }
+  }
+};
+
+
+window.renderStaffPage = async (state) => {
+  const tbody = document.getElementById('staff-tbody');
+  if (!tbody) return;
+  if (!window.syncEngine || !window.syncEngine.listStaffMembers) {
+    if (tbody.innerHTML.includes('Loading...')) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr>';
+    }
+    return;
+  }
+  
+  try {
+    const staffList = await window.syncEngine.listStaffMembers();
+    if (!staffList || staffList.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">No staff members assigned yet. Add one in the Events tab.</td></tr>';
+      return;
+    }
+    
+    const dbState = window.syncEngine.getData() || {};
+    const events = dbState.events || [];
+
+    tbody.innerHTML = staffList.map(s => {
+      let assignmentText = '—';
+      const emailLower = s.email ? s.email.toLowerCase() : '';
+      
+      const hostAssignment = (dbState.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === emailLower);
+      const judgeAgreement = (dbState.judgeAgreements || dbState.agreements || []).find(a => a.email && a.email.toLowerCase() === emailLower);
+      const assignedEv = events.find(e => Array.isArray(e.staff) && e.staff.map(x => (x || '').toLowerCase()).includes(emailLower));
+
+      if (hostAssignment) {
+        const ev = events.find(e => String(e.id) === String(hostAssignment.eventId));
+        assignmentText = `🎤 ${ev ? (ev.name || ev.title) : 'Event'} (${hostAssignment.venueName || 'Venue'})`;
+      } else if (judgeAgreement) {
+        const ev = events.find(e => String(e.id) === String(judgeAgreement.eventId));
+        assignmentText = `⚖️ ${ev ? (ev.name || ev.title) : 'Event'} (${judgeAgreement.venueName || 'Venue'})`;
+      } else if (assignedEv) {
+        const emoji = s.role === 'monitor' ? '🖥️' : (s.role === 'host' ? '🎤' : (s.role === 'judge' ? '⚖️' : (s.role === 'sportsmanager' || s.role === 'umpire' ? '🏏' : (s.role === 'referee' ? '⚽' : '🎪'))));
+        assignmentText = `${emoji} ${assignedEv.name || assignedEv.title || 'Event'} (${assignedEv.venue || 'Venue'})`;
+      } else {
+        if (s.role === 'admin') {
+          assignmentText = '👑 Super Admin';
+        } else if (s.role === 'monitor') {
+          if (emailLower === 'kalikapurnabinsanghaclub@gmail.com') {
+            assignmentText = '👑 Super Monitor';
+          } else {
+            assignmentText = '🖥️ All Events';
+          }
+        }
+      }
+
+      let displayName = s.name || 'Staff User';
+      let avatarUrl = '';
+      if (displayName.includes('|IMAGE:')) {
+        const parts = displayName.split('|IMAGE:');
+        displayName = parts[0];
+        avatarUrl = parts[1];
+      }
+      
+      const avatarHtml = avatarUrl 
+        ? `<img src="${avatarUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--border)">`
+        : `<div style="width:32px;height:32px;border-radius:50%;background:var(--blue);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">${displayName.charAt(0).toUpperCase()}</div>`;
+
+      // Escape single quotes for the onClick handler
+      const rawNameSafe = (s.name || '').replace(/'/g, "\\'");
+
+      return `
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:12px">
+              ${avatarHtml}
+              <span style="font-weight:700">${displayName}</span>
+            </div>
+          </td>
+          <td>${s.email}</td>
+          <td><span style="font-size:11px; color:var(--text-muted); font-weight:600">${assignmentText}</span></td>
+          <td><span class="badge" style="background:var(--blue);color:#fff">${s.role ? s.role.toUpperCase() : 'UNKNOWN'}</span></td>
+          <td>${s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'}</td>
+          <td>
+            <button class="btn btn-ghost btn-xs" onclick="openEditStaffModal('${s.email}', '${rawNameSafe}')">✏️ Edit</button>
+            <button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="deleteStaff('${s.email}')">🗑️ Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch(e) {
+    console.error("Failed to load staff", e);
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Error loading staff list.</td></tr>';
+  }
+};
+
+let isSavingStaff = false;
+window.saveNewStaff = async () => {
+  if (isSavingStaff) return;
+  const name = document.getElementById('ns-name').value.trim();
+  const email = document.getElementById('ns-email').value.trim();
+  const pass = document.getElementById('ns-pass').value.trim();
+  const role = document.getElementById('ns-role').value;
+  const eventId = document.getElementById('ns-event') ? document.getElementById('ns-event').value : '';
+  const errEl = document.getElementById('ns-error');
+  
+  if (!name || !email || !pass) {
+    errEl.textContent = "Please fill in all fields.";
+    errEl.style.display = "block";
+    return;
+  }
+  
+  isSavingStaff = true;
+  const btn = document.querySelector('#add-staff-modal .btn-amber');
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+
+  try {
+    const res = await window.syncEngine.addStaffMember(email, pass, name, role);
+    if (res.success) {
+      if (eventId && window.syncEngine) {
+        const events = window.syncEngine.getData().events || [];
+        // First remove from all other events
+        for (const ev of events) {
+          if (ev.staff && ev.staff.map(s => s.toLowerCase()).includes(email.toLowerCase())) {
+            const updatedStaff = ev.staff.filter(s => s.toLowerCase() !== email.toLowerCase());
+            await window.syncEngine.updateEvent(ev.id, { staff: updatedStaff });
+          }
+        }
+        // Then add to selected event
+        const targetEvent = events.find(e => String(e.id) === eventId);
+        if (targetEvent) {
+          let staffArr = targetEvent.staff || [];
+          if (!staffArr.map(s => s.toLowerCase()).includes(email.toLowerCase())) {
+            staffArr.push(email.toLowerCase());
+            await window.syncEngine.updateEvent(targetEvent.id, { staff: staffArr });
+          }
+        }
+      }
+
+      errEl.style.display = "none";
+      closeM('add-staff-modal');
+      document.getElementById('ns-name').value = '';
+      document.getElementById('ns-email').value = '';
+      document.getElementById('ns-pass').value = '';
+      if (document.getElementById('ns-event')) document.getElementById('ns-event').value = '';
+      toast('✅ Staff member added!');
+      window.refreshUI('staff');
+    } else {
+      errEl.textContent = res.error || "Failed to add staff";
+      errEl.style.display = "block";
+    }
+  } finally {
+    isSavingStaff = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
+  }
+};
+
+window.openAddStaffModal = () => {
+  const sel = document.getElementById('ns-event');
+  if (sel && window.syncEngine) {
+    const events = window.syncEngine.getData().events || [];
+    let opts = '<option value="">-- All Events / No Specific Event --</option>';
+    events.forEach(e => {
+      opts += `<option value="${e.id}">${e.name || e.title} (${e.venue || 'No Venue'})</option>`;
+    });
+    sel.innerHTML = opts;
+  }
+  
+  const roleSel = document.getElementById('ns-role');
+  const evGrp = document.getElementById('ns-event-group');
+  if (roleSel && evGrp) {
+    const updateEvGrp = () => {
+      if (roleSel.value === 'admin') evGrp.style.display = 'none';
+      else evGrp.style.display = 'block';
+    };
+    roleSel.onchange = updateEvGrp;
+    updateEvGrp();
+  }
+  
+  openM('add-staff-modal');
+};
+
+window.deleteStaff = async (email) => {
+  if (!confirm("Are you sure you want to delete staff member: " + email + "?")) return;
+  const res = await window.syncEngine.deleteStaffMember(email);
+  if (res.success) {
+    toast('🗑️ Staff member deleted!');
+    window.refreshUI('staff');
+  } else {
+    alert("Error deleting: " + res.error);
+  }
+};
+
+window.openEditStaffModal = (email, name) => {
+  document.getElementById('edit-staff-email').value = email;
+  
+  let cleanName = name;
+  let imageUrl = '';
+  if (name && name.includes('|IMAGE:')) {
+    const parts = name.split('|IMAGE:');
+    cleanName = parts[0];
+    imageUrl = parts[1] || '';
+  }
+  
+  document.getElementById('edit-staff-name').value = cleanName || '';
+  document.getElementById('edit-staff-current-image').value = imageUrl;
+  document.getElementById('edit-staff-image-file').value = '';
+  
+  const imgPreview = document.getElementById('edit-staff-img-preview');
+  if (imageUrl) {
+    imgPreview.src = imageUrl;
+    imgPreview.style.display = 'block';
+  } else {
+    imgPreview.style.display = 'none';
+  }
+  
+  document.getElementById('edit-staff-pass').value = '';
+  openM('edit-staff-modal');
+};
+
+window.saveStaffDetails = async () => {
+  const email = document.getElementById('edit-staff-email').value;
+  const rawName = document.getElementById('edit-staff-name').value.trim();
+  let imageUrl = document.getElementById('edit-staff-current-image').value;
+  const newPass = document.getElementById('edit-staff-pass').value.trim();
+  const fileInput = document.getElementById('edit-staff-image-file');
+  const btn = document.querySelector('#edit-staff-modal .btn-amber');
+  
+  if (!rawName) {
+    toast('Name is required');
+    return;
+  }
+  
+  const origBtnHtml = btn.innerHTML;
+  btn.disabled = true;
+  
+  if (fileInput.files && fileInput.files[0]) {
+    btn.innerHTML = 'Uploading image...';
+    const uploadedUrl = await window.syncEngine.uploadFile(fileInput.files[0]);
+    if (uploadedUrl) {
+      imageUrl = uploadedUrl;
+    } else {
+      alert('Failed to upload image. Please try again.');
+      btn.innerHTML = origBtnHtml;
+      btn.disabled = false;
+      return;
+    }
+  }
+  
+  btn.innerHTML = 'Saving...';
+  
+  let finalName = rawName;
+  if (imageUrl) {
+    finalName += '|IMAGE:' + imageUrl;
+  }
+  
+  const res = await window.syncEngine.updateStaffDetails(email, finalName, newPass);
+  
+  btn.innerHTML = origBtnHtml;
+  btn.disabled = false;
+  
+  if (res.success) {
+    closeM('edit-staff-modal');
+    toast('✅ Staff details updated!');
+    if (window.renderStaffPage) {
+      window.renderStaffPage(); // Refresh table
+    }
+  } else {
+    alert("Error updating details: " + res.error);
+  }
+};
+
+window.renderAdminParticipants = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  const tbody = document.getElementById('admin-p-tbody');
+  if (!tbody || !state) return;
+  
+  const parts = state.participants || [];
+  const regs = state.publicRegistrations || [];
+  
+  const q = (document.getElementById('admin-p-search')?.value || '').toLowerCase();
+  const eventFilter = document.getElementById('admin-p-event-filter')?.value || '';
+  
+  const filteredParts = parts.filter(p => {
+    if (q && !(p.name||'').toLowerCase().includes(q) && !String(p.id||'').toLowerCase().includes(q) && !(p.phone||'').toLowerCase().includes(q)) return false;
+    if (eventFilter && String(p.eventId) !== eventFilter) return false;
+    return true;
+  });
+  
+  const filteredRegs = regs.filter(r => {
+    if (q && !(r.name||'').toLowerCase().includes(q) && !(r.phone||'').toLowerCase().includes(q) && !(r.email||'').toLowerCase().includes(q)) return false;
+    if (eventFilter && String(r.eventId) !== eventFilter) return false;
+    return true;
+  });
+
+  if (filteredParts.length === 0 && filteredRegs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">No registrations found.</td></tr>';
+    return;
+  }
+  
+  let html = '';
+  html += filteredRegs.map(r => `
+    <tr style="background:rgba(245, 158, 11, 0.05)">
+      <td style="font-weight:700; color:var(--text-muted)">Pending</td>
+      <td style="font-weight:700">${r.name || '-'}</td>
+      <td>${r.email || r.phone || '-'}</td>
+      <td>${r.event || '-'}</td>
+    </tr>
+  `).join('');
+
+  html += filteredParts.map(p => {
+    const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+    return `
+      <tr onclick="window.viewAdminParticipant('${p.id}')" style="cursor:pointer; transition:0.2s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+        <td style="font-weight:700">#${p.id || '-'}</td>
+        <td style="font-weight:700">${p.name || '-'}</td>
+        <td>${p.phone || '-'}</td>
+        <td>${ev ? ev.name : (p.eventName || p.event || '-')}</td>
+      </tr>
+    `;
+  }).join('');
+  
+  tbody.innerHTML = html;
+};
+
+window.renderPublicRegs = (state) => {
+  // Merged into renderAdminParticipants
+};
+
+window.viewAdminParticipant = (id) => {
+  const state = window.syncEngine ? window.syncEngine.getData() : {};
+  const p = (state.participants || []).find(x => String(x.id) === String(id));
+  if (!p) return;
+  
+  // Try to use the first active modal (since there are duplicates in the HTML)
+  const modals = document.querySelectorAll('#edit-reg-modal');
+  const activeModal = modals.length > 0 ? modals[0] : null;
+  if (!activeModal) return;
+
+  const idInputs = activeModal.querySelectorAll('#er-id');
+  if (idInputs.length > 0) idInputs[0].value = p.id;
+  
+  const nameInputs = activeModal.querySelectorAll('#er-name');
+  if (nameInputs.length > 0) nameInputs[0].value = p.name || '';
+  
+  const phoneInputs = activeModal.querySelectorAll('#er-phone');
+  if (phoneInputs.length > 0) phoneInputs[0].value = p.phone || '';
+  
+  const ageInputs = activeModal.querySelectorAll('#er-age');
+  if (ageInputs.length > 0) ageInputs[0].value = p.age || '';
+
+  // Render custom fields
+  const customFieldsContainers = activeModal.querySelectorAll('#er-custom-fields');
+  if (customFieldsContainers.length > 0 && p.formAnswers) {
+    const customContainer = customFieldsContainers[0];
+    customContainer.innerHTML = '';
+    
+    if (Object.keys(p.formAnswers).length > 0) {
+      customContainer.style.display = 'block';
+      let html = '<div style="font-size:12px; font-weight:800; color:var(--text-muted); margin-bottom:10px; text-transform:uppercase;">Custom Form Answers</div>';
+      
+      Object.entries(p.formAnswers).forEach(([k, v]) => {
+        let displayVal = v;
+        
+        // Detect Player List Builder array
+        if (typeof v === 'string' && v.startsWith('[') && v.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(v);
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].role !== undefined) {
+              displayVal = '<div style="margin-top:8px; display:grid; gap:8px;">';
+              parsed.forEach(player => {
+                const badgeStyle = player.isCaptain ? 'background:#fef08a; color:#854d0e; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800;' : 'background:#e2e8f0; color:#475569; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700;';
+                displayVal += `
+                  <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px;">
+                    <div style="font-weight:700; font-size:13px; color:#1e293b;">${player.name}</div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                      ${player.isCaptain ? `<span style="${badgeStyle}">CAPTAIN</span>` : ''}
+                      <span style="${player.isCaptain ? 'background:#e2e8f0; color:#475569; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700;' : badgeStyle}">${player.role || 'Player'}</span>
+                    </div>
+                  </div>
+                `;
+              });
+              displayVal += '</div>';
+            }
+          } catch(e) {}
+        }
+        
+        // Render simple strings
+        if (!displayVal.toString().includes('<div')) {
+           displayVal = `<div style="font-weight:600; font-size:13px; color:#1e293b;">${displayVal}</div>`;
+        }
+
+        html += `
+          <div style="margin-bottom: 12px;">
+            <div style="font-size:11px; color:#64748b; font-weight:600; margin-bottom:2px;">${k}</div>
+            ${displayVal}
+          </div>
+        `;
+      });
+      customContainer.innerHTML = html;
+    } else {
+      customContainer.style.display = 'none';
+    }
+  }
+
+  activeModal.style.display = 'flex';
+};
+
+window.populateDropdowns = (state) => {
+  const filter = document.getElementById('admin-p-event-filter');
+  if (filter) {
+    const events = state.events || [];
+    const currentVal = filter.value;
+    let html = '<option value="">All Events</option>';
+    html += events.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+    filter.innerHTML = html;
+    if (currentVal && events.find(e => String(e.id) === currentVal)) {
+      filter.value = currentVal;
+    }
+  }
+};
+
+window.openCreateEventModal = () => {
+  ['cev-name','cev-org','cev-venue','cev-start','cev-time','cev-end','cev-endtime','cev-capacity','cev-banner','cev-desc'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  if(document.getElementById('ev-banner-img')) document.getElementById('ev-banner-img').style.display = 'none';
+  if(document.getElementById('ev-banner-placeholder')) document.getElementById('ev-banner-placeholder').style.display = 'block';
+  const m = document.getElementById('create-event-modal');
+  if(m) m.style.display = 'flex';
+};
+
+let isSavingNewEvent = false;
+window.saveNewEvent = async (btn) => {
+  if (isSavingNewEvent) return;
+  isSavingNewEvent = true;
+  if (btn) {
+    btn.disabled = true;
+    const oldText = btn.innerHTML;
+    btn.innerHTML = '⏳ Creating...';
+    btn.dataset.oldText = oldText;
+  }
+  try {
+  const name = document.getElementById('cev-name').value.trim();
+  const org = document.getElementById('cev-org').value.trim();
+  const venue = document.getElementById('cev-venue').value.trim();
+  const startDate = document.getElementById('cev-start').value;
+  const startTime = document.getElementById('cev-time').value;
+  const endDate = document.getElementById('cev-end').value;
+  const endTime = document.getElementById('cev-endtime').value;
+  const type = document.getElementById('cev-type').value;
+
+  if (!name) { toast('Event name is required!'); return; }
+  if (!org) { toast('Organizer name is required!'); return; }
+  if (!venue) { toast('Venue is required!'); return; }
+  if (!startDate) { toast('Start date is required!'); return; }
+  if (!startTime) { toast('Start time is required!'); return; }
+  if (!endDate) { toast('End date is required!'); return; }
+  if (!endTime) { toast('End time is required!'); return; }
+
+  const newId = Date.now();
+  const roundSchedules = {};
+  ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
+    const vEl = document.getElementById(`cev-round-${r}-venue`);
+    const dEl = document.getElementById(`cev-round-${r}-date`);
+    const tEl = document.getElementById(`cev-round-${r}-time`);
+    roundSchedules[r] = {
+      venue: vEl ? vEl.value.trim() : '',
+      date: dEl ? dEl.value : '',
+      time: tEl ? tEl.value : ''
+    };
+  });
+
+  const capEl = document.getElementById('cev-capacity');
+  const bannerEl = document.getElementById('cev-banner');
+  const descEl = document.getElementById('cev-desc');
+
+  const newEvent = {
+    id: newId,
+    name,
+    org,
+    type,
+    venue,
+    capacity: capEl ? (parseInt(capEl.value) || null) : null,
+    startDate,
+    startTime,
+    endDate: endDate || null,
+    endTime: endTime || null,
+    banner: bannerEl ? bannerEl.value.trim() : '',
+    description: descEl ? descEl.value.trim() : '',
+    staff: [],
+    roundSchedules,
+    createdAt: newId
+  };
+  
+  // Handle Event Monitor Assignment
+  const monitorName = document.getElementById('cev-monitor-name')?.value.trim();
+  const monitorEmail = document.getElementById('cev-monitor-email')?.value.trim();
+  const monitorPass = document.getElementById('cev-monitor-pass')?.value.trim();
+
+  if (monitorEmail && monitorPass && monitorName) {
+    console.log('[CreateEvent] Assigning monitor to event...', monitorEmail);
+    newEvent.staff.push(monitorEmail.toLowerCase());
+    
+    // Auto-create staff member
+    if (window.syncEngine) {
+       toast('Syncing monitor credentials...');
+       const res = await window.syncEngine.addStaffMember(monitorEmail, monitorPass, monitorName, 'monitor');
+       if (!res.success) {
+         toast('Event created, but Monitor creation failed: ' + res.error);
+       } else {
+         toast('Monitor account synced successfully!');
+       }
+    }
+  }
+
+
+  // 1. Save to Supabase
+  const success = await syncEngine.createEvent(newEvent);
+  if (!success) {
+    toast('❌ Error saving event to database');
+    return;
+  }
+
+  // 1.5 Auto-generate Venues for Monitor
+  const uniqueVenues = new Set();
+  if (venue) uniqueVenues.add(venue);
+  Object.values(roundSchedules).forEach(r => {
+    if (r.venue) uniqueVenues.add(r.venue);
+  });
+  
+  let delay = 100;
+  for (const vName of uniqueVenues) {
+    const vObj = {
+      id: Date.now() + delay,
+      name: vName,
+      location: vName,
+      capacity: newEvent.capacity || 100,
+      dates: [],
+      eventId: newId
+    };
+    await syncEngine.createVenue(vObj);
+    delay += 100;
+  }
+
+  // 2. Update remaining state (notices, donations, active event)
+  syncEngine.setData(state => {
+    const newState = { ...state };
+    if (!newState.notices) newState.notices = [];
+    if (!newState.donations) newState.donations = [];
+    
+    // Create public notice
+    const newNotice = {
+      id: Date.now(),
+      title: `📢 New Event: ${name}`,
+      content: `${name} organized by ${org}. Join us on ${startDate} at ${startTime}. Type: ${type}. Registration is now open!`,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      priority: 'high',
+      pinned: true
+    };
+    newState.notices.unshift(newNotice);
+
+    // Auto-create a donation campaign for this event
+    newState.donations.push({
+      id: Date.now(),
+      name: `${name} Support Campaign`,
+      target: 100000,
+      raised: 0,
+      icon: "🎯",
+      col: "#7B2D8B"
+    });
+
+    newState.activeEventId = newId;
+    newState.eventName = name;
+
+    return newState;
+  });
+
+  closeM('create-event-modal');
+  toast('✅ Event "' + name + '" created & notice published!');
+  renderEventsPage(syncEngine.getData());
+  renderStaffPage(); // Refresh Staff tab in case a monitor was assigned
+  } finally {
+    isSavingNewEvent = false;
+    if (btn) {
+      btn.disabled = false;
+      if (btn.dataset.oldText) btn.innerHTML = btn.dataset.oldText;
+    }
+  }
+};
+
+window.editEvent = (id) => {
+    const s = syncEngine.getData();
+    const ev = (s.events || []).find(e => String(e.id) === String(id));
+    if(!ev) return;
+    
+    document.getElementById('edit-ev-id').value = ev.id;
+    document.getElementById('edit-cev-name').value = ev.name;
+    document.getElementById('edit-cev-org').value = ev.org;
+    document.getElementById('edit-cev-type').value = ev.type || 'Cultural';
+    document.getElementById('edit-cev-venue').value = ev.venue;
+    document.getElementById('edit-cev-start').value = ev.startDate;
+    document.getElementById('edit-cev-time').value = ev.startTime;
+    document.getElementById('edit-cev-end').value = ev.endDate || '';
+    document.getElementById('edit-cev-endtime').value = ev.endTime || '';
+    document.getElementById('edit-cev-capacity').value = ev.capacity || '';
+    document.getElementById('edit-cev-banner').value = ev.banner || '';
+    if (typeof previewEditEventBanner === 'function') previewEditEventBanner();
+    document.getElementById('edit-cev-desc').value = ev.description || '';
+    
+    // Set round schedules
+    const rs = ev.roundSchedules || {};
+    ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
+      document.getElementById(`edit-cev-round-${r}-venue`).value = rs[r]?.venue || '';
+      document.getElementById(`edit-cev-round-${r}-date`).value = rs[r]?.date || '';
+      document.getElementById(`edit-cev-round-${r}-time`).value = rs[r]?.time || '';
+    });
+    
+    openM('edit-event-modal');
+};
+
+let isSavingEditEvent = false;
+window.saveEditedEvent = async () => {
+    if (isSavingEditEvent) return;
+    const id = document.getElementById('edit-ev-id').value;
+    const name = document.getElementById('edit-cev-name').value;
+    const org = document.getElementById('edit-cev-org').value;
+    const venue = document.getElementById('edit-cev-venue').value;
+    const startDate = document.getElementById('edit-cev-start').value;
+    const startTime = document.getElementById('edit-cev-time').value;
+    const endDate = document.getElementById('edit-cev-end').value;
+    const endTime = document.getElementById('edit-cev-endtime').value;
+    
+    if(!name || !org || !venue || !startDate || !startTime || !endDate || !endTime) {
+        toast('Please fill all required fields!');
+        return;
+    }
+    
+    isSavingEditEvent = true;
+    const btn = document.querySelector('#edit-event-modal .btn-amber');
+    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+    
+    try {
+      const roundSchedules = {};
+      ['audition', 'qualified', 'semifinal', 'final'].forEach(r => {
+        roundSchedules[r] = {
+          venue: document.getElementById(`edit-cev-round-${r}-venue`).value.trim(),
+          date: document.getElementById(`edit-cev-round-${r}-date`).value,
+          time: document.getElementById(`edit-cev-round-${r}-time`).value
+        };
+      });
+
+      const dbState = syncEngine.getData() || {};
+      const eventsList = dbState.events || [];
+      const originalEv = eventsList.find(e => String(e.id) === String(id));
+      const staff = originalEv ? (originalEv.staff || []) : [];
+
+      const updatedEvent = {
+          name, org, venue, startDate, startTime,
+          endDate: endDate || null,
+          endTime: endTime || null,
+          type: document.getElementById('edit-cev-type').value,
+          capacity: parseInt(document.getElementById('edit-cev-capacity').value),
+          banner: document.getElementById('edit-cev-banner').value,
+          description: document.getElementById('edit-cev-desc').value,
+          roundSchedules,
+          staff
+      };
+
+      // Save to Supabase
+      const result = await syncEngine.updateEvent(id, updatedEvent);
+      const success = result === true;
+      if (!success) {
+          const errMsg = (result && result.message) ? result.message : 'Unknown database error';
+          console.error('[Admin] updateEvent failed:', errMsg);
+          toast('❌ Save failed: ' + errMsg);
+          return;
+      }
+          
+      // 1.5 Auto-generate Venues for Monitor if they don't exist
+      const state = syncEngine.getData();
+      const existingVenues = (state.venues || []).filter(v => String(v.eventId) === String(id));
+      const uniqueVenues = new Set();
+      if (venue) uniqueVenues.add(venue);
+      Object.values(roundSchedules).forEach(r => {
+        if (r.venue) uniqueVenues.add(r.venue);
+      });
+      
+      let delay = 100;
+      for (const vName of uniqueVenues) {
+        if (!vName) continue;
+        // Check if this venue name already exists for this event
+        const alreadyExists = existingVenues.some(v => v.name.toLowerCase() === vName.toLowerCase());
+        if (!alreadyExists) {
+          const vObj = {
+            id: Date.now() + delay,
+            name: vName,
+            location: vName,
+            capacity: updatedEvent.capacity || 100,
+            dates: [],
+            eventId: id
+          };
+          await syncEngine.createVenue(vObj);
+          delay += 100;
+        }
+      }
+
+      closeM('edit-event-modal');
+      toast('✅ Event "' + name + '" updated!');
+      renderEventsPage(syncEngine.getData());
+    } finally {
+      isSavingEditEvent = false;
+      if (btn) { btn.disabled = false; btn.innerText = '💾 Save Changes'; }
+    }
+};
+
+window.deleteEvent = async (id) => {
+    if(!confirm('Are you sure you want to delete this event? This action cannot be undone.')) return;
+    const success = await syncEngine.deleteEvent(id);
+    if (!success) {
+      toast('❌ Error deleting event');
+      return;
+    }
+    toast('🗑️ Event deleted.');
+    renderEventsPage(syncEngine.getData());
+};
+
+window.saveCat = () => {
+    const name = document.getElementById('cm-name').value.trim();
+    const color = document.getElementById('cm-color').value;
+    if (!name) return;
+    syncEngine.setData(state => {
+        const newState = { ...state };
+        if (!newState.categories) newState.categories = [];
+        newState.categories.push({ 
+            id: Date.now(), 
+            name, 
+            color,
+            eventId: state.activeEventId
+        });
+        return newState;
+    });
+    closeM('cat-modal');
+    toast('✅ Category saved!');
+};
+
+window.saveVenue = () => {
+    const name = document.getElementById('vm-name').value.trim();
+    const loc = document.getElementById('vm-loc').value.trim();
+    if (!name) return;
+    syncEngine.setData(state => {
+        const newState = { ...state };
+        if (!newState.venues) newState.venues = [];
+        newState.venues.push({ 
+            id: Date.now(), 
+            name, 
+            location: loc,
+            eventId: state.activeEventId
+        });
+        return newState;
+    });
+    closeM('venue-modal');
+    toast('✅ Venue saved!');
+};
+
+window.saveSubject = () => {
+    const name = document.getElementById('sm-name').value.trim();
+    const max = parseInt(document.getElementById('sm-max').value) || 10;
+    const desc = document.getElementById('sm-desc').value.trim();
+    if (!name) return;
+    syncEngine.setData(state => {
+        const newState = { ...state };
+        if (!newState.subjects) newState.subjects = [];
+        newState.subjects.push({ 
+            id: Date.now(), 
+            name, 
+            maxMarks: max, 
+            desc,
+            eventId: state.activeEventId
+        });
+        return newState;
+    });
+    closeM('subject-modal');
+    toast('✅ Subject saved!');
+};
+
+window.saveAgreement = () => {
+    const name = document.getElementById('jm-name').value.trim();
+    const phone = document.getElementById('jm-id').value.trim();
+    const subId = document.getElementById('jm-subject').value;
+    const catId = document.getElementById('jm-category').value;
+    const payment = document.getElementById('jm-payment').value;
+
+    if (!name || !phone) return;
+
+    syncEngine.setData(state => {
+        const newState = { ...state };
+        if (!newState.judgeAgreements) newState.judgeAgreements = [];
+        newState.judgeAgreements.push({
+            id: Date.now(), name, phone, subId, catId, payment, status: 'pending'
+        });
+        return newState;
+    });
+    closeM('agreement-modal');
+    toast('✅ Agreement generated!');
+};
+
+window.closeOnBg = (e, id) => { if (e.target === document.getElementById(id)) closeM(id); };
+window.openM = (id) => { document.getElementById(id).style.display = 'flex'; };
+window.closeM = (id) => { document.getElementById(id).style.display = 'none'; };
+
+let toastTimer;
+window.toast = (msg) => {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.style.display = 'none', 2800);
+};
+
+let chatHistory = [];
+let sosActive = false;
+let chatOpen = false;
+
+syncEngine.subscribe((newState) => {
+    state = newState;
+    
+    // Update registration badges
+    const totalRegs = (newState.publicRegistrations || []).length + (newState.participants || []).length;
+    const regBadge = document.getElementById('nb-public-reg');
+    const mobileRegBadge = document.getElementById('mobile-reg-badge');
+    if (regBadge) regBadge.textContent = totalRegs;
+    if (mobileRegBadge) mobileRegBadge.textContent = totalRegs;
+
+    if (state && state.participants) {
+      const seenIds = new Set();
+      state.participants = state.participants.filter(p => {
+        if (!p || !p.id) return false;
+        const idStr = String(p.id);
+        if (seenIds.has(idStr)) return false;
+        seenIds.add(idStr);
+        return true;
+      });
+      state.participants.forEach(p => {
+        if (p && p.present === undefined) p.present = false;
+      });
+    }
+    
+    // Sync system Live/Offline status
+    const isOffline = newState.systemStatus === 'offline';
+    const statusDotEl = document.getElementById('admin-status-dot');
+    const statusTextEl = document.getElementById('admin-status-text');
+    if (statusDotEl) {
+      if (isOffline) statusDotEl.classList.add('dot-offline');
+      else statusDotEl.classList.remove('dot-offline');
+    }
+    if (statusTextEl) statusTextEl.textContent = isOffline ? 'OFFLINE' : 'LIVE';
+    
+    // Update Topbar & Chat Select
+    const topInfo = document.getElementById('topbar-event-info');
+    const topName = document.getElementById('topbar-event-name');
+    const sel = document.getElementById('chat-event-sel');
+    const topMeta = document.getElementById('topbar-event-meta');
+    const events = newState.events || [];
+
+    const activePage = document.querySelector('.pp.active');
+    const pageId = activePage ? activePage.id.replace('pp-', '') : '';
+    
+    if (topInfo) {
+        topInfo.style.display = (pageId === 'chat') ? 'flex' : 'none';
+    }
+    
+    if (sel) {
+        sel.innerHTML = events.map(e => `<option value="${e.id}" ${String(e.id) === String(newState.activeEventId) ? 'selected' : ''}>${e.name}</option>`).join('');
+        if (!sel.innerHTML) sel.innerHTML = '<option value="">No Events</option>';
+    }
+
+    const activeEv = events.find(e => String(e.id) === String(newState.activeEventId));
+    if (activeEv) {
+        if (topName) topName.textContent = activeEv.name;
+        const staffCount = (activeEv.staff || []).length;
+        if (topMeta) topMeta.textContent = `Organized by ${activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha'} | ${staffCount} Staff Assigned`;
+    } else {
+        if (topName) topName.textContent = newState.eventName || 'No Event Selected';
+        if (topMeta) topMeta.textContent = 'Organized by ' + (newState.organizer || 'Kalikapur Nabin Sangha');
+    }
+
+    if (activePage) {
+        refreshUI(pageId);
+    }
+    
+    if (typeof hydrateChat === 'function') {
+        hydrateChat();
+    }
+
+    populateDropdowns(newState);
+});
+
+// STAFF CHAT PIPELINE LOGIC
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  document.getElementById('chat-panel').style.display = chatOpen ? 'flex' : 'none';
+  if(chatOpen) {
+    document.getElementById('chat-dot').style.display = 'none';
+    const msgs = document.getElementById('chat-msgs');
+    if(msgs) msgs.scrollTop = msgs.scrollHeight;
+  }
+}
+
+function parseMentions(txt) {
+    if (!txt) return '';
+    return txt.replace(/@(monitor|judge|admin|host)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
+}
+
+function insMention(m) {
+  const inp = document.getElementById('chat-inp');
+  if (inp) {
+    inp.value = (inp.value + ' ' + m + ' ').trimStart();
+    inp.focus();
+  }
+}
+
+function hydrateChat() {
+  const state = syncEngine.getData();
+  chatHistory = state.chatMessages || [];
+  sosActive = state.sosActive || false;
+  
+  const fb = document.getElementById('chat-msgs');
+  const pb = document.getElementById('page-chat-msgs');
+  
+  const chatHtml = chatHistory.map(m => {
+    let myName = 'Admin';
+    try { 
+      const n = JSON.parse(localStorage.getItem('kns_user')).name;
+      if (n && n !== 'undefined' && n !== 'null') myName = n;
+    } catch(e){}
+    const type = (m.role === 'admin') ? 'out' : 'in';
+    const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
+    const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
+    const parts = dispFrom.split(' · ');
+    const rolePart = parts[0];
+    const namePart = parts.slice(1).join(' · ');
+    const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
+    
+    let inlineStyle = '';
+    if (m.sos) inlineStyle = 'color:var(--rose)';
+    if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+
+    return `
+    <div class="cmsg ${type} ${m.sos ? 'sos' : ''}" style="${inlineStyle}">
+      <div class="cmeta">${styledFrom} · ${m.time} ${m.eventId ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
+      <div>${typeof parseMentions === 'function' ? parseMentions(m.text) : m.text}</div>
+    </div>
+  `;
+  }).join('');
+
+  if(fb) fb.innerHTML = chatHtml;
+  if(pb) pb.innerHTML = chatHtml;
+  
+  if(chatOpen && fb) fb.scrollTop = fb.scrollHeight;
+  if(pb) pb.scrollTop = pb.scrollHeight;
+
+  const activePage = document.querySelector('.pp.active');
+  const pageId = activePage ? activePage.id.replace('pp-', '') : '';
+  const mobileChatBadge = document.getElementById('mobile-chat-badge');
+
+  if (pageId === 'chat') {
+    const dot = document.getElementById('chat-dot');
+    if(dot) dot.style.display = 'none';
+    if(mobileChatBadge) mobileChatBadge.style.display = 'none';
+  } else if(!chatOpen && chatHistory.length > 0) {
+    const dot = document.getElementById('chat-dot');
+    if(dot) dot.style.display = 'block';
+    if(mobileChatBadge) mobileChatBadge.style.display = 'block';
+    const last = chatHistory[chatHistory.length-1];
+    if(last && !last.from.includes('Admin') && window.staffAudio) staffAudio.playChime();
+  }
+
+  // Update SOS UI
+  const sab = document.getElementById('sos-active-bar');
+  const sbtn = document.getElementById('sos-btn');
+  const psos = document.getElementById('page-sos-btn');
+  const pstop = document.getElementById('page-stop-sos');
+
+  if(sab) sab.style.display = sosActive ? 'block' : 'none';
+  if(sbtn) sbtn.classList.toggle('sos-active-cls', sosActive);
+  if(psos) psos.style.display = sosActive ? 'none' : 'block';
+  if(pstop) pstop.style.display = sosActive ? 'block' : 'none';
+  
+  if(sosActive && window.staffAudio) staffAudio.playSOS();
+}
+
+function parseMentions(txt) {
+  if (!txt) return '';
+  return txt.replace(/@(judge|admin|host)/gi, (m) => `<span class="at-m">${m}</span>`);
+}
+
+function insPageMention(m) {
+  const inp = document.getElementById('page-chat-inp');
+  if(inp) {
+    inp.value = (inp.value + ' ' + m + ' ').trimStart();
+    inp.focus();
+  }
+}
+
+function sendPageMsg() {
+  const inp = document.getElementById('page-chat-inp');
+  const text = inp.value.trim();
+  if(!text) return;
+  
+  const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+  const msg = { from: 'Admin · Staff', text, type: 'out', time, sos: false, timestamp: Date.now(), role: 'admin', eventId };
+  
+  syncEngine.setData(s => {
+    const chatMessages = [...(s.chatMessages || []), msg];
+    return { ...s, chatMessages };
+  });
+  
+  inp.value = '';
+}
+
+function sendMsg() {
+  const inp = document.getElementById('chat-inp');
+  const text = inp.value.trim();
+  if(!text) return;
+  
+  const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  let myName = 'Admin';
+  try { myName = JSON.parse(localStorage.getItem('kns_user')).name || 'Admin'; } catch(e){}
+  const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+  const msg = { from: `Admin · ${myName}`, text, type: 'out', time, sos: false, timestamp: Date.now(), role: 'admin', eventId };
+  
+  syncEngine.setData(s => {
+    const chatMessages = [...(s.chatMessages || []), msg];
+    return { ...s, chatMessages };
+  });
+  
+  inp.value = '';
+}
+
+function triggerSOS() {
+  if(confirm("Trigger EMERGENCY SOS Broadcast to all staff?")) {
+    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
+    const msg = { from: 'ADMIN · EMERGENCY', text: '🚨 SOS: Administrator signaling emergency at Control Center!', type: 'out', time, sos: true, timestamp: Date.now(), role: 'admin', eventId };
+    
+    syncEngine.setData(s => {
+      const chatMessages = [...(s.chatMessages || []), msg];
+      const sosHistory = [...(s.sosHistory || []), { time, msg: 'SOS triggered by Admin' }];
+      return { ...s, chatMessages, sosActive: true, sosHistory };
+    });
+    toast('🚨 SOS BROADCAST SENT!');
+  }
+}
+
+function stopSOS() {
+  syncEngine.setData(s => ({ ...s, sosActive: false }));
+  toast('SOS Dismissed.');
+}
+
+// ══════════════════════════════════════════
+// DONATIONS MANAGEMENT
+// ══════════════════════════════════════════
+
+window.openCreateDonationModal = () => {
+  document.getElementById('cdon-name').value = '';
+  document.getElementById('cdon-target').value = 100000;
+  document.getElementById('cdon-raised').value = 0;
+  document.getElementById('cdon-icon').value = '🎯';
+  document.getElementById('cdon-color').value = '#FF6B35';
+  openM('create-donation-modal');
+};
+
+window.saveNewDonation = () => {
+  const name = document.getElementById('cdon-name').value.trim();
+  const target = parseInt(document.getElementById('cdon-target').value) || 0;
+  const raised = parseInt(document.getElementById('cdon-raised').value) || 0;
+  const icon = document.getElementById('cdon-icon').value;
+  const col = document.getElementById('cdon-color').value;
+
+  if (!name) { toast('Campaign name is required!'); return; }
+  if (target <= 0) { toast('Target goal amount must be greater than 0!'); return; }
+
+  syncEngine.setData(state => {
+    const newState = { ...state };
+    if (!newState.donations) newState.donations = [];
+    newState.donations.push({
+      id: Date.now(),
+      name,
+      target,
+      raised,
+      icon,
+      col
+    });
+    return newState;
+  });
+
+  closeM('create-donation-modal');
+  
+  if (syncEngine.supabase) {
+    syncEngine.supabase.from('donations').upsert({
+      id: Date.now(),
+      name, target, raised, icon, color: col
+    }).then(({error}) => { if(error) console.error(error); });
+  }
+  toast('✅ Donation campaign created!');
+
+};
+
+window.openEditDonationModal = (id) => {
+  const s = syncEngine.getData();
+  const d = (s.donations || []).find(x => x.id === id);
+  if (!d) return;
+
+  document.getElementById('edit-don-id').value = d.id;
+  document.getElementById('edit-don-name').value = d.name || '';
+  document.getElementById('edit-don-target').value = d.target || 0;
+  document.getElementById('edit-don-raised').value = d.raised || 0;
+  document.getElementById('edit-don-icon').value = d.icon || '🎯';
+  document.getElementById('edit-don-color').value = d.col || '#FF6B35';
+  
+  openM('edit-donation-modal');
+};
+
+window.saveEditedDonation = () => {
+  const id = parseInt(document.getElementById('edit-don-id').value);
+  const name = document.getElementById('edit-don-name').value.trim();
+  const target = parseInt(document.getElementById('edit-don-target').value) || 0;
+  const raised = parseInt(document.getElementById('edit-don-raised').value) || 0;
+  const icon = document.getElementById('edit-don-icon').value;
+  const col = document.getElementById('edit-don-color').value;
+
+  if (!name) { toast('Campaign name is required!'); return; }
+  if (target <= 0) { toast('Target goal amount must be greater than 0!'); return; }
+
+  syncEngine.setData(state => {
+    const newState = { ...state };
+    newState.donations = (newState.donations || []).map(d => {
+      if (d.id === id) {
+        return { ...d, name, target, raised, icon, col };
+      }
+      return d;
+    });
+    return newState;
+  });
+
+  closeM('edit-donation-modal');
+  
+  if (syncEngine.supabase) {
+    syncEngine.supabase.from('donations').upsert({
+      id, name, target, raised, icon, color: col
+    }).then(({error}) => { if(error) console.error(error); });
+  }
+  toast('✅ Donation campaign updated!');
+
+};
+
+window.deleteDonationCampaign = (id) => {
+  const s = syncEngine.getData();
+  const d = (s.donations || []).find(x => x.id === id);
+  const name = d ? d.name : 'this campaign';
+
+  if (confirm(`Are you sure you want to delete the donation campaign "${name}"?`)) {
+    syncEngine.setData(state => {
+      const newState = { ...state };
+      newState.donations = (newState.donations || []).filter(x => x.id !== id);
+      return newState;
+    });
+    
+    if (syncEngine.supabase) {
+      syncEngine.supabase.from('donations').delete().eq('id', id).then(({error}) => { if(error) console.error(error); });
+    }
+    toast('🗑️ Donation campaign deleted!');
+
+  }
+};
+
+window.renderDonationsPage = (s) => {
+  const tbody = document.getElementById('donations-page-tbody');
+  if (!tbody) return;
+  
+  const campaigns = s.donations || [];
+  if (campaigns.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted)">No donation campaigns found. Click "Create Campaign" to add one.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = campaigns.map(d => {
+    const pct = d.target > 0 ? Math.round(((d.raised || 0) / d.target) * 100) : 0;
+    return `
+      <tr>
+        <td style="font-weight:700; color:var(--text)">${d.name}</td>
+        <td style="font-weight:700; font-family:var(--fm)">₹${(d.target || 0).toLocaleString('en-IN')}</td>
+        <td style="font-weight:700; font-family:var(--fm); color:#10B981">₹${(d.raised || 0).toLocaleString('en-IN')}</td>
+        <td>
+          <div style="display:flex; align-items:center; gap:8px; min-width:120px">
+            <div style="flex:1; height:8px; background:rgba(0,0,0,0.2); border:1px solid var(--border); border-radius:10px; overflow:hidden">
+              <div style="height:100%; width:${Math.min(pct, 100)}%; background:${d.col || 'var(--amber)'}; border-radius:10px"></div>
+            </div>
+            <span style="font-size:11px; font-weight:800; color:${d.col || 'var(--text)'}">${pct}%</span>
+          </div>
+        </td>
+        <td style="font-size:1.4rem; text-align:center">${d.icon || '🎯'}</td>
+        <td>
+          <div style="display:flex; align-items:center; gap:8px">
+            <div style="width:12px; height:12px; border-radius:50%; background:${d.col}; border:1px solid rgba(255,255,255,0.2)"></div>
+            <span style="font-family:var(--fm); font-size:11px; color:var(--text-dim)">${d.col}</span>
+          </div>
+        </td>
+        <td>
+          <div style="display:flex; gap:6px">
+            <button class="btn btn-ghost btn-xs" onclick="openEditDonationModal(${d.id})">✏️ Edit</button>
+            <button class="btn btn-danger btn-xs" onclick="deleteDonationCampaign(${d.id})">🗑️ Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
+window.triggerCTA = () => {
+  const activePage = document.querySelector('.pp.active');
+  const pageId = activePage ? activePage.id.replace('pp-', '') : '';
+  if (pageId === 'donations') {
+    openCreateDonationModal();
+  } else if (pageId === 'events') {
+    openCreateEventModal();
+  } else if (pageId === 'chat') {
+    triggerSOS();
+  } else {
+    toast('No quick action configured for this page');
+  }
+};
+
+// Subscribe Chat Hydration
+syncEngine.subscribe(hydrateChat);
+
+window.nav = function(pageId, el) {
+  // Update desktop sidebar items (.nav-item)
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (el && el.classList.contains('nav-item')) {
+    el.classList.add('active');
+  } else {
+    const item = Array.from(document.querySelectorAll('.nav-item')).find(n => n.getAttribute('onclick') && n.getAttribute('onclick').includes(`'${pageId}'`));
+    if (item) item.classList.add('active');
+  }
+
+  // Update mobile bottom nav items (.bottom-nav-item)
+  document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
+  if (el && el.classList.contains('bottom-nav-item')) {
+    el.classList.add('active');
+  } else {
+    const item = Array.from(document.querySelectorAll('.bottom-nav-item')).find(n => n.getAttribute('onclick') && n.getAttribute('onclick').includes(`'${pageId}'`));
+    if (item) item.classList.add('active');
+  }
+
+  document.querySelectorAll('.pp').forEach(p => p.classList.remove('active'));
+  const page = document.getElementById('pp-' + pageId);
+  if (page) page.classList.add('active');
+  
+  const titleEl = document.getElementById('page-title');
+  if (titleEl) {
+    const pageTitles = {
+      'dashboard': 'Dashboard',
+      'events': 'Events',
+      'participants': 'Total Registration',
+      'statistics': 'Statistics',
+      'chat': 'Team Chat',
+      'staff': 'Staff & Roles',
+      'feedback': 'Feedback'
+    };
+    if (pageTitles[pageId]) {
+      titleEl.textContent = pageTitles[pageId];
+    } else {
+      const activeNav = document.querySelector('.nav-item.active');
+      if (activeNav) {
+        let text = activeNav.textContent.replace(/[\u{1F300}-\u{1F9FF}]/gu, '').replace(/[^\x20-\x7E]/g, '').trim();
+        if (text.includes('Public Registrations')) text = 'Public Registrations';
+        titleEl.textContent = text;
+      }
+    }
+  }
+  
+  // Hide mobile chat badge when active page is chat
+  const mobileChatBadge = document.getElementById('mobile-chat-badge');
+  if (mobileChatBadge && pageId === 'chat') {
+    mobileChatBadge.style.display = 'none';
+  }
+
+  const topInfo = document.getElementById('topbar-event-info');
+  if (topInfo) {
+    topInfo.style.display = (pageId === 'chat') ? 'flex' : 'none';
+  }
+
+  if (typeof window.refreshUI === 'function') window.refreshUI(pageId);
+};
+
+// Initial Load
+window.nav('dashboard');
+
+// Load events from Supabase on startup
+(async () => {
+  if (window.syncEngine && typeof window.syncEngine.loadEvents === 'function') {
+    await window.syncEngine.loadEvents();
+    if (typeof window.refreshUI === 'function') window.refreshUI();
+  }
+  
+  // Auto-seed hardcoded admin/monitor accounts if they are missing
+  setTimeout(async () => {
+    if (window.syncEngine && window.syncEngine.addStaffMember) {
+      await window.syncEngine.addStaffMember('kalikapurnabinsanghaclub@gmail.com', 'kns743336', 'KNSDC Super Monitor', 'monitor');
+      // If we are currently on staff page, refresh it quietly
+      if (document.getElementById('pp-staff') && document.getElementById('pp-staff').classList.contains('active')) {
+         if (window.renderStaffPage) window.renderStaffPage();
+      }
+    }
+  }, 2000);
+})();
+
+window.logout = () => {
+  if (confirm('Are you sure you want to log out of the Admin Portal?')) {
+    localStorage.removeItem('kns_user');
+    localStorage.removeItem('kns_role');
+    
+    document.body.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+    document.body.style.opacity = '0';
+    document.body.style.transform = 'scale(0.98)';
+    
+    setTimeout(() => {
+      window.location.href = 'index.html';
+    }, 500);
+  }
+};
+
+let isSeedingDB = false;
+async function seedSupabaseDatabase() {
+  if (isSeedingDB) return;
+  if (!syncEngine.supabase) {
+    alert("Supabase client is not initialized.");
+    return;
+  }
+  
+  const statusEl = document.getElementById('db-status-msg');
+  if (statusEl) statusEl.textContent = "Seeding started...";
+  
+  const sd = window.sampleData;
+  if (!sd) {
+    alert("Sample data not loaded.");
+    return;
+  }
+  
+  isSeedingDB = true;
+  const btn = document.querySelector('button[onclick="seedSupabaseDatabase()"]');
+  if (btn) { btn.disabled = true; btn.innerText = 'Seeding...'; }
+  
+  try {
+    // 1. Seed Events
+    if (sd.upcomingEvents?.length) {
+      const formattedEvents = sd.upcomingEvents.map(e => ({
+        id: e.id,
+        title: e.title,
+        date: e.date,
+        time: e.time,
+        venue: e.venue,
+        description: e.description,
+        category: e.category,
+        image: e.image,
+        publicReg: e.publicReg || false,
+        stagePreview: e.stagePreview || false,
+        resultPublic: e.resultPublic || false
+      }));
+      await syncEngine.supabase.from('events').upsert(formattedEvents);
+    }
+    
+    // 2. Seed Past Events
+    if (sd.pastEvents?.length) {
+      const formattedPast = sd.pastEvents.map(e => ({
+        id: e.id,
+        title: e.title,
+        date: e.date,
+        venue: e.venue,
+        description: e.description,
+        category: e.category,
+        image: e.image,
+        highlights: e.highlights
+      }));
+      await syncEngine.supabase.from('past_events').upsert(formattedPast);
+    }
+
+    // 3. Seed Gallery
+    if (sd.galleryImages?.length) {
+      const formattedGallery = sd.galleryImages.map(g => ({
+        id: g.id,
+        src: g.src,
+        title: g.title,
+        category: g.category
+      }));
+      await syncEngine.supabase.from('gallery_images').upsert(formattedGallery);
+    }
+
+    // 4. Seed Notices
+    if (sd.notices?.length) {
+      const formattedNotices = sd.notices.map(n => ({
+        id: n.id,
+        title: n.title,
+        date: n.date,
+        priority: n.priority,
+        content: n.content,
+        pinned: n.pinned || false
+      }));
+      await syncEngine.supabase.from('notices').upsert(formattedNotices);
+    }
+
+    // 5. Seed Work Items
+    if (sd.workItems?.length) {
+      const formattedWork = sd.workItems.map(w => ({
+        id: w.id,
+        title: w.title,
+        status: w.status,
+        description: w.description,
+        date: w.date,
+        progress: w.progress || 0
+      }));
+      await syncEngine.supabase.from('work_items').upsert(formattedWork);
+    }
+
+    // 6. Seed Partners
+    if (sd.partners?.length) {
+      const formattedPartners = sd.partners.map(p => ({
+        id: p.id,
+        name: p.name,
+        icon: p.icon,
+        color: p.color,
+        website: p.website
+      }));
+      await syncEngine.supabase.from('partners').upsert(formattedPartners);
+    }
+
+    // 7. Seed Team Members
+    if (sd.teamMembers?.length) {
+      const formattedTeam = sd.teamMembers.map((t, idx) => ({
+        id: idx + 1,
+        name: t.name,
+        role: t.role,
+        icon: t.icon
+      }));
+      await syncEngine.supabase.from('team_members').upsert(formattedTeam);
+    }
+
+    // 8. Seed Donations
+    if (sd.donations?.length) {
+      const formattedDonations = sd.donations.map((d) => ({
+        id: typeof d.id === 'number' ? d.id : Date.now(),
+        name: d.name,
+        target: d.target,
+        raised: d.raised,
+        icon: d.icon || '💰',
+        color: d.col || '#8B5CF6'
+      }));
+      await syncEngine.supabase.from('donations').upsert(formattedDonations);
+    }
+
+    if (statusEl) statusEl.textContent = "Database seeded successfully!";
+    alert("Database seeded successfully!");
+  } catch (err) {
+    console.error("Seeding error:", err);
+    if (statusEl) statusEl.textContent = "Error: " + err.message;
+    alert("Error seeding database: " + err.message);
+  } finally {
+    isSeedingDB = false;
+    if (btn) { btn.disabled = false; btn.innerText = '🌱 Seed Default Data (Dev Only)'; }
+  }
+}
+
+async function wipeSyncState() {
+  if (!confirm("Are you sure you want to wipe the global sync state in Supabase? This will clear all online participants and stage controls.")) return;
+  if (!syncEngine.supabase) {
+    alert("Supabase client is not initialized.");
+    return;
+  }
+  
+  const statusEl = document.getElementById('db-status-msg');
+  if (statusEl) statusEl.textContent = "Wiping state...";
+  
+  try {
+    const { error } = await syncEngine.supabase
+      .from('sync_state')
+      .delete()
+      .eq('id', syncEngine.syncStateId);
+      
+    if (error) {
+      alert("Error wiping state: " + error.message);
+      if (statusEl) statusEl.textContent = "Error: " + error.message;
+    } else {
+      alert("Sync state wiped successfully! Reloading page...");
+      window.location.reload();
+    }
+  } catch (err) {
+    alert("Error: " + err.message);
+    if (statusEl) statusEl.textContent = "Error: " + err.message;
+  }
+}
+
+window.seedSupabaseDatabase = seedSupabaseDatabase;
+window.wipeSyncState = wipeSyncState;
+
+function toggleMobileMoreSheet(show) {
+  const overlay = document.getElementById('mobile-more-sheet-overlay');
+  if (overlay) {
+    if (show) {
+      overlay.classList.add('show');
+    } else {
+      overlay.classList.remove('show');
+    }
+  }
+}
+window.toggleMobileMoreSheet = toggleMobileMoreSheet;
+
+function openAdminProfileModal() {
+  let name = 'Admin User';
+  let email = 'admin@knsdc.com';
+  try {
+    const user = JSON.parse(localStorage.getItem('kns_user'));
+    if (user) {
+      if (user.name) name = user.name;
+      if (user.email) email = user.email;
+    }
+  } catch(e){}
+  
+  const nameEl = document.getElementById('admin-profile-name');
+  const emailEl = document.getElementById('admin-profile-email');
+  if (nameEl) nameEl.textContent = name;
+  if (emailEl) emailEl.textContent = email;
+  
+  const modal = document.getElementById('admin-profile-modal');
+  if (modal) modal.style.display = 'flex';
+}
+window.openAdminProfileModal = openAdminProfileModal;
+
+let chartRegFreq = null;
+let chartPresentFreq = null;
+
+window.renderStatistics = (state) => {
+  state = state || (window.syncEngine ? window.syncEngine.getData() : null);
+  if (!state) return;
+  
+  const events = state.events || [];
+  const participants = state.participants || [];
+  
+  // Total Registrations
+  const totalRegEl = document.getElementById('stat-total-reg');
+  if (totalRegEl) totalRegEl.textContent = participants.length;
+  
+  // Total Present
+  const totalPresent = participants.filter(p => p.present).length;
+  const totalPresentEl = document.getElementById('stat-total-present');
+  if (totalPresentEl) totalPresentEl.textContent = totalPresent;
+  
+  // Aggregate Event Stats
+  const eventStats = {};
+  events.forEach(e => {
+    eventStats[e.id] = { name: e.name, registered: 0, present: 0, completed: 0 };
+  });
+  
+  participants.forEach(p => {
+    if (!eventStats[p.eventId]) {
+      eventStats[p.eventId] = { name: 'Unknown Event', registered: 0, present: 0, completed: 0 };
+    }
+    eventStats[p.eventId].registered++;
+    if (p.present) eventStats[p.eventId].present++;
+    if (p.stageStatus === 'finished') eventStats[p.eventId].completed++;
+  });
+  
+  // Most Popular Event
+  let topEventName = '—';
+  let maxReg = -1;
+  for (const eid in eventStats) {
+    if (eventStats[eid].registered > maxReg) {
+      maxReg = eventStats[eid].registered;
+      topEventName = eventStats[eid].name;
+    }
+  }
+  const topEventEl = document.getElementById('stat-top-event');
+  if (topEventEl) topEventEl.textContent = maxReg > 0 ? topEventName : '—';
+  
+  // Chart Data preparation
+  const labels = [];
+  const dataReg = [];
+  const dataPresent = [];
+  const dataCompleted = [];
+  
+  for (const eid in eventStats) {
+    if (eventStats[eid].registered > 0 || events.length <= 10) {
+      labels.push(eventStats[eid].name);
+      dataReg.push(eventStats[eid].registered);
+      dataPresent.push(eventStats[eid].present);
+      dataCompleted.push(eventStats[eid].completed);
+    }
+  }
+  
+  // Render Chart: Registration Distribution
+  const ctxReg = document.getElementById('event-freq-chart');
+  if (ctxReg) {
+    if (chartRegFreq) chartRegFreq.destroy();
+    chartRegFreq = new Chart(ctxReg, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Registrations',
+          data: dataReg,
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+  
+  // Render Chart: Attendance & Completion
+  const ctxPresent = document.getElementById('event-present-chart');
+  if (ctxPresent) {
+    if (chartPresentFreq) chartPresentFreq.destroy();
+    chartPresentFreq = new Chart(ctxPresent, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Present',
+            data: dataPresent,
+            backgroundColor: 'rgba(16, 185, 129, 0.7)',
+            borderColor: 'rgba(16, 185, 129, 1)',
+            borderWidth: 1,
+            borderRadius: 4
+          },
+          {
+            label: 'Completed',
+            data: dataCompleted,
+            backgroundColor: 'rgba(139, 92, 246, 0.7)',
+            borderColor: 'rgba(139, 92, 246, 1)',
+            borderWidth: 1,
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: true, position: 'bottom' }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+};
+</script>
+<!-- MOBILE BOTTOM NAVIGATION -->
+<div class="bottom-nav">
+  <button class="bottom-nav-item active" onclick="nav('dashboard', this)">
+    <span class="nav-icon">📊</span>
+    <span class="bottom-nav-text">Dashboard</span>
+  </button>
+  <button class="bottom-nav-item" onclick="nav('events', this)">
+    <span class="nav-icon">📅</span>
+    <span class="bottom-nav-text">Events</span>
+  </button>
+  <button class="bottom-nav-item" onclick="nav('participants', this)">
+    <span class="nav-icon" style="position: relative;">
+      👥
+      <span class="tab-badge" id="mobile-reg-badge" style="position: absolute; top: -8px; right: -12px;">0</span>
+    </span>
+    <span class="bottom-nav-text">Registrations</span>
+  </button>
+  <button class="bottom-nav-item" onclick="nav('chat', this)">
+    <span class="nav-icon" style="position: relative;">
+      💬
+      <span class="tab-badge" id="mobile-chat-badge" style="position: absolute; top: -8px; right: -12px; display: none;">!</span>
+    </span>
+    <span class="bottom-nav-text">Chat</span>
+  </button>
+  <button class="bottom-nav-item" onclick="toggleMobileMoreSheet(true)">
+    <span class="nav-icon">✨</span>
+    <span class="bottom-nav-text">More</span>
+  </button>
+</div>
+
+<!-- MORE OPTIONS MOBILE SHEET -->
+<div class="more-sheet-overlay" id="mobile-more-sheet-overlay" onclick="toggleMobileMoreSheet(false)">
+  <div class="more-sheet" onclick="event.stopPropagation()">
+    <div class="more-sheet-header">
+      <div class="more-sheet-title">🔧 More Options</div>
+      <button class="btn btn-ghost btn-sm" onclick="toggleMobileMoreSheet(false)" style="border-radius:50%; width:32px; height:32px; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
+    </div>
+    <div class="more-sheet-grid">
+      <div class="more-sheet-item" onclick="nav('statistics'); toggleMobileMoreSheet(false);">
+        <span class="item-icon">📈</span>
+        <span>Statistics</span>
+      </div>
+      <div class="more-sheet-item" onclick="nav('staff'); toggleMobileMoreSheet(false);">
+        <span class="item-icon">👥</span>
+        <span>Staff & Roles</span>
+      </div>
+      <div class="more-sheet-item" onclick="nav('feedback'); toggleMobileMoreSheet(false);">
+        <span class="item-icon">📨</span>
+        <span>Feedback</span>
+      </div>
+      <div class="more-sheet-item" onclick="wipeSyncState(); toggleMobileMoreSheet(false);">
+        <span class="item-icon">🧹</span>
+        <span>Wipe Sync</span>
+      </div>
+      <div class="more-sheet-item" onclick="openAdminProfileModal(); toggleMobileMoreSheet(false);" style="grid-column: span 2;">
+        <span class="item-icon">👤</span>
+        <span>Profile</span>
+      </div>
+      <div class="more-sheet-item" onclick="logout(); toggleMobileMoreSheet(false);" style="grid-column: span 3; background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2); color: var(--red2);">
+        <span class="item-icon">🚪</span>
+        <span>Logout Session</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <!-- STAFF CHAT PIPELINE -->
+  <div class="float-chat">
+    <div id="chat-panel" class="chat-float" style="display:none">
+      <div class="chat-hd">
+        <div style="display:flex; align-items:center; gap:10px">
+          <div style="width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 10px #10b981"></div>
+          <span class="chat-hd-title">Staff Communication</span>
+        </div>
+        <button onclick="toggleChat()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px; font-weight:bold;">✕</button>
+      </div>
+      <div id="chat-msgs" class="chat-msgs"></div>
+      
+      <!-- MENTION BAR -->
+      <div class="chat-mention-bar">
+        <span style="font-size:10px; color:var(--text-muted); align-self:center; font-family:var(--fm); font-weight:700;">MENTION:</span>
+        <span class="mchip" onclick="insMention('@monitor')">@monitor</span>
+        <span class="mchip" onclick="insMention('@host')">@host</span>
+        <span class="mchip" onclick="insMention('@judge')">@judge</span>
+      </div>
+
+      <div class="chat-input-row">
+        <button class="sos-btn-float" id="sos-btn" onclick="triggerSOS()" title="Trigger SOS Alert">🚨</button>
+        <input type="text" id="chat-inp" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendMsg()">
+        <button class="send-btn-chat" onclick="sendMsg()">➤</button>
+      </div>
+      <div id="sos-active-bar" style="display:none; background:var(--red); color:white; padding:8px; text-align:center; font-size:11px; font-weight:800; animation:sosPulse 0.5s infinite">
+        🚨 SOS ACTIVE - Emergency in progress!
+        <button onclick="stopSOS()" style="background:white; color:var(--red); border:none; padding:2px 8px; border-radius:4px; margin-left:10px; font-size:10px; cursor:pointer">DISMISS</button>
+      </div>
+    </div>
+    <button class="chat-fab" onclick="toggleChat()">
+      💬
+      <div id="chat-dot" class="unread-dot"></div>
+    </button>
+  </div>
+
+<script>
+
+window.refreshPortal = async function(btn) {
+  const icon = btn.querySelector('.refresh-icon');
+  if (icon) icon.classList.add('spinning');
+  btn.disabled = true;
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = `<span class="refresh-icon spinning">🔄</span> Connecting...`;
+  
+  let success = false;
+  if (window.syncEngine && typeof window.syncEngine.reconnect === 'function') {
+    success = await window.syncEngine.reconnect();
+  } else if (window.syncEngine && typeof window.syncEngine.loadEvents === 'function') {
+    await window.syncEngine.loadEvents();
+    success = true;
+  }
+  
+  if (icon) icon.classList.remove('spinning');
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
+  
+  if (success) {
+    if (typeof toast === 'function') {
+      toast('✅ Portal refreshed & reconnected to server!');
+    } else {
+      alert('Portal refreshed successfully!');
+    }
+    if (typeof hydrate === 'function') hydrate();
+    else if (typeof renderStaffPage === 'function') {
+      const state = window.syncEngine.getData() || {};
+      renderStaffPage(state);
+    }
+  } else {
+    if (typeof toast === 'function') {
+      toast('❌ Refresh failed. Check your internet connection.');
+    } else {
+      alert('Refresh failed. Check your connection.');
+    }
+  }
+};
+
+</script>
+</body>
+</html>

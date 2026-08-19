@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Match Results & Statistics - Kalikapur Nabin Sangha</title>
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --bg: #0f172a;
+      --bg-panel: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+    }
+    .header {
+      background: linear-gradient(135deg, #1e3a5f, #0f2a4a);
+      padding: 30px 20px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .header h1 {
+      margin: 0;
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      color: #fff;
+    }
+    .container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .public-fixture-item {
+      background: var(--bg-panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+    .public-fixture-item:hover {
+      background: rgba(255,255,255,0.05);
+      transform: translateY(-2px);
+    }
+    
+    /* Modal styles */
+    #public-match-summary-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15,23,42,0.95);
+      z-index: 100000;
+      backdrop-filter: blur(8px);
+      padding: 20px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .modal-content {
+      background: var(--bg-panel);
+      max-width: 700px;
+      margin: 40px auto;
+      border-radius: 24px;
+      padding: 30px;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 25px 80px rgba(0,0,0,0.6);
+      position: relative;
+    }
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .close-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    .public-score-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-bottom: 10px;
+      text-align: left;
+    }
+    .public-score-table th, .public-score-table td {
+      padding: 8px 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .public-score-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+    .sport-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px 20px;
+      border-radius: 20px;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sport-tab:hover {
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+    }
+    .sport-tab.active {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div style="max-width: 800px; margin: 0 auto; display: flex; align-items: center; position: relative;">
+      <a href="index.html" style="position: absolute; left: 0; color: #fff; text-decoration: none; font-weight: bold; background: rgba(255,255,255,0.15); padding: 8px 16px; border-radius: 20px; transition: background 0.2s; font-size: 0.9rem;">← Back</a>
+      <h1 style="width: 100%; text-align: center;">🏆 Match Results</h1>
+    </div>
+  </div>
+
+  <div class="container" style="margin-bottom: 20px; margin-top: 20px;">
+    <div style="display:flex; gap:12px; background:var(--bg-panel); padding:12px; border-radius:24px; border:1px solid rgba(255,255,255,0.08); overflow-x:auto; scrollbar-width: none;">
+      <button class="sport-tab active" onclick="filterSport('cricket')">Cricket</button>
+      <button class="sport-tab" onclick="filterSport('football')">Football</button>
+      <button class="sport-tab" onclick="filterSport('volleyball')">Volleyball</button>
+      <button class="sport-tab" onclick="filterSport('other')">Other</button>
+    </div>
+  </div>
+
+
+
+  <div class="container" id="leaderboard-container" style="display:none; margin-bottom: 20px;"></div>
+
+  <div class="container" id="results-container">
+    <div class="loading">Loading match results from server...</div>
+  </div>
+
+  <!-- Public Match Summary Modal -->
+  <div id="public-match-summary-modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeModal()">✕</button>
+      <h2 style="color:#fff; font-size:1.5rem; margin-top:0; margin-bottom:20px; font-family:'Playfair Display',serif;">Match Scorecard</h2>
+      <div id="public-match-summary-content">
+        <!-- scorecard injected here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Supabase & SyncEngine -->
+  <script src="lib/supabase.js"></script>
+  <script src="lib/localSync-v4.js?v=120"></script>
+
+  <script>
+    const syncEngine = window.syncEngine || new (window.LocalSync || LocalSync)();
+    window.syncEngine = syncEngine;
+    
+    let currentState = null;
+    let currentSportFilter = 'cricket';
+
+    function filterSport(sport) {
+      currentSportFilter = sport;
+      document.querySelectorAll('.sport-tab').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.innerText.toLowerCase() === sport.toLowerCase()) {
+          btn.classList.add('active');
+        }
+      });
+      renderResultsList();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // SyncEngine will fetch initial data, then trigger subscribe
+      syncEngine.subscribe((state) => {
+        currentState = state;
+        renderResultsList();
+      });
+      
+      // If we already have data, render it
+      currentState = syncEngine.getData();
+      if (currentState && Object.keys(currentState).length > 0) {
+        renderResultsList();
+      }
+    });
+
+    function renderResultsList() {
+      const container = document.getElementById('results-container');
+      
+      let allMatches = [];
+      if (currentState.sportLiveScore && currentState.sportLiveScore.public) {
+        const sc = currentState.sportLiveScore;
+        const balls = sc.ballsCount || 0;
+        const overs = `${Math.floor(balls / 6)}.${balls % 6}`;
+        let scoreDisplay = "";
+        if (sc.sportType === 'football' && sc.details) {
+          scoreDisplay = `<div style="font-size:1.8rem; font-weight:900; margin: 10px 0;">${sc.details.teamAGoals} - ${sc.details.teamBGoals}</div>`;
+        } else {
+          scoreDisplay = `<div style="font-size:1.5rem; font-weight:800;">
+            ${sc.runs}/${sc.wickets} <span style="font-size:0.9rem; color:#94a3b8; font-weight:500;">in ${overs} ovs</span>
+          </div>`;
+        }
+        
+        allMatches.push({
+          isLive: true,
+          sportType: sc.sportType || 'cricket',
+          teamA: sc.battingTeam || 'Batting Team',
+          teamB: sc.bowlingTeam || 'Bowling Team',
+          teamAColor: '#10b981',
+          teamBColor: '#f59e0b',
+          winningTeam: 'Ongoing',
+          margin: scoreDisplay,
+          matchPlayerStats: sc.matchPlayerStats || {},
+          extrasBreakdown: sc.extrasBreakdown || {}
+        });
+      }
+      
+      if (currentState.sportCompletedMatches && currentState.sportCompletedMatches.length > 0) {
+        allMatches.push(...currentState.sportCompletedMatches);
+      }
+      
+      // Filter matches based on the selected sport tab
+      let matchesToRender = allMatches.filter(match => {
+        const sport = (match.sportType || match.stage || 'cricket').toLowerCase();
+        
+        // As a fallback for older data that doesn't have a clean sportType, we assume cricket if it has wickets/runs
+        const isLikelyCricket = sport.includes('cricket') || (match.margin && match.margin.includes('wicket')) || (match.margin && match.margin.includes('run'));
+        const effectiveSport = isLikelyCricket ? 'cricket' : sport;
+        
+        if (currentSportFilter === 'other') {
+          return !['cricket', 'football', 'volleyball'].includes(effectiveSport);
+        }
+        return effectiveSport === currentSportFilter;
+      });
+      
+      window.currentRenderedMatches = matchesToRender;
+      
+      if (matchesToRender.length === 0) {
+        container.innerHTML = '<div style="padding: 40px; text-align:center; color:var(--text-muted); background:var(--bg-panel); border-radius:12px;">No match results available yet.</div>';
+        document.getElementById('leaderboard-container').style.display = 'none';
+        return;
+      }
+      
+      renderLeaderboard(matchesToRender);
+      
+      let html = '';
+      matchesToRender.forEach((match, index) => {
+        html += `
+          <div class="public-fixture-item" onclick="showMatchSummary(${index})">
+            <div style="display:flex; flex-direction:column; gap:8px; flex:1;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:12px; height:12px; border-radius:50%; background:${match.teamAColor || '#ef4444'};"></div>
+                <span style="color:#f8fafc; font-weight:700; font-size:1.1rem;">${match.teamA}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:12px; height:12px; border-radius:50%; background:${match.teamBColor || '#3b82f6'};"></div>
+                <span style="color:#f8fafc; font-weight:700; font-size:1.1rem;">${match.teamB}</span>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+              <div style="font-weight:900; font-size:1.1rem; color:${match.isLive ? '#ef4444' : '#38bdf8'}; ${match.isLive ? 'animation: pulseLive 1.5s infinite;' : ''}">${match.isLive ? '🔴 LIVE' : (match.winningTeam !== 'Tie' ? '🎉 ' + match.winningTeam + ' Won!' : '🤝 Match Tied!')}</div>
+              <div style="font-size:0.85rem; color:#94a3b8; font-weight:600;">${match.margin}</div>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+      
+      // Add pulse animation if missing
+      if (!document.getElementById('livePulseStyle')) {
+        const style = document.createElement('style');
+        style.id = 'livePulseStyle';
+        style.textContent = `@keyframes pulseLive { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }`;
+        document.head.appendChild(style);
+      }
+    }
+
+    function renderLeaderboard(matches) {
+      const container = document.getElementById('leaderboard-container');
+      const unifiedTeams = [];
+      if (currentState.sportCustomTeams) unifiedTeams.push(...JSON.parse(JSON.stringify(currentState.sportCustomTeams)));
+      
+      const rawPubTeams = (currentState.participants && currentState.participants.length > 0) 
+                          ? currentState.participants 
+                          : (currentState.sportPubTeams || []);
+                          
+      rawPubTeams.forEach(pt => {
+        let players = [];
+        if (pt.formAnswers && pt.formAnswers['Squad Players']) {
+          try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
+        } else if (pt.formAnswers && pt.formAnswers['Player List (comma separated)']) {
+          const listStr = pt.formAnswers['Player List (comma separated)'];
+          players = listStr.split(',').map((n, i) => ({ id: pt.id + '_p_' + i, name: n.trim(), role: 'Player' })).filter(p => p.name);
+        }
+        if (players.length === 0 && pt.players) players = pt.players;
+        players.forEach((pl, i) => { if (!pl.id) pl.id = pt.id + '_p_' + i; });
+
+        unifiedTeams.push({
+          id: pt.id,
+          name: (pt.formAnswers && pt.formAnswers['Team / Club Name']) || pt.name,
+          players: players
+        });
+      });
+      
+      unifiedTeams.forEach((t, tIdx) => {
+        if (!t.id) t.id = 'team_' + tIdx + '_' + Date.now();
+      });
+
+      const playerAgg = {};
+
+      matches.forEach(match => {
+        if (!match.matchPlayerStats) return;
+        for (const [playerId, stats] of Object.entries(match.matchPlayerStats)) {
+          if (!playerAgg[playerId]) {
+            let playerName = "Unknown Player";
+            let teamName = "Unknown Team";
+            for (const team of unifiedTeams) {
+              const p = team.players && team.players.find(pl => String(pl.id) === String(playerId));
+              if (p) {
+                playerName = p.name || playerName;
+                teamName = team.name;
+                break;
+              }
+            }
+            if (teamName === "Unknown Team") teamName = match.teamA || "Team A";
+
+            playerAgg[playerId] = { name: playerName, team: teamName, runs: 0, wickets: 0 };
+          }
+          playerAgg[playerId].runs += (stats.runs || 0);
+          playerAgg[playerId].wickets += (stats.wickets || 0);
+        }
+      });
+
+      const allPlayers = Object.values(playerAgg);
+      const topRunScorers = [...allPlayers].filter(p => p.runs > 0).sort((a, b) => b.runs - a.runs).slice(0, 3);
+      const topWicketTakers = [...allPlayers].filter(p => p.wickets > 0).sort((a, b) => b.wickets - a.wickets).slice(0, 3);
+
+      if (topRunScorers.length === 0 && topWicketTakers.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'flex';
+      container.style.gap = '20px';
+      container.style.flexWrap = 'wrap';
+
+      const renderPlayerRows = (players, statKey, statLabel) => {
+        if (players.length === 0) return '<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:10px;">No stats available</div>';
+        return players.map((p, i) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); ${i===players.length-1 ? 'border-bottom:none;' : ''}">
+            <div style="display:flex; align-items:center; gap: 12px;">
+              <div style="width:24px; height:24px; border-radius:50%; background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; color:var(--text-muted);">${i+1}</div>
+              <div>
+                <div style="font-weight:700; font-size:14px; color:var(--text);">${p.name}</div>
+                <div style="font-size:11px; color:var(--text-muted);">${p.team}</div>
+              </div>
+            </div>
+            <div style="font-weight:900; font-size:16px; color:var(--primary);">${p[statKey]} <span style="font-size:10px; font-weight:600; color:var(--text-muted);">${statLabel}</span></div>
+          </div>
+        `).join('');
+      };
+
+      container.innerHTML = `
+        <div style="flex: 1; min-width: 300px; background:var(--bg-panel); border-radius:12px; border:1px solid rgba(255,255,255,0.08); padding:20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 16px;">
+            <div style="font-size:18px;">🏏</div>
+            <h3 style="margin:0; font-family:'Playfair Display',serif; font-size:18px; color:#fff;">Top Run Scorers</h3>
+          </div>
+          ${renderPlayerRows(topRunScorers, 'runs', 'RUNS')}
+        </div>
+        <div style="flex: 1; min-width: 300px; background:var(--bg-panel); border-radius:12px; border:1px solid rgba(255,255,255,0.08); padding:20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 16px;">
+            <div style="font-size:18px;">🎯</div>
+            <h3 style="margin:0; font-family:'Playfair Display',serif; font-size:18px; color:#fff;">Top Wicket Takers</h3>
+          </div>
+          ${renderPlayerRows(topWicketTakers, 'wickets', 'WKT')}
+        </div>
+      `;
+    }
+
+    function showMatchSummary(index) {
+      if (!window.currentRenderedMatches) return;
+      const match = window.currentRenderedMatches[index];
+      if (!match) return;
+
+      const container = document.getElementById('public-match-summary-content');
+      container.innerHTML = '';
+      
+      const title = document.createElement('div');
+      title.style.fontWeight = 'bold';
+      title.style.fontSize = '18px';
+      title.style.marginBottom = '10px';
+      title.style.textAlign = 'center';
+      title.innerText = `${match.teamA} vs ${match.teamB}`;
+      container.appendChild(title);
+      
+      if (match.sportType === 'football' && match.details) {
+        container.innerHTML += `
+          <div style="display:flex; justify-content:space-around; background:rgba(255,255,255,0.05); padding:20px; border-radius:12px;">
+            <div style="text-align:center;">
+              <h4 style="color:#10b981; margin:0 0 10px 0;">${match.teamA}</h4>
+              <div style="font-size:2rem; font-weight:900;">${match.details.teamAGoals}</div>
+              <div style="font-size:0.85rem; color:#94a3b8; margin-top:8px;">🟨 ${match.details.teamAYellows || 0} | 🟥 ${match.details.teamAReds || 0}</div>
+            </div>
+            <div style="font-size:2rem; font-weight:900; color:#475569; align-self:center;">-</div>
+            <div style="text-align:center;">
+              <h4 style="color:#f59e0b; margin:0 0 10px 0;">${match.teamB}</h4>
+              <div style="font-size:2rem; font-weight:900;">${match.details.teamBGoals}</div>
+              <div style="font-size:0.85rem; color:#94a3b8; margin-top:8px;">🟨 ${match.details.teamBYellows || 0} | 🟥 ${match.details.teamBReds || 0}</div>
+            </div>
+          </div>
+        `;
+      } else if (!match.matchPlayerStats || Object.keys(match.matchPlayerStats).length === 0) {
+        container.innerHTML += '<p style="text-align:center; font-size:14px; color:#94a3b8; padding:20px;">No detailed player stats recorded for this match.</p>';
+      } else {
+        const unifiedTeams = [];
+        if (currentState.sportCustomTeams) unifiedTeams.push(...JSON.parse(JSON.stringify(currentState.sportCustomTeams)));
+        
+        const rawPubTeams = (currentState.participants && currentState.participants.length > 0) 
+                            ? currentState.participants 
+                            : (currentState.sportPubTeams || []);
+                            
+        rawPubTeams.forEach(pt => {
+          let players = [];
+          if (pt.formAnswers && pt.formAnswers['Squad Players']) {
+            try { players = JSON.parse(pt.formAnswers['Squad Players']); } catch(e) {}
+          } else if (pt.formAnswers && pt.formAnswers['Player List (comma separated)']) {
+            const listStr = pt.formAnswers['Player List (comma separated)'];
+            players = listStr.split(',').map((n, i) => ({ id: pt.id + '_p_' + i, name: n.trim(), role: 'Player' })).filter(p => p.name);
+          }
+          if (players.length === 0 && pt.players) players = pt.players;
+          players.forEach((pl, i) => { if (!pl.id) pl.id = pt.id + '_p_' + i; });
+
+          unifiedTeams.push({
+            id: pt.id,
+            name: (pt.formAnswers && pt.formAnswers['Team / Club Name']) || pt.name,
+            players: players
+          });
+        });
+        
+        unifiedTeams.forEach((t, tIdx) => {
+          if (!t.id) t.id = 'team_' + tIdx + '_' + Date.now();
+          if (!t.players || t.players.length === 0) {
+            t.players = [];
+            for (let i = 1; i <= 11; i++) {
+              t.players.push({ id: t.id + '_p_' + i, name: 'Player ' + i });
+            }
+          } else {
+            t.players.forEach((pl, i) => {
+              if (!pl.id) pl.id = t.id + '_p_' + i;
+            });
+          }
+        });
+
+        const players = [];
+        for (const [playerId, stats] of Object.entries(match.matchPlayerStats)) {
+          let playerName = "Unknown Player";
+          let teamName = "Unknown Team";
+          
+          for (const team of unifiedTeams) {
+            const p = team.players && team.players.find(pl => String(pl.id) === String(playerId));
+            if (p) {
+              playerName = p.name || playerName;
+              teamName = team.name;
+              break;
+            }
+          }
+          
+          // Fallback if team name wasn't resolved
+          if (teamName === "Unknown Team") {
+            teamName = match.teamA || "Team A";
+          }
+          
+          players.push({ 
+            name: playerName, 
+            team: teamName,
+            runs: stats.runs || 0, 
+            wickets: stats.wickets || 0,
+            ballsFaced: stats.ballsFaced || 0,
+            fours: stats.fours || 0,
+            sixes: stats.sixes || 0,
+            ballsBowled: stats.ballsBowled || 0,
+            runsConceded: stats.runsConceded || 0
+          });
+        }
+        
+        // Group by team
+        const teamsPresent = [...new Set(players.map(p => p.team))];
+        
+        teamsPresent.forEach(teamName => {
+          const teamPlayers = players.filter(p => p.team === teamName);
+          const batters = teamPlayers.filter(p => p.runs > 0 || p.ballsFaced > 0).sort((a, b) => b.runs - a.runs);
+          const bowlers = teamPlayers.filter(p => p.ballsBowled > 0).sort((a, b) => b.wickets - a.wickets);
+          
+          if (batters.length === 0 && bowlers.length === 0) return;
+
+          let teamHTML = `<div style="margin-top:20px; padding:15px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px;">`;
+          teamHTML += `<h4 style="margin:0 0 15px 0; color:#38bdf8; font-size:16px; text-transform:uppercase; letter-spacing:1px;">🛡️ ${teamName}</h4>`;
+          
+          if (batters.length > 0) {
+            teamHTML += `<div style="font-weight:bold; font-size:13px; margin-bottom:8px; color:#94a3b8; letter-spacing:1px;">🏏 BATTING</div>`;
+            teamHTML += `
+              <table class="public-score-table">
+                <tr>
+                  <th>Batter</th>
+                  <th style="text-align:right;">R</th>
+                  <th style="text-align:right;">B</th>
+                  <th style="text-align:right;">4s</th>
+                  <th style="text-align:right;">6s</th>
+                  <th style="text-align:right;">SR</th>
+                </tr>
+            `;
+            batters.forEach(p => {
+              const sr = p.ballsFaced > 0 ? ((p.runs / p.ballsFaced) * 100).toFixed(1) : "0.0";
+              teamHTML += `
+                <tr>
+                  <td style="font-size:13px;">${p.name}</td>
+                  <td style="text-align:right; font-weight:bold; font-size:13px;">${p.runs}</td>
+                  <td style="text-align:right; font-size:13px;">${p.ballsFaced}</td>
+                  <td style="text-align:right; font-size:13px;">${p.fours}</td>
+                  <td style="text-align:right; font-size:13px;">${p.sixes}</td>
+                  <td style="text-align:right; font-size:13px;">${sr}</td>
+                </tr>
+              `;
+            });
+            teamHTML += `</table>`;
+          }
+          
+          if (bowlers.length > 0) {
+            teamHTML += `<div style="font-weight:bold; font-size:13px; margin-bottom:8px; margin-top:20px; color:#94a3b8; letter-spacing:1px;">🎯 BOWLING</div>`;
+            teamHTML += `
+              <table class="public-score-table">
+                <tr>
+                  <th>Bowler</th>
+                  <th style="text-align:right;">O</th>
+                  <th style="text-align:right;">M</th>
+                  <th style="text-align:right;">R</th>
+                  <th style="text-align:right;">W</th>
+                  <th style="text-align:right;">Econ</th>
+                </tr>
+            `;
+            bowlers.forEach(p => {
+              const overs = Math.floor(p.ballsBowled / 6) + (p.ballsBowled % 6) / 10;
+              const econ = p.ballsBowled > 0 ? (p.runsConceded / (p.ballsBowled / 6)).toFixed(1) : "0.0";
+              teamHTML += `
+                <tr>
+                  <td style="font-size:13px;">${p.name}</td>
+                  <td style="text-align:right; font-size:13px;">${overs}</td>
+                  <td style="text-align:right; font-size:13px;">0</td>
+                  <td style="text-align:right; font-size:13px;">${p.runsConceded}</td>
+                  <td style="text-align:right; font-weight:bold; font-size:13px; color:#ef4444;">${p.wickets}</td>
+                  <td style="text-align:right; font-size:13px;">${econ}</td>
+                </tr>
+              `;
+            });
+            teamHTML += `</table>`;
+          }
+          
+          teamHTML += `</div>`;
+          container.innerHTML += teamHTML;
+        });
+
+        if (match.matchPlayerStats && match.extrasBreakdown) {
+          const ex = match.extrasBreakdown;
+          const totalEx = (ex.WD || 0) + (ex.NB || 0) + (ex.B || 0) + (ex.LB || 0);
+          if (totalEx > 0) {
+            container.innerHTML += `<div style="font-size:13px; margin-top:15px; padding:15px; background:rgba(251,146,60,0.1); border-radius:8px; border:1px solid rgba(251,146,60,0.2); color:#fb923c; font-weight:bold;">
+              Extras: ${totalEx} (WD: ${ex.WD || 0}, NB: ${ex.NB || 0}, B: ${ex.B || 0}, LB: ${ex.LB || 0})
+            </div>`;
+          }
+        }
+      }
+      
+      document.getElementById('public-match-summary-modal').style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('public-match-summary-modal').style.display = 'none';
+    }
+  </script>
+</body>
+</html>
