@@ -7681,6 +7681,10 @@ function removeFormField(i){
 }
 function previewForm(){ renderFormPreview(); toast('Preview updated'); }
 async function saveForm() {
+  // Show saving indicator on button
+  const saveBtn = document.querySelector('[onclick="saveForm()"]');
+  if (saveBtn) { saveBtn.textContent = '⏳ Saving...'; saveBtn.disabled = true; }
+
   const s = syncEngine.getData();
   const evIdx = (s.events || []).findIndex(e => String(e.id) === String(activeEventId));
   let dbSuccess = true;
@@ -7699,11 +7703,23 @@ async function saveForm() {
     return newState;
   });
   await syncAll(); // Force push to sync_state to prevent data loss on reload
-  broadcastControlsToPublic();
+  await broadcastControlsToPublic(); // Await broadcast AFTER sync completes so all devices see the updated form globally
+
+  // Restore button with LIVE indicator
+  if (saveBtn) {
+    saveBtn.textContent = '🌐 Saved & LIVE';
+    saveBtn.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
+    saveBtn.disabled = false;
+    setTimeout(() => {
+      saveBtn.textContent = 'Save Form';
+      saveBtn.style.background = '';
+    }, 3000);
+  }
+
   if (dbSuccess) {
-    toast('Form configuration saved successfully!');
+    toast('🌐 Form saved & now LIVE globally on all devices!');
   } else {
-    toast('✅ Form configuration saved to sync state (DB sync skipped)');
+    toast('✅ Form saved to sync state — will sync to DB when online');
   }
 }
 
