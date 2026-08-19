@@ -187,7 +187,7 @@
 </div>
 
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=109"></script>
+<script src="lib/localSync-v4.js?v=114"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -860,22 +860,15 @@ async function addMenuItem() {
   }
 
   const file = fileInput.files[0];
-  const formData = new FormData();
-  formData.append('image', file);
-
-  toast('📸 Uploading photo to database...');
+  toast('📸 Uploading photo to cloud storage...');
 
   let imageUrl = '';
   try {
-    const res = await fetch('/api/menu/upload', {
-      method: 'POST',
-      body: formData
-    });
-    const result = await res.json();
-    if (result.status === 'success') {
-      imageUrl = result.imageUrl;
-    } else {
-      throw new Error(result.message || 'Upload failed');
+    if (window.syncEngine && window.syncEngine.uploadFile) {
+      imageUrl = await window.syncEngine.uploadFile(file, 'menu/');
+    }
+    if (!imageUrl) {
+      throw new Error('Cloud storage upload failed.');
     }
   } catch (err) {
     console.error('[Upload] Failed to upload menu image:', err);
