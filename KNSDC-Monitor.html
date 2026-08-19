@@ -5920,10 +5920,7 @@ function broadcastControlsToPublic() {
     location: ev.location || '',
     category: ev.type || 'Standard',
     roundSchedules: ev.roundSchedules || {},
-    // FIX: Prioritize eventFormFields (freshly saved by Monitor) over stale ev.formFields
-    formFields: (s.eventFormFields && s.eventFormFields[ev.id] && s.eventFormFields[ev.id].length > 0)
-      ? s.eventFormFields[ev.id]
-      : (ev.formFields || []),
+    formFields: ev.formFields || [],
     publicReg: ev.switchStates?.publicReg !== false,
     stagePreview: ev.switchStates?.stagePreview !== false,
     resultPublic: ev.switchStates?.resultPublic !== false,
@@ -5934,9 +5931,7 @@ function broadcastControlsToPublic() {
   broadcast('CONTROL_UPDATE', {
     type: 'full-state',
     allSwitches: switchStates,
-    upcomingEvents: evData,
-    // Also broadcast eventFormFields map so participants can update directly
-    eventFormFields: s.eventFormFields || {}
+    upcomingEvents: evData
   });
 }
 
@@ -7686,17 +7681,21 @@ function removeFormField(i){
 }
 function previewForm(){ renderFormPreview(); toast('Preview updated'); }
 async function saveForm() {
-  // Show saving indicator on button
+  // Visual feedback: saving state
   const saveBtn = document.querySelector('[onclick="saveForm()"]');
   if (saveBtn) { saveBtn.textContent = '⏳ Saving...'; saveBtn.disabled = true; }
 
   const s = syncEngine.getData();
   const evIdx = (s.events || []).findIndex(e => String(e.id) === String(activeEventId));
   let dbSuccess = true;
+
+  // 1. Save to Supabase DB
   if (evIdx !== -1) {
     const ev = s.events[evIdx];
     dbSuccess = await syncEngine.updateEvent(activeEventId, { ...ev, formFields: formFields });
   }
+
+  // 2. Update local sync state (eventFormFields + events)
   syncEngine.setData(state => {
     const newState = { ...state };
     const idx = newState.events.findIndex(e => String(e.id) === String(activeEventId));
@@ -7707,10 +7706,15 @@ async function saveForm() {
     if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
     return newState;
   });
-  await syncAll(); // Force push to sync_state to prevent data loss on reload
-  await broadcastControlsToPublic(); // Await broadcast AFTER sync completes so all devices see the updated form globally
 
-  // Restore button with LIVE indicator
+  // 3. Force push sync_state to Supabase
+  await syncAll();
+
+  // 4. Broadcast form fields to ALL connected devices via Supabase Realtime (the safe way)
+  const freshState = syncEngine.getData();
+  await syncEngine.broadcastFormUpdate(freshState.eventFormFields || {});
+
+  // 5. Restore button with LIVE indicator
   if (saveBtn) {
     saveBtn.textContent = '🌐 Saved & LIVE';
     saveBtn.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
