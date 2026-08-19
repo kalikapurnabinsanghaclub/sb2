@@ -187,7 +187,7 @@
 </div>
 
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=114"></script>
+<script src="lib/localSync-v4.js?v=115"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -860,39 +860,37 @@ async function addMenuItem() {
   }
 
   const file = fileInput.files[0];
-  toast('📸 Uploading photo to cloud storage...');
+  toast('📸 Processing photo...');
 
-  let imageUrl = '';
-  try {
-    if (window.syncEngine && window.syncEngine.uploadFile) {
-      imageUrl = await window.syncEngine.uploadFile(file, 'menu/');
-    }
-    if (!imageUrl) {
-      throw new Error('Cloud storage upload failed.');
-    }
-  } catch (err) {
-    console.error('[Upload] Failed to upload menu image:', err);
-    return alert('Failed to upload image: ' + err.message);
-  }
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const base64Image = e.target.result;
+    const id = 'f' + Date.now();
 
-  const id = 'f' + Date.now();
-  window.syncEngine.setData(s => {
-    const foodMenu = s.foodMenu || [
-      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
-      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
-      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
-      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
-    ];
-    foodMenu.push({ id, name, price, image: imageUrl });
-    return { ...s, foodMenu };
-  });
+    window.syncEngine.setData(s => {
+      const foodMenu = s.foodMenu || [
+        { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+        { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+        { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+        { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+      ];
+      foodMenu.push({ id, name, price, image: base64Image });
+      return { ...s, foodMenu };
+    });
 
-  fileInput.value = '';
-  document.getElementById('new-menu-name').value = '';
-  document.getElementById('new-menu-price').value = '';
+    fileInput.value = '';
+    document.getElementById('new-menu-name').value = '';
+    document.getElementById('new-menu-price').value = '';
 
-  toast('✅ Menu item added successfully!');
-  await window.syncEngine.forceSaveStateToSupabase();
+    toast('✅ Menu photo saved to MongoDB database!');
+    await window.syncEngine.forceSaveStateToSupabase();
+  };
+
+  reader.onerror = function() {
+    alert('Failed to read photo file.');
+  };
+
+  reader.readAsDataURL(file);
 }
 
 async function editMenuPrice(id, currentPrice) {

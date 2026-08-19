@@ -81,9 +81,17 @@ function loadState() {
   };
 }
 
-function saveState(state) {
+async function saveState(state) {
   try {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+    if (db && state.foodMenu) {
+      const collection = db.collection('menu_items');
+      await collection.deleteMany({});
+      if (state.foodMenu.length > 0) {
+        await collection.insertMany(state.foodMenu);
+      }
+      console.log('[MongoDB] Synced menu items to Atlas cluster!');
+    }
   } catch (e) {
     console.error('Error saving state file:', e);
   }
