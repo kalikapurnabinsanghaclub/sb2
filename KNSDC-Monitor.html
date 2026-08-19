@@ -7522,13 +7522,55 @@ async function downloadRegs(format = 'excel') {
 }
 
 // ── FORM BUILDER ──────────────────────────
+function moveFormField(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= formFields.length) return;
+  const tmp = formFields[i];
+  formFields[i] = formFields[j];
+  formFields[j] = tmp;
+  syncAll();
+  renderFormBuilder();
+}
+
 function renderFormBuilder(){
   const hasCat = formFields.some(f => f.type === 'category');
   const hasVen = formFields.some(f => f.type === 'venue');
+  const total = formFields.length;
 
   let html = formFields.map((f,i)=>`
-    <div class="fb-field">
-      <span class="fb-drag">⠿</span>
+    <div class="fb-field" style="position:relative;">
+
+      <!-- Up / Down move buttons -->
+      <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px;flex-shrink:0;">
+        <button
+          onclick="moveFormField(${i},-1)"
+          ${i===0?'disabled':''}
+          style="
+            width:20px;height:20px;padding:0;
+            border:1px solid var(--border);
+            border-radius:4px;
+            background:${i===0?'var(--surface2)':'var(--surface)'};
+            color:${i===0?'var(--text-muted)':'var(--blue)'};
+            cursor:${i===0?'not-allowed':'pointer'};
+            font-size:11px; line-height:1;
+            display:flex;align-items:center;justify-content:center;
+          " title="Move Up">▲</button>
+        <button
+          onclick="moveFormField(${i},1)"
+          ${i===total-1?'disabled':''}
+          style="
+            width:20px;height:20px;padding:0;
+            border:1px solid var(--border);
+            border-radius:4px;
+            background:${i===total-1?'var(--surface2)':'var(--surface)'};
+            color:${i===total-1?'var(--text-muted)':'var(--blue)'};
+            cursor:${i===total-1?'not-allowed':'pointer'};
+            font-size:11px; line-height:1;
+            display:flex;align-items:center;justify-content:center;
+          " title="Move Down">▼</button>
+      </div>
+
+      <span class="fb-drag" title="Drag to reorder">⠿</span>
       <div class="fb-field-body">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <span class="fb-type-badge">${f.type}</span>
@@ -7539,8 +7581,8 @@ function renderFormBuilder(){
         ${f.type==='tc'?`<div style="font-size:9px;color:var(--text-muted);font-style:italic">${(f.tcText||'').substring(0,50)}…</div>`:''}
       </div>
       <div style="display:flex;gap:4px;margin-left:auto">
-        <button class="btn btn-ghost btn-xs" onclick="editFormField(${i})">✏️</button>
-        <button class="btn btn-danger btn-xs" onclick="removeFormField(${i})">✗</button>
+        <button class="btn btn-ghost btn-xs" onclick="editFormField(${i})" title="Edit field">✏️</button>
+        <button class="btn btn-danger btn-xs" onclick="removeFormField(${i})" title="Delete field">✗</button>
       </div>
     </div>`).join('');
   
