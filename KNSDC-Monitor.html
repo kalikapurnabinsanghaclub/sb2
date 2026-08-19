@@ -5920,7 +5920,10 @@ function broadcastControlsToPublic() {
     location: ev.location || '',
     category: ev.type || 'Standard',
     roundSchedules: ev.roundSchedules || {},
-    formFields: ev.formFields || [],
+    // FIX: Prioritize eventFormFields (freshly saved by Monitor) over stale ev.formFields
+    formFields: (s.eventFormFields && s.eventFormFields[ev.id] && s.eventFormFields[ev.id].length > 0)
+      ? s.eventFormFields[ev.id]
+      : (ev.formFields || []),
     publicReg: ev.switchStates?.publicReg !== false,
     stagePreview: ev.switchStates?.stagePreview !== false,
     resultPublic: ev.switchStates?.resultPublic !== false,
@@ -5931,7 +5934,9 @@ function broadcastControlsToPublic() {
   broadcast('CONTROL_UPDATE', {
     type: 'full-state',
     allSwitches: switchStates,
-    upcomingEvents: evData
+    upcomingEvents: evData,
+    // Also broadcast eventFormFields map so participants can update directly
+    eventFormFields: s.eventFormFields || {}
   });
 }
 
