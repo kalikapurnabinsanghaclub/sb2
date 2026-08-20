@@ -1,8 +1,0 @@
-with open(r"c:\Users\sourav pc\Desktop\kalikapur\KNSDC-Judge.html", "r", encoding="utf-8") as f:
-    lines = f.readlines()
-
-for idx, line in enumerate(lines):
-    if "judges" in line.lower() or "present" in line.lower() or "syncengine" in line.lower():
-        if "push" in line.lower() or "setdata" in line.lower() or "find" in line.lower():
-            safe_line = line.strip().encode('ascii', errors='replace').decode('ascii')
-            print(f"Line {idx+1}: {safe_line}")
