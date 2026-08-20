@@ -4015,7 +4015,7 @@
 
 <div id="toast"></div>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=200"></script>
+<script src="lib/localSync-v4.js?v=210"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
 /* ============================================================== */
@@ -6722,6 +6722,39 @@ function renderApplied(){
   }).join('') || `<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:30px">No registrations found</td></tr>`;
 }
 
+window.formatFormAnswerValue = function(val) {
+  if (!val) return '<span style="color:#94a3b8; font-style:italic;">None</span>';
+  const str = String(val).trim();
+
+  const isImage = str.startsWith('data:image/') ||
+                  str.includes('/api/participant/image/') ||
+                  str.includes('/api/menu/image/') ||
+                  /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(str);
+
+  if (isImage) {
+    return `<div style="margin-top:4px;">
+      <img src="${str}" onclick="openFullImageModal('${str}')" title="Tap to view full screen" style="max-width:180px; max-height:180px; object-fit:cover; border-radius:10px; border:2px solid #3b82f6; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.15);" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'color:red; font-size:11px;\'>⚠️ Image failed to load</span>';">
+      <div style="font-size:10px; color:#64748b; margin-top:2px;">🔍 Tap image to expand full screen</div>
+    </div>`;
+  }
+
+  const isAudio = str.startsWith('data:audio/') || /\.(mp3|wav|ogg|m4a)(\?.*)?$/i.test(str);
+  if (isAudio) {
+    return `<audio controls src="${str}" style="width:100%; max-width:300px; height:36px; margin-top:4px;"></audio>`;
+  }
+
+  const isVideo = str.startsWith('data:video/') || /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(str);
+  if (isVideo) {
+    return `<video controls src="${str}" style="max-width:100%; max-height:200px; border-radius:8px; margin-top:4px;"></video>`;
+  }
+
+  if (str.startsWith('http://') || str.startsWith('https://')) {
+    return `<a href="${str}" target="_blank" style="color:#2563eb; font-weight:bold; font-size:12px; text-decoration:underline;">🔗 Open External Link</a>`;
+  }
+
+  return str;
+};
+
 function viewFormAnswers(id) {
   const p = participants.find(x => x.id === id);
   if (!p || !p.formAnswers) return;
@@ -6730,9 +6763,10 @@ function viewFormAnswers(id) {
   html += `<h3 style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:5px;">Form Submission: ${p.name}</h3>`;
   
   Object.entries(p.formAnswers).forEach(([label, value]) => {
-    html += `<div style="margin-bottom:6px;">
-      <div style="font-size:8px; color:#666; text-transform:uppercase; font-weight:800;">${label}</div>
-      <div style="font-weight:600; color:#1a237e; margin-top:2px;">${Array.isArray(value) ? value.join(', ') : value}</div>
+    const formattedVal = Array.isArray(value) ? value.join(', ') : window.formatFormAnswerValue(value);
+    html += `<div style="margin-bottom:12px; background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0;">
+      <div style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:800;">${label}</div>
+      <div style="font-weight:600; color:#1a237e; margin-top:2px;">${formattedVal}</div>
     </div>`;
   });
   html += `</div>`;
@@ -6844,7 +6878,7 @@ function openEditReg(id){
       if (f.type === 'photo' || labelUpper.includes('PHOTO') || labelUpper.includes('PICTURE') || labelUpper.includes('IMAGE')) acceptStr = 'image/*';
       else if (f.type === 'audio' || f.type === 'audio_link_or_file' || labelUpper.includes('AUDIO') || labelUpper.includes('SOUND')) acceptStr = 'audio/*';
       
-      const isImg = val && val.startsWith('data:image');
+      const isImg = val && (val.startsWith('data:image') || val.includes('/api/participant/image/') || /\.(jpg|jpeg|png|gif|webp|svg)/i.test(val) || f.type === 'photo' || labelUpper.includes('PHOTO') || labelUpper.includes('PICTURE') || labelUpper.includes('IMAGE'));
       const isAudio = val && val.startsWith('data:audio');
       
       let previewHtml = '';
