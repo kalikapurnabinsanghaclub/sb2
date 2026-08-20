@@ -688,7 +688,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=210"></script>
+<script src="lib/localSync-v4.js?v=220"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -1641,9 +1641,23 @@ function renderDashboard() {
     else if (f.type === 'venue') val = p.venueId || '';
     else {
       // Find in formAnswers (case-insensitive)
-      const foundKey = ansKeys.find(k => k.toLowerCase() === f.label.toLowerCase() || k.toLowerCase().includes(f.label.toLowerCase()));
+      const foundKey = ansKeys.find(k => k.toLowerCase() === f.label.toLowerCase() || k.toLowerCase().includes(f.label.toLowerCase()) || f.label.toLowerCase().includes(k.toLowerCase()));
       if (foundKey) val = ans[foundKey];
       else val = '';
+    }
+
+    const isImgField = f.type === 'photo' || /photo|image|pic|picture|selfie|headshot/i.test(f.label || '');
+    if (!val && isImgField) {
+      if (p.photo) val = p.photo;
+      else if (p.selfieImage) val = p.selfieImage;
+      else if (ans) {
+        for (const [k, v] of Object.entries(ans)) {
+          if (typeof v === 'string' && (v.startsWith('data:image/') || v.includes('/api/participant/image/') || /\.(jpg|jpeg|png|gif|webp|svg)/i.test(v))) {
+            val = v;
+            break;
+          }
+        }
+      }
     }
 
     html += `<div class="fg">
@@ -1714,7 +1728,7 @@ function renderDashboard() {
         <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
         <input type="hidden" id="${fieldId}" value="${val}">
         ${isImgField 
-          ? `<div style="margin-top:5px;"><img id="${fieldId}-preview" src="${val}" onclick="openFullImageModal('${val}')" title="Tap to view full screen" style="max-width:160px; max-height:160px; object-fit:cover; border-radius:10px; border:2px solid var(--primary); display:${val ? 'block' : 'none'}; box-shadow:0 4px 12px rgba(0,0,0,0.15); cursor:pointer;"><div style="font-size:10px; color:#64748b; margin-top:2px;">🔍 Tap image to view full screen</div></div>` 
+          ? `<div style="margin-top:5px;"><img id="${fieldId}-preview" src="${val}" onclick="event.preventDefault(); event.stopPropagation(); openFullImageModal(this.src, event)" title="Tap to view full screen" style="max-width:160px; max-height:160px; object-fit:cover; border-radius:10px; border:2px solid var(--primary); display:${val ? 'block' : 'none'}; box-shadow:0 4px 12px rgba(0,0,0,0.15); cursor:pointer;"><div style="font-size:10px; color:#64748b; margin-top:2px;">🔍 Tap image to view full screen</div></div>` 
           : `<div id="${fieldId}-preview-wrap" style="font-size:12px;color:green;margin-top:4px;display:${val ? 'block' : 'none'};">File uploaded: <a id="${fieldId}-preview-link" href="${val}" target="_blank">View File</a></div>`
         }
       </div>`;
@@ -3200,16 +3214,21 @@ function getFoodMenu() {
 }
 
 
-window.openFullImageModal = function(src) {
+window.openFullImageModal = function(src, evt) {
+  if (evt) {
+    evt.preventDefault();
+    evt.stopPropagation();
+  }
+  if (!src) return;
   let modal = document.getElementById('full-image-modal');
   let imgTarget = document.getElementById('full-image-target');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'full-image-modal';
-    modal.style.cssText = 'display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.92); align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(5px);';
-    modal.onclick = function() { window.closeFullImageModal(); };
+    modal.style.cssText = 'display:none; position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.92); align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(5px);';
+    modal.onclick = function(e) { if(e){ e.preventDefault(); e.stopPropagation(); } window.closeFullImageModal(); };
     modal.innerHTML = `
-      <span style="position:absolute; top:20px; right:25px; color:#fff; font-size:36px; font-weight:bold; cursor:pointer; text-shadow:0 2px 10px rgba(0,0,0,0.5);" onclick="window.closeFullImageModal()">&times;</span>
+      <span style="position:absolute; top:20px; right:25px; color:#fff; font-size:36px; font-weight:bold; cursor:pointer; text-shadow:0 2px 10px rgba(0,0,0,0.5);" onclick="event.stopPropagation(); window.closeFullImageModal()">&times;</span>
       <img id="full-image-target" src="" style="max-width:92vw; max-height:85vh; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.8); object-fit:contain; border:2px solid rgba(255,255,255,0.2);" onclick="event.stopPropagation()">
     `;
     document.body.appendChild(modal);
