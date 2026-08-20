@@ -146,10 +146,25 @@
         <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No pending orders. Good job!</div>
       </div>
     </div>
+
     <div class="section-card">
-      <h2 class="section-title" style="color: var(--green);">🍳 Preparing &amp; Completed</h2>
-      <div id="completed-food-orders">
-        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No processed orders yet.</div>
+      <h2 class="section-title" style="color: var(--blue);">🍳 Preparing Orders in Kitchen</h2>
+      <div id="preparing-food-orders">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active orders in kitchen.</div>
+      </div>
+    </div>
+
+    <!-- COMPLETED FOOD ORDERS (COLLAPSIBLE / TAP TO VIEW) -->
+    <div class="section-card" style="grid-column: 1 / -1; margin-top: 10px;">
+      <button type="button" onclick="toggleCompletedFoodOrders()" style="width:100%; background:#f8fafc; border:1px solid #cbd5e1; padding:12px 16px; border-radius:10px; font-weight:800; font-size:14px; color:var(--green); display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+        <span>📜 View Completed Food Orders (<span id="completed-food-count">0</span>)</span>
+        <span id="completed-food-arrow">▼</span>
+      </button>
+
+      <div id="completed-food-orders-content" style="display:none; margin-top:15px;">
+        <div id="completed-food-orders">
+          <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No completed orders yet.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -201,7 +216,7 @@
 </div>
 
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=150"></script>
+<script src="lib/localSync-v4.js?v=155"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -267,6 +282,16 @@ async function handleLogin(e) {
     }
   }
 }
+
+window.toggleCompletedFoodOrders = function() {
+  const content = document.getElementById('completed-food-orders-content');
+  const arrow = document.getElementById('completed-food-arrow');
+  if (content) {
+    const isHidden = content.style.display === 'none' || content.style.display === '';
+    content.style.display = isHidden ? 'block' : 'none';
+    if (arrow) arrow.innerText = isHidden ? '▲' : '▼';
+  }
+};
 
 window.switchPartnerTab = function(tab) {
   const foodPanel = document.getElementById('food-delivery-panel');
@@ -454,7 +479,9 @@ function renderData() {
 
   // --- Food Data Logic ---
   const pendingContainer = document.getElementById('pending-food-orders');
+  const preparingContainer = document.getElementById('preparing-food-orders');
   const completedContainer = document.getElementById('completed-food-orders');
+  const completedCountEl = document.getElementById('completed-food-count');
   const menuContainer = document.getElementById('menu-management-list');
 
     // Menu rendering
@@ -487,7 +514,8 @@ function renderData() {
     }).join('');
 
     const pending = orders.filter(o => o.status === 'pending');
-    const completed = orders.filter(o => o.status === 'preparing' || o.status === 'ready_for_pickup' || o.status === 'out_for_delivery' || o.status === 'delivered' || o.status === 'rejected');
+    const preparing = orders.filter(o => o.status === 'preparing' || o.status === 'ready_for_pickup' || o.status === 'out_for_delivery');
+    const completed = orders.filter(o => o.status === 'delivered' || o.status === 'rejected');
 
     let totalFoodSales = 0;
     completed.forEach(o => {
@@ -523,46 +551,74 @@ function renderData() {
       `).join('');
     }
 
-    if (completed.length === 0) {
-      completedContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No processed orders yet.</div>`;
-    } else {
-      completedContainer.innerHTML = completed.map(o => {
-        const isPreparing = o.status === 'preparing';
-        const isReadyForPickup = o.status === 'ready_for_pickup';
-        const isOutForDelivery = o.status === 'out_for_delivery';
-        
-        let actionHtml = '';
-        if (isPreparing) {
-          actionHtml = `
-            <button onclick="updateFoodStatus('${o.id}', 'ready_for_pickup')" class="action-btn" style="background:var(--primary); color:white;">🏍️ Ready for Pickup (Assign Transport)</button>
-            <button onclick="updateFoodStatus('${o.id}', 'delivered')" class="action-btn" style="background:var(--green); color:white; margin-top:5px;">📦 Mark as Delivered (Self)</button>
-          `;
-        } else if (isReadyForPickup) {
-          actionHtml = `<div style="color:var(--primary); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">⏳ Waiting for Delivery Partner...</div>`;
-        } else if (isOutForDelivery) {
-          actionHtml = `<div style="color:var(--blue); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">🏍️ Out for delivery by ${o.deliveryPartnerName || 'Partner'}</div>`;
-        } else if (o.status === 'delivered') {
-          actionHtml = `<div style="color:var(--green); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">✅ Delivered Successfully</div>`;
-        }
+    // Render Preparing Orders in Kitchen
+    if (preparingContainer) {
+      if (preparing.length === 0) {
+        preparingContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active orders in kitchen.</div>`;
+      } else {
+        preparingContainer.innerHTML = preparing.map(o => {
+          const isPreparing = o.status === 'preparing';
+          const isReadyForPickup = o.status === 'ready_for_pickup';
+          const isOutForDelivery = o.status === 'out_for_delivery';
+          
+          let actionHtml = '';
+          if (isPreparing) {
+            actionHtml = `
+              <button onclick="updateFoodStatus('${o.id}', 'ready_for_pickup')" class="action-btn" style="background:var(--primary); color:white;">🏍️ Ready for Pickup (Assign Transport)</button>
+              <button onclick="updateFoodStatus('${o.id}', 'delivered')" class="action-btn" style="background:var(--green); color:white; margin-top:5px;">📦 Mark as Delivered (Self)</button>
+            `;
+          } else if (isReadyForPickup) {
+            actionHtml = `<div style="color:var(--primary); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">⏳ Waiting for Delivery Partner...</div>`;
+          } else if (isOutForDelivery) {
+            actionHtml = `<div style="color:var(--blue); font-size:12px; font-weight:bold; text-align:center; margin-top:10px;">🏍️ Out for delivery by ${o.deliveryPartnerName || 'Partner'}</div>`;
+          }
 
-        return `
-          <div class="order-card" style="border-color:${isPreparing ? 'var(--blue)' : 'var(--green)'};">
-            <div class="order-header">
-              <span class="order-id">${o.id}</span>
-              <span class="badge badge-${o.status}">${o.status}</span>
+          return `
+            <div class="order-card" style="border-color:var(--blue); margin-bottom:10px;">
+              <div class="order-header">
+                <span class="order-id">${o.id}</span>
+                <span class="badge badge-${o.status}">${o.status}</span>
+              </div>
+              <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">Seat/Lounge: ${o.location}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <span><strong>Customer:</strong> ${o.participantName} ${o.participantPhone ? `(${o.participantPhone})` : ''}</span>
+                ${o.participantPhone ? `<a href="tel:${o.participantPhone}" style="background:var(--green); color:white; padding:2px 8px; border-radius:4px; text-decoration:none; font-weight:bold; font-size:11px;">📞 Call Customer</a>` : ''}
+              </div>
+              <div style="font-size:12px; color:var(--text-muted);">
+                <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+              </div>
+              ${actionHtml}
             </div>
-            <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">Seat/Lounge: ${o.location}</div>
-            <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
-            <span><strong>Customer:</strong> ${o.participantName} ${o.participantPhone ? `(${o.participantPhone})` : ''}</span>
-            ${o.participantPhone ? `<a href="tel:${o.participantPhone}" style="background:var(--green); color:white; padding:2px 8px; border-radius:4px; text-decoration:none; font-weight:bold; font-size:11px;">📞 Call Customer</a>` : ''}
-          </div>
-            <div style="font-size:12px; color:var(--text-muted);">
-              <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+          `;
+        }).join('');
+      }
+    }
+
+    // Render Completed Food Orders (Phone automatically disappears upon delivery)
+    if (completedContainer) {
+      if (completedCountEl) completedCountEl.innerText = completed.length;
+      if (completed.length === 0) {
+        completedContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No completed orders yet.</div>`;
+      } else {
+        completedContainer.innerHTML = completed.map(o => {
+          const isDelivered = o.status === 'delivered';
+          return `
+            <div class="order-card" style="border-color:${isDelivered ? 'var(--green)' : 'var(--red)'}; margin-bottom:10px;">
+              <div class="order-header">
+                <span class="order-id">${o.id}</span>
+                <span class="badge badge-${o.status}">${isDelivered ? '✅ Delivered' : '❌ Rejected'}</span>
+              </div>
+              <div style="font-size:14px; font-weight:bold; margin-bottom:8px;">Seat/Lounge: ${o.location}</div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">
+                <strong>Customer:</strong> ${o.participantName} <span style="font-size:11px; color:#94a3b8; font-style:italic;">(🔒 Phone hidden after delivery)</span>
+              </div>
+              <div style="font-size:12px; color:var(--text-muted);">
+                <strong>Items:</strong> ${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+              </div>
             </div>
-            ${actionHtml}
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
+      }
     }
 
     // --- Ride & Transport Data Logic ---
