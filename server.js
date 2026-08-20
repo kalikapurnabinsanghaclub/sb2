@@ -84,13 +84,23 @@ function loadState() {
 async function saveState(state) {
   try {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
-    if (db && state.foodMenu) {
-      const collection = db.collection('menu_items');
-      await collection.deleteMany({});
-      if (state.foodMenu.length > 0) {
-        await collection.insertMany(state.foodMenu);
+    if (db) {
+      if (state.foodMenu) {
+        const collection = db.collection('menu_items');
+        await collection.deleteMany({});
+        if (state.foodMenu.length > 0) {
+          await collection.insertMany(state.foodMenu);
+        }
+        console.log('[MongoDB] Synced menu items to Atlas cluster!');
       }
-      console.log('[MongoDB] Synced menu items to Atlas cluster!');
+      if (state.participants) {
+        const pCollection = db.collection('participants');
+        await pCollection.deleteMany({});
+        if (state.participants.length > 0) {
+          await pCollection.insertMany(state.participants);
+        }
+        console.log('[MongoDB] Synced participants & images to Atlas cluster!');
+      }
     }
   } catch (e) {
     console.error('Error saving state file:', e);
@@ -131,6 +141,62 @@ app.post('/api/menu/upload', upload.single('image'), async (req, res) => {
   } catch (err) {
     console.error('[Upload] Error storing image in MongoDB:', err);
     res.status(500).json({ status: 'error', message: 'Failed to store image in database.' });
+  }
+});
+
+
+// Participant Image Upload Endpoint (Saves to MongoDB)
+app.post('/api/participant/upload', upload.single('image'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ status: 'error', message: 'No file uploaded.' });
+  }
+
+  if (!db) {
+    return res.status(500).json({ status: 'error', message: 'Database connection not ready.' });
+  }
+
+  try {
+    const imagesCollection = db.collection('participant_images');
+    const doc = {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype,
+      data: req.file.buffer,
+      uploadedAt: new Date()
+    };
+
+    const result = await imagesCollection.insertOne(doc);
+    const imageUrl = `/api/participant/image/${result.insertedId}`;
+    
+    res.json({
+      status: 'success',
+      imageUrl: imageUrl
+    });
+  } catch (err) {
+    console.error('[Upload] Error storing participant image in MongoDB:', err);
+    res.status(500).json({ status: 'error', message: 'Failed to store image in database.' });
+  }
+});
+
+// Participant Image Serving Endpoint (Reads from MongoDB)
+app.get('/api/participant/image/:id', async (req, res) => {
+  if (!db) {
+    return res.status(500).send('Database connection not ready.');
+  }
+
+  try {
+    const imagesCollection = db.collection('participant_images');
+    const imageId = new ObjectId(req.params.id);
+    const imageDoc = await imagesCollection.findOne({ _id: imageId });
+
+    if (!imageDoc) {
+      return res.status(404).send('Image not found.');
+    }
+
+    res.set('Content-Type', imageDoc.contentType);
+    res.send(imageDoc.data.buffer || imageDoc.data);
+  } catch (err) {
+    console.error('[Image API] Error retrieving participant image:', err);
+    res.status(500).send('Error retrieving image from database.');
   }
 });
 

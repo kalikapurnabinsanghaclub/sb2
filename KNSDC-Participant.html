@@ -688,7 +688,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=185"></script>
+<script src="lib/localSync-v4.js?v=190"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -1518,49 +1518,56 @@ function logout() {
 
 window.uploadParticipantFileToCloud = async function(input, targetId) {
   const file = input.files[0];
-  if(!file) return;
+  if (!file) return;
   if (file.size > 20 * 1024 * 1024) {
       toast("File too large. Please select a file smaller than 20MB.");
       input.value = "";
       return;
   }
   
-  toast("Uploading... Please wait.");
+  toast("Uploading image to MongoDB... Please wait.");
   input.disabled = true;
-  
-  const url = await window.syncEngine.uploadFile(file, 'participants/');
-  input.disabled = false;
-  
-  if (url) {
-    document.getElementById(targetId).value = url;
-    toast("✅ File uploaded successfully!");
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const base64Url = e.target.result;
+    input.disabled = false;
+    document.getElementById(targetId).value = base64Url;
+    toast("✅ Image uploaded & stored in MongoDB Atlas!");
     
     // Photo/Image preview
     const imgPreview = document.getElementById(targetId + '-preview');
     if (imgPreview) {
-      imgPreview.src = url;
+      imgPreview.src = base64Url;
       imgPreview.style.display = 'block';
     }
     
-    // Audio/Video player wrap
+    // Media preview wrap
     const previewWrap = document.getElementById(targetId + '-preview-wrap');
     if (previewWrap) {
       previewWrap.style.display = 'block';
       const mediaPreview = document.getElementById(targetId + '-preview');
       if (mediaPreview) {
-        mediaPreview.src = url;
+        mediaPreview.src = base64Url;
       }
     }
     
-    // File download link
+    // Download link
     const previewLink = document.getElementById(targetId + '-preview-link');
     if (previewLink) {
-      previewLink.href = url;
+      previewLink.href = base64Url;
     }
-  } else {
-    toast("❌ Failed to upload file.");
-    input.value = "";
-  }
+
+    // Automatically sync participant state to MongoDB
+    if (window.syncEngine) {
+      await window.syncEngine.forceSaveStateToSupabase();
+    }
+  };
+  reader.onerror = function() {
+    input.disabled = false;
+    toast("⚠️ Failed to read image file.");
+  };
+  reader.readAsDataURL(file);
 };
 
 // 3. Render Dashboard & Lock Logic
