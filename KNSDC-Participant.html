@@ -643,7 +643,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=135"></script>
+<script src="lib/localSync-v4.js?v=140"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -3657,6 +3657,7 @@ window.renderActiveServicesData = function(p) {
         foodList.innerHTML = orders.map(o => {
           let statusBadge = `<span style="color:#f59e0b; font-weight:bold;">Pending</span>`;
           if (o.status === 'preparing') statusBadge = `<span style="color:#3b82f6; font-weight:bold;">🍳 Preparing</span>`;
+          if (o.status === 'ready_for_pickup') statusBadge = `<span style="color:#7c3aed; font-weight:bold;">⏳ Food Prepared - Waiting for Delivery Partner</span>`;
           if (o.status === 'out_for_delivery') statusBadge = `<span style="color:#10b981; font-weight:bold;">🏍️ Out for Delivery</span>`;
           if (o.status === 'delivered') statusBadge = `<span style="color:#10b981; font-weight:bold;">✅ Delivered</span>`;
           if (o.status === 'rejected') statusBadge = `<span style="color:#ef4444; font-weight:bold;">❌ Rejected / Cancelled</span>`;
@@ -3667,13 +3668,21 @@ window.renderActiveServicesData = function(p) {
           const kitchenName = o.partnerName;
           const kitchenPhone = o.partnerPhone;
 
-          if (o.status === 'out_for_delivery' && (riderName || riderPhone)) {
+          if ((o.status === 'out_for_delivery' || o.status === 'delivered') && (riderName || riderPhone)) {
+            // Once assigned to delivery rider, ONLY show Rider phone number! Kitchen phone automatically disappears.
             partnerStr = `
               <div style="font-size:12px; color:#15803d; margin-top: 6px; font-weight: bold; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(16,185,129,0.12); padding: 8px 10px; border-radius: 8px; border:1px solid #10b981;">
                 <span><strong>🏍️ Delivery Rider:</strong> ${riderName || 'Transport Rider'} ${riderPhone ? `(${riderPhone})` : ''}</span>
                 ${riderPhone ? `<a href="tel:${riderPhone}" style="background:#10b981; color:white; padding:4px 10px; border-radius:6px; text-decoration:none; font-weight:bold; font-size:11px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 4px rgba(16,185,129,0.3);">📞 Call Rider</a>` : ''}
               </div>`;
-          } else if (kitchenName || kitchenPhone) {
+          } else if (o.status === 'ready_for_pickup') {
+            // Prep complete, waiting for delivery partner. Kitchen phone automatically disappears.
+            partnerStr = `
+              <div style="font-size:12px; color:#7c3aed; margin-top: 6px; font-weight: bold; background: rgba(124,58,237,0.08); padding: 8px 10px; border-radius: 8px; border:1px solid #7c3aed;">
+                <span><strong>🍳 Prepared by:</strong> ${kitchenName || 'Food Partner'} (Waiting for Rider...)</span>
+              </div>`;
+          } else if (o.status === 'preparing' && (kitchenName || kitchenPhone)) {
+            // Food is being prepared in kitchen. Show kitchen contact details.
             partnerStr = `
               <div style="font-size:12px; color:#0369a1; margin-top: 6px; font-weight: bold; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(2,132,199,0.08); padding: 8px 10px; border-radius: 8px; border:1px solid #0284c7;">
                 <span><strong>🍳 Kitchen Partner:</strong> ${kitchenName || 'Food Partner'} ${kitchenPhone ? `(${kitchenPhone})` : ''}</span>
