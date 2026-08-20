@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KNSDC — Role Ecosystem</title>
+<meta name="description" content="Live ecosystem map showing real-time interactions between Admin, Monitor, Host, Judge and Public roles in KNSDC event management."/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+/* ─── ROOT & RESET ─── */
+:root {
+  --bg:        #030712;
+  --bg2:       #0a0f1e;
+  --surface:   rgba(255,255,255,0.04);
+  --surface2:  rgba(255,255,255,0.07);
+  --border:    rgba(255,255,255,0.08);
+  --border2:   rgba(255,255,255,0.14);
+
+  --admin:   #3b82f6;  --admin-g:  #1d4ed8;   --admin-glow:  rgba(59,130,246,0.35);
+  --monitor: #8b5cf6;  --monitor-g:#6d28d9;   --monitor-glow:rgba(139,92,246,0.35);
+  --host:    #f97316;  --host-g:   #c2410c;   --host-glow:   rgba(249,115,22,0.35);
+  --judge:   #f59e0b;  --judge-g:  #b45309;   --judge-glow:  rgba(245,158,11,0.35);
+  --public:  #10b981;  --public-g: #047857;   --public-glow: rgba(16,185,129,0.35);
+
+  --text:  #f8fafc;
+  --dim:   #94a3b8;
+  --muted: #475569;
+  --fh: 'Inter', sans-serif;
+  --fm: 'JetBrains Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--fh);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── ANIMATED BACKGROUND ─── */
+.bg-wrap {
+  position: fixed; inset: 0; z-index: 0;
+  overflow: hidden; pointer-events: none;
+}
+.bg-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(59,130,246,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,0.04) 1px, transparent 1px);
+  background-size: 50px 50px;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%);
+}
+.bg-orb {
+  position: absolute; border-radius: 50%;
+  filter: blur(120px); opacity: 0.18;
+  animation: orbDrift 20s ease-in-out infinite;
+}
+.orb1 { width: 600px; height: 600px; background: #3b82f6; top: -200px; left: -200px; animation-delay: 0s; }
+.orb2 { width: 500px; height: 500px; background: #8b5cf6; bottom: -150px; right: -150px; animation-delay: -7s; }
+.orb3 { width: 400px; height: 400px; background: #10b981; top: 40%; left: 55%; animation-delay: -14s; }
+@keyframes orbDrift {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33%      { transform: translate(40px,-60px) scale(1.05); }
+  66%      { transform: translate(-30px,50px) scale(0.95); }
+}
+
+/* ─── LAYOUT ─── */
+.wrap { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 24px 80px; }
+
+/* ─── NAVBAR ─── */
+.navbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(3,7,18,0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 18px; font-weight: 800; color: var(--text);
+}
+.nav-brand img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(59,130,246,0.4); }
+.nav-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--fm); font-size: 10px; font-weight: 700;
+  color: #10b981; letter-spacing: 2px; text-transform: uppercase;
+  background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25);
+  border-radius: 99px; padding: 4px 12px;
+}
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0.5)} 50%{box-shadow:0 0 0 8px rgba(16,185,129,0)} }
+.nav-right { display: flex; align-items: center; gap: 12px; }
+.nav-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 700;
+  border: 1px solid var(--border2); color: var(--dim);
+  background: var(--surface); cursor: pointer; text-decoration: none;
+  transition: all 0.2s;
+}
+.nav-btn:hover { background: var(--surface2); color: var(--text); border-color: rgba(59,130,246,0.4); }
+#clock { font-family: var(--fm); font-size: 11px; color: var(--muted); }
+
+/* ─── HEADER HERO ─── */
+.hero {
+  text-align: center; padding: 64px 0 48px;
+}
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--fm); font-size: 10px; font-weight: 700; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--admin);
+  background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
+  border-radius: 99px; padding: 6px 16px; margin-bottom: 24px;
+}
+.hero h1 {
+  font-size: clamp(40px, 6vw, 80px);
+  font-weight: 900; letter-spacing: -3px; line-height: 1.0;
+  margin-bottom: 18px;
+}
+.grad-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 40%, #34d399 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero-sub {
+  font-size: 16px; color: var(--dim); max-width: 540px; margin: 0 auto 32px; line-height: 1.7;
+}
+.hero-stats {
+  display: flex; align-items: center; justify-content: center; gap: 32px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.hstat { text-align: center; }
+.hstat-num { font-family: var(--fm); font-size: 28px; font-weight: 700; color: var(--text); }
+.hstat-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
+.hsep { width: 1px; height: 40px; background: var(--border); }
+
+/* ─── SECTION LABELS ─── */
+.sec-label {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--fm); font-size: 9px; font-weight: 700;
+  letter-spacing: 3px; text-transform: uppercase; color: var(--muted);
+  margin-bottom: 28px;
+}
+.sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ─── ECOSYSTEM MAP SECTION ─── */
+.eco-section { padding: 0 0 60px; }
+.eco-map-wrap {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  padding: 40px;
+  overflow: hidden;
+}
+.eco-map-wrap::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(59,130,246,0.06), transparent);
+  pointer-events: none;
+}
+
+/* SVG FLOW MAP */
+.flow-svg {
+  width: 100%; height: 520px;
+  display: block; overflow: visible;
+}
+
+/* Node styles */
+.eco-node {
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.eco-node:hover .node-ring { stroke-opacity: 0.6; }
+.eco-node:hover .node-hex { filter: brightness(1.2); }
+
+/* Animated flow paths */
+.flow-path {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 8 6;
+  stroke-linecap: round;
+}
+.flow-pulse {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+@keyframes dash {
+  to { stroke-dashoffset: -280; }
+}
+@keyframes dashRev {
+  to { stroke-dashoffset: 280; }
+}
+
+/* Legend caption inside map */
+.map-caption {
+  text-align: center; margin-top: 24px;
+  font-size: 11px; color: var(--muted); font-family: var(--fm);
+}
+
+/* ─── LIVE METRICS STRIP ─── */
+.metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px; margin-bottom: 60px;
+}
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px 16px;
+  text-align: center;
+  position: relative; overflow: hidden;
+  transition: all 0.3s;
+  animation: fadeUp 0.6s ease-out both;
+}
+.metric-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; border-radius: 16px 16px 0 0;
+}
+.metric-card.mc-admin::before   { background: linear-gradient(90deg, var(--admin), var(--admin-g)); }
+.metric-card.mc-monitor::before { background: linear-gradient(90deg, var(--monitor), var(--monitor-g)); }
+.metric-card.mc-host::before    { background: linear-gradient(90deg, var(--host), var(--host-g)); }
+.metric-card.mc-judge::before   { background: linear-gradient(90deg, var(--judge), var(--judge-g)); }
+.metric-card.mc-public::before  { background: linear-gradient(90deg, var(--public), var(--public-g)); }
+.metric-card.mc-sync::before    { background: linear-gradient(90deg, #06b6d4, #0891b2); }
+.metric-card:hover { background: var(--surface2); transform: translateY(-3px); }
+.metric-icon { font-size: 22px; margin-bottom: 10px; }
+.metric-num {
+  font-family: var(--fm); font-size: 28px; font-weight: 700; color: var(--text);
+  line-height: 1; margin-bottom: 6px;
+  transition: all 0.4s;
+}
+.metric-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
+
+/* ─── ROLE CARDS GRID ─── */
+.roles-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px; margin-bottom: 60px;
+}
+.role-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 24px 18px;
+  overflow: hidden;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  display: flex; flex-direction: column;
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  animation: fadeUp 0.6s ease-out both;
+}
+.role-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; border-radius: 20px 20px 0 0;
+}
+.role-card:hover { transform: translateY(-6px); background: var(--surface2); }
+/* Shine */
+.role-card::after {
+  content: ''; position: absolute;
+  top: 0; left: -80%; width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+  transform: skewX(-15deg); transition: left 0.5s ease; pointer-events: none;
+}
+.role-card:hover::after { left: 130%; }
+
+/* role-specific accent */
+.rc-admin::before   { background: linear-gradient(90deg, var(--admin), var(--admin-g)); }
+.rc-monitor::before { background: linear-gradient(90deg, var(--monitor), var(--monitor-g)); }
+.rc-host::before    { background: linear-gradient(90deg, var(--host), var(--host-g)); }
+.rc-judge::before   { background: linear-gradient(90deg, var(--judge), var(--judge-g)); }
+.rc-public::before  { background: linear-gradient(90deg, var(--public), var(--public-g)); }
+
+.rc-admin:hover   { border-color: rgba(59,130,246,0.4); box-shadow: 0 16px 48px rgba(59,130,246,0.15); }
+.rc-monitor:hover { border-color: rgba(139,92,246,0.4); box-shadow: 0 16px 48px rgba(139,92,246,0.15); }
+.rc-host:hover    { border-color: rgba(249,115,22,0.4); box-shadow: 0 16px 48px rgba(249,115,22,0.15); }
+.rc-judge:hover   { border-color: rgba(245,158,11,0.4); box-shadow: 0 16px 48px rgba(245,158,11,0.15); }
+.rc-public:hover  { border-color: rgba(16,185,129,0.4); box-shadow: 0 16px 48px rgba(16,185,129,0.15); }
+
+.rc-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; margin-bottom: 14px;
+}
+.rc-admin   .rc-icon { background: rgba(59,130,246,0.12); }
+.rc-monitor .rc-icon { background: rgba(139,92,246,0.12); }
+.rc-host    .rc-icon { background: rgba(249,115,22,0.12); }
+.rc-judge   .rc-icon { background: rgba(245,158,11,0.12); }
+.rc-public  .rc-icon { background: rgba(16,185,129,0.12); }
+
+.rc-tag {
+  font-family: var(--fm); font-size: 8px; font-weight: 700;
+  letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 6px;
+}
+.rc-admin   .rc-tag { color: var(--admin); }
+.rc-monitor .rc-tag { color: var(--monitor); }
+.rc-host    .rc-tag { color: var(--host); }
+.rc-judge   .rc-tag { color: var(--judge); }
+.rc-public  .rc-tag { color: var(--public); }
+
+.rc-title { font-size: 16px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.2px; }
+.rc-desc { font-size: 11px; color: var(--dim); line-height: 1.6; flex: 1; margin-bottom: 16px; }
+
+.rc-perms {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 16px;
+}
+.rc-perm {
+  font-size: 9px; font-family: var(--fm);
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 5px; padding: 2px 7px; color: var(--muted);
+}
+
+.rc-status {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px; font-weight: 700; font-family: var(--fm);
+  margin-bottom: 14px;
+}
+.rs-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+.rc-launch {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px; border-radius: 10px; font-size: 12px; font-weight: 700;
+  color: #fff; border: none; cursor: pointer; text-decoration: none;
+  transition: all 0.2s; width: 100%;
+}
+.rc-admin   .rc-launch { background: linear-gradient(135deg, var(--admin), var(--admin-g)); box-shadow: 0 4px 12px rgba(59,130,246,0.25); }
+.rc-monitor .rc-launch { background: linear-gradient(135deg, var(--monitor), var(--monitor-g)); box-shadow: 0 4px 12px rgba(139,92,246,0.25); }
+.rc-host    .rc-launch { background: linear-gradient(135deg, var(--host), var(--host-g)); box-shadow: 0 4px 12px rgba(249,115,22,0.25); }
+.rc-judge   .rc-launch { background: linear-gradient(135deg, var(--judge), var(--judge-g)); box-shadow: 0 4px 12px rgba(245,158,11,0.25); }
+.rc-public  .rc-launch { background: linear-gradient(135deg, var(--public), var(--public-g)); box-shadow: 0 4px 12px rgba(16,185,129,0.25); }
+.rc-launch:hover { transform: scale(1.03); filter: brightness(1.1); }
+.arr { display: inline-block; transition: transform 0.2s; }
+.role-card:hover .arr { transform: translateX(4px); }
+
+/* ─── FLOW LEGEND TABLE ─── */
+.flow-table-section { margin-bottom: 60px; }
+.flow-table-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; overflow: hidden;
+}
+.flow-table { width: 100%; border-collapse: collapse; }
+.flow-table th {
+  padding: 14px 20px; font-family: var(--fm); font-size: 9px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+  background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.flow-table td {
+  padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 13px; color: var(--dim); vertical-align: middle;
+}
+.flow-table tr:last-child td { border-bottom: none; }
+.flow-table tr:hover td { background: rgba(255,255,255,0.03); color: var(--text); }
+.flow-role-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 8px;
+  font-size: 10px; font-weight: 700; font-family: var(--fm);
+  white-space: nowrap;
+}
+.frc-admin   { background: rgba(59,130,246,0.12); color: var(--admin); border: 1px solid rgba(59,130,246,0.2); }
+.frc-monitor { background: rgba(139,92,246,0.12); color: var(--monitor); border: 1px solid rgba(139,92,246,0.2); }
+.frc-host    { background: rgba(249,115,22,0.12); color: var(--host); border: 1px solid rgba(249,115,22,0.2); }
+.frc-judge   { background: rgba(245,158,11,0.12); color: var(--judge); border: 1px solid rgba(245,158,11,0.2); }
+.frc-public  { background: rgba(16,185,129,0.12); color: var(--public); border: 1px solid rgba(16,185,129,0.2); }
+.flow-arrow-lbl { font-size: 16px; margin: 0 4px; }
+
+/* ─── CONNECTION MATRIX ─── */
+.matrix-section { margin-bottom: 60px; }
+.matrix-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; overflow: hidden;
+}
+.matrix-table { width: 100%; border-collapse: collapse; }
+.matrix-table th, .matrix-table td {
+  text-align: center; padding: 14px 12px;
+  border: 1px solid rgba(255,255,255,0.04);
+  font-size: 11px;
+}
+.matrix-table th {
+  background: rgba(255,255,255,0.03);
+  font-family: var(--fm); font-size: 9px;
+  font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--muted);
+}
+.matrix-table .row-head {
+  text-align: left; padding: 14px 20px;
+  background: rgba(255,255,255,0.03);
+  font-family: var(--fm); font-size: 9px;
+  font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--muted);
+}
+.mc-yes { color: #10b981; font-size: 16px; }
+.mc-no  { color: #374151; font-size: 14px; }
+.mc-self { background: rgba(255,255,255,0.03); color: var(--muted); font-size: 12px; }
+.mc-read { color: #3b82f6; font-size: 14px; title-icon: '📖'; }
+
+/* ─── ACTIVITY FEED ─── */
+.activity-section { margin-bottom: 60px; }
+.activity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.activity-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; overflow: hidden;
+}
+.ap-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ap-title {
+  font-family: var(--fm); font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
+}
+.ap-count {
+  font-family: var(--fm); font-size: 10px; color: var(--muted);
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 6px; padding: 2px 8px;
+}
+.ap-body { padding: 12px; max-height: 320px; overflow-y: auto; }
+.ap-body::-webkit-scrollbar { width: 4px; }
+.ap-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+.act-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px; border-radius: 10px; margin-bottom: 6px;
+  background: rgba(255,255,255,0.03); border: 1px solid transparent;
+  transition: all 0.2s; animation: fadeUp 0.4s ease-out both;
+}
+.act-item:hover { background: rgba(255,255,255,0.05); border-color: var(--border); }
+.act-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.act-body { flex: 1; min-width: 0; }
+.act-msg { font-size: 12px; color: var(--text); margin-bottom: 4px; line-height: 1.5; }
+.act-meta { font-family: var(--fm); font-size: 10px; color: var(--muted); }
+.act-empty {
+  text-align: center; padding: 40px 20px;
+  font-size: 12px; color: var(--muted); font-family: var(--fm);
+}
+
+/* ─── SUPABASE STATUS PANEL ─── */
+.status-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 28px; margin-bottom: 60px;
+}
+.sp-title {
+  font-family: var(--fm); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
+  margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
+}
+.status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.spi {
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px;
+}
+.spi-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; font-family: var(--fm); font-weight: 700; margin-bottom: 8px; }
+.spi-value { font-family: var(--fm); font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.spi-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-green { background: #10b981; box-shadow: 0 0 8px #10b981; }
+.dot-amber { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+.dot-red   { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+.dot-blue  { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
+
+/* ─── QUICK ACTIONS BAR ─── */
+.quick-bar {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+  margin-bottom: 60px;
+}
+.qa-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 18px 12px; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  cursor: pointer; text-decoration: none; color: inherit;
+  transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  font-size: 11px; font-weight: 700; color: var(--dim);
+  text-align: center;
+}
+.qa-btn:hover { background: var(--surface2); transform: translateY(-3px); color: var(--text); }
+.qa-icon { font-size: 26px; }
+
+/* ─── ANIMATIONS ─── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes nodeGlow { 0%,100%{opacity:0.6} 50%{opacity:1} }
+@keyframes shimmer { 0%{stroke-dashoffset:200} 100%{stroke-dashoffset:-200} }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 1100px) {
+  .metrics-strip { grid-template-columns: repeat(3, 1fr); }
+  .roles-grid    { grid-template-columns: repeat(3, 1fr); }
+  .quick-bar     { grid-template-columns: repeat(3, 1fr); }
+  .status-grid   { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .metrics-strip  { grid-template-columns: repeat(2, 1fr); }
+  .roles-grid     { grid-template-columns: 1fr 1fr; }
+  .activity-grid  { grid-template-columns: 1fr; }
+  .flow-svg       { height: 380px; }
+  .quick-bar      { grid-template-columns: repeat(3, 1fr); }
+  .hero h1        { font-size: 36px; }
+  .status-grid    { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 500px) {
+  .roles-grid { grid-template-columns: 1fr; }
+  .metrics-strip { grid-template-columns: 1fr 1fr; }
+}
+
+/* ─── TOAST ─── */
+#toast {
+  position: fixed; bottom: 28px; right: 28px;
+  background: rgba(15,23,42,0.95); backdrop-filter: blur(16px);
+  border: 1px solid var(--border2); color: var(--text);
+  padding: 14px 22px; border-radius: 14px;
+  font-size: 13px; font-weight: 600; z-index: 9999;
+  display: none; box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  animation: slideRight 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes slideRight { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:translateX(0); } }
+</style>
+</head>
+<body>
+
+<!-- ANIMATED BACKGROUND -->
+<div class="bg-wrap">
+  <div class="bg-grid"></div>
+  <div class="bg-orb orb1"></div>
+  <div class="bg-orb orb2"></div>
+  <div class="bg-orb orb3"></div>
+</div>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <img src="logo.png" alt="KNSDC Logo"/>
+    <span>KNSDC Ecosystem</span>
+  </div>
+  <div id="clock"></div>
+  <div class="nav-right">
+    <div class="nav-badge"><span class="live-dot"></span> LIVE SYNC</div>
+    <a href="portal.html" class="nav-btn">← Portal Hub</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <!-- ── HERO ── -->
+  <section class="hero">
+    <div class="hero-eyebrow">⬡ Role Ecosystem Map</div>
+    <h1>How Every Role <span class="grad-text">Connects</span></h1>
+    <p class="hero-sub">
+      Real-time view of how Admin, Monitor, Host, Judge, and Public interact — 
+      powered by the KNSDC live sync engine.
+    </p>
+    <div class="hero-stats">
+      <div class="hstat">
+        <div class="hstat-num" id="hs-participants">—</div>
+        <div class="hstat-lbl">Participants</div>
+      </div>
+      <div class="hsep"></div>
+      <div class="hstat">
+        <div class="hstat-num" id="hs-onstage">—</div>
+        <div class="hstat-lbl">On Stage</div>
+      </div>
+      <div class="hsep"></div>
+      <div class="hstat">
+        <div class="hstat-num" id="hs-judges">—</div>
+        <div class="hstat-lbl">Judges</div>
+      </div>
+      <div class="hsep"></div>
+      <div class="hstat">
+        <div class="hstat-num" id="hs-events">—</div>
+        <div class="hstat-lbl">Events</div>
+      </div>
+      <div class="hsep"></div>
+      <div class="hstat">
+        <div class="hstat-num" id="hs-messages">—</div>
+        <div class="hstat-lbl">Chat Msgs</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── LIVE METRICS ── -->
+  <div class="sec-label">📊 Live Metrics from Sync Engine</div>
+  <div class="metrics-strip">
+    <div class="metric-card mc-admin" style="animation-delay:0s">
+      <div class="metric-icon">🛡️</div>
+      <div class="metric-num" id="m-events">0</div>
+      <div class="metric-lbl">Active Events</div>
+    </div>
+    <div class="metric-card mc-monitor" style="animation-delay:.07s">
+      <div class="metric-icon">📺</div>
+      <div class="metric-num" id="m-onstage">—</div>
+      <div class="metric-lbl">On Stage Now</div>
+    </div>
+    <div class="metric-card mc-host" style="animation-delay:.14s">
+      <div class="metric-icon">🎤</div>
+      <div class="metric-num" id="m-queue">0</div>
+      <div class="metric-lbl">In Queue</div>
+    </div>
+    <div class="metric-card mc-judge" style="animation-delay:.21s">
+      <div class="metric-icon">⚖️</div>
+      <div class="metric-num" id="m-judges">0</div>
+      <div class="metric-lbl">Judges Active</div>
+    </div>
+    <div class="metric-card mc-public" style="animation-delay:.28s">
+      <div class="metric-icon">🌐</div>
+      <div class="metric-num" id="m-regs">0</div>
+      <div class="metric-lbl">Public Regs</div>
+    </div>
+    <div class="metric-card mc-sync" style="animation-delay:.35s">
+      <div class="metric-icon">⚡</div>
+      <div class="metric-num" id="m-sync">—</div>
+      <div class="metric-lbl">Sync Engine</div>
+    </div>
+  </div>
+
+  <!-- ── ECOSYSTEM FLOW MAP ── -->
+  <div class="sec-label">🌐 Role Interaction Map</div>
+  <section class="eco-section">
+    <div class="eco-map-wrap">
+      <svg class="flow-svg" id="eco-svg" viewBox="0 0 900 500" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <!-- Glows -->
+          <filter id="glow-admin"  x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glow-monitor" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glow-host" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glow-judge" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glow-public" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+
+          <!-- Arrowheads -->
+          <marker id="arr-admin"   markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#3b82f6" opacity="0.7"/>
+          </marker>
+          <marker id="arr-monitor" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#8b5cf6" opacity="0.7"/>
+          </marker>
+          <marker id="arr-host"    markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#f97316" opacity="0.7"/>
+          </marker>
+          <marker id="arr-judge"   markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b" opacity="0.7"/>
+          </marker>
+          <marker id="arr-public"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#10b981" opacity="0.7"/>
+          </marker>
+          <marker id="arr-white"   markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="rgba(255,255,255,0.3)" opacity="0.5"/>
+          </marker>
+        </defs>
+
+        <!-- ── CONNECTION LINES ── -->
+        <!-- Admin ↔ Monitor -->
+        <path class="flow-path" d="M 450,135 Q 350,200 295,240"
+          stroke="rgba(59,130,246,0.25)" stroke-dasharray="8 6"
+          marker-end="url(#arr-admin)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-280" dur="3s" repeatCount="indefinite"/>
+        </path>
+        <path class="flow-path" d="M 295,260 Q 350,300 440,145"
+          stroke="rgba(139,92,246,0.2)" stroke-dasharray="6 8"
+          marker-end="url(#arr-monitor)">
+          <animate attributeName="stroke-dashoffset" from="0" to="280" dur="4s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Admin ↔ Host -->
+        <path class="flow-path" d="M 430,145 Q 380,300 285,355"
+          stroke="rgba(59,130,246,0.25)" stroke-dasharray="8 6"
+          marker-end="url(#arr-admin)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-280" dur="4s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Admin ↔ Judge -->
+        <path class="flow-path" d="M 472,145 Q 530,300 614,355"
+          stroke="rgba(245,158,11,0.25)" stroke-dasharray="8 6"
+          marker-end="url(#arr-judge)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-280" dur="3.5s" repeatCount="indefinite"/>
+        </path>
+        <path class="flow-path" d="M 624,345 Q 580,260 464,148"
+          stroke="rgba(245,158,11,0.2)" stroke-dasharray="6 8"
+          marker-end="url(#arr-judge)">
+          <animate attributeName="stroke-dashoffset" from="0" to="280" dur="5s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Admin ↔ Public -->
+        <path class="flow-path" d="M 480,140 Q 580,200 610,240"
+          stroke="rgba(59,130,246,0.2)" stroke-dasharray="8 6"
+          marker-end="url(#arr-admin)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-280" dur="5s" repeatCount="indefinite"/>
+        </path>
+        <path class="flow-path" d="M 618,255 Q 600,200 475,145"
+          stroke="rgba(16,185,129,0.2)" stroke-dasharray="6 8"
+          marker-end="url(#arr-public)">
+          <animate attributeName="stroke-dashoffset" from="0" to="280" dur="6s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Monitor ↔ Host -->
+        <path class="flow-path" d="M 285,280 Q 285,340 285,348"
+          stroke="rgba(139,92,246,0.3)" stroke-dasharray="8 6"
+          marker-end="url(#arr-monitor)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-200" dur="2.5s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Monitor ↔ Judge -->
+        <path class="flow-path" d="M 320,270 Q 450,310 600,355"
+          stroke="rgba(139,92,246,0.2)" stroke-dasharray="8 6"
+          marker-end="url(#arr-monitor)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-280" dur="4s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Monitor → Public (Rankings broadcast) -->
+        <path class="flow-path" d="M 316,260 Q 460,260 600,255"
+          stroke="rgba(139,92,246,0.2)" stroke-dasharray="6 5"
+          marker-end="url(#arr-monitor)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-250" dur="3s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Judge → Monitor (score submitted) -->
+        <path class="flow-path" d="M 605,358 Q 470,340 320,275"
+          stroke="rgba(245,158,11,0.3)" stroke-dasharray="8 6"
+          marker-end="url(#arr-judge)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-280" dur="2.8s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Host → Monitor (stage push) -->
+        <path class="flow-path" d="M 302,370 Q 310,340 297,292"
+          stroke="rgba(249,115,22,0.35)" stroke-dasharray="7 5"
+          marker-end="url(#arr-host)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-200" dur="2s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Host ↔ Judge (both at bottom) -->
+        <path class="flow-path" d="M 335,385 Q 450,420 580,380"
+          stroke="rgba(249,115,22,0.2)" stroke-dasharray="8 6"
+          marker-end="url(#arr-host)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-280" dur="4.5s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- Public → Admin (register) -->
+        <path class="flow-path" d="M 612,238 Q 600,180 476,145"
+          stroke="rgba(16,185,129,0.25)" stroke-dasharray="8 6"
+          marker-end="url(#arr-public)">
+          <animate attributeName="stroke-dashoffset" from="0" to="-200" dur="5s" repeatCount="indefinite"/>
+        </path>
+
+        <!-- ── NODES ── -->
+
+        <!-- ADMIN (top-center) cx=450 cy=120 -->
+        <g class="eco-node" onclick="window.open('KNSDC-Admin.html','_blank')" id="node-admin">
+          <!-- outer glow ring -->
+          <circle cx="450" cy="120" r="58" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.2" class="node-ring">
+            <animate attributeName="r" values="56;62;56" dur="3s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.2;0.08;0.2" dur="3s" repeatCount="indefinite"/>
+          </circle>
+          <!-- hex background -->
+          <polygon points="450,68 496,94 496,146 450,172 404,146 404,94"
+            fill="rgba(59,130,246,0.12)" stroke="#3b82f6" stroke-width="1.5" opacity="0.9"
+            filter="url(#glow-admin)" class="node-hex"/>
+          <!-- icon -->
+          <text x="450" y="116" text-anchor="middle" font-size="30" dominant-baseline="middle">🛡️</text>
+          <!-- label -->
+          <text x="450" y="140" text-anchor="middle" font-size="10" font-weight="800"
+            fill="#3b82f6" font-family="JetBrains Mono, monospace" letter-spacing="1">ADMIN</text>
+          <!-- status dot -->
+          <circle cx="488" cy="84" r="5" fill="#10b981" stroke="#030712" stroke-width="2">
+            <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/>
+          </circle>
+          <!-- metric badge -->
+          <rect x="418" y="175" width="64" height="18" rx="5" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)" stroke-width="1"/>
+          <text x="450" y="187" text-anchor="middle" font-size="9" fill="#60a5fa" font-family="JetBrains Mono,monospace" font-weight="700" id="node-admin-lbl">0 Events</text>
+        </g>
+
+        <!-- MONITOR (left) cx=270 cy=250 -->
+        <g class="eco-node" onclick="window.open('KNSDC-Monitor.html','_blank')" id="node-monitor">
+          <circle cx="270" cy="250" r="55" fill="none" stroke="#8b5cf6" stroke-width="1" opacity="0.2" class="node-ring">
+            <animate attributeName="r" values="53;59;53" dur="3.5s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.2;0.07;0.2" dur="3.5s" repeatCount="indefinite"/>
+          </circle>
+          <polygon points="270,200 314,225 314,275 270,300 226,275 226,225"
+            fill="rgba(139,92,246,0.12)" stroke="#8b5cf6" stroke-width="1.5" opacity="0.9"
+            filter="url(#glow-monitor)" class="node-hex"/>
+          <text x="270" y="246" text-anchor="middle" font-size="28" dominant-baseline="middle">📺</text>
+          <text x="270" y="268" text-anchor="middle" font-size="9" font-weight="800"
+            fill="#a78bfa" font-family="JetBrains Mono,monospace" letter-spacing="1">MONITOR</text>
+          <circle cx="306" cy="216" r="5" fill="#10b981" stroke="#030712" stroke-width="2">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <rect x="224" y="305" width="92" height="18" rx="5" fill="rgba(139,92,246,0.2)" stroke="rgba(139,92,246,0.3)" stroke-width="1"/>
+          <text x="270" y="317" text-anchor="middle" font-size="9" fill="#c4b5fd" font-family="JetBrains Mono,monospace" font-weight="700" id="node-monitor-lbl">Watching</text>
+        </g>
+
+        <!-- HOST (bottom-left) cx=280 cy=380 -->
+        <g class="eco-node" onclick="window.open('KNSDC-Host.html','_blank')" id="node-host">
+          <circle cx="280" cy="385" r="50" fill="none" stroke="#f97316" stroke-width="1" opacity="0.2" class="node-ring">
+            <animate attributeName="r" values="48;54;48" dur="4s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.2;0.07;0.2" dur="4s" repeatCount="indefinite"/>
+          </circle>
+          <polygon points="280,337 320,360 320,407 280,430 240,407 240,360"
+            fill="rgba(249,115,22,0.12)" stroke="#f97316" stroke-width="1.5" opacity="0.9"
+            filter="url(#glow-host)" class="node-hex"/>
+          <text x="280" y="381" text-anchor="middle" font-size="26" dominant-baseline="middle">🎤</text>
+          <text x="280" y="402" text-anchor="middle" font-size="9" font-weight="800"
+            fill="#fb923c" font-family="JetBrains Mono,monospace" letter-spacing="1">HOST</text>
+          <circle cx="314" cy="350" r="5" fill="#10b981" stroke="#030712" stroke-width="2">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2.5s" repeatCount="indefinite"/>
+          </circle>
+          <rect x="232" y="434" width="96" height="18" rx="5" fill="rgba(249,115,22,0.2)" stroke="rgba(249,115,22,0.3)" stroke-width="1"/>
+          <text x="280" y="446" text-anchor="middle" font-size="9" fill="#fdba74" font-family="JetBrains Mono,monospace" font-weight="700" id="node-host-lbl">0 in Queue</text>
+        </g>
+
+        <!-- JUDGE (bottom-right) cx=620 cy=380 -->
+        <g class="eco-node" onclick="window.open('KNSDC-Judge.html','_blank')" id="node-judge">
+          <circle cx="620" cy="385" r="50" fill="none" stroke="#f59e0b" stroke-width="1" opacity="0.2" class="node-ring">
+            <animate attributeName="r" values="48;54;48" dur="3.8s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.2;0.07;0.2" dur="3.8s" repeatCount="indefinite"/>
+          </circle>
+          <polygon points="620,337 660,360 660,407 620,430 580,407 580,360"
+            fill="rgba(245,158,11,0.12)" stroke="#f59e0b" stroke-width="1.5" opacity="0.9"
+            filter="url(#glow-judge)" class="node-hex"/>
+          <text x="620" y="381" text-anchor="middle" font-size="26" dominant-baseline="middle">⚖️</text>
+          <text x="620" y="402" text-anchor="middle" font-size="9" font-weight="800"
+            fill="#fbbf24" font-family="JetBrains Mono,monospace" letter-spacing="1">JUDGE</text>
+          <circle cx="654" cy="350" r="5" fill="#f59e0b" stroke="#030712" stroke-width="2">
+            <animate attributeName="opacity" values="1;0.4;1" dur="1.8s" repeatCount="indefinite"/>
+          </circle>
+          <rect x="570" y="434" width="100" height="18" rx="5" fill="rgba(245,158,11,0.2)" stroke="rgba(245,158,11,0.3)" stroke-width="1"/>
+          <text x="620" y="446" text-anchor="middle" font-size="9" fill="#fcd34d" font-family="JetBrains Mono,monospace" font-weight="700" id="node-judge-lbl">0 Judges</text>
+        </g>
+
+        <!-- PUBLIC (right) cx=630 cy=250 -->
+        <g class="eco-node" onclick="window.open('index.html','_blank')" id="node-public">
+          <circle cx="630" cy="250" r="55" fill="none" stroke="#10b981" stroke-width="1" opacity="0.2" class="node-ring">
+            <animate attributeName="r" values="53;60;53" dur="4.5s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.2;0.07;0.2" dur="4.5s" repeatCount="indefinite"/>
+          </circle>
+          <polygon points="630,200 674,225 674,275 630,300 586,275 586,225"
+            fill="rgba(16,185,129,0.12)" stroke="#10b981" stroke-width="1.5" opacity="0.9"
+            filter="url(#glow-public)" class="node-hex"/>
+          <text x="630" y="246" text-anchor="middle" font-size="28" dominant-baseline="middle">🌐</text>
+          <text x="630" y="268" text-anchor="middle" font-size="9" font-weight="800"
+            fill="#34d399" font-family="JetBrains Mono,monospace" letter-spacing="1">PUBLIC</text>
+          <circle cx="666" cy="216" r="5" fill="#10b981" stroke="#030712" stroke-width="2">
+            <animate attributeName="opacity" values="1;0.4;1" dur="3s" repeatCount="indefinite"/>
+          </circle>
+          <rect x="578" y="305" width="104" height="18" rx="5" fill="rgba(16,185,129,0.2)" stroke="rgba(16,185,129,0.3)" stroke-width="1"/>
+          <text x="630" y="317" text-anchor="middle" font-size="9" fill="#6ee7b7" font-family="JetBrains Mono,monospace" font-weight="700" id="node-public-lbl">0 Registrations</text>
+        </g>
+
+        <!-- CENTER LABEL -->
+        <text x="450" y="268" text-anchor="middle" font-size="9" fill="rgba(255,255,255,0.15)"
+          font-family="JetBrains Mono,monospace" font-weight="700" letter-spacing="2">KNSDC · LIVE SYNC</text>
+        <circle cx="450" cy="250" r="16" fill="rgba(59,130,246,0.08)" stroke="rgba(59,130,246,0.2)" stroke-width="1">
+          <animate attributeName="r" values="14;20;14" dur="2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+        </circle>
+        <text x="450" y="255" text-anchor="middle" font-size="14" dominant-baseline="middle">⬡</text>
+
+      </svg>
+      <div class="map-caption">Click any role node to open its portal · Lines show live data flows between roles</div>
+    </div>
+  </section>
+
+  <!-- ── ROLE CARDS ── -->
+  <div class="sec-label">👥 Role Portals</div>
+  <div class="roles-grid">
+
+    <!-- ADMIN -->
+    <a href="KNSDC-Admin.html" target="_blank" class="role-card rc-admin" style="animation-delay:.0s">
+      <div class="rc-icon">🛡️</div>
+      <div class="rc-tag">Admin Panel</div>
+      <div class="rc-title">Event Command</div>
+      <div class="rc-status">
+        <div class="rs-dot" style="background:var(--admin);box-shadow:0 0 6px var(--admin)"></div>
+        <span style="color:var(--admin)">OPERATIONAL</span>
+      </div>
+      <div class="rc-desc">Full command over events, participants, judge assignments, scoring controls and live rankings. The master controller.</div>
+      <div class="rc-perms">
+        <span class="rc-perm">Create Events</span>
+        <span class="rc-perm">Assign Judges</span>
+        <span class="rc-perm">Promote Rounds</span>
+        <span class="rc-perm">Staff Mgmt</span>
+        <span class="rc-perm">View All</span>
+      </div>
+      <span class="rc-launch">Open Admin <span class="arr">→</span></span>
+    </a>
+
+    <!-- MONITOR -->
+    <a href="KNSDC-Monitor.html" target="_blank" class="role-card rc-monitor" style="animation-delay:.08s">
+      <div class="rc-icon">📺</div>
+      <div class="rc-tag">Monitor Panel</div>
+      <div class="rc-title">Live Monitor</div>
+      <div class="rc-status">
+        <div class="rs-dot" style="background:var(--monitor);box-shadow:0 0 6px var(--monitor)"></div>
+        <span style="color:var(--monitor)">WATCHING</span>
+      </div>
+      <div class="rc-desc">Real-time event dashboard with venue tracking, queue management, judge agreement control, and SOS broadcast system.</div>
+      <div class="rc-perms">
+        <span class="rc-perm">Venue Monitor</span>
+        <span class="rc-perm">Live Rankings</span>
+        <span class="rc-perm">SOS Alerts</span>
+        <span class="rc-perm">Team Chat</span>
+        <span class="rc-perm">Judge Mgmt</span>
+      </div>
+      <span class="rc-launch">Open Monitor <span class="arr">→</span></span>
+    </a>
+
+    <!-- HOST -->
+    <a href="KNSDC-Host.html" target="_blank" class="role-card rc-host" style="animation-delay:.16s">
+      <div class="rc-icon">🎤</div>
+      <div class="rc-tag">Host Panel</div>
+      <div class="rc-title">Stage Manager</div>
+      <div class="rc-status">
+        <div class="rs-dot" id="host-status-dot" style="background:var(--host);box-shadow:0 0 6px var(--host)"></div>
+        <span style="color:var(--host)" id="host-status-lbl">READY</span>
+      </div>
+      <div class="rc-desc">Manages the performance queue, pushes participants to stage, tracks completion, runs live timing and announcements.</div>
+      <div class="rc-perms">
+        <span class="rc-perm">Stage Queue</span>
+        <span class="rc-perm">Push to Stage</span>
+        <span class="rc-perm">Mark Done</span>
+        <span class="rc-perm">Live Clock</span>
+      </div>
+      <span class="rc-launch">Open Host <span class="arr">→</span></span>
+    </a>
+
+    <!-- JUDGE -->
+    <a href="KNSDC-Judge.html" target="_blank" class="role-card rc-judge" style="animation-delay:.24s">
+      <div class="rc-icon">⚖️</div>
+      <div class="rc-tag">Judge Panel</div>
+      <div class="rc-title">Score Entry</div>
+      <div class="rc-status">
+        <div class="rs-dot" id="judge-status-dot" style="background:var(--judge);box-shadow:0 0 6px var(--judge)"></div>
+        <span style="color:var(--judge)" id="judge-status-lbl">STANDBY</span>
+      </div>
+      <div class="rc-desc">Secure real-time scoring interface with subject sliders, score locking, judge comments, and private judge chat.</div>
+      <div class="rc-perms">
+        <span class="rc-perm">Score Entry</span>
+        <span class="rc-perm">Sliders</span>
+        <span class="rc-perm">Lock Score</span>
+        <span class="rc-perm">Judge Chat</span>
+      </div>
+      <span class="rc-launch">Open Judge <span class="arr">→</span></span>
+    </a>
+
+    <!-- PUBLIC -->
+    <a href="index.html" target="_blank" class="role-card rc-public" style="animation-delay:.32s">
+      <div class="rc-icon">🌐</div>
+      <div class="rc-tag">Public Portal</div>
+      <div class="rc-title">Public Site</div>
+      <div class="rc-status">
+        <div class="rs-dot" style="background:var(--public);box-shadow:0 0 6px var(--public)"></div>
+        <span style="color:var(--public)">LIVE</span>
+      </div>
+      <div class="rc-desc">The main KNS community website with live event scores, public leaderboard, gallery, events, notices & registration.</div>
+      <div class="rc-perms">
+        <span class="rc-perm">Live Scores</span>
+        <span class="rc-perm">Leaderboard</span>
+        <span class="rc-perm">Register</span>
+        <span class="rc-perm">Gallery</span>
+        <span class="rc-perm">Notices</span>
+      </div>
+      <span class="rc-launch">Open Site <span class="arr">→</span></span>
+    </a>
+
+  </div>
+
+  <!-- ── FLOW LEGEND TABLE ── -->
+  <div class="sec-label">🔗 Data Flow Between Roles</div>
+  <div class="flow-table-section">
+    <div class="flow-table-wrap">
+      <table class="flow-table">
+        <thead>
+          <tr>
+            <th>From</th>
+            <th></th>
+            <th>To</th>
+            <th>Data / Action</th>
+            <th>Trigger</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="flow-role-chip frc-admin">🛡️ Admin</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-monitor">📺 Monitor</span> <span class="flow-role-chip frc-host">🎤 Host</span> <span class="flow-role-chip frc-judge">⚖️ Judge</span></td>
+            <td>Event created, participants added, stage opened</td>
+            <td>Admin creates/activates event</td>
+          </tr>
+          <tr>
+            <td><span class="flow-role-chip frc-admin">🛡️ Admin</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-judge">⚖️ Judge</span></td>
+            <td>Scoring criteria, subject weights, judge assignment</td>
+            <td>Admin assigns judge to event</td>
+          </tr>
+          <tr>
+            <td><span class="flow-role-chip frc-host">🎤 Host</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-monitor">📺 Monitor</span> <span class="flow-role-chip frc-judge">⚖️ Judge</span></td>
+            <td>Participant pushed to stage, stage status update</td>
+            <td>Host clicks "Push to Stage"</td>
+          </tr>
+          <tr>
+            <td><span class="flow-role-chip frc-judge">⚖️ Judge</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-admin">🛡️ Admin</span> <span class="flow-role-chip frc-monitor">📺 Monitor</span></td>
+            <td>Scores submitted and locked per participant</td>
+            <td>Judge locks score</td>
+          </tr>
+          <tr>
+            <td><span class="flow-role-chip frc-monitor">📺 Monitor</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-public">🌐 Public</span></td>
+            <td>Live rankings broadcast, result published flag</td>
+            <td>Monitor toggles "Result Public"</td>
+          </tr>
+          <tr>
+            <td><span class="flow-role-chip frc-monitor">📺 Monitor</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-judge">⚖️ Judge</span></td>
+            <td>Judge credentials created, agreement confirmed</td>
+            <td>Monitor completes judge agreement form</td>
+          </tr>
+          <tr>
+            <td><span class="flow-role-chip frc-public">🌐 Public</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-admin">🛡️ Admin</span></td>
+            <td>Public registration form submitted</td>
+            <td>Audience registers for event</td>
+          </tr>
+          <tr>
+            <td><span class="flow-role-chip frc-monitor">📺 Monitor</span></td>
+            <td><span class="flow-arrow-lbl">→</span></td>
+            <td><span class="flow-role-chip frc-admin">🛡️ Admin</span> <span class="flow-role-chip frc-host">🎤 Host</span> <span class="flow-role-chip frc-judge">⚖️ Judge</span></td>
+            <td>🚨 SOS Alert broadcast to all staff</td>
+            <td>Monitor sends SOS</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── CONNECTION MATRIX ── -->
+  <div class="sec-label">🗺️ Role Interaction Matrix</div>
+  <div class="matrix-section">
+    <div class="matrix-wrap">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding-left:20px">ROLE ↓ \ CAN SEE →</th>
+            <th>🛡️ Admin</th>
+            <th>📺 Monitor</th>
+            <th>🎤 Host</th>
+            <th>⚖️ Judge</th>
+            <th>🌐 Public</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-head">🛡️ Admin</td>
+            <td class="mc-self">—</td>
+            <td><span class="mc-yes" title="Admin sees monitor data">✔</span></td>
+            <td><span class="mc-yes" title="Admin sees host data">✔</span></td>
+            <td><span class="mc-yes" title="Admin sees all scores">✔</span></td>
+            <td><span class="mc-yes" title="Admin sees public regs">✔</span></td>
+          </tr>
+          <tr>
+            <td class="row-head">📺 Monitor</td>
+            <td><span class="mc-yes" title="Monitor reads sync state">✔</span></td>
+            <td class="mc-self">—</td>
+            <td><span class="mc-yes" title="Monitor sees stage queue">✔</span></td>
+            <td><span class="mc-yes" title="Monitor sees scores">✔</span></td>
+            <td><span class="mc-yes" title="Monitor broadcasts to public">✔</span></td>
+          </tr>
+          <tr>
+            <td class="row-head">🎤 Host</td>
+            <td><span class="mc-read" title="Host reads event data">📖</span></td>
+            <td><span class="mc-read" title="Host reads queue from sync">📖</span></td>
+            <td class="mc-self">—</td>
+            <td class="mc-no">✕</td>
+            <td class="mc-no">✕</td>
+          </tr>
+          <tr>
+            <td class="row-head">⚖️ Judge</td>
+            <td><span class="mc-read" title="Judge reads participant list">📖</span></td>
+            <td class="mc-no">✕</td>
+            <td><span class="mc-read" title="Judge reads who is on stage">📖</span></td>
+            <td class="mc-self">—</td>
+            <td class="mc-no">✕</td>
+          </tr>
+          <tr>
+            <td class="row-head">🌐 Public</td>
+            <td class="mc-no">✕</td>
+            <td class="mc-no">✕</td>
+            <td class="mc-no">✕</td>
+            <td class="mc-no">✕</td>
+            <td class="mc-self">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="padding:12px 20px;font-size:10px;color:var(--muted);font-family:var(--fm);border-top:1px solid var(--border)">
+        ✔ Full read/write access &nbsp;·&nbsp; 📖 Read-only via sync engine &nbsp;·&nbsp; ✕ No direct access
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ACTIVITY FEED ── -->
+  <div class="sec-label">📡 Live Activity Feed</div>
+  <div class="activity-section">
+    <div class="activity-grid">
+      <div class="activity-panel">
+        <div class="ap-header">
+          <div class="ap-title">⚡ Sync Events</div>
+          <div class="ap-count" id="ap-sync-count">0 events</div>
+        </div>
+        <div class="ap-body" id="ap-sync-feed">
+          <div class="act-empty">No sync events yet.<br>Open portals to generate activity.</div>
+        </div>
+      </div>
+      <div class="activity-panel">
+        <div class="ap-header">
+          <div class="ap-title">💬 Team Chat Feed</div>
+          <div class="ap-count" id="ap-chat-count">0 messages</div>
+        </div>
+        <div class="ap-body" id="ap-chat-feed">
+          <div class="act-empty">No chat messages yet.<br>Send a message from any portal.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUPABASE STATUS ── -->
+  <div class="sec-label">🔌 Supabase Backend Status</div>
+  <div class="status-panel">
+    <div class="sp-title">⚙ Connection & Sync Status</div>
+    <div class="status-grid">
+      <div class="spi">
+        <div class="spi-label">Supabase URL</div>
+        <div class="spi-value">
+          <div class="spi-dot dot-blue"></div>
+          <span style="font-size:10px;word-break:break-all">mmbtfbxxnprtzpzdklot.supabase.co</span>
+        </div>
+      </div>
+      <div class="spi">
+        <div class="spi-label">Realtime Channel</div>
+        <div class="spi-value">
+          <div class="spi-dot" id="rt-dot" style="background:#475569"></div>
+          <span id="rt-status">Connecting…</span>
+        </div>
+      </div>
+      <div class="spi">
+        <div class="spi-label">Local Sync State</div>
+        <div class="spi-value">
+          <div class="spi-dot" id="ls-dot" style="background:#475569"></div>
+          <span id="ls-status">Checking…</span>
+        </div>
+      </div>
+      <div class="spi">
+        <div class="spi-label">Last Sync</div>
+        <div class="spi-value">
+          <div class="spi-dot dot-amber" id="sync-time-dot"></div>
+          <span id="sync-time">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QUICK ACTIONS ── -->
+  <div class="sec-label">🚀 Quick Launch</div>
+  <div class="quick-bar">
+    <a href="KNSDC-Admin.html" target="_blank" class="qa-btn">
+      <span class="qa-icon">🛡️</span><span>Admin</span>
+    </a>
+    <a href="KNSDC-Monitor.html" target="_blank" class="qa-btn">
+      <span class="qa-icon">📺</span><span>Monitor</span>
+    </a>
+    <a href="KNSDC-Host.html" target="_blank" class="qa-btn">
+      <span class="qa-icon">🎤</span><span>Host</span>
+    </a>
+    <a href="KNSDC-Judge.html" target="_blank" class="qa-btn">
+      <span class="qa-icon">⚖️</span><span>Judge</span>
+    </a>
+    <a href="index.html" target="_blank" class="qa-btn">
+      <span class="qa-icon">🌐</span><span>Public</span>
+    </a>
+  </div>
+
+</div><!-- /wrap -->
+
+<div id="toast"></div>
+
+<!-- SCRIPTS -->
+<script src="lib/supabase.js"></script>
+<script src="lib/localSync-v4.js?v=240"></script>
+<script>
+// ─── CLOCK ───────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+    '  ·  ' + now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+tick(); setInterval(tick, 1000);
+
+// ─── TOAST ───────────────────────────────────────────────────
+function toast(msg, color = '#3b82f6') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = color;
+  t.style.display = 'block';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+// ─── ACTIVITY FEED ───────────────────────────────────────────
+const syncFeed = [];
+const chatFeed = [];
+
+function addSyncEvent(icon, msg, role) {
+  const colors = { admin: '#3b82f6', monitor: '#8b5cf6', host: '#f97316', judge: '#f59e0b', public: '#10b981' };
+  syncFeed.unshift({ icon, msg, role, time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
+  if (syncFeed.length > 20) syncFeed.pop();
+  renderSyncFeed();
+}
+
+function renderSyncFeed() {
+  const el = document.getElementById('ap-sync-feed');
+  document.getElementById('ap-sync-count').textContent = syncFeed.length + ' events';
+  if (syncFeed.length === 0) {
+    el.innerHTML = '<div class="act-empty">No sync events yet.<br>Open portals to generate activity.</div>';
+    return;
+  }
+  el.innerHTML = syncFeed.map((e, i) => `
+    <div class="act-item" style="animation-delay:${i * 0.05}s">
+      <div class="act-icon">${e.icon}</div>
+      <div class="act-body">
+        <div class="act-msg">${e.msg}</div>
+        <div class="act-meta">${e.time} · ${e.role ? e.role.toUpperCase() : 'SYSTEM'}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderChatFeed(messages) {
+  const el = document.getElementById('ap-chat-feed');
+  document.getElementById('ap-chat-count').textContent = messages.length + ' messages';
+  if (!messages || messages.length === 0) {
+    el.innerHTML = '<div class="act-empty">No chat messages yet.<br>Send a message from any portal.</div>';
+    return;
+  }
+  const last = messages.slice(-12).reverse();
+  el.innerHTML = last.map((m, i) => {
+    const roleIcon = { admin: '🛡️', monitor: '📺', host: '🎤', judge: '⚖️' };
+    const icon = m.sos ? '🚨' : (roleIcon[m.role] || '💬');
+    return `
+      <div class="act-item${m.sos ? ' sos' : ''}" style="animation-delay:${i * 0.04}s;${m.sos ? 'border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.05)' : ''}">
+        <div class="act-icon">${icon}</div>
+        <div class="act-body">
+          <div class="act-msg">${m.sos ? '🚨 SOS: ' : ''}${m.text || m.message || ''}</div>
+          <div class="act-meta">${m.sender || m.role || 'Unknown'} · ${m.time || ''}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── ANIMATE METRIC ──────────────────────────────────────────
+function animateNum(el, to) {
+  if (!el) return;
+  const from = parseInt(el.textContent) || 0;
+  const diff = to - from;
+  if (diff === 0) return;
+  let start = null;
+  function step(ts) {
+    if (!start) start = ts;
+    const pct = Math.min((ts - start) / 600, 1);
+    el.textContent = Math.round(from + diff * pct);
+    if (pct < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ─── RENDER FROM STATE ────────────────────────────────────────
+let lastStateHash = '';
+
+function renderState(state) {
+  if (!state) return;
+  const hash = JSON.stringify({ ts: state.lastUpdated, n: state.participants?.length });
+  if (hash === lastStateHash) return;
+  lastStateHash = hash;
+
+  // Hero stats
+  const participants = state.participants || [];
+  const onStage = participants.find(p => p && p.stageStatus === 'on-stage');
+  const inQueue  = participants.filter(p => p && p.stageStatus === 'queue').length;
+  const judges   = (state.judges || []).length;
+  const events   = (state.events || []).length;
+  const msgs     = (state.chatMessages || []).length;
+  const regs     = 0; // from Supabase
+
+  document.getElementById('hs-participants').textContent = participants.length;
+  document.getElementById('hs-onstage').textContent = onStage ? '1' : '0';
+  document.getElementById('hs-judges').textContent = judges;
+  document.getElementById('hs-events').textContent = events;
+  document.getElementById('hs-messages').textContent = msgs;
+
+  // Metrics
+  animateNum(document.getElementById('m-events'), events);
+  document.getElementById('m-onstage').textContent = onStage ? onStage.name?.split(' ')[0] || '1' : '—';
+  animateNum(document.getElementById('m-queue'), inQueue);
+  animateNum(document.getElementById('m-judges'), judges);
+  document.getElementById('m-sync').textContent = state.lastUpdated ?
+    new Date(state.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+
+  // Node badges
+  document.getElementById('node-admin-lbl').textContent = events + ' Event' + (events !== 1 ? 's' : '');
+  document.getElementById('node-monitor-lbl').textContent = onStage ? 'On Stage: ' + (onStage.name?.split(' ')[0] || '?') : 'Watching';
+  document.getElementById('node-host-lbl').textContent = inQueue + ' in Queue';
+  document.getElementById('node-judge-lbl').textContent = judges + ' Judge' + (judges !== 1 ? 's' : '');
+
+  // Host status
+  if (onStage) {
+    document.getElementById('host-status-dot').style.boxShadow = '0 0 10px var(--host)';
+    document.getElementById('host-status-lbl').textContent = 'ACTIVE';
+  }
+  // Judge status
+  if (judges > 0) {
+    document.getElementById('judge-status-dot').style.background = 'var(--judge)';
+    document.getElementById('judge-status-lbl').textContent = 'SCORING';
+  }
+
+  // Chat feed
+  if (state.chatMessages?.length > 0) {
+    renderChatFeed(state.chatMessages);
+  }
+
+  // Last sync time
+  if (state.lastUpdated) {
+    document.getElementById('sync-time').textContent =
+      new Date(state.lastUpdated).toLocaleTimeString('en-IN');
+    document.getElementById('sync-time-dot').classList.remove('dot-amber');
+    document.getElementById('sync-time-dot').className = 'spi-dot dot-green';
+  }
+
+  // LocalStorage indicator
+  document.getElementById('ls-dot').className = 'spi-dot dot-green';
+  document.getElementById('ls-status').textContent = 'Active · ' + participants.length + ' records';
+
+  addSyncEvent('🔄', 'State updated — ' + participants.length + ' participants', 'system');
+}
+
+// ─── SUPABASE REALTIME STATUS ─────────────────────────────────
+function watchRealtimeStatus() {
+  if (!window.syncEngine) return;
+  const se = window.syncEngine;
+
+  // Poll connection every 3 seconds
+  setInterval(() => {
+    const hasSupabase = !!(se.supabase);
+    document.getElementById('rt-dot').className = 'spi-dot ' + (hasSupabase ? 'dot-green' : 'dot-amber');
+    document.getElementById('rt-status').textContent = hasSupabase ? 'Connected' : 'Local Only';
+  }, 3000);
+}
+
+// ─── FETCH PUBLIC REGISTRATIONS FROM SUPABASE ─────────────────
+async function fetchPublicRegs() {
+  try {
+    if (!window.syncEngine?.supabase) return;
+    const { data, error } = await window.syncEngine.supabase
+      .from('public_registrations')
+      .select('id', { count: 'exact', head: true });
+    if (!error && data !== null) {
+      animateNum(document.getElementById('m-regs'), data.length || 0);
+      document.getElementById('node-public-lbl').textContent = (data.length || 0) + ' Registrations';
+    }
+  } catch(e) {}
+}
+
+// ─── FETCH ECOSYSTEM LOG FROM SUPABASE ───────────────────────
+async function fetchEcosystemLog() {
+  try {
+    if (!window.syncEngine?.supabase) return;
+    const { data, error } = await window.syncEngine.supabase
+      .from('ecosystem_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(15);
+    if (!error && data && data.length > 0) {
+      const roleIcon = { admin: '🛡️', monitor: '📺', host: '🎤', judge: '⚖️', public: '🌐' };
+      const el = document.getElementById('ap-sync-feed');
+      document.getElementById('ap-sync-count').textContent = data.length + ' events';
+      el.innerHTML = data.map((e, i) => `
+        <div class="act-item" style="animation-delay:${i * 0.04}s">
+          <div class="act-icon">${roleIcon[e.role] || '⚡'}</div>
+          <div class="act-body">
+            <div class="act-msg">${e.action}</div>
+            <div class="act-meta">${e.role?.toUpperCase()} → ${e.target_role?.toUpperCase() || 'SYSTEM'} · ${new Date(e.created_at).toLocaleTimeString('en-IN')}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch(e) {}
+}
+
+// ─── SUBSCRIBE REALTIME ECOSYSTEM LOG ────────────────────────
+function subscribeEcosystemLog() {
+  try {
+    if (!window.syncEngine?.supabase) return;
+    window.syncEngine.supabase
+      .channel('ecosystem_log_live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ecosystem_log' }, (payload) => {
+        const e = payload.new;
+        const roleIcon = { admin: '🛡️', monitor: '📺', host: '🎤', judge: '⚖️', public: '🌐' };
+        addSyncEvent(roleIcon[e.role] || '⚡', e.action, e.role);
+        toast('📡 ' + e.action, '#3b82f6');
+      })
+      .subscribe();
+  } catch(e) {}
+}
+
+// ─── SUBSCRIBE PUBLIC REGISTRATIONS REALTIME ─────────────────
+function subscribePublicRegs() {
+  try {
+    if (!window.syncEngine?.supabase) return;
+    window.syncEngine.supabase
+      .channel('public_regs_live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'public_registrations' }, (payload) => {
+        addSyncEvent('🌐', 'New public registration: ' + (payload.new?.name || 'Unknown'), 'public');
+        toast('🌐 New registration received!', '#10b981');
+      })
+      .subscribe();
+  } catch(e) {}
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  // Wait for sync engine
+  await new Promise(r => setTimeout(r, 300));
+
+  if (window.syncEngine) {
+    // Subscribe to state changes
+    window.syncEngine.subscribe(renderState);
+    // Initial render
+    renderState(window.syncEngine.getData());
+    // Watch realtime
+    watchRealtimeStatus();
+    subscribeEcosystemLog();
+    subscribePublicRegs();
+    fetchPublicRegs();
+    fetchEcosystemLog();
+
+    // Refresh every 30s
+    setInterval(() => {
+      renderState(window.syncEngine.getData());
+      fetchPublicRegs();
+    }, 30000);
+
+    addSyncEvent('🟢', 'Ecosystem hub connected to sync engine', 'system');
+    toast('✅ Ecosystem live — sync engine connected', '#10b981');
+  } else {
+    addSyncEvent('⚠️', 'Sync engine not available — running in view-only mode', 'system');
+    document.getElementById('ls-dot').className = 'spi-dot dot-amber';
+    document.getElementById('ls-status').textContent = 'Not available';
+    document.getElementById('m-sync').textContent = 'Offline';
+  }
+
+  // Check localStorage
+  const raw = localStorage.getItem('knsdc_sync');
+  if (raw) {
+    try {
+      const d = JSON.parse(raw);
+      addSyncEvent('💾', 'Local cache found — ' + (d.participants?.length || 0) + ' participants cached', 'system');
+    } catch(e) {}
+  }
+});
+</script>
+</body>
+</html>
