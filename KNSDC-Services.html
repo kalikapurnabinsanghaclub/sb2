@@ -205,18 +205,24 @@
       </div>
     </div>
 
-    <!-- RIDER DELIVERY & TRIP HISTORY SECTION -->
+    <!-- RIDER DELIVERY & TRIP HISTORY SECTION (COLLAPSIBLE / TAP TO VIEW) -->
     <div class="section-card" style="grid-column: 1 / -1; margin-top: 20px;">
-      <h2 class="section-title" style="color: var(--green);">📜 Rider Delivery &amp; Trip History</h2>
-      <div id="rider-history-container">
-        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No completed trips or deliveries yet.</div>
+      <button type="button" onclick="toggleRiderHistory()" style="width:100%; background:#f8fafc; border:1px solid #cbd5e1; padding:12px 16px; border-radius:10px; font-weight:800; font-size:14px; color:var(--green); display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+        <span>📜 View Rider Delivery &amp; Trip History (<span id="rider-history-count">0</span>)</span>
+        <span id="rider-history-arrow">▼</span>
+      </button>
+
+      <div id="rider-history-content" style="display:none; margin-top:15px;">
+        <div id="rider-history-container">
+          <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No completed trips or deliveries yet.</div>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=160"></script>
+<script src="lib/localSync-v4.js?v=165"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -282,6 +288,16 @@ async function handleLogin(e) {
     }
   }
 }
+
+window.toggleRiderHistory = function() {
+  const content = document.getElementById('rider-history-content');
+  const arrow = document.getElementById('rider-history-arrow');
+  if (content) {
+    const isHidden = content.style.display === 'none' || content.style.display === '';
+    content.style.display = isHidden ? 'block' : 'none';
+    if (arrow) arrow.innerText = isHidden ? '▲' : '▼';
+  }
+};
 
 window.toggleCompletedFoodOrders = function() {
   const content = document.getElementById('completed-food-orders-content');
@@ -965,11 +981,13 @@ function renderData() {
     }
     // Render Rider Completed History (Completed Rides + Food Deliveries delivered by this rider)
     const riderHistContainer = document.getElementById('rider-history-container');
+    const riderHistCountEl = document.getElementById('rider-history-count');
     if (riderHistContainer) {
       const myCompletedRides = bookings.filter(b => b.status === 'completed' && ((b.driverEmail && b.driverEmail.toLowerCase() === myEmail) || (b.driverName && b.driverName.toLowerCase() === myName)));
       const myCompletedFoodDeliveries = orders.filter(o => o.status === 'delivered' && ((o.deliveryPartnerEmail && o.deliveryPartnerEmail.toLowerCase() === myEmail) || (o.deliveryPartnerName && o.deliveryPartnerName.toLowerCase() === myName)));
       
       const totalRiderHistory = myCompletedRides.length + myCompletedFoodDeliveries.length;
+      if (riderHistCountEl) riderHistCountEl.innerText = totalRiderHistory;
       if (totalRiderHistory === 0) {
         riderHistContainer.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No completed trips or deliveries yet.</div>';
       } else {
