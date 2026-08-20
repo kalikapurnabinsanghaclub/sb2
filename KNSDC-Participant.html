@@ -251,28 +251,48 @@
 
     <!-- Food Order Modal -->
     <div id="food-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999999; justify-content:center; align-items:center; padding:15px;">
-      <div class="card" style="width:100%; max-width:420px; max-height:90vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.25s;">
+      <div class="card" style="width:100%; max-width:440px; max-height:90vh; overflow-y:auto; position:relative; animation: chatSlideUp 0.25s;">
         <button onclick="closeFoodModal()" style="position:absolute; top:15px; right:15px; background:none; border:none; color:var(--text); font-size:24px; cursor:pointer;">&times;</button>
-        <h3 style="font-size:18px; font-weight:800; margin-bottom:15px; color:#10B981;">🍔 Select Menu Items</h3>
+        <h3 style="font-size:18px; font-weight:800; margin-bottom:12px; color:#10B981;">🍔 Select Menu Items</h3>
         
-        <div id="menu-items-container" style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+        <!-- Order Type Switcher: Delivery vs Self Pickup -->
+        <div style="display:flex; background:#e2e8f0; border-radius:10px; padding:3px; margin-bottom:15px;">
+          <button type="button" id="food-tab-delivery" onclick="setFoodOrderType('delivery')" style="flex:1; padding:9px; border:none; border-radius:8px; font-weight:800; font-size:12px; cursor:pointer; background:#10b981; color:white; transition:all 0.2s;">
+            🚚 Delivery to Seat
+          </button>
+          <button type="button" id="food-tab-pickup" onclick="setFoodOrderType('pickup')" style="flex:1; padding:9px; border:none; border-radius:8px; font-weight:800; font-size:12px; cursor:pointer; background:transparent; color:#64748b; transition:all 0.2s;">
+            🛍️ Self Pickup (₹0 Fee)
+          </button>
+        </div>
+
+        <div id="menu-items-container" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
           <!-- JS item injection -->
         </div>
 
-        <div class="fg" style="margin-bottom:15px;">
-          <label>Delivery Seat / Location / Lounge Code</label>
+        <div id="food-loc-field" class="fg" style="margin-bottom:15px;">
+          <label id="food-loc-label" style="font-weight:bold; font-size:12px;">📍 Delivery Seat / Lounge Address</label>
           <div style="display:flex; gap:8px;">
             <input type="text" id="food-delivery-loc" placeholder="e.g. Lounge A - Table 4" required style="flex:1; margin-bottom:0;">
-            <button type="button" onclick="getCurrentFoodLocation()" class="btn" style="background:#3b82f6; border:none; padding:10px 14px; font-size:16px; border-radius:8px;" title="Use Current GPS Location">📍</button>
+            <button type="button" id="food-gps-btn" onclick="getCurrentFoodLocation()" class="btn" style="background:#3b82f6; border:none; padding:10px 14px; font-size:16px; border-radius:8px;" title="Use Current GPS Location">📍</button>
           </div>
         </div>
 
-        <div style="font-size:14px; font-weight:800; display:flex; justify-content:space-between; margin-bottom:20px; padding-top:10px; border-top:1px solid var(--border);">
-          <span>Total Price:</span>
-          <span id="food-total-price">₹0</span>
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:15px; font-size:12px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; color:#64748b;">
+            <span>Items Subtotal:</span>
+            <span id="food-subtotal-price" style="font-weight:bold; color:#334155;">₹0</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:#64748b;">
+            <span>Delivery Charge:</span>
+            <span id="food-delivery-fee" style="font-weight:bold; color:#10b981;">₹20</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:800; color:#0f172a; padding-top:6px; border-top:1px dashed #cbd5e1; margin-top:2px;">
+            <span>Total Payable:</span>
+            <span id="food-total-price" style="color:#10b981;">₹0</span>
+          </div>
         </div>
 
-        <button onclick="submitFoodOrder()" class="btn" style="background:#10B981; border:none;">Place Order (Cash on Delivery)</button>
+        <button onclick="submitFoodOrder()" class="btn" style="background:#10B981; border:none; font-weight:800; font-size:15px; padding:13px;">Place Order (Cash on Delivery)</button>
       </div>
     </div>
 
@@ -662,7 +682,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=165"></script>
+<script src="lib/localSync-v4.js?v=170"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -3197,13 +3217,17 @@ window.renderFoodMenuUI = function() {
     container.innerHTML = foodMenu.map(item => {
       const currentQty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
       const imgHtml = item.image 
-        ? `<img src="${item.image}" onclick="openFullImageModal('${item.image}')" title="Tap to view full screen" style="width:36px; height:36px; object-fit:cover; border-radius:8px; cursor:pointer;" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop';">`
-        : `<span style="font-size:24px;">${item.icon || '🍔'}</span>`;
+        ? `<img src="${item.image}" onclick="openFullImageModal('${item.image}')" title="Tap to view full screen" style="width:38px; height:38px; object-fit:cover; border-radius:8px; cursor:pointer; border:1px solid #cbd5e1;" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop';">`
+        : `<div style="width:38px; height:38px; border-radius:8px; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:16px; color:#475569;">🍽️</div>`;
+      const delFeeBadge = item.deliveryFee ? `<span style="font-size:10px; color:#64748b; font-weight:normal;"> (🚚 +₹${item.deliveryFee})</span>` : '';
       return `
-      <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0; gap:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; gap:8px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
         <div style="display:flex; align-items:center; gap:10px;">
           ${imgHtml}
-          <span style="font-size:14px; font-weight:700;">${item.name} (₹${item.price})</span>
+          <div>
+            <div style="font-size:13px; font-weight:700; color:#1e293b;">${item.name}</div>
+            <div style="font-size:12px; font-weight:800; color:#10b981;">₹${item.price} ${delFeeBadge}</div>
+          </div>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
           <button type="button" onclick="changeQty('${item.id}', -1)" style="width:24px; height:24px; border-radius:50%; border:1px solid #cbd5e1; background:#fff; font-weight:bold; cursor:pointer;">-</button>
@@ -3213,6 +3237,29 @@ window.renderFoodMenuUI = function() {
       </div>
       `;
     }).join('');
+  }
+  updateFoodTotalPrice();
+};
+
+let currentFoodOrderType = 'delivery';
+
+window.setFoodOrderType = function(type) {
+  currentFoodOrderType = type;
+  const btnDelivery = document.getElementById('food-tab-delivery');
+  const btnPickup = document.getElementById('food-tab-pickup');
+  const locField = document.getElementById('food-loc-field');
+  const locInput = document.getElementById('food-delivery-loc');
+
+  if (type === 'delivery') {
+    if (btnDelivery) { btnDelivery.style.background = '#10b981'; btnDelivery.style.color = '#fff'; }
+    if (btnPickup) { btnPickup.style.background = 'transparent'; btnPickup.style.color = '#64748b'; }
+    if (locField) locField.style.display = 'block';
+    if (locInput && locInput.value === 'Self Pickup at Kitchen Counter') locInput.value = '';
+  } else {
+    if (btnDelivery) { btnDelivery.style.background = 'transparent'; btnDelivery.style.color = '#64748b'; }
+    if (btnPickup) { btnPickup.style.background = '#3b82f6'; btnPickup.style.color = '#fff'; }
+    if (locField) locField.style.display = 'none';
+    if (locInput) locInput.value = 'Self Pickup at Kitchen Counter';
   }
   updateFoodTotalPrice();
 };
@@ -3241,13 +3288,31 @@ window.changeQty = function(itemId, amount) {
 };
 
 function updateFoodTotalPrice() {
-  let total = 0;
+  let subtotal = 0;
+  let hasItems = false;
+  let maxDeliveryFee = 0;
+
   const foodMenu = getFoodMenu();
   foodMenu.forEach(item => {
     const qty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
-    total += qty * item.price;
+    if (qty > 0) {
+      hasItems = true;
+      subtotal += qty * item.price;
+      const fee = item.deliveryFee !== undefined ? parseFloat(item.deliveryFee) : 20;
+      if (fee > maxDeliveryFee) maxDeliveryFee = fee;
+    }
   });
-  document.getElementById('food-total-price').innerText = `₹${total}`;
+
+  const deliveryFee = (hasItems && currentFoodOrderType === 'delivery') ? (maxDeliveryFee || 20) : 0;
+  const grandTotal = subtotal + deliveryFee;
+
+  const subEl = document.getElementById('food-subtotal-price');
+  const feeEl = document.getElementById('food-delivery-fee');
+  const totEl = document.getElementById('food-total-price');
+
+  if (subEl) subEl.innerText = `₹${subtotal}`;
+  if (feeEl) feeEl.innerText = currentFoodOrderType === 'delivery' ? `₹${deliveryFee}` : `FREE (Self Pickup)`;
+  if (totEl) totEl.innerText = `₹${grandTotal}`;
 }
 
 window.getCurrentFoodLocation = function() {
@@ -3288,6 +3353,16 @@ window.submitFoodOrder = async function() {
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
   if (!p) return;
 
+  let maxDeliveryFee = 0;
+  foodMenu.forEach(item => {
+    const qty = (window._foodQuantities && window._foodQuantities[item.id]) || 0;
+    if (qty > 0) {
+      const fee = item.deliveryFee !== undefined ? parseFloat(item.deliveryFee) : 20;
+      if (fee > maxDeliveryFee) maxDeliveryFee = fee;
+    }
+  });
+  const deliveryFee = currentFoodOrderType === 'delivery' ? (maxDeliveryFee || 20) : 0;
+
   const orderId = 'ORD-' + Math.floor(1000 + Math.random() * 9000);
   const newOrder = {
     id: orderId,
@@ -3295,7 +3370,9 @@ window.submitFoodOrder = async function() {
     participantName: p.name,
     participantPhone: p.phone || p.contact || '',
     items: orderedItems,
-    location: loc,
+    location: currentFoodOrderType === 'pickup' ? '🛍️ Self Pickup at Kitchen Counter' : loc,
+    orderType: currentFoodOrderType,
+    deliveryFee: deliveryFee,
     status: 'pending', // pending, preparing, delivered, rejected
     timestamp: Date.now()
   };

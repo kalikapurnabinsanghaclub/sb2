@@ -133,6 +133,10 @@
           <label style="font-weight:bold; color:var(--text-muted); font-size:11px; margin-left:4px;">₹ Price</label>
           <input type="number" id="new-menu-price" placeholder="Price (₹)" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; width:100%; box-sizing:border-box;">
         </div>
+        <div style="display:flex; flex-direction:column; gap:4px; width:120px;">
+          <label style="font-weight:bold; color:var(--text-muted); font-size:11px; margin-left:4px;">🚚 Delivery Fee</label>
+          <input type="number" id="new-menu-delivery-fee" placeholder="Fee (₹)" value="20" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; width:100%; box-sizing:border-box;">
+        </div>
         <button onclick="addMenuItem()" class="action-btn" style="background:var(--primary); color:white; width:auto; padding:12px 24px; font-weight:bold; margin-top:20px; border-radius:8px; cursor:pointer;">+ Add Item</button>
       </div>
       <div id="menu-management-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:10px;">
@@ -222,7 +226,7 @@
 </div>
 
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=165"></script>
+<script src="lib/localSync-v4.js?v=170"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -518,7 +522,7 @@ function renderData() {
           ${imgHtml}
           <div>
             <div style="font-weight:bold; font-size:14px;">${m.name}</div>
-            <div style="color:var(--green); font-size:12px; font-weight:800;">₹${m.price}</div>
+            <div style="color:var(--green); font-size:12px; font-weight:800;">₹${m.price} <span style="color:#64748b; font-size:10px; font-weight:normal;">(🚚 Delivery +₹${m.deliveryFee || 20})</span></div>
           </div>
         </div>
         <div style="display:flex; flex-direction:column; gap:4px;">
@@ -658,6 +662,12 @@ function renderData() {
       const isMyRide = loggedInPartner && (b.driverName === loggedInPartner.name || b.driverEmail === loggedInPartner.email);
       if (b.status === 'completed' && isMyRide) {
         totalRideSales += parseFloat(b.fare) || 0;
+      }
+    });
+    orders.forEach(o => {
+      const isMyDelivery = loggedInPartner && ((o.deliveryPartnerEmail && o.deliveryPartnerEmail.toLowerCase() === myEmail) || (o.deliveryPartnerName && o.deliveryPartnerName.toLowerCase() === myName));
+      if (o.status === 'delivered' && isMyDelivery) {
+        totalRideSales += parseFloat(o.deliveryFee) || 0;
       }
     });
     const rideEarningsEl = document.getElementById('ride-total-earnings');
@@ -1053,6 +1063,8 @@ async function addMenuItem() {
   const fileInput = document.getElementById('new-menu-file');
   const name = document.getElementById('new-menu-name').value.trim();
   const price = parseFloat(document.getElementById('new-menu-price').value.trim());
+  const deliveryFeeInput = document.getElementById('new-menu-delivery-fee');
+  const deliveryFee = deliveryFeeInput ? (parseFloat(deliveryFeeInput.value.trim()) || 0) : 20;
 
   if (!name || isNaN(price)) {
     return alert('Please enter a valid item name and price.');
