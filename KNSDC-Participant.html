@@ -515,6 +515,25 @@
         <div id="food-orders-list"></div>
       </div>
 
+      <!-- PREVIOUS ORDERS / HISTORY SECTION -->
+      <div id="previous-orders-section" style="display:none; margin-top:16px; border-top:1px dashed #cbd5e1; padding-top:14px;">
+        <button type="button" onclick="togglePreviousOrders()" style="width:100%; background:#f8fafc; border:1px solid #cbd5e1; padding:10px 14px; border-radius:10px; font-weight:bold; font-size:12px; color:#475569; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+          <span>📜 View Previous Orders &amp; History (<span id="prev-orders-count">0</span>)</span>
+          <span id="prev-orders-arrow">▼</span>
+        </button>
+
+        <div id="previous-orders-content" style="display:none; margin-top:12px; flex-direction:column; gap:10px;">
+          <div id="past-food-wrap" style="display:none;">
+            <h5 style="font-size:12px; font-weight:800; color:#64748b; margin-bottom:6px;">🍔 Past Food Orders</h5>
+            <div id="past-food-list"></div>
+          </div>
+          <div id="past-ride-wrap" style="display:none;">
+            <h5 style="font-size:12px; font-weight:800; color:#64748b; margin-bottom:6px;">🏍️ Past Ride Bookings</h5>
+            <div id="past-ride-list"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="active-ride-bookings" style="display:none;">
         <h4 style="font-size:14px; font-weight:800; color:#3B82F6; margin-bottom:8px;">🏍️ Active Ride Bookings</h4>
         <div id="ride-bookings-list" style="display:flex; flex-direction:column; gap:12px;"></div>
@@ -643,7 +662,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=140"></script>
+<script src="lib/localSync-v4.js?v=145"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -3638,10 +3657,29 @@ window.submitRideBooking = async function() {
 // Global registry to store active tracking map instances for riders
 let trackingMaps = {};
 
+window.togglePreviousOrders = function() {
+  const content = document.getElementById('previous-orders-content');
+  const arrow = document.getElementById('prev-orders-arrow');
+  if (content) {
+    const isHidden = content.style.display === 'none' || content.style.display === '';
+    content.style.display = isHidden ? 'flex' : 'none';
+    if (arrow) arrow.innerText = isHidden ? '▲' : '▼';
+  }
+};
+
 window.renderActiveServicesData = function(p) {
   const state = window.syncEngine.getData() || {};
-  const orders = (state.foodOrders || []).filter(o => String(o.participantId) === String(p.id));
-  const bookings = (state.rideBookings || []).filter(b => String(b.participantId) === String(p.id));
+  const allOrders = (state.foodOrders || []).filter(o => String(o.participantId) === String(p.id));
+  const allBookings = (state.rideBookings || []).filter(b => String(b.participantId) === String(p.id));
+
+  const activeOrders = allOrders.filter(o => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready_for_pickup' || o.status === 'out_for_delivery');
+  const pastOrders = allOrders.filter(o => o.status === 'delivered' || o.status === 'rejected');
+
+  const activeBookings = allBookings.filter(b => b.status === 'finding' || b.status === 'assigned');
+  const pastBookings = allBookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
+
+  const orders = activeOrders;
+  const bookings = activeBookings;
 
   // Render food orders
   const foodWrap = document.getElementById('active-food-orders');
@@ -3912,6 +3950,63 @@ window.renderActiveServicesData = function(p) {
     } else {
       rideWrap.style.display = 'none';
       rideList.removeAttribute('data-hash');
+    }
+  }
+
+  // Render Previous Orders / History Panel
+  const prevSec = document.getElementById('previous-orders-section');
+  const prevCountEl = document.getElementById('prev-orders-count');
+  const pastFoodWrap = document.getElementById('past-food-wrap');
+  const pastFoodList = document.getElementById('past-food-list');
+  const pastRideWrap = document.getElementById('past-ride-wrap');
+  const pastRideList = document.getElementById('past-ride-list');
+
+  const totalPast = pastOrders.length + pastBookings.length;
+  if (prevSec && prevCountEl) {
+    if (totalPast > 0) {
+      prevSec.style.display = 'block';
+      prevCountEl.innerText = totalPast;
+
+      if (pastFoodWrap && pastFoodList) {
+        if (pastOrders.length > 0) {
+          pastFoodWrap.style.display = 'block';
+          pastFoodList.innerHTML = pastOrders.map(o => {
+            const itemsStr = o.items.map(i => i.qty + 'x ' + i.name).join(', ');
+            const isDelivered = o.status === 'delivered';
+            return '<div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:6px;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+                  '<strong style="font-size:12px; color:#475569;">' + o.id + '</strong>' +
+                  (isDelivered ? '<span style="color:#10b981; font-weight:bold; font-size:11px;">✅ Delivered</span>' : '<span style="color:#ef4444; font-weight:bold; font-size:11px;">❌ Rejected</span>') +
+                '</div>' +
+                '<div style="font-size:11px; color:#64748b; margin-top:2px;">' + itemsStr + '</div>' +
+                '<div style="font-size:10px; color:#94a3b8; margin-top:2px;">📍 Loc: ' + o.location + '</div>' +
+              '</div>';
+          }).join('');
+        } else {
+          pastFoodWrap.style.display = 'none';
+        }
+      }
+
+      if (pastRideWrap && pastRideList) {
+        if (pastBookings.length > 0) {
+          pastRideWrap.style.display = 'block';
+          pastRideList.innerHTML = pastBookings.map(b => {
+            const isCompleted = b.status === 'completed';
+            return '<div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:6px;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+                  '<strong style="font-size:12px; color:#475569;">' + b.id + '</strong>' +
+                  (isCompleted ? '<span style="color:#64748b; font-weight:bold; font-size:11px;">🏁 Arrived / Completed</span>' : '<span style="color:#ef4444; font-weight:bold; font-size:11px;">❌ Cancelled</span>') +
+                '</div>' +
+                '<div style="font-size:11px; color:#64748b; margin-top:2px;"><strong>Fare:</strong> ₹' + b.fare + ' | <strong>Vehicle:</strong> ' + b.vehicle.toUpperCase() + '</div>' +
+                '<div style="font-size:10px; color:#94a3b8; margin-top:2px;">📍 From ' + b.pickup + ' to ' + b.drop + '</div>' +
+              '</div>';
+          }).join('');
+        } else {
+          pastRideWrap.style.display = 'none';
+        }
+      }
+    } else {
+      prevSec.style.display = 'none';
     }
   }
 };
