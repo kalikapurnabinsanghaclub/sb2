@@ -98,8 +98,14 @@
     </div>
   </div>
 
-  <div class="tab-buttons" style="display: none;">
-    <!-- Tabs removed, unified view enabled -->
+  <!-- TOGGLE SWITCH TABS FOR FOOD & RIDE SERVICES -->
+  <div style="display:flex; background:#e2e8f0; border-radius:12px; padding:4px; margin-bottom:20px; box-shadow:inset 0 2px 4px rgba(0,0,0,0.05);">
+    <button id="tab-btn-food" onclick="switchPartnerTab('food')" style="flex:1; padding:12px; border:none; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; background:#10b981; color:white; transition:all 0.2s; box-shadow:0 2px 6px rgba(16,185,129,0.3);">
+      🍔 Food Delivery &amp; Kitchen Services
+    </button>
+    <button id="tab-btn-transport" onclick="switchPartnerTab('transport')" style="flex:1; padding:12px; border:none; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; background:transparent; color:#64748b; transition:all 0.2s;">
+      🏍️ Transport &amp; Ride Services
+    </button>
   </div>
 
   <!-- FOOD DELIVERY PARTNER SECTION -->
@@ -183,11 +189,19 @@
         <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No active food deliveries.</div>
       </div>
     </div>
+
+    <!-- RIDER DELIVERY & TRIP HISTORY SECTION -->
+    <div class="section-card" style="grid-column: 1 / -1; margin-top: 20px;">
+      <h2 class="section-title" style="color: var(--green);">📜 Rider Delivery &amp; Trip History</h2>
+      <div id="rider-history-container">
+        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No completed trips or deliveries yet.</div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=145"></script>
+<script src="lib/localSync-v4.js?v=150"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
 
@@ -254,6 +268,41 @@ async function handleLogin(e) {
   }
 }
 
+window.switchPartnerTab = function(tab) {
+  const foodPanel = document.getElementById('food-delivery-panel');
+  const transportPanel = document.getElementById('transport-ride-panel');
+  const btnFood = document.getElementById('tab-btn-food');
+  const btnTransport = document.getElementById('tab-btn-transport');
+
+  if (tab === 'food') {
+    if (foodPanel) foodPanel.style.display = 'grid';
+    if (transportPanel) transportPanel.style.display = 'none';
+    if (btnFood) {
+      btnFood.style.background = '#10b981';
+      btnFood.style.color = '#ffffff';
+      btnFood.style.boxShadow = '0 2px 6px rgba(16,185,129,0.3)';
+    }
+    if (btnTransport) {
+      btnTransport.style.background = 'transparent';
+      btnTransport.style.color = '#64748b';
+      btnTransport.style.boxShadow = 'none';
+    }
+  } else {
+    if (foodPanel) foodPanel.style.display = 'none';
+    if (transportPanel) transportPanel.style.display = 'grid';
+    if (btnFood) {
+      btnFood.style.background = 'transparent';
+      btnFood.style.color = '#64748b';
+      btnFood.style.boxShadow = 'none';
+    }
+    if (btnTransport) {
+      btnTransport.style.background = '#3b82f6';
+      btnTransport.style.color = '#ffffff';
+      btnTransport.style.boxShadow = '0 2px 6px rgba(59,130,246,0.3)';
+    }
+  }
+};
+
 function loginSuccess(partner) {
   loggedInPartner = partner;
   // Persist role and user info so auto-login works on page reload
@@ -270,9 +319,12 @@ function loginSuccess(partner) {
   else if (partner.role === 'transport_partner') roleText = '🏍️ Ride Partner';
   document.getElementById('partner-display-role').textContent = roleText;
 
-  // Both panels are now always visible in the unified dashboard
-  document.getElementById('food-delivery-panel').style.display = 'grid';
-  document.getElementById('transport-ride-panel').style.display = 'grid';
+  // Switch to role-appropriate tab on login
+  if (partner.role === 'transport_partner') {
+    switchPartnerTab('transport');
+  } else {
+    switchPartnerTab('food');
+  }
 
   // Trigger initial data render after login
   renderData();
@@ -855,6 +907,42 @@ function renderData() {
         }, 100);
       });
     }
+    // Render Rider Completed History (Completed Rides + Food Deliveries delivered by this rider)
+    const riderHistContainer = document.getElementById('rider-history-container');
+    if (riderHistContainer) {
+      const myCompletedRides = bookings.filter(b => b.status === 'completed' && ((b.driverEmail && b.driverEmail.toLowerCase() === myEmail) || (b.driverName && b.driverName.toLowerCase() === myName)));
+      const myCompletedFoodDeliveries = orders.filter(o => o.status === 'delivered' && ((o.deliveryPartnerEmail && o.deliveryPartnerEmail.toLowerCase() === myEmail) || (o.deliveryPartnerName && o.deliveryPartnerName.toLowerCase() === myName)));
+      
+      const totalRiderHistory = myCompletedRides.length + myCompletedFoodDeliveries.length;
+      if (totalRiderHistory === 0) {
+        riderHistContainer.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No completed trips or deliveries yet.</div>';
+      } else {
+        let histHtml = '';
+        myCompletedRides.forEach(b => {
+          histHtml += '<div class="order-card" style="border-color:var(--green); margin-bottom:10px;">' +
+            '<div class="order-header">' +
+              '<span class="order-id">' + b.id + '</span>' +
+              '<span class="badge badge-active" style="background:#10b981;">🏍️ Ride Trip Completed</span>' +
+            '</div>' +
+            '<div style="font-size:13px; font-weight:bold;">📍 From ' + b.pickup + ' ➔ To ' + b.drop + '</div>' +
+            '<div style="font-size:12px; color:var(--text-muted); margin-top:4px;"><strong>Rider:</strong> ' + b.participantName + ' | <strong>Fare Earned:</strong> ₹' + b.fare + ' | <strong>Vehicle:</strong> ' + b.vehicle.toUpperCase() + '</div>' +
+          '</div>';
+        });
+        myCompletedFoodDeliveries.forEach(o => {
+          let itemsStr = o.items.map(i => i.qty + 'x ' + i.name).join(', ');
+          histHtml += '<div class="order-card" style="border-color:var(--primary); margin-bottom:10px;">' +
+            '<div class="order-header">' +
+              '<span class="order-id">' + o.id + '</span>' +
+              '<span class="badge badge-active" style="background:#10b981;">🍔 Food Delivery Completed</span>' +
+            '</div>' +
+            '<div style="font-size:13px; font-weight:bold;">📍 Delivered to: ' + o.location + '</div>' +
+            '<div style="font-size:12px; color:var(--text-muted); margin-top:4px;"><strong>Customer:</strong> ' + o.participantName + ' | <strong>Items:</strong> ' + itemsStr + '</div>' +
+          '</div>';
+        });
+        riderHistContainer.innerHTML = histHtml;
+      }
+    }
+
     checkAlertReminders();
 }
 
