@@ -2078,6 +2078,40 @@ function renderDashboard() {
     banner.style.display = 'none';
   }
   
+  // ── READY BUTTON VISIBILITY (per-round, monitor-presence gated) ──────────
+  // The button is ONLY visible when:
+  //   1. Monitor has marked participant present for their CURRENT round
+  //   2. They have NOT yet completed performance this round (stageStatus !== 'done')
+  // It auto-hides after performance done and re-appears when promoted to next round.
+  (function updateReadyBtnVisibility() {
+    const readyBtn = document.getElementById('ready-btn');
+    if (!readyBtn) return;
+
+    const currentRound = p.round || 'audition';
+    const rp = p.roundPresence || {};
+    const isMarkedPresent = rp[currentRound] && rp[currentRound].present === true;
+    const isDone = p.stageStatus === 'done';
+
+    if (isMarkedPresent && !isDone) {
+      readyBtn.style.display = 'block';
+      // Sync button label/color with isReady state
+      if (p.isReady) {
+        readyBtn.innerHTML = '✅ Ready Alert Sent (Click to Cancel)';
+        readyBtn.style.background = 'var(--green)';
+        readyBtn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+      } else {
+        readyBtn.innerHTML = '🔥 I am Ready for Performance';
+        readyBtn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
+        readyBtn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
+      }
+      readyBtn.disabled = false;
+      readyBtn.style.cursor = 'pointer';
+    } else {
+      readyBtn.style.display = 'none';
+    }
+  })();
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Render Detailed Results
   renderDetailedResults(p);
   // Render Performance Journey Chart
@@ -2465,22 +2499,30 @@ if (window.syncEngine) {
         window.syncEngine.updateParticipant(CURRENT_USER, { isReady: false }).catch(e => console.error(e));
       }
 
-      if (p.stageStatus) {
-        // Sync button UI with current state if loaded
-        const btn = document.getElementById('ready-btn');
-        if (btn) {
-          if (p.isReady) {
-            btn.innerHTML = '✅ Ready Alert Sent (Click to Cancel)';
-            btn.style.background = 'var(--green)';
-            btn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
-            btn.style.cursor = 'pointer';
-            btn.disabled = false;
+      if (p.stageStatus !== undefined) {
+        // Sync button UI with current present/stageStatus in real-time
+        const readyBtn = document.getElementById('ready-btn');
+        if (readyBtn) {
+          const curRound = p.round || 'audition';
+          const rp = p.roundPresence || {};
+          const isMarkedPresent = rp[curRound] && rp[curRound].present === true;
+          const isDone = p.stageStatus === 'done';
+
+          if (isMarkedPresent && !isDone) {
+            readyBtn.style.display = 'block';
+            if (p.isReady) {
+              readyBtn.innerHTML = '✅ Ready Alert Sent (Click to Cancel)';
+              readyBtn.style.background = 'var(--green)';
+              readyBtn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+            } else {
+              readyBtn.innerHTML = '🔥 I am Ready for Performance';
+              readyBtn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
+              readyBtn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
+            }
+            readyBtn.disabled = false;
+            readyBtn.style.cursor = 'pointer';
           } else {
-            btn.innerHTML = '🔥 I am Ready for Performance';
-            btn.style.background = 'linear-gradient(135deg, #FF0080, #FF8C00)';
-            btn.style.boxShadow = '0 6px 20px rgba(255,0,128,0.3)';
-            btn.style.cursor = 'pointer';
-            btn.disabled = false;
+            readyBtn.style.display = 'none';
           }
         }
         
