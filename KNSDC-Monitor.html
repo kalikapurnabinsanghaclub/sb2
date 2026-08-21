@@ -8256,18 +8256,21 @@ function renderVenueMonitor(){
   const vdsel = document.getElementById('venue-date-sel');
   if (vdsel) {
     const prevDate = vdsel.value;
-    vdsel.innerHTML = '<option value="">All Dates</option>';
     if (currentVenueMonitor) {
       const ven = venues.find(v=>String(v.id)===String(currentVenueMonitor));
-      if(ven){
-        vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
-        vdsel.value = prevDate;
-      }
+      const dates = (ven && Array.isArray(ven.dates)) ? ven.dates : [];
+      vdsel.innerHTML = '<option value="">All Dates</option>' + dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+      if (prevDate && dates.includes(prevDate)) vdsel.value = prevDate;
+    } else {
+      const allDates = [...new Set(filteredVenues.flatMap(v => (v && Array.isArray(v.dates)) ? v.dates : []))];
+      vdsel.innerHTML = '<option value="">All Dates</option>' + allDates.map(d=>`<option value="${d}">${d}</option>`).join('');
+      if (prevDate && allDates.includes(prevDate)) vdsel.value = prevDate;
     }
   }
   renderVenueParticipants();
-  updateFlashStatusUI();
+  if (typeof updateFlashStatusUI === 'function') updateFlashStatusUI();
 }
+window.renderVenueMonitor = renderVenueMonitor;
 
 function updateFlashStatusUI() {
   const s = syncEngine.getData();
@@ -8294,6 +8297,7 @@ function updateFlashStatusUI() {
     }
   }
 }
+window.updateFlashStatusUI = updateFlashStatusUI;
 
 function selectPresetFlash(type) {
   activeFlashType = type;
@@ -8303,10 +8307,12 @@ function selectPresetFlash(type) {
   }
   triggerFlashMessage();
 }
+window.selectPresetFlash = selectPresetFlash;
 
 function onFlashTextInput() {
   activeFlashType = 'custom';
 }
+window.onFlashTextInput = onFlashTextInput;
 
 function triggerFlashMessage() {
   const txtArea = document.getElementById('flash-msg-text');
@@ -8330,6 +8336,7 @@ function triggerFlashMessage() {
   toast('⚡ Message flashed to Stage & Judges!');
   updateFlashStatusUI();
 }
+window.triggerFlashMessage = triggerFlashMessage;
 
 function clearFlashMessage() {
   syncEngine.setData(state => {
@@ -8347,22 +8354,32 @@ function clearFlashMessage() {
   toast('❌ Flash message cleared!');
   updateFlashStatusUI();
 }
+window.clearFlashMessage = clearFlashMessage;
 
 function selectVenueMonitor(id){
-  currentVenueMonitor = id ? parseInt(id) : null;
-  const ven = venues.find(v=>String(v.id)===String(currentVenueMonitor));
-  if(ven){
-    const vdsel = document.getElementById('venue-date-sel');
-    if (vdsel) vdsel.innerHTML = '<option value="">All Dates</option>' + ven.dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+  currentVenueMonitor = id || null;
+  const vdsel = document.getElementById('venue-date-sel');
+  if (vdsel) {
+    if (currentVenueMonitor) {
+      const ven = venues.find(v=>String(v.id)===String(currentVenueMonitor));
+      const dates = (ven && Array.isArray(ven.dates)) ? ven.dates : [];
+      vdsel.innerHTML = '<option value="">All Dates</option>' + dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+    } else {
+      const filteredVenues = venues.filter(v => String(v.eventId) === String(activeEventId) || !v.eventId);
+      const allDates = [...new Set(filteredVenues.flatMap(v => (v && Array.isArray(v.dates)) ? v.dates : []))];
+      vdsel.innerHTML = '<option value="">All Dates</option>' + allDates.map(d=>`<option value="${d}">${d}</option>`).join('');
+    }
   }
   renderVenueParticipants();
   renderStageView();
 }
+window.selectVenueMonitor = selectVenueMonitor;
 
 function refreshVenueView(){ 
   renderVenueParticipants(); 
   renderStageView();
 }
+window.refreshVenueView = refreshVenueView;
 
 function addToUpcoming(id) {
   const p = participants.find(x => x.id === id);
@@ -9042,7 +9059,8 @@ function renderVenueParticipants(){
       const isEventMatch = String(j.eventId) === String(activeEventId) || String(j.eventId) === '0';
       if (!isEventMatch) return false;
       
-      const agreement = agreements.find(a => 
+      const allAgreements = (typeof agreements !== 'undefined' && Array.isArray(agreements)) ? agreements : ((syncEngine && syncEngine.getData()) ? (syncEngine.getData().judgeAgreements || []) : []);
+      const agreement = allAgreements.find(a => 
         (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
         (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
       );
@@ -9166,6 +9184,7 @@ function renderVenueParticipants(){
       </div>`;
   }).join('');
 }
+window.renderVenueParticipants = renderVenueParticipants;
 
 function pushToStage(id){
   // Move previous on-stage to done
@@ -9178,12 +9197,12 @@ function pushToStage(id){
     }
   });
   
-  const p = participants.find(x=>x.id===id);
+  const p = participants.find(x=>String(x.id)===String(id));
   if(p){ 
     p.stageStatus='on-stage'; 
     const round = p.round || 'audition';
     setRoundPresent(p, round, true);
-    currentOnStage=id;
+    currentOnStage=p.id;
     if(window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, { stageStatus: 'on-stage', present: p.present, presentMarkedAt: p.presentMarkedAt, roundPresence: p.roundPresence }).catch(e=>console.error(e));
     }
@@ -9194,6 +9213,7 @@ function pushToStage(id){
   renderStageView();
   toast(`⬆ ${p?p.name:'Participant'} pushed to stage!`);
 }
+window.pushToStage = pushToStage;
 
 function pushNextToStage(){
   const venId = currentVenueMonitor;
@@ -9203,6 +9223,7 @@ function pushNextToStage(){
   if(data.length){ pushToStage(data[0].id); }
   else { toast('No one in queue for this event!'); }
 }
+window.pushNextToStage = pushNextToStage;
 
 function markStageDone(){
   const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
@@ -9220,6 +9241,7 @@ function markStageDone(){
   renderStageView();
   toast('Marked as done!');
 }
+window.markStageDone = markStageDone;
 
 function dropToQueue(){
   const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
@@ -9237,6 +9259,7 @@ function dropToQueue(){
   renderStageView();
   toast('Dropped back to queue!');
 }
+window.dropToQueue = dropToQueue;
 
 async function autoPromoteTopN() {
   const nInput = prompt("Enter Top N to promote per category (e.g. 3):", "3");
