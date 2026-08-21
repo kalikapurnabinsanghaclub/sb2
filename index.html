@@ -7314,7 +7314,7 @@
 
               <div style="position: relative; z-index: 1; display: flex; align-items: center; gap: clamp(20px, 5vw, 40px); flex-wrap: wrap; justify-content: center;">
                 
-                <!-- ★ PARTICIPANT PHOTO (left side) ★ -->
+                <!-- ★ PARTICIPANT PHOTO (left side) & INFO (right side) ★ -->
                 ${(() => {
                   if (!onStage) return '';
                   // Find photo URL from formAnswers — look for fields of type 'photo' or 'file' with photo-like label
@@ -7342,44 +7342,55 @@
                       }
                     }
                   }
-                  
-                  if (!photoUrl) return '';
 
+                  // Strategy 3: Check photo or selfieImage directly
+                  if (!photoUrl && (onStage.photo || onStage.selfieImage)) {
+                    photoUrl = onStage.photo || onStage.selfieImage;
+                  }
+                  
                   // Check 10-hour expiry: filename has timestamp like "participants/1782928700275_xxx.jpg"
-                  const tsMatch = photoUrl.match(/\/(\d{13})_/);
-                  if (tsMatch) {
-                    const uploadTs = parseInt(tsMatch[1]);
-                    const tenHoursMs = 10 * 60 * 60 * 1000;
-                    if (Date.now() - uploadTs > tenHoursMs) {
-                      // Schedule auto-delete for expired photo
-                      if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
-                      if (!window._onstageDeletedAudios.has(photoUrl)) {
-                        window._onstageDeletedAudios.add(photoUrl);
-                        window._scheduleAudioDelete && window._scheduleAudioDelete(photoUrl, 0);
+                  if (photoUrl) {
+                    const tsMatch = photoUrl.match(/\/(\d{13})_/);
+                    if (tsMatch) {
+                      const uploadTs = parseInt(tsMatch[1]);
+                      const tenHoursMs = 10 * 60 * 60 * 1000;
+                      if (Date.now() - uploadTs > tenHoursMs) {
+                        // Schedule auto-delete for expired photo
+                        if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
+                        if (!window._onstageDeletedAudios.has(photoUrl)) {
+                          window._onstageDeletedAudios.add(photoUrl);
+                          window._scheduleAudioDelete && window._scheduleAudioDelete(photoUrl, 0);
+                        }
+                        photoUrl = ''; // Photo expired (>10 hours old), don't show
                       }
-                      return ''; // Photo expired (>10 hours old), don't show
                     }
                   }
 
-                  return '<div class="onstage-photo-frame" style="flex-shrink:0;position:relative;width:clamp(140px,25vw,220px);height:clamp(180px,32vw,280px);border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(124,58,237,0.2),0 0 0 3px rgba(139,92,246,0.15);animation:onstagePhotoIn 0.8s cubic-bezier(0.22,1,0.36,1) 0.3s both;">'
-                    + '<img src="' + photoUrl.replace(/'/g,'&apos;').replace(/"/g,'&quot;') + '" alt="' + (onStage.name || 'Performer') + '" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display=\'none\'">'
+                  const hasPhoto = Boolean(photoUrl);
+
+                  const photoHtml = hasPhoto ? ('<div class="onstage-photo-frame" style="flex-shrink:0;position:relative;width:clamp(140px,25vw,220px);height:clamp(180px,32vw,280px);border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(124,58,237,0.2),0 0 0 3px rgba(139,92,246,0.15);animation:onstagePhotoIn 0.8s cubic-bezier(0.22,1,0.36,1) 0.3s both;">'
+                    + '<img src="' + photoUrl.replace(/'/g,'&apos;').replace(/"/g,'&quot;') + '" alt="' + (onStage.name || 'Performer') + '" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display=\'none\'; const em = document.getElementById(\'onstage-theater-emoji\'); if(em) em.style.display=\'block\';">'
                     + '<div class="onstage-photo-shine"></div>'
                     + '<div style="position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(transparent,rgba(15,23,42,0.8));pointer-events:none;">'
                     + '<div style="font-size:0.7rem;font-weight:800;color:rgba(255,255,255,0.9);letter-spacing:1.5px;text-transform:uppercase;">📸 Live Photo</div>'
                     + '</div>'
                     + '<div class="onstage-photo-glow"></div>'
-                    + '</div>';
-                })()}
+                    + '</div>') : '';
 
-                <!-- Right: Name and info -->
-                <div style="text-align: center; flex: 1; min-width: 200px;">
-                  <div style="font-size: 3.2rem; margin-bottom: 12px; filter: drop-shadow(0 5px 15px rgba(124,58,237,0.15)); animation: onstageEmojiPulse 3s ease-in-out infinite;">🎭</div>
-                  <h4 style="color: #7C3AED; font-family: 'Playfair Display', serif; font-size: 1.1rem; margin-bottom: 10px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; animation: onstageTextGlow 2s ease-in-out infinite alternate;">On Stage Now</h4>
-                  <div class="performer-card-live" style="background: transparent; border: none; padding: 0;">
-                    <div class="performer-name-live" id="currentPerformerName" style="font-size: 2.8rem; font-weight: 900; color: #1E293B; text-shadow: none; animation: onstageNameIn 0.6s ease 0.5s both;">${onStageName}</div>
-                    <div class="performer-category-live" id="currentPerformerCat" style="font-size: 1.1rem; color: #64748B; font-weight: 600; margin-top: 5px; animation: onstageCatIn 0.6s ease 0.7s both;">${onStageCat}</div>
-                  </div>
-                </div>
+                  const emojiHtml = `<div id="onstage-theater-emoji" style="font-size: 3.2rem; margin-bottom: 12px; filter: drop-shadow(0 5px 15px rgba(124,58,237,0.15)); animation: onstageEmojiPulse 3s ease-in-out infinite; display: ${hasPhoto ? 'none' : 'block'};">🎭</div>`;
+
+                  return photoHtml + `
+                    <!-- Right: Name and info -->
+                    <div style="text-align: center; flex: 1; min-width: 200px;">
+                      ${emojiHtml}
+                      <h4 style="color: #7C3AED; font-family: 'Playfair Display', serif; font-size: 1.1rem; margin-bottom: 10px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; animation: onstageTextGlow 2s ease-in-out infinite alternate;">On Stage Now</h4>
+                      <div class="performer-card-live" style="background: transparent; border: none; padding: 0;">
+                        <div class="performer-name-live" id="currentPerformerName" style="font-size: 2.8rem; font-weight: 900; color: #1E293B; text-shadow: none; animation: onstageNameIn 0.6s ease 0.5s both;">${onStageName}</div>
+                        <div class="performer-category-live" id="currentPerformerCat" style="font-size: 1.1rem; color: #64748B; font-weight: 600; margin-top: 5px; animation: onstageCatIn 0.6s ease 0.7s both;">${onStageCat}</div>
+                      </div>
+                    </div>
+                  `;
+                })()}
               </div>
             </div>
 
