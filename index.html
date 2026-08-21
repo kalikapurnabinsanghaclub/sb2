@@ -2105,6 +2105,25 @@
       <div class="line"></div>
     </div>
   </div>
+  <script>
+    (function() {
+      function hideLoader() {
+        var pl = document.getElementById('pageLoader');
+        if (pl && pl.style.opacity !== '0') {
+          pl.style.opacity = '0';
+          setTimeout(function() { pl.style.visibility = 'hidden'; pl.style.display = 'none'; }, 800);
+        }
+      }
+      window.dismissPageLoader = hideLoader;
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(hideLoader, 300);
+      } else {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(hideLoader, 300); });
+        window.addEventListener('load', hideLoader);
+      }
+      setTimeout(hideLoader, 1200); // 1.2s guaranteed fail-safe dismiss
+    })();
+  </script>
 
   <!-- ════════════════ NAVBAR ════════════════ -->
   <nav class="nav-bar">
@@ -10819,15 +10838,20 @@
       const pl = document.getElementById("pageLoader");
       if (!pl) return;
       if (show) {
+        pl.style.display = 'flex';
         pl.style.visibility = 'visible';
         pl.style.opacity = '1';
         pl.querySelectorAll('.text span').forEach(el => el.textContent = text);
       } else {
-        pl.style.opacity = '0';
-        setTimeout(() => pl.style.visibility = 'hidden', 800);
-        setTimeout(() => {
-          pl.querySelectorAll('.text span').forEach(el => el.textContent = 'LOADING');
-        }, 800);
+        if (window.dismissPageLoader) {
+          window.dismissPageLoader();
+        } else {
+          pl.style.opacity = '0';
+          setTimeout(() => { pl.style.visibility = 'hidden'; pl.style.display = 'none'; }, 800);
+          setTimeout(() => {
+            pl.querySelectorAll('.text span').forEach(el => el.textContent = 'LOADING');
+          }, 800);
+        }
       }
     }
 
@@ -10835,7 +10859,7 @@
     window.addEventListener('offline', () => setLoaderState(true, 'OFFLINE'));
     window.addEventListener('online', () => setLoaderState(false));
     window.addEventListener('load', () => setLoaderState(false));
-    setTimeout(() => setLoaderState(false), 3000); // 3 seconds fallback freeze prevention
+    setTimeout(() => setLoaderState(false), 1000);
 
     // Initialize the Public Portal
     try {
