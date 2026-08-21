@@ -1953,16 +1953,18 @@ function renderDashboard() {
       <label>${f.label} ${reqMark}</label>`;
 
     if (f.type === 'text') {
-      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+      html += `<input type="text" id="${fieldId}" value="${val}" data-label="${f.label}" ${f.required ? 'required' : ''}>`;
     } else if (f.type === 'number') {
-      html += `<input type="number" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+      const isAge = f.label && f.label.toUpperCase().includes('AGE') && !f.label.toUpperCase().includes('MIN') && !f.label.toUpperCase().includes('MAX');
+      const ageEvents = isAge ? `onchange="window.updateParticipantCategoryOptions(this.value)" oninput="window.updateParticipantCategoryOptions(this.value)"` : '';
+      html += `<input type="number" id="${fieldId}" value="${val}" data-label="${f.label}" ${ageEvents} ${f.required ? 'required' : ''}>`;
     } else if (f.type === 'textarea') {
-      html += `<textarea id="${fieldId}" rows="3" ${f.required ? 'required' : ''}>${val}</textarea>`;
+      html += `<textarea id="${fieldId}" rows="3" data-label="${f.label}" ${f.required ? 'required' : ''}>${val}</textarea>`;
     } else if (f.type === 'radio' && f.options) {
       html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
       f.options.forEach(opt => {
         const isChecked = (val === opt) ? 'checked' : '';
-        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="radio" name="${fieldId}" value="${opt}" ${isChecked} ${f.required ? 'required' : ''}> ${opt}</label>`;
+        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="radio" name="${fieldId}" value="${opt}" data-label="${f.label}" ${isChecked} ${f.required ? 'required' : ''}> ${opt}</label>`;
       });
       html += `</div>`;
     } else if (f.type === 'checkbox' && f.options) {
@@ -1970,18 +1972,18 @@ function renderDashboard() {
       html += `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px;">`;
       f.options.forEach(opt => {
         const isChecked = valArr.includes(opt) ? 'checked' : '';
-        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="checkbox" name="${fieldId}" value="${opt}" ${isChecked}> ${opt}</label>`;
+        html += `<label style="display:flex; align-items:center; gap:5px; font-weight:normal; text-transform:none;"><input type="checkbox" name="${fieldId}" value="${opt}" data-label="${f.label}" ${isChecked}> ${opt}</label>`;
       });
       html += `</div>`;
     } else if (f.type === 'category') {
-      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
+      html += `<select id="${fieldId}" class="participant-cat-select" data-type="category" data-label="${f.label}" ${f.required ? 'required' : ''}>
         <option value="">Select Category</option>`;
       (ev.categories || []).forEach(c => {
         html += `<option value="${c.id}" ${String(c.id) === String(val) ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
       });
       html += `</select>`;
     } else if (f.type === 'venue') {
-      html += `<select id="${fieldId}" ${f.required ? 'required' : ''}>
+      html += `<select id="${fieldId}" data-label="${f.label}" ${f.required ? 'required' : ''}>
         <option value="">Select Venue</option>`;
       (ev.venues || []).forEach(v => {
         html += `<option value="${v.id}" ${String(v.id) === String(val) ? 'selected' : ''}>${v.name}</option>`;
@@ -2014,16 +2016,16 @@ function renderDashboard() {
           </div>
         ` : ''}
       </div>`;
-    } else if (f.type === 'date' || f.label.toUpperCase().includes('DATE')) {
-      html += `<input type="date" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+    } else if (f.type === 'date' || f.type === 'dob' || f.label.toUpperCase().includes('DATE') || f.label.toUpperCase().includes('DOB') || f.label.toUpperCase().includes('BIRTH')) {
+      html += `<input type="date" id="${fieldId}" value="${val}" data-label="${f.label}" onchange="window.calcParticipantAge(this.value)" oninput="window.calcParticipantAge(this.value)" ${f.required ? 'required' : ''}>`;
     } else if (f.type === 'file_link') {
-      html += `<input type="text" id="${fieldId}" placeholder="Paste link (e.g. Google Drive, YouTube)" value="${val}" ${f.required ? 'required' : ''}>`;
+      html += `<input type="text" id="${fieldId}" placeholder="Paste link (e.g. Google Drive, YouTube)" value="${val}" data-label="${f.label}" ${f.required ? 'required' : ''}>`;
     } else if (f.type === 'video_link_or_file' || f.type === 'audio_link_or_file') {
       const accept = f.type === 'video_link_or_file' ? 'video/*' : 'audio/*';
       const isVideo = f.type === 'video_link_or_file';
       html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
         <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
-        <input type="hidden" id="${fieldId}" value="${val}">
+        <input type="hidden" id="${fieldId}" value="${val}" data-label="${f.label}">
         <div id="${fieldId}-preview-wrap" style="margin-top:6px; display:${val ? 'block' : 'none'};">
           ${isVideo 
             ? `<video id="${fieldId}-preview" src="${val}" controls style="max-width:100%; max-height:200px; border-radius:8px;"></video>` 
@@ -2036,14 +2038,14 @@ function renderDashboard() {
       const accept = isImgField ? 'image/*' : '*/*';
       html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
         <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
-        <input type="hidden" id="${fieldId}" value="${val}">
+        <input type="hidden" id="${fieldId}" value="${val}" data-label="${f.label}">
         ${isImgField 
           ? `<div style="margin-top:5px;"><img id="${fieldId}-preview" src="${val}" onclick="event.preventDefault(); event.stopPropagation(); openFullImageModal(this.src, event)" title="Tap to view full screen" style="max-width:160px; max-height:160px; object-fit:cover; border-radius:10px; border:2px solid var(--primary); display:${val ? 'block' : 'none'}; box-shadow:0 4px 12px rgba(0,0,0,0.15); cursor:pointer;"><div style="font-size:10px; color:#64748b; margin-top:2px;">🔍 Tap image to view full screen</div></div>` 
           : `<div id="${fieldId}-preview-wrap" style="font-size:12px;color:green;margin-top:4px;display:${val ? 'block' : 'none'};">File uploaded: <a id="${fieldId}-preview-link" href="${val}" target="_blank">View File</a></div>`
         }
       </div>`;
     } else {
-      html += `<input type="text" id="${fieldId}" value="${val}" ${f.required ? 'required' : ''}>`;
+      html += `<input type="text" id="${fieldId}" value="${val}" data-label="${f.label}" ${f.required ? 'required' : ''}>`;
     }
     
     html += `</div>`;
@@ -2054,6 +2056,23 @@ function renderDashboard() {
   }
 
   container.innerHTML = html;
+
+  // Initialize Category Filter based on existing Age / DOB
+  let currentAge = parseInt(p.age) || 0;
+  if (!currentAge) {
+    for (const [k, v] of Object.entries(ans)) {
+      const ku = k.toUpperCase();
+      if ((ku.includes('DOB') || ku.includes('DATE OF BIRTH') || ku.includes('BIRTH') || ku === 'DATE') && v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+        const dob = new Date(v);
+        const diff = Date.now() - dob.getTime();
+        const calc = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+        if (!isNaN(calc) && calc > 0 && calc < 120) { currentAge = calc; break; }
+      }
+    }
+  }
+  if (currentAge > 0) {
+    window.updateParticipantCategoryOptions(currentAge);
+  }
   
   // Lock Logic
   const inputs = document.querySelectorAll('#participant-form input, #participant-form select, #participant-form textarea');
@@ -2397,9 +2416,39 @@ document.getElementById('participant-form').addEventListener('submit', async (e)
     const lbl = f.label.toUpperCase();
     if (lbl.includes('NAME')) payload.name = val;
     else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) payload.phone = val;
-    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) payload.age = val;
-    else if (f.type === 'category') payload.catId = val;
-    else if (f.type === 'venue') payload.venueId = val;
+    else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX'))) {
+      const parsed = parseInt(val);
+      if (!isNaN(parsed)) payload.age = parsed;
+    }
+    else if (lbl.includes('DOB') || lbl.includes('DATE OF BIRTH') || lbl.includes('BIRTHDAY') || lbl.includes('BIRTH DATE') || f.type === 'dob' || f.type === 'date' || (lbl.includes('DATE') && !lbl.includes('UPDATE'))) {
+      if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        const dob = new Date(val);
+        const diff = Date.now() - dob.getTime();
+        const calcAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+        if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
+          if (!payload.age || lbl.includes('BIRTH') || lbl.includes('DOB')) payload.age = calcAge;
+        }
+      }
+    }
+    else if (f.type === 'category') payload.catId = parseInt(val) || val;
+    else if (f.type === 'venue') payload.venueId = parseInt(val) || val;
+  }
+  
+  // Validate Age against Category limits
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId)) || {};
+  const currentAge = parseInt(payload.age) || parseInt(p.age) || 0;
+  const currentCatId = payload.catId || p.catId;
+  const catObj = (ev.categories || []).find(c => String(c.id) === String(currentCatId));
+  if (catObj && currentAge > 0) {
+    const min = parseInt(catObj.ageMin) || 0;
+    const max = parseInt(catObj.ageMax) || 999;
+    if (currentAge < min || currentAge > max) {
+      const maxText = max === 999 ? 'above' : max;
+      toast(`⚠️ Age Not Eligible: Category "${catObj.name}" requires age between ${min} and ${maxText}. Your calculated age is ${currentAge}.`);
+      btn.disabled = false;
+      btn.textContent = 'Save Updates';
+      return;
+    }
   }
   
   try {
@@ -3600,6 +3649,64 @@ window.toggleTcExpand = function(boxId, btn) {
     box.style.display = 'none';
     if (btn) btn.innerHTML = '📜 Read Full Terms & Conditions (Tap to Expand)';
   }
+};
+
+window.calcParticipantAge = function(dobString) {
+  if (!dobString) return;
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return;
+  const diff = Date.now() - dob.getTime();
+  const age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+  if (isNaN(age) || age < 0 || age > 120) return;
+  
+  // Set age input field
+  const ageInputs = Array.from(document.querySelectorAll('#participant-form input[type="number"]')).filter(i => {
+    const lbl = (i.getAttribute('data-label') || '').toUpperCase();
+    return lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX');
+  });
+  if (ageInputs.length > 0) {
+    ageInputs[0].value = age;
+  }
+  
+  // Update category select options
+  window.updateParticipantCategoryOptions(age);
+};
+
+window.updateParticipantCategoryOptions = function(age) {
+  const numericAge = parseInt(age);
+  const state = (window.syncEngine && window.syncEngine.getData()) || {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId)) || {};
+  const categories = ev.categories || [];
+  if (!categories || categories.length === 0) return;
+
+  const catSelects = document.querySelectorAll('#participant-form select.participant-cat-select');
+  catSelects.forEach(sel => {
+    const currentVal = sel.value;
+    let html = '<option value="">Select Category</option>';
+    let hasMatchingSelected = false;
+    let firstEligibleId = null;
+
+    categories.forEach(c => {
+      const min = parseInt(c.ageMin) || 0;
+      const max = parseInt(c.ageMax) || 999;
+      const isEligible = isNaN(numericAge) || numericAge <= 0 || (numericAge >= min && numericAge <= max);
+      
+      if (isEligible) {
+        if (firstEligibleId === null) firstEligibleId = c.id;
+        const isSelected = String(c.id) === String(currentVal);
+        if (isSelected) hasMatchingSelected = true;
+        html += `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+      } else {
+        html += `<option value="${c.id}" disabled style="color:#94a3b8">${c.name} (${c.ageMin}-${c.ageMax} yrs - Ineligible for age ${numericAge})</option>`;
+      }
+    });
+
+    sel.innerHTML = html;
+    if (!hasMatchingSelected && !isNaN(numericAge) && numericAge > 0 && firstEligibleId !== null) {
+      sel.value = firstEligibleId;
+    }
+  });
 };
 
 window.openFullImageModal = function(src, evt) {

@@ -9061,11 +9061,13 @@
         if (f.type === 'text') {
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></div>`;
         } else if (f.type === 'number') {
-          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="number" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></div>`;
+          const isAge = f.label && f.label.toUpperCase().includes('AGE') && !f.label.toUpperCase().includes('MIN') && !f.label.toUpperCase().includes('MAX');
+          const ageEvts = isAge ? `onchange="window.updatePublicCategoryOptions(this.value)" oninput="window.updatePublicCategoryOptions(this.value)"` : '';
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="number" id="${id}" placeholder="${f.placeholder||''}" ${ageEvts} style="${inputStyle}"></div>`;
         } else if (f.type === 'email') {
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="email" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></div>`;
         } else if (f.type === 'dob' || f.type === 'date') {
-          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="date" id="${id}" onchange="calcPublicAge(this.value)" style="${inputStyle}"></div>`;
+          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="date" id="${id}" onchange="window.calcPublicAge(this.value)" oninput="window.calcPublicAge(this.value)" style="${inputStyle}"></div>`;
         } else if (f.type === 'address' || f.type === 'textarea') {
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><textarea class="inp su-df" data-label="${f.label}" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></textarea></div>`;
         } else if (f.type === 'file_link') {
@@ -9254,10 +9256,48 @@
     window.calcPublicAge = function(dobString) {
       if(!dobString) return;
       const dob = new Date(dobString);
+      if (isNaN(dob.getTime())) return;
       const diff = Date.now() - dob.getTime();
       const age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+      if (isNaN(age) || age < 0 || age > 120) return;
       const ageInputs = Array.from(document.querySelectorAll('input.su-df[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
       if (ageInputs.length > 0) ageInputs[0].value = age;
+      window.updatePublicCategoryOptions(age);
+    };
+
+    window.updatePublicCategoryOptions = function(age) {
+      const numericAge = parseInt(age);
+      const catEl = document.querySelector(".su-df-cat");
+      if (!catEl) return;
+      
+      const currentEvId = window.currentEpvEventId || (window.location.search.match(/event=([^&]+)/) ? window.location.search.match(/event=([^&]+)/)[1] : '');
+      const ev = (typeof EVENTS !== 'undefined' ? EVENTS : []).find(e => String(e.id) === String(currentEvId)) || {};
+      const cats = ev.categories || [];
+      if (!cats || cats.length === 0) return;
+      
+      const currentVal = catEl.value;
+      let html = '<option value="">— Select Category —</option>';
+      let hasMatchingSelected = false;
+      let firstEligibleId = null;
+      
+      cats.forEach(c => {
+        const min = parseInt(c.ageMin) || 0;
+        const max = parseInt(c.ageMax) || 999;
+        const isEligible = isNaN(numericAge) || numericAge <= 0 || (numericAge >= min && numericAge <= max);
+        if (isEligible) {
+          if (firstEligibleId === null) firstEligibleId = c.id;
+          const isSelected = String(c.id) === String(currentVal);
+          if (isSelected) hasMatchingSelected = true;
+          html += `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+        } else {
+          html += `<option value="${c.id}" disabled style="color:#94a3b8">${c.name} (${c.ageMin}-${c.ageMax} yrs - Ineligible for age ${numericAge})</option>`;
+        }
+      });
+      
+      catEl.innerHTML = html;
+      if (!hasMatchingSelected && !isNaN(numericAge) && numericAge > 0 && firstEligibleId !== null) {
+        catEl.value = firstEligibleId;
+      }
     };
 
     window.uploadPublicFileToCloud = async function(input, targetId) {
