@@ -2605,16 +2605,21 @@ if (window.syncEngine) {
           let allParts = state.participants || [];
           let queue = allParts.filter(part => part.stageStatus === 'queue' && (String(part.eventId) === String(p.eventId) || !part.eventId || !p.eventId));
           
-          // Sort accurately matching Monitor sortQueue
+          // Sort accurately matching Monitor sortQueue (Strict Click Order)
           queue.sort((a, b) => {
-            const hasA = a.queueOrder !== undefined && a.queueOrder !== null;
-            const hasB = b.queueOrder !== undefined && b.queueOrder !== null;
-            if (hasA && hasB) return a.queueOrder - b.queueOrder;
-            if (hasA && !hasB) return -1;
-            if (!hasA && hasB) return 1;
-            const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
-            const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
-            return timeA - timeB;
+            const hasOrderA = typeof a.queueOrder === 'number';
+            const hasOrderB = typeof b.queueOrder === 'number';
+            if (hasOrderA && hasOrderB) return a.queueOrder - b.queueOrder;
+            if (hasOrderA && !hasOrderB) return -1;
+            if (!hasOrderA && hasOrderB) return 1;
+            const timeA = a.queuedAt ? Number(a.queuedAt) : 0;
+            const timeB = b.queuedAt ? Number(b.queuedAt) : 0;
+            if (timeA && timeB) return timeA - timeB;
+            if (timeA && !timeB) return -1;
+            if (!timeA && timeB) return 1;
+            const pTimeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+            const pTimeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+            return pTimeA - pTimeB;
           });
           
           const onStagePart = allParts.find(part => part.stageStatus === 'on-stage' && (String(part.eventId) === String(p.eventId) || !part.eventId || !p.eventId));

@@ -8382,9 +8382,17 @@ function refreshVenueView(){
 window.refreshVenueView = refreshVenueView;
 
 function addToUpcoming(id) {
-  const p = participants.find(x => x.id === id);
+  const p = participants.find(x => String(x.id) === String(id));
   if (p) {
     p.stageStatus = 'queue';
+    const now = Date.now();
+    p.queuedAt = now;
+    
+    // Strict click order: Assign sequential queueOrder after currently queued participants
+    const currentlyQueued = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
+    const maxOrder = currentlyQueued.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+    p.queueOrder = maxOrder + 1;
+
     const round = p.round || 'audition';
     if (!getRoundPresent(p, round)) {
       setRoundPresent(p, round, true);
@@ -8392,6 +8400,8 @@ function addToUpcoming(id) {
     if(window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, { 
         stageStatus: 'queue', 
+        queueOrder: p.queueOrder,
+        queuedAt: p.queuedAt,
         present: p.present,
         presentMarkedAt: p.presentMarkedAt,
         roundPresence: p.roundPresence
@@ -8400,34 +8410,34 @@ function addToUpcoming(id) {
     syncAll();
     renderVenueParticipants();
     renderStageView();
-    toast(`➕ ${p.name} added to upcoming queue!`);
+    toast(`➕ ${p.name} added to Queue (Position #${p.queueOrder + 1})!`);
   }
 }
+window.addToUpcoming = addToUpcoming;
 
 function sortQueue(queueArray) {
   return [...queueArray].sort((a, b) => {
-    // 1. Manual order override
-    const orderA = a.queueOrder !== undefined && a.queueOrder !== null ? a.queueOrder : Infinity;
-    const orderB = b.queueOrder !== undefined && b.queueOrder !== null ? b.queueOrder : Infinity;
-    if (orderA !== orderB) {
-      return orderA - orderB;
-    }
-    
-    // 2. Category order based on index in categories
-    const catIdxA = categories.findIndex(c => c.id == a.catId);
-    const catIdxB = categories.findIndex(c => c.id == b.catId);
-    const idxA = catIdxA !== -1 ? catIdxA : Infinity;
-    const idxB = catIdxB !== -1 ? catIdxB : Infinity;
-    if (idxA !== idxB) {
-      return idxA - idxB;
-    }
-    
-    // 3. presentMarkedAt timestamp order
-    const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
-    const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
-    return timeA - timeB;
+    // 1. Explicit click sequence / manual move queueOrder
+    const hasOrderA = typeof a.queueOrder === 'number';
+    const hasOrderB = typeof b.queueOrder === 'number';
+    if (hasOrderA && hasOrderB) return a.queueOrder - b.queueOrder;
+    if (hasOrderA && !hasOrderB) return -1;
+    if (!hasOrderA && hasOrderB) return 1;
+
+    // 2. Click order timestamp (queuedAt)
+    const timeA = a.queuedAt ? Number(a.queuedAt) : 0;
+    const timeB = b.queuedAt ? Number(b.queuedAt) : 0;
+    if (timeA && timeB) return timeA - timeB;
+    if (timeA && !timeB) return -1;
+    if (!timeA && timeB) return 1;
+
+    // 3. Fallback timestamp
+    const pTimeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+    const pTimeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+    return pTimeA - pTimeB;
   });
 }
+window.sortQueue = sortQueue;
 
 function moveQueueItem(id, direction) {
   const venId = currentVenueMonitor;
@@ -8470,6 +8480,7 @@ function moveQueueItem(id, direction) {
     syncTimerToGlobal();
   }
 }
+window.moveQueueItem = moveQueueItem;
 
 function resetQueueOrder() {
   if (!confirm('Are you sure you want to clear all upcoming performers from the queue? This will return them to the waiting list.')) {
@@ -9414,20 +9425,36 @@ function deleteAllParticipants() {
 
 function openAddToQueueModal(){
   const venId = currentVenueMonitor;
-  const round = document.getElementById('venue-round-sel')?document.getElementById('venue-round-sel').value:'audition';
-  let waiting = participants.filter(p=>p.stageStatus==='waiting'&&p.round===round);
-  if(venId) waiting = waiting.filter(p=>String(p.venueId)===String(venId));
+  const roundSel = document.getElementById('venue-round-sel');
+  const round = roundSel ? roundSel.value : 'audition';
+  let waiting = participants.filter(p => p.stageStatus === 'waiting' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  if(venId) waiting = waiting.filter(p => String(p.venueId) === String(venId));
   if(!waiting.length){ toast('No waiting participants!'); return; }
-  // Just add first one to queue for demo
-  waiting[0].stageStatus = 'queue';
-  setRoundPresent(waiting[0], round, true);
+  
+  const target = waiting[0];
+  target.stageStatus = 'queue';
+  const now = Date.now();
+  target.queuedAt = now;
+  const currentlyQueued = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(target.id));
+  const maxOrder = currentlyQueued.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+  target.queueOrder = maxOrder + 1;
+  
+  setRoundPresent(target, target.round || round, true);
   if(window.syncEngine && window.syncEngine.updateParticipant) {
-    window.syncEngine.updateParticipant(waiting[0].id, { stageStatus: 'queue', present: waiting[0].present, presentMarkedAt: waiting[0].presentMarkedAt, roundPresence: waiting[0].roundPresence }).catch(e=>console.error(e));
+    window.syncEngine.updateParticipant(target.id, { 
+      stageStatus: 'queue', 
+      queueOrder: target.queueOrder,
+      queuedAt: target.queuedAt,
+      present: target.present, 
+      presentMarkedAt: target.presentMarkedAt, 
+      roundPresence: target.roundPresence 
+    }).catch(e=>console.error(e));
   }
   syncAll();
   renderVenueParticipants();
-  toast(`${waiting[0].name} added to queue!`);
+  toast(`➕ ${target.name} added to Queue (Position #${target.queueOrder + 1})!`);
 }
+window.openAddToQueueModal = openAddToQueueModal;
 
 function openAddToUpcomingModal() {
   const venId = currentVenueMonitor;
@@ -9451,6 +9478,7 @@ function openAddToUpcomingModal() {
   
   openM('add-upcoming-modal');
 }
+window.openAddToUpcomingModal = openAddToUpcomingModal;
 
 function saveAddToUpcoming() {
   const id = document.getElementById('aup-participant-sel').value;
@@ -9459,14 +9487,24 @@ function saveAddToUpcoming() {
     return;
   }
   
-  const p = participants.find(x => x.id === id);
+  const p = participants.find(x => String(x.id) === String(id));
   if (p) {
     p.stageStatus = 'queue';
+    const now = Date.now();
+    p.queuedAt = now;
+    
+    // Strict click order: Assign sequential queueOrder after currently queued participants
+    const currentlyQueued = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
+    const maxOrder = currentlyQueued.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+    p.queueOrder = maxOrder + 1;
+
     const round = p.round || 'audition';
-    setRoundPresent(p, round, true); // Automatically mark present for current round when adding to queue
+    setRoundPresent(p, round, true);
     if (window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, { 
         stageStatus: 'queue', 
+        queueOrder: p.queueOrder,
+        queuedAt: p.queuedAt,
         present: p.present,
         presentMarkedAt: p.presentMarkedAt,
         roundPresence: p.roundPresence
@@ -9476,9 +9514,10 @@ function saveAddToUpcoming() {
     renderVenueParticipants();
     renderStageView(); // Sync Dashboard
     closeM('add-upcoming-modal');
-    toast(`➕ ${p.name} added to upcoming queue!`);
+    toast(`➕ ${p.name} added to Queue (Position #${p.queueOrder + 1})!`);
   }
 }
+window.saveAddToUpcoming = saveAddToUpcoming;
 
 // ══════════════════════════════════════════
 // SCORE ENTRY MODAL
