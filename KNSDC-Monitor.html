@@ -2387,8 +2387,11 @@
             </div>
           </div>
 
-          <div style="display:flex;gap:8px;margin-top:12px;width:100%;align-items:center;justify-content:space-between">
-            <button class="btn btn-success btn-sm" onclick="markStageDone()">✓ Complete</button>
+          <div style="display:flex;gap:8px;margin-top:12px;width:100%;align-items:center;justify-content:space-between;flex-wrap:wrap">
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn btn-success btn-sm" onclick="markStageDone()">✓ Complete</button>
+              <button class="btn btn-danger btn-sm" onclick="dropToQueue()">⬇ Drop</button>
+            </div>
             <div id="venue-onstage-audio-container"></div>
           </div>
         </div>
@@ -9180,10 +9183,11 @@ function pushNextToStage(){
 }
 
 function markStageDone(){
-  const p = participants.find(x=>x.id===currentOnStage);
+  const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
   if(p){ 
     p.stageStatus='done'; 
     currentOnStage=null;
+    if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
     if(window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, { stageStatus: 'done' }).catch(e=>console.error(e));
     }
@@ -9196,20 +9200,20 @@ function markStageDone(){
 }
 
 function dropToQueue(){
-  const p = participants.find(x=>x.id===currentOnStage);
+  const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
   if(p){ 
     p.stageStatus='queue'; 
     currentOnStage=null; 
+    if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
     if(window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, { stageStatus: 'queue' }).catch(e=>console.error(e));
     }
   }
   
-  // (Removed redundant broadcastStageToPublic() to prevent double-upserts)
   syncAll();
   renderVenueParticipants();
   renderStageView();
-  toast('Dropped to queue!');
+  toast('Dropped back to queue!');
 }
 
 async function autoPromoteTopN() {
@@ -13409,6 +13413,7 @@ window.toggleSystemStatus = toggleSystemStatus;
 window.triggerCTA = triggerCTA;
 window.pushNextToStage = pushNextToStage;
 window.markStageDone = markStageDone;
+window.dropToQueue = dropToQueue;
 window.saveNewReg = saveNewReg;
 window.saveEditReg = saveEditReg;
 window.openEditReg = openEditReg;
