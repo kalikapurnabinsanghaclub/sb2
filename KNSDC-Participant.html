@@ -2601,33 +2601,78 @@ if (window.syncEngine) {
         const upcomingCard = document.getElementById('upcoming-performer-card');
         const upcomingList = document.getElementById('upcoming-performer-list');
         if (upcomingCard && upcomingList) {
-          if (p.stageStatus === 'queue' || p.stageStatus === 'on-stage') {
-            const state = window.syncEngine.getData() || {};
-            let queue = (state.participants || []).filter(part => part.stageStatus === 'queue' && String(part.eventId) === String(p.eventId));
-            // Sort by queueOrder
-            queue.sort((a, b) => (a.queueOrder || 0) - (b.queueOrder || 0));
-            
+          const state = window.syncEngine.getData() || {};
+          let allParts = state.participants || [];
+          let queue = allParts.filter(part => part.stageStatus === 'queue' && (String(part.eventId) === String(p.eventId) || !part.eventId || !p.eventId));
+          
+          // Sort accurately matching Monitor sortQueue
+          queue.sort((a, b) => {
+            const hasA = a.queueOrder !== undefined && a.queueOrder !== null;
+            const hasB = b.queueOrder !== undefined && b.queueOrder !== null;
+            if (hasA && hasB) return a.queueOrder - b.queueOrder;
+            if (hasA && !hasB) return -1;
+            if (!hasA && hasB) return 1;
+            const timeA = a.presentMarkedAt ? Number(a.presentMarkedAt) : (a.regDate ? Date.parse(a.regDate) : 0);
+            const timeB = b.presentMarkedAt ? Number(b.presentMarkedAt) : (b.regDate ? Date.parse(b.regDate) : 0);
+            return timeA - timeB;
+          });
+          
+          const onStagePart = allParts.find(part => part.stageStatus === 'on-stage' && (String(part.eventId) === String(p.eventId) || !part.eventId || !p.eventId));
+          const isMyStatusOnStage = p.stageStatus === 'on-stage';
+          const isMyStatusQueue = p.stageStatus === 'queue';
+          const myQueueIdx = queue.findIndex(q => String(q.id) === String(CURRENT_USER));
+          const myPos = myQueueIdx !== -1 ? myQueueIdx + 1 : 0;
+
+          if (isMyStatusOnStage || isMyStatusQueue || queue.length > 0 || onStagePart) {
             let html = '';
-            if (p.stageStatus === 'on-stage') {
-              html += `<div style="background:var(--green); color:white; padding:12px; border-radius:8px; font-weight:800; text-align:center; box-shadow:0 4px 15px rgba(16, 185, 129, 0.3); margin-bottom:10px;">🌟 YOU ARE ON STAGE! 🌟</div>`;
+            
+            // 1. Prominent Status Banner for Participant
+            if (isMyStatusOnStage) {
+              html += `<div style="background:linear-gradient(135deg, #10b981, #059669); color:white; padding:14px; border-radius:12px; font-weight:800; text-align:center; box-shadow:0 4px 20px rgba(16, 185, 129, 0.4); margin-bottom:12px; font-size:15px; letter-spacing:0.5px; animation:pulse 1.5s infinite;">
+                🌟 YOU ARE ON STAGE NOW! 🌟
+              </div>`;
+            } else if (isMyStatusQueue) {
+              if (myPos === 1) {
+                html += `<div style="background:linear-gradient(135deg, #f59e0b, #d97706); color:white; padding:14px; border-radius:12px; font-weight:800; text-align:center; box-shadow:0 4px 20px rgba(245, 158, 11, 0.4); margin-bottom:12px; font-size:15px; letter-spacing:0.5px;">
+                  🔥 YOU ARE NEXT UP (Position #1) — Please be ready near the stage!
+                </div>`;
+              } else if (myPos > 1) {
+                html += `<div style="background:linear-gradient(135deg, #6366f1, #4f46e5); color:white; padding:12px 14px; border-radius:12px; font-weight:700; text-align:center; box-shadow:0 4px 15px rgba(99, 102, 241, 0.3); margin-bottom:12px; font-size:14px;">
+                  📍 Your Position in Queue: <strong style="font-size:16px; text-decoration:underline;">#${myPos}</strong> (${myPos - 1} performer(s) ahead of you)
+                </div>`;
+              }
+            } else if (onStagePart) {
+              html += `<div style="background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); color:#065f46; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:700; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;">
+                <span>🎭 On Stage Now:</span>
+                <span style="font-weight:800; color:#047857;">${onStagePart.name} <span style="font-size:10px; background:rgba(4,120,87,0.15); padding:2px 6px; border-radius:4px;">${(onStagePart.round || 'audition').toUpperCase()}</span></span>
+              </div>`;
             }
             
+            // 2. Render Full Master Queue List
             if (queue.length > 0) {
               queue.forEach((q, idx) => {
                 const isMe = String(q.id) === String(CURRENT_USER);
+                const qRound = (q.round || 'audition').toUpperCase();
                 html += `
-                  <div style="background:var(--surface); padding:10px 15px; border-radius:8px; display:flex; align-items:center; gap:12px; border:1px solid ${isMe ? 'var(--primary)' : 'var(--border)'}; box-shadow:${isMe ? '0 0 10px rgba(124,58,237,0.2)' : 'none'};">
-                    <div style="background:rgba(124,58,237,0.15); color:var(--primary); width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;">${idx + 1}</div>
-                    <div style="flex:1;">
-                      <div style="font-weight:700; color:var(--text);">${isMe ? '👉 ' + q.name + ' (YOU)' : q.name}</div>
-                      <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm);">${q.id}</div>
+                  <div style="background:${isMe ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(99,102,241,0.18))' : 'var(--surface)'}; padding:10px 14px; border-radius:10px; display:flex; align-items:center; gap:12px; border:1.5px solid ${isMe ? '#7c3aed' : 'var(--border)'}; box-shadow:${isMe ? '0 0 12px rgba(124,58,237,0.25)' : 'none'};">
+                    <div style="background:${isMe ? '#7c3aed' : 'rgba(124,58,237,0.15)'}; color:${isMe ? '#ffffff' : 'var(--primary)'}; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; flex-shrink:0;">${idx + 1}</div>
+                    <div style="flex:1; min-width:0;">
+                      <div style="font-weight:700; color:var(--text); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="${q.goldenRibbon ? 'font-weight:900; background:linear-gradient(135deg,#b45309,#d97706,#f59e0b); -webkit-background-clip:text; -webkit-text-fill-color:transparent;' : ''}">
+                          ${isMe ? '👉 ' + q.name + ' (YOU)' : q.name}
+                        </span>
+                        <span class="badge b-blue" style="font-size:8px; padding:1px 5px; text-transform:uppercase; border-radius:4px;">${qRound}</span>
+                        ${q.goldenRibbon ? `<span class="badge" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;">🎖️ GOLDEN RIBBON</span>` : ''}
+                      </div>
+                      <div style="font-size:10.5px; color:var(--text-muted); font-family:var(--fm); margin-top:2px;">${q.id}</div>
                     </div>
                   </div>
                 `;
               });
-            } else if (p.stageStatus !== 'on-stage') {
-              html += `<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:10px;">Queue is empty</div>`;
+            } else if (!isMyStatusOnStage) {
+              html += `<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:12px;">Queue is currently empty</div>`;
             }
+            
             upcomingList.innerHTML = html;
             upcomingCard.style.display = 'block';
           } else {
