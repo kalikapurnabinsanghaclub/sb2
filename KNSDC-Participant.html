@@ -206,15 +206,35 @@
     <!-- BACKGROUND NOTIFICATION PERMISSION BANNER -->
     <div id="push-perm-banner" style="display:none; margin-bottom:20px; background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; padding:14px 18px; border-radius:14px; box-shadow:0 8px 24px rgba(124,58,237,0.3); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
       <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:240px;">
-        <span style="font-size:26px;">🔔</span>
+        <span style="font-size:26px;" id="push-perm-icon">🔔</span>
         <div>
-          <div style="font-weight:800; font-size:14px; letter-spacing:0.2px;">Enable Background Stage Call Alerts</div>
-          <div style="font-size:11px; opacity:0.9; margin-top:2px;">Get loud vibration &amp; alerts on your phone screen even if you lock your device or switch to other apps.</div>
+          <div style="font-weight:800; font-size:14px; letter-spacing:0.2px;" id="push-perm-title">Enable Background Stage Call Alerts</div>
+          <div style="font-size:11px; opacity:0.9; margin-top:2px;" id="push-perm-desc">Get loud vibration &amp; alerts on your phone screen even if you lock your device or switch to other apps.</div>
         </div>
       </div>
-      <button type="button" onclick="requestStagePushPermission()" style="background:#fff; color:#4f46e5; border:none; padding:8px 18px; border-radius:10px; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.15); white-space:nowrap; transition:transform 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+      <button type="button" id="push-perm-btn" onclick="requestStagePushPermission()" style="background:#fff; color:#4f46e5; border:none; padding:8px 18px; border-radius:10px; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.15); white-space:nowrap; transition:transform 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
         Enable Alerts 🔔
       </button>
+    </div>
+
+    <!-- NOTIFICATION UNBLOCK GUIDE MODAL -->
+    <div id="unblock-notif-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:9999999; align-items:center; justify-content:center; padding:20px;">
+      <div style="background:#fff; border-radius:18px; max-width:440px; width:100%; padding:24px; box-shadow:0 20px 40px rgba(0,0,0,0.3); text-align:center;">
+        <div style="font-size:40px; margin-bottom:10px;">🔒 ➔ 🔔</div>
+        <h3 style="margin:0 0 8px 0; color:#1e293b; font-size:18px; font-weight:800;">How to Unblock in Chrome</h3>
+        <p style="color:#64748b; font-size:13px; line-height:1.5; margin-bottom:18px;">
+          Chrome blocked notifications for this page. Follow these 3 simple steps to unblock:
+        </p>
+        <div style="text-align:left; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin-bottom:20px; font-size:13px; color:#334155; line-height:1.6;">
+          <div style="margin-bottom:8px;"><strong>1.</strong> Tap the <strong>🔒 Lock / Settings icon</strong> beside the website address bar at the top.</div>
+          <div style="margin-bottom:8px;"><strong>2.</strong> Tap <strong>Permissions</strong> or <strong>Site settings</strong>.</div>
+          <div><strong>3.</strong> Change <strong>Notifications</strong> to <strong>Allow</strong>, then reload this page.</div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button type="button" onclick="document.getElementById('unblock-notif-modal').style.display='none'" style="flex:1; background:#f1f5f9; color:#475569; border:none; padding:12px; border-radius:10px; font-weight:700; cursor:pointer;">Close</button>
+          <button type="button" onclick="location.reload()" style="flex:1; background:#4f46e5; color:#fff; border:none; padding:12px; border-radius:10px; font-weight:700; cursor:pointer;">🔄 Reload Page</button>
+        </div>
+      </div>
     </div>
     
     <!-- GOLDEN RIBBON AWARD BADGE (IF AWARDED) -->
@@ -1787,13 +1807,34 @@ async function initServiceWorkerAndWakeLock() {
 
 function updatePushPermissionBanner() {
   const banner = document.getElementById('push-perm-banner');
+  const btn = document.getElementById('push-perm-btn');
+  const titleEl = document.getElementById('push-perm-title');
+  const descEl = document.getElementById('push-perm-desc');
+  const iconEl = document.getElementById('push-perm-icon');
   if (!banner) return;
+
   if ('Notification' in window && Notification.permission === 'granted') {
     banner.style.display = 'none';
-  } else if ('Notification' in window && Notification.permission !== 'denied') {
+  } else if ('Notification' in window && Notification.permission === 'denied') {
     banner.style.display = 'flex';
+    banner.style.background = 'linear-gradient(135deg, #d97706, #b45309)';
+    if (iconEl) iconEl.textContent = '🔒';
+    if (titleEl) titleEl.textContent = 'Notifications are Blocked in Chrome';
+    if (descEl) descEl.textContent = 'Tap to see how to unblock them so you receive loud alerts when called to stage.';
+    if (btn) {
+      btn.textContent = 'How to Unblock 🔓';
+      btn.style.color = '#b45309';
+    }
   } else {
-    banner.style.display = 'none';
+    banner.style.display = 'flex';
+    banner.style.background = 'linear-gradient(135deg, #4f46e5, #7c3aed)';
+    if (iconEl) iconEl.textContent = '🔔';
+    if (titleEl) titleEl.textContent = 'Enable Background Stage Call Alerts';
+    if (descEl) descEl.textContent = 'Get loud vibration & alerts on your phone screen even if you lock your device or switch to other apps.';
+    if (btn) {
+      btn.textContent = 'Enable Alerts 🔔';
+      btn.style.color = '#4f46e5';
+    }
   }
 }
 
@@ -1802,6 +1843,13 @@ async function requestStagePushPermission() {
     toast('⚠️ Notifications are not supported by your browser.');
     return;
   }
+  
+  if (Notification.permission === 'denied') {
+    const modal = document.getElementById('unblock-notif-modal');
+    if (modal) modal.style.display = 'flex';
+    return;
+  }
+
   try {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
@@ -1809,11 +1857,14 @@ async function requestStagePushPermission() {
       updatePushPermissionBanner();
       triggerBackgroundStageNotification('🔔 Stage Call Alerts Active', 'You will now receive stage call alerts even if you switch apps or lock your phone.');
     } else {
-      toast('⚠️ Notification permission was denied.');
       updatePushPermissionBanner();
+      const modal = document.getElementById('unblock-notif-modal');
+      if (modal) modal.style.display = 'flex';
     }
   } catch (err) {
     console.error('Error requesting notification permission:', err);
+    const modal = document.getElementById('unblock-notif-modal');
+    if (modal) modal.style.display = 'flex';
   }
 }
 
