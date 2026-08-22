@@ -2444,6 +2444,7 @@
       <div class="tab" onclick="statsTab('judges',this)">Judge Analysis</div>
       <div class="tab" onclick="statsTab('comparative',this)">📊 Comparative Analysis</div>
       <div class="tab" onclick="statsTab('feedback',this)">⭐ Feedbacks</div>
+      <div class="tab" onclick="statsTab('publicvotes',this)">❤️ Public Votes</div>
     </div>
 
     <!-- FEEDBACKS -->
@@ -2451,6 +2452,41 @@
       <div class="card" style="margin-bottom:14px">
         <div class="card-title" style="margin-bottom:14px">Participant Feedbacks</div>
         <div id="feedbacks-container" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px;"></div>
+      </div>
+    </div>
+
+    <!-- PUBLIC VOTES (PARTICIPANT WISE) -->
+    <div id="st-publicvotes" style="display:none;">
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+          <div>
+            <div class="card-title" style="margin-bottom:4px">Public Voters &amp; Ratings (Participant-wise)</div>
+            <div style="font-size:12px; color:var(--text-muted);">View public voter full names, phone numbers, favorite likes ❤️, and ratings submitted for each participant</div>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <input type="text" id="publicvotes-search" placeholder="🔍 Search participant, voter, phone..." oninput="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px; min-width:220px;" />
+            <select id="publicvotes-round-filter" onchange="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px;">
+              <option value="all">All Votes &amp; Likes</option>
+              <option value="favorite">Favorite Likes ❤️ Only</option>
+              <option value="ratings">Ratings / Scores ⭐ Only</option>
+            </select>
+            <select id="publicvotes-view-filter" onchange="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px;">
+              <option value="voted_only">Voted Participants Only</option>
+              <option value="all_participants">All Participants</option>
+            </select>
+            <button onclick="exportPublicVotesCSV()" class="btn btn-secondary" style="padding:8px 14px; font-size:12px; cursor:pointer;">📥 Export CSV</button>
+          </div>
+        </div>
+
+        <!-- Summary stats cards -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:18px;" id="publicvotes-stats-summary">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Participant wise voter cards & tables -->
+        <div id="publicvotes-container" style="display:flex; flex-direction:column; gap:16px;">
+          <!-- Populated by JS -->
+        </div>
       </div>
     </div>
 
@@ -5263,8 +5299,9 @@ function hydrate() {
       if (activeSubTab === 'categories') renderCategories();
       if (activeSubTab === 'venues') renderVenueDates();
     }
-    if (pageId === 'statistics' && typeof currentStatsTab !== 'undefined' && currentStatsTab === 'feedback') {
-      if (typeof renderFeedbacks === 'function') renderFeedbacks();
+    if (pageId === 'statistics' && typeof currentStatsTab !== 'undefined') {
+      if (currentStatsTab === 'feedback' && typeof renderFeedbacks === 'function') renderFeedbacks();
+      if (currentStatsTab === 'publicvotes' && typeof renderPublicVotes === 'function') renderPublicVotes();
     }
   }
   
@@ -6018,6 +6055,8 @@ function handleIncomingScore(data) {
         if (currentStatsTab === 'roundwise') renderRoundwiseStats();
         if (currentStatsTab === 'judges') renderJudgeStats();
         if (currentStatsTab === 'comparative') renderComparativeStats();
+        if (currentStatsTab === 'feedback') renderFeedbacks();
+        if (currentStatsTab === 'publicvotes') renderPublicVotes();
       }
       if (pageId === 'dashboard') { renderDashboard(); }
       if (pageId === 'venue') renderVenueParticipants();
@@ -6157,6 +6196,8 @@ function nav(page, el) {
       if (currentStatsTab === 'roundwise') renderRoundwiseStats();
       if (currentStatsTab === 'judges') renderJudgeStats();
       if (currentStatsTab === 'comparative') renderComparativeStats();
+      if (currentStatsTab === 'feedback') renderFeedbacks();
+      if (currentStatsTab === 'publicvotes') renderPublicVotes();
     }
     if (page === 'leaderboard') renderLeaderboard();
     if (page === 'promotion') renderPromoList();
@@ -9577,7 +9618,7 @@ function statsTab(tab, el){
   currentStatsTab = tab;
   document.querySelectorAll('#pp-statistics .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  ['individual','roundwise','judges','comparative','feedback'].forEach(t=>{
+  ['individual','roundwise','judges','comparative','feedback','publicvotes'].forEach(t=>{
     const el2 = document.getElementById('st-'+t);
     if(el2) el2.style.display = t===tab?'block':'none';
   });
@@ -9586,6 +9627,402 @@ function statsTab(tab, el){
   if(tab==='judges') renderJudgeStats();
   if(tab==='comparative') renderComparativeStats();
   if(tab==='feedback') renderFeedbacks();
+  if(tab==='publicvotes') renderPublicVotes();
+}
+
+function renderPublicVotes() {
+  const s = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
+  const publicVotes = s.publicVotes || {};
+  
+  // Filter participants for active event
+  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId || String(activeEventId) === '0');
+  
+  const searchVal = (document.getElementById('publicvotes-search')?.value || '').trim().toLowerCase();
+  const roundFilter = document.getElementById('publicvotes-round-filter')?.value || 'all';
+  const viewFilter = document.getElementById('publicvotes-view-filter')?.value || 'voted_only';
+  
+  let totalAllVotesCount = 0;
+  let totalLikesCount = 0;
+  let totalRatingsCount = 0;
+  let totalScoreSum = 0;
+  
+  const participantDataList = [];
+
+  eventParticipants.forEach(p => {
+    const pId = String(p.id);
+    const cat = categories.find(c => String(c.id) === String(p.catId));
+    const pVotes = [];
+
+    // Check all keys in publicVotes for this participant
+    Object.keys(publicVotes).forEach(key => {
+      if (key === `${pId}_favorite`) {
+        const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
+        votes.forEach(v => {
+          pVotes.push({
+            type: 'favorite',
+            typeName: 'Favorite Like ❤️',
+            round: 'Favorite',
+            name: v.name || v.voterName || 'Public Supporter',
+            phone: v.phone || v.phoneNumber || '—',
+            score: Number(v.score) || 10,
+            timestamp: v.timestamp || v.ts || Date.now()
+          });
+        });
+      } else if (key.startsWith(`${pId}_`)) {
+        const roundPart = key.slice((pId + '_').length);
+        const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
+        votes.forEach(v => {
+          pVotes.push({
+            type: 'rating',
+            typeName: `Rating (${roundPart.toUpperCase()}) ⭐`,
+            round: roundPart,
+            name: v.name || v.voterName || 'Public Voter',
+            phone: v.phone || v.phoneNumber || '—',
+            score: Number(v.score) || 0,
+            timestamp: v.ts || v.timestamp || Date.now()
+          });
+        });
+      }
+    });
+
+    // Also check if participant has direct publicVotes array
+    if (Array.isArray(p.publicVotes)) {
+      p.publicVotes.forEach(v => {
+        pVotes.push({
+          type: v.type || 'rating',
+          typeName: v.type === 'favorite' ? 'Favorite Like ❤️' : `Rating (${(v.round || 'Audition').toUpperCase()}) ⭐`,
+          round: v.round || 'Audition',
+          name: v.name || v.voterName || 'Public Voter',
+          phone: v.phone || v.phoneNumber || '—',
+          score: Number(v.score) || 0,
+          timestamp: v.ts || v.timestamp || Date.now()
+        });
+      });
+    }
+
+    // Sort participant votes newest first
+    pVotes.sort((a, b) => {
+      const ta = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : (a.timestamp || 0);
+      const tb = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : (b.timestamp || 0);
+      return tb - ta;
+    });
+
+    const likes = pVotes.filter(v => v.type === 'favorite').length;
+    const ratings = pVotes.filter(v => v.type === 'rating');
+    const ratingSum = ratings.reduce((sum, r) => sum + r.score, 0);
+    const avgRating = ratings.length > 0 ? (ratingSum / ratings.length).toFixed(1) : '—';
+
+    totalLikesCount += likes;
+    totalRatingsCount += ratings.length;
+    totalAllVotesCount += pVotes.length;
+    totalScoreSum += ratingSum;
+
+    participantDataList.push({
+      p,
+      cat,
+      votes: pVotes,
+      likes,
+      ratingsCount: ratings.length,
+      ratingSum,
+      avgRating,
+      totalVotes: pVotes.length
+    });
+  });
+
+  // Calculate global summary stats
+  const overallAvg = totalRatingsCount > 0 ? (totalScoreSum / totalRatingsCount).toFixed(1) : '—';
+  
+  // Find top supported participant
+  const topParticipant = [...participantDataList].sort((a, b) => b.totalVotes - a.totalVotes)[0];
+  const topText = (topParticipant && topParticipant.totalVotes > 0)
+    ? `${topParticipant.p.name} (${topParticipant.totalVotes} votes)`
+    : '—';
+
+  // Render Top Stats Cards
+  const summaryEl = document.getElementById('publicvotes-stats-summary');
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <div class="stat blue" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;">
+        <div class="stat-num" style="font-size:24px;font-weight:800;color:var(--primary);">${totalAllVotesCount}</div>
+        <div class="stat-lbl" style="font-size:11px;color:var(--text-muted);font-weight:700;">Total Public Submissions</div>
+      </div>
+      <div class="stat red" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;">
+        <div class="stat-num" style="font-size:24px;font-weight:800;color:#ef4444;">❤️ ${totalLikesCount}</div>
+        <div class="stat-lbl" style="font-size:11px;color:var(--text-muted);font-weight:700;">Favorite Likes</div>
+      </div>
+      <div class="stat orange" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;">
+        <div class="stat-num" style="font-size:24px;font-weight:800;color:#f59e0b;">⭐ ${totalRatingsCount} <span style="font-size:13px;color:var(--text-muted);">(${overallAvg} Avg)</span></div>
+        <div class="stat-lbl" style="font-size:11px;color:var(--text-muted);font-weight:700;">Ratings Submitted</div>
+      </div>
+      <div class="stat green" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;">
+        <div class="stat-num" style="font-size:16px;font-weight:800;color:#10b981;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${topText}">${topText}</div>
+        <div class="stat-lbl" style="font-size:11px;color:var(--text-muted);font-weight:700;">Top Voted Participant</div>
+      </div>
+    `;
+  }
+
+  // Filter participants for display
+  let displayList = participantDataList.filter(item => {
+    // View filter
+    if (viewFilter === 'voted_only' && item.totalVotes === 0) return false;
+
+    // Search filter
+    if (searchVal) {
+      const matchPName = (item.p.name || '').toLowerCase().includes(searchVal);
+      const matchPId = String(item.p.id || '').toLowerCase().includes(searchVal);
+      const matchCat = (item.cat?.name || '').toLowerCase().includes(searchVal);
+      const matchVoters = item.votes.some(v => 
+        (v.name || '').toLowerCase().includes(searchVal) || 
+        (v.phone || '').toLowerCase().includes(searchVal)
+      );
+      if (!matchPName && !matchPId && !matchCat && !matchVoters) return false;
+    }
+
+    return true;
+  });
+
+  // Sort participants by total votes desc, then by name
+  displayList.sort((a, b) => b.totalVotes - a.totalVotes || (a.p.name || '').localeCompare(b.p.name || ''));
+
+  const container = document.getElementById('publicvotes-container');
+  if (!container) return;
+
+  if (displayList.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:40px 20px;background:var(--surface2);border-radius:12px;border:1px dashed var(--border);">
+        <div style="font-size:36px;margin-bottom:8px;">🗳️</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">No Public Votes Found</div>
+        <div style="font-size:13px;color:var(--text-muted);max-width:500px;margin:0 auto;">
+          ${viewFilter === 'voted_only' 
+            ? 'No participants have received public votes yet. Switch the view filter to "All Participants" to see all registered performers, or wait for public audience votes.' 
+            : 'No matching participants or public votes found for your search criteria.'}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = displayList.map((item, idx) => {
+    const { p, cat, votes, likes, ratingsCount, avgRating, totalVotes } = item;
+
+    // Filter voters if round filter is active
+    let filteredVotes = votes;
+    if (roundFilter === 'favorite') {
+      filteredVotes = votes.filter(v => v.type === 'favorite');
+    } else if (roundFilter === 'ratings') {
+      filteredVotes = votes.filter(v => v.type === 'rating');
+    }
+
+    // Filter voters matching searchVal specifically for voter highlighting
+    if (searchVal) {
+      const pMatch = (p.name || '').toLowerCase().includes(searchVal) || String(p.id || '').toLowerCase().includes(searchVal);
+      if (!pMatch) {
+        filteredVotes = filteredVotes.filter(v => 
+          (v.name || '').toLowerCase().includes(searchVal) || 
+          (v.phone || '').toLowerCase().includes(searchVal)
+        );
+      }
+    }
+
+    const photoUrl = p.photo || p.selfieImage || '';
+    const avatarHtml = photoUrl
+      ? `<img src="${photoUrl.replace(/'/g, '&apos;').replace(/"/g, '&quot;')}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--primary);box-shadow:0 2px 6px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\\'width:44px;height:44px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;\\'>${(p.name||'P').charAt(0).toUpperCase()}</div>';" />`
+      : `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg, #7C3AED, #4F46E5);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;box-shadow:0 2px 6px rgba(124,58,237,0.25);">${(p.name||'P').charAt(0).toUpperCase()}</div>`;
+
+    const votesRowsHtml = filteredVotes.length === 0
+      ? `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted);font-style:italic;">No votes recorded under this filter for this participant.</td></tr>`
+      : filteredVotes.map((v, vIdx) => {
+          let dateStr = '—';
+          try {
+            const dt = typeof v.timestamp === 'string' ? new Date(v.timestamp) : new Date(v.timestamp);
+            if (!isNaN(dt.getTime())) {
+              dateStr = dt.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+            }
+          } catch(e) {}
+
+          const typeBadge = v.type === 'favorite'
+            ? `<span style="background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:800;display:inline-flex;align-items:center;gap:4px;">❤️ Favorite Like</span>`
+            : `<span style="background:rgba(245,158,11,0.12);color:#d97706;border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:800;display:inline-flex;align-items:center;gap:4px;">⭐ ${v.round.toUpperCase()}</span>`;
+
+          const scoreBadge = v.type === 'favorite'
+            ? `<span style="font-weight:800;color:#ef4444;font-size:13px;">❤️ +1</span>`
+            : `<span style="font-weight:800;color:#d97706;font-size:13px;font-family:var(--fm);">${v.score} <span style="font-size:10px;color:var(--text-muted);">/10</span></span>`;
+
+          const phoneDisplay = v.phone && v.phone !== '—'
+            ? `<div style="display:inline-flex;align-items:center;gap:6px;">
+                 <a href="tel:${v.phone}" style="color:var(--primary);text-decoration:none;font-weight:700;font-family:var(--fm);font-size:12px;">📞 ${v.phone}</a>
+                 <button onclick="navigator.clipboard.writeText('${v.phone}');toast('Phone number copied!');" title="Copy Phone Number" style="background:none;border:none;cursor:pointer;font-size:11px;padding:2px 4px;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">📋</button>
+               </div>`
+            : `<span style="color:var(--text-muted);font-style:italic;">—</span>`;
+
+          return `
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="color:var(--text-muted);font-size:11px;width:30px;text-align:center;">${vIdx + 1}</td>
+              <td>
+                <div style="font-weight:700;color:var(--text);font-size:13px;display:flex;align-items:center;gap:6px;">
+                  <span>👤</span> <span>${v.name || 'Anonymous Voter'}</span>
+                </div>
+              </td>
+              <td>${phoneDisplay}</td>
+              <td>${typeBadge}</td>
+              <td style="text-align:center;">${scoreBadge}</td>
+              <td style="color:var(--text-muted);font-size:11px;white-space:nowrap;text-align:right;">${dateStr}</td>
+            </tr>
+          `;
+        }).join('');
+
+    return `
+      <div class="card" style="background:var(--surface2);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);margin-bottom:12px;">
+        <!-- Header -->
+        <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:var(--bg);border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:12px;">
+            ${avatarHtml}
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-weight:800;font-size:16px;color:var(--text);font-family:var(--fh);">${p.name}</span>
+                ${p.age ? `<span style="font-size:11px;color:var(--text-muted);font-weight:700;">(Age ${p.age})</span>` : ''}
+                <span style="font-size:10px;background:rgba(124,58,237,0.1);color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(124,58,237,0.2);">${cat ? cat.name : (p.category || 'General')}</span>
+                <span class="badge ${roundBadge(p.round)}" style="font-size:10px;">${(p.round || 'Audition').toUpperCase()}</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                Participant ID: <strong style="color:var(--text);font-family:var(--fm);">${p.id}</strong> ${p.phone ? `· Contact: <strong style="color:var(--text);">${p.phone}</strong>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Stat Badges -->
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);padding:6px 12px;border-radius:8px;text-align:center;">
+              <div style="font-size:14px;font-weight:900;color:#ef4444;">❤️ ${likes}</div>
+              <div style="font-size:9px;font-weight:700;color:#ef4444;text-transform:uppercase;">Likes</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);padding:6px 12px;border-radius:8px;text-align:center;">
+              <div style="font-size:14px;font-weight:900;color:#f59e0b;">⭐ ${avgRating}</div>
+              <div style="font-size:9px;font-weight:700;color:#d97706;text-transform:uppercase;">${ratingsCount} Ratings</div>
+            </div>
+            <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);padding:6px 12px;border-radius:8px;text-align:center;">
+              <div style="font-size:14px;font-weight:900;color:#10b981;">👥 ${totalVotes}</div>
+              <div style="font-size:9px;font-weight:700;color:#059669;text-transform:uppercase;">Total Voters</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Voters Table -->
+        <div style="padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;">
+              Voter Details (${filteredVotes.length} ${filteredVotes.length === 1 ? 'Entry' : 'Entries'})
+            </div>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="border-bottom:2px solid var(--border);text-align:left;color:var(--text-muted);font-size:11px;">
+                  <th style="padding:8px 6px;width:30px;text-align:center;">#</th>
+                  <th style="padding:8px 6px;">VOTER FULL NAME</th>
+                  <th style="padding:8px 6px;">PHONE NUMBER</th>
+                  <th style="padding:8px 6px;">VOTE TYPE</th>
+                  <th style="padding:8px 6px;text-align:center;">SCORE / LIKE</th>
+                  <th style="padding:8px 6px;text-align:right;">TIME &amp; DATE</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${votesRowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function exportPublicVotesCSV() {
+  const s = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
+  const publicVotes = s.publicVotes || {};
+  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId || String(activeEventId) === '0');
+
+  const rows = [
+    ['Participant ID', 'Participant Name', 'Category', 'Participant Round', 'Voter Name', 'Voter Phone', 'Vote Type', 'Round', 'Score', 'Timestamp']
+  ];
+
+  eventParticipants.forEach(p => {
+    const pId = String(p.id);
+    const cat = categories.find(c => String(c.id) === String(p.catId));
+    const catName = cat ? cat.name : (p.category || 'General');
+
+    Object.keys(publicVotes).forEach(key => {
+      if (key === `${pId}_favorite`) {
+        const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
+        votes.forEach(v => {
+          rows.push([
+            p.id,
+            p.name,
+            catName,
+            p.round || 'Audition',
+            v.name || 'Anonymous',
+            v.phone || '',
+            'Favorite Like ❤️',
+            'Favorite',
+            v.score || 10,
+            (v.timestamp || v.ts) ? new Date(v.timestamp || v.ts).toISOString() : ''
+          ]);
+        });
+      } else if (key.startsWith(`${pId}_`)) {
+        const roundPart = key.slice((pId + '_').length);
+        const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
+        votes.forEach(v => {
+          rows.push([
+            p.id,
+            p.name,
+            catName,
+            p.round || 'Audition',
+            v.name || 'Anonymous',
+            v.phone || '',
+            'Score Rating ⭐',
+            roundPart.toUpperCase(),
+            v.score || 0,
+            (v.ts || v.timestamp) ? new Date(v.ts || v.timestamp).toISOString() : ''
+          ]);
+        });
+      }
+    });
+
+    if (Array.isArray(p.publicVotes)) {
+      p.publicVotes.forEach(v => {
+        rows.push([
+          p.id,
+          p.name,
+          catName,
+          p.round || 'Audition',
+          v.name || 'Anonymous',
+          v.phone || '',
+          v.type === 'favorite' ? 'Favorite Like ❤️' : 'Score Rating ⭐',
+          v.round || 'Audition',
+          v.score || 0,
+          (v.ts || v.timestamp) ? new Date(v.ts || v.timestamp).toISOString() : ''
+        ]);
+      });
+    }
+  });
+
+  if (rows.length === 1) {
+    toast('No public votes to export yet.');
+    return;
+  }
+
+  const csvContent = '\uFEFF' + rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `Public_Votes_${activeEventId || 'all'}_${Date.now()}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  toast('✅ Public votes CSV exported!');
 }
 
 function renderFeedbacks() {
@@ -13507,6 +13944,8 @@ syncEngine.subscribe(s => {
       if (currentStatsTab === 'roundwise') renderRoundwiseStats();
       if (currentStatsTab === 'judges') renderJudgeStats();
       if (currentStatsTab === 'comparative') renderComparativeStats();
+      if (currentStatsTab === 'feedback') renderFeedbacks();
+      if (currentStatsTab === 'publicvotes') renderPublicVotes();
     }
     if (pageId === 'leaderboard') renderLeaderboard();
     if (pageId === 'promotion') renderPromoList();
