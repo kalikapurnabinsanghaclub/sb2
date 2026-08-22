@@ -203,6 +203,20 @@
       <div style="font-size: 0.75rem; color: var(--primary); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 6px;">Powered by Kalikapur Nabin Sangha</div>
     </header>
     
+    <!-- BACKGROUND NOTIFICATION PERMISSION BANNER -->
+    <div id="push-perm-banner" style="display:none; margin-bottom:20px; background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; padding:14px 18px; border-radius:14px; box-shadow:0 8px 24px rgba(124,58,237,0.3); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:240px;">
+        <span style="font-size:26px;">🔔</span>
+        <div>
+          <div style="font-weight:800; font-size:14px; letter-spacing:0.2px;">Enable Background Stage Call Alerts</div>
+          <div style="font-size:11px; opacity:0.9; margin-top:2px;">Get loud vibration &amp; alerts on your phone screen even if you lock your device or switch to other apps.</div>
+        </div>
+      </div>
+      <button type="button" onclick="requestStagePushPermission()" style="background:#fff; color:#4f46e5; border:none; padding:8px 18px; border-radius:10px; font-weight:800; font-size:13px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.15); white-space:nowrap; transition:transform 0.2s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">
+        Enable Alerts 🔔
+      </button>
+    </div>
+    
     <!-- GOLDEN RIBBON AWARD BADGE (IF AWARDED) -->
     <div id="golden-ribbon-badge-container" style="display:none; margin-bottom:20px;"></div>
     
@@ -1740,6 +1754,106 @@ function stopVibration() {
   document.getElementById('stop-vibration-banner').style.display = 'none';
 }
 
+// --- SERVICE WORKER & BACKGROUND PUSH NOTIFICATIONS ---
+let swRegistration = null;
+let wakeLockSentinel = null;
+
+async function initServiceWorkerAndWakeLock() {
+  if ('serviceWorker' in navigator) {
+    try {
+      swRegistration = await navigator.serviceWorker.register('./sw.js');
+      console.log('[SW] Service worker registered:', swRegistration);
+    } catch (err) {
+      console.warn('[SW] Service worker registration error:', err);
+    }
+  }
+
+  // Request Screen Wake Lock so phone screen stays alive while in portal
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState === 'visible' && wakeLockSentinel === null) {
+          try { wakeLockSentinel = await navigator.wakeLock.request('screen'); } catch(e){}
+        }
+      });
+    }
+  } catch (e) {
+    console.log('[WakeLock] Not supported or prevented:', e);
+  }
+
+  updatePushPermissionBanner();
+}
+
+function updatePushPermissionBanner() {
+  const banner = document.getElementById('push-perm-banner');
+  if (!banner) return;
+  if ('Notification' in window && Notification.permission === 'granted') {
+    banner.style.display = 'none';
+  } else if ('Notification' in window && Notification.permission !== 'denied') {
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+async function requestStagePushPermission() {
+  if (!('Notification' in window)) {
+    toast('⚠️ Notifications are not supported by your browser.');
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      toast('🔔 Background Stage Alerts Enabled!');
+      updatePushPermissionBanner();
+      triggerBackgroundStageNotification('🔔 Stage Call Alerts Active', 'You will now receive stage call alerts even if you switch apps or lock your phone.');
+    } else {
+      toast('⚠️ Notification permission was denied.');
+      updatePushPermissionBanner();
+    }
+  } catch (err) {
+    console.error('Error requesting notification permission:', err);
+  }
+}
+
+function triggerBackgroundStageNotification(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const notifOptions = {
+    body: body,
+    icon: './logo.png',
+    badge: './logo.png',
+    vibrate: [500, 200, 500, 200, 500, 200, 1000],
+    tag: 'knsdc-stage-alert',
+    renotify: true,
+    requireInteraction: true,
+    data: { url: './KNSDC-Participant.html', timestamp: Date.now() }
+  };
+
+  // Try Service Worker registration first (Reliable on mobile Android Chrome even when backgrounded)
+  if (swRegistration && swRegistration.showNotification) {
+    swRegistration.showNotification(title, notifOptions).catch(err => {
+      console.warn('[SW] showNotification error:', err);
+      fallbackWebNotification(title, notifOptions);
+    });
+  } else if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
+    navigator.serviceWorker.ready.then(reg => {
+      reg.showNotification(title, notifOptions);
+    }).catch(() => fallbackWebNotification(title, notifOptions));
+  } else {
+    fallbackWebNotification(title, notifOptions);
+  }
+}
+
+function fallbackWebNotification(title, options) {
+  try {
+    new Notification(title, options);
+  } catch(e) {
+    console.log('Web Notification fallback error:', e);
+  }
+}
+
 function toast(msg) {
   const c = document.getElementById('toast-container');
   const t = document.createElement('div');
@@ -1751,6 +1865,7 @@ function toast(msg) {
 
 // 1. App Init
 function initApp() {
+  initServiceWorkerAndWakeLock();
   const storedId = localStorage.getItem('knsdc_participant_id');
   if (storedId) {
     autoLogin(storedId);
@@ -2528,23 +2643,31 @@ if (window.syncEngine) {
         }
       }
 
-      // --- VIBRATION & READY RESET LOGIC ---
+      // --- VIBRATION & STAGE CALL NOTIFICATIONS ---
       if (lastStageStatus !== 'queue' && p.stageStatus === 'queue') {
-        // Added to queue! Vibrate and ring for 15 seconds.
+        // Added to queue! Vibrate and ring for 20 seconds.
         if ('vibrate' in navigator) {
           navigator.vibrate([1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000]);
         }
         playRingTone();
-        if ('Notification' in window && Notification.permission === 'granted') {
-           try {
-             new Notification('🚨 YOU ARE UP NEXT!', {
-               body: 'You have been added to the queue! Please head to the stage immediately.',
-               requireInteraction: true
-             });
-           } catch(e) { console.error('Notification error', e); }
-        }
+        triggerBackgroundStageNotification(
+          '🚨 YOU ARE UP NEXT ON STAGE!',
+          'You have been added to the upcoming queue! Please report to the backstage holding area immediately.'
+        );
         document.getElementById('stop-vibration-banner').style.display = 'flex';
-        setTimeout(() => { stopVibration(); }, 15000);
+        setTimeout(() => { stopVibration(); }, 20000);
+      } else if (lastStageStatus !== 'on-stage' && p.stageStatus === 'on-stage') {
+        // Pushed onto stage!
+        if ('vibrate' in navigator) {
+          navigator.vibrate([1200, 300, 1200, 300, 1200, 300, 1200, 300, 1200]);
+        }
+        playRingTone();
+        triggerBackgroundStageNotification(
+          '🎭 YOU ARE CALLED ON STAGE NOW!',
+          'Please step onto the stage immediately for your performance!'
+        );
+        document.getElementById('stop-vibration-banner').style.display = 'flex';
+        setTimeout(() => { stopVibration(); }, 20000);
       }
 
       // Reset isReady if round changed in real-time or if stageStatus became 'done'
