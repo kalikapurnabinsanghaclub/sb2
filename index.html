@@ -3200,12 +3200,14 @@
 
   <!-- ════════════════ EVENT PAGE VIEW ════════════════ -->
   <section id="event-page-view" style="display:none; min-height: 100vh; background: #fff; padding-bottom: 80px;">
-    <div id="epv-banner" style="width:100%; height:400px; background:#f1f5f9; background-size:cover; background-position:center; position:relative;">
-      <div style="position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,0.8), transparent);"></div>
-      <div style="position:absolute; bottom:40px; left:5%; max-width:1200px; width:90%; color:#fff;">
+    <div id="epv-banner" style="width:100%; height:400px; background:#1e293b; background-size:cover; background-position:center; position:relative; overflow:hidden;">
+      <img id="epv-banner-img" src="" alt="Event Banner" style="width:100%; height:100%; object-fit:cover; position:absolute; inset:0; z-index:1; display:none; transition:opacity 0.4s ease-in-out;" onerror="this.style.display='none'" />
+      <div style="position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 60%, transparent 100%); z-index:2; pointer-events:none;"></div>
+      <div style="position:absolute; bottom:40px; left:5%; max-width:1200px; width:90%; color:#fff; z-index:3;">
         <div style="display:inline-block;background:rgba(233, 30, 140, 0.9);color:#fff;border-radius:20px;padding:6px 16px;font-size:0.85rem;font-weight:800;margin-bottom:16px;letter-spacing:1px" id="epv-cat">Category</div>
         <h2 id="epv-title" style="font-family:'Playfair Display',serif; font-size:3.5rem; font-weight:800; margin-bottom:0; line-height:1.2; text-shadow: 0 4px 15px rgba(0,0,0,0.5);">Event Title</h2>
       </div>
+      <div id="epv-banner-dots" style="position:absolute; bottom:15px; right:5%; display:flex; gap:6px; z-index:4;"></div>
     </div>
     
     <div style="max-width:1200px; margin: 0 auto; width:90%; display:grid; grid-template-columns: 2fr 1fr; gap:40px; padding-top:40px;">
@@ -9880,6 +9882,7 @@
       if(footer) footer.style.display = 'none';
       
       const pageView = document.getElementById('event-page-view');
+      if (pageView) pageView.style.display = 'block';
       
       if (!isAutoRefresh) {
          window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -9891,21 +9894,59 @@
         window.epvBannerInterval = null;
       }
       const bannerEl = document.getElementById('epv-banner');
+      const bannerImg = document.getElementById('epv-banner-img');
+      const bannerDots = document.getElementById('epv-banner-dots');
+      
       const banners = typeof window.parseBanners === 'function'
         ? window.parseBanners(ev.banner)
         : (Array.isArray(ev.banner) ? ev.banner.filter(Boolean) : (typeof ev.banner === 'string' && ev.banner ? [ev.banner] : []));
+      
       if (banners.length > 0) {
-        bannerEl.style.transition = 'background-image 0.5s ease-in-out';
-        bannerEl.style.backgroundImage = `url('${banners[0]}')`;
-        if (banners.length > 1) {
-          let idx = 0;
-          window.epvBannerInterval = setInterval(() => {
-            idx = (idx + 1) % banners.length;
-            bannerEl.style.backgroundImage = `url('${banners[idx]}')`;
-          }, 3000);
+        if (bannerImg) {
+          bannerImg.src = banners[0];
+          bannerImg.style.display = 'block';
+        }
+        if (bannerEl) {
+          bannerEl.style.backgroundImage = `url('${banners[0]}')`;
+        }
+        if (bannerDots) {
+          if (banners.length > 1) {
+            bannerDots.innerHTML = banners.map((_, i) => 
+              `<div class="epv-dot" data-idx="${i}" style="width:10px; height:10px; border-radius:50%; background:${i === 0 ? '#ffffff' : 'rgba(255,255,255,0.4)'}; cursor:pointer; transition:0.3s;" onclick="switchEpvBanner(${i})"></div>`
+            ).join('');
+            bannerDots.style.display = 'flex';
+            
+            let currentIdx = 0;
+            window.switchEpvBanner = (targetIdx) => {
+              currentIdx = targetIdx;
+              if (bannerImg) bannerImg.src = banners[currentIdx];
+              if (bannerEl) bannerEl.style.backgroundImage = `url('${banners[currentIdx]}')`;
+              document.querySelectorAll('.epv-dot').forEach((d, di) => {
+                d.style.background = (di === currentIdx) ? '#ffffff' : 'rgba(255,255,255,0.4)';
+              });
+            };
+            
+            window.epvBannerInterval = setInterval(() => {
+              currentIdx = (currentIdx + 1) % banners.length;
+              window.switchEpvBanner(currentIdx);
+            }, 3500);
+          } else {
+            bannerDots.innerHTML = '';
+            bannerDots.style.display = 'none';
+          }
         }
       } else {
-        bannerEl.style.backgroundImage = 'linear-gradient(135deg, #1e293b, #334155)';
+        if (bannerImg) {
+          bannerImg.src = '';
+          bannerImg.style.display = 'none';
+        }
+        if (bannerEl) {
+          bannerEl.style.backgroundImage = 'linear-gradient(135deg, #1e293b, #334155)';
+        }
+        if (bannerDots) {
+          bannerDots.innerHTML = '';
+          bannerDots.style.display = 'none';
+        }
       }
       
       const isSports = (evType === 'sports');
