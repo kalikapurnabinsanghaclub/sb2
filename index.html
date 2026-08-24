@@ -6777,26 +6777,44 @@
           ? `<img src="${bannerList[0]}" alt="${ev.name} Banner" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:12px; margin-bottom:12px;">`
           : `<div style="font-size:2.5rem;margin-bottom:12px;animation:float 3s ease-in-out infinite;animation-delay:${i * 0.25}s">${ev.icon}</div>`;
 
-          const cleanWhatsApp = (ev.whatsapp || '').replace(/[^0-9]/g, '');
-          const formattedWhatsApp = cleanWhatsApp.length === 10 ? '91' + cleanWhatsApp : cleanWhatsApp;
-          const waUrl = formattedWhatsApp 
-            ? `https://wa.me/${formattedWhatsApp}?text=${encodeURIComponent('Hello! I have an inquiry regarding ' + (ev.name || 'the event') + '.')}`
-            : '';
+          const rawWA = ev.whatsapp || ev.whatsapp_number || (ev.roundSchedules && ev.roundSchedules.whatsapp) || '';
+          let waUrl = '';
+          if (rawWA) {
+            const rawWAStr = String(rawWA).trim();
+            if (rawWAStr.startsWith('http://') || rawWAStr.startsWith('https://')) {
+              waUrl = rawWAStr;
+            } else {
+              const digits = rawWAStr.replace(/[^0-9]/g, '');
+              if (digits.length >= 7) {
+                const fullDigits = digits.length === 10 ? '91' + digits : digits;
+                waUrl = `https://wa.me/${fullDigits}?text=${encodeURIComponent('Hello! I have an inquiry regarding ' + (ev.name || 'the event') + '.')}`;
+              }
+            }
+          }
           
-          let fbUrl = (ev.facebook || '').trim();
-          if (fbUrl && !fbUrl.startsWith('http://') && !fbUrl.startsWith('https://')) {
-            fbUrl = 'https://' + fbUrl;
+          let rawFB = String(ev.facebook || ev.facebook_url || (ev.roundSchedules && ev.roundSchedules.facebook) || '').trim();
+          let fbUrl = '';
+          if (rawFB) {
+            if (rawFB.startsWith('http://') || rawFB.startsWith('https://')) {
+              fbUrl = rawFB;
+            } else if (rawFB.startsWith('facebook.com') || rawFB.startsWith('fb.me') || rawFB.startsWith('fb.com')) {
+              fbUrl = 'https://' + rawFB;
+            } else if (rawFB.startsWith('@')) {
+              fbUrl = 'https://facebook.com/' + rawFB.slice(1);
+            } else if (rawFB.length > 0) {
+              fbUrl = 'https://' + rawFB;
+            }
           }
 
           const socialButtons = (waUrl || fbUrl) ? `
             <div style="display:flex; gap:8px; margin-top:8px;" onclick="event.stopPropagation()">
               ${waUrl ? `
-                <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn" style="flex:1; padding:7px 10px; border-radius:18px; font-size:0.75rem; justify-content:center; align-items:center; background:#25D366; color:#ffffff; font-weight:800; text-decoration:none; box-shadow:0 3px 10px rgba(37,211,102,0.3); border:none; display:flex; gap:4px;" title="Chat directly on WhatsApp">
-                  <span style="font-size:13px;">💬</span> WhatsApp
+                <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn" style="flex:1; padding:8px 12px; border-radius:18px; font-size:0.75rem; justify-content:center; align-items:center; background:#25D366; color:#ffffff; font-weight:800; text-decoration:none; box-shadow:0 3px 10px rgba(37,211,102,0.3); border:none; display:flex; gap:4px;" title="Chat directly on WhatsApp">
+                  <span style="font-size:14px;">💬</span> WhatsApp
                 </a>` : ''}
               ${fbUrl ? `
-                <a href="${fbUrl}" target="_blank" rel="noopener noreferrer" class="btn" style="flex:1; padding:7px 10px; border-radius:18px; font-size:0.75rem; justify-content:center; align-items:center; background:#1877F2; color:#ffffff; font-weight:800; text-decoration:none; box-shadow:0 3px 10px rgba(24,119,242,0.3); border:none; display:flex; gap:4px;" title="Visit official Facebook page">
-                  <span style="font-size:13px;">🔵</span> Facebook
+                <a href="${fbUrl}" target="_blank" rel="noopener noreferrer" class="btn" style="flex:1; padding:8px 12px; border-radius:18px; font-size:0.75rem; justify-content:center; align-items:center; background:#1877F2; color:#ffffff; font-weight:800; text-decoration:none; box-shadow:0 3px 10px rgba(24,119,242,0.3); border:none; display:flex; gap:4px;" title="Visit official Facebook page">
+                  <span style="font-size:14px;">🔵</span> Facebook
                 </a>` : ''}
             </div>
           ` : '';
@@ -10049,15 +10067,33 @@
       const waBtn = document.getElementById('epv-whatsapp-btn');
       const fbBtn = document.getElementById('epv-facebook-btn');
       
-      const cleanWA = (ev.whatsapp || '').replace(/[^0-9]/g, '');
-      const formattedWA = cleanWA.length === 10 ? '91' + cleanWA : cleanWA;
-      const waLink = formattedWA 
-        ? `https://wa.me/${formattedWA}?text=${encodeURIComponent('Hello! I have an inquiry regarding ' + (ev.name || 'the event') + '.')}`
-        : '';
+      const rawWA = ev.whatsapp || ev.whatsapp_number || (ev.roundSchedules && ev.roundSchedules.whatsapp) || '';
+      let waLink = '';
+      if (rawWA) {
+        const rawWAStr = String(rawWA).trim();
+        if (rawWAStr.startsWith('http://') || rawWAStr.startsWith('https://')) {
+          waLink = rawWAStr;
+        } else {
+          const digits = rawWAStr.replace(/[^0-9]/g, '');
+          if (digits.length >= 7) {
+            const fullDigits = digits.length === 10 ? '91' + digits : digits;
+            waLink = `https://wa.me/${fullDigits}?text=${encodeURIComponent('Hello! I have an inquiry regarding ' + (ev.name || 'the event') + '.')}`;
+          }
+        }
+      }
         
-      let fbLink = (ev.facebook || '').trim();
-      if (fbLink && !fbLink.startsWith('http://') && !fbLink.startsWith('https://')) {
-        fbLink = 'https://' + fbLink;
+      let rawFB = String(ev.facebook || ev.facebook_url || (ev.roundSchedules && ev.roundSchedules.facebook) || '').trim();
+      let fbLink = '';
+      if (rawFB) {
+        if (rawFB.startsWith('http://') || rawFB.startsWith('https://')) {
+          fbLink = rawFB;
+        } else if (rawFB.startsWith('facebook.com') || rawFB.startsWith('fb.me') || rawFB.startsWith('fb.com')) {
+          fbLink = 'https://' + rawFB;
+        } else if (rawFB.startsWith('@')) {
+          fbLink = 'https://facebook.com/' + rawFB.slice(1);
+        } else if (rawFB.length > 0) {
+          fbLink = 'https://' + rawFB;
+        }
       }
       
       let hasSocial = false;
