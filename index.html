@@ -6982,7 +6982,7 @@
 
             <div style="display:grid; gap:10px;">
               <button class="btn" style="${btnStyle} padding:10px 20px;border-radius:20px;font-size:0.85rem;width:100%;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;" ${isRegOpen ? `onclick="showAuth(true, '${ev.id}')"` : 'disabled'}>${btnText}</button>
-              <button class="btn" style="padding:9px 20px; border-radius:20px; font-size:0.8rem; width:100%; justify-content:center; background:rgba(255, 255, 255, 0.15); border:1px solid rgba(255, 255, 255, 0.4); color:#ffffff; font-weight:800;" onclick="openDonationForm('${ev.name}', '${ev.col}')">🤝 Support Event</button>
+              ${ev.allowDonations !== false ? `<button class="btn" style="padding:9px 20px; border-radius:20px; font-size:0.8rem; width:100%; justify-content:center; background:rgba(255, 255, 255, 0.15); border:1px solid rgba(255, 255, 255, 0.4); color:#ffffff; font-weight:800;" onclick="openDonationForm('${ev.id}')">🤝 Support Event</button>` : ''}
             </div>
             ${socialButtons}
           `;
@@ -10528,9 +10528,17 @@
       }
       
       
-      document.getElementById('epv-support-btn').onclick = () => {
-        openDonationForm(ev.name, ev.col);
-      };
+      const epvSupportBtn = document.getElementById('epv-support-btn');
+      if (epvSupportBtn) {
+        if (ev.allowDonations === false) {
+          epvSupportBtn.style.display = 'none';
+        } else {
+          epvSupportBtn.style.display = 'inline-flex';
+          epvSupportBtn.onclick = () => {
+            openDonationForm(ev.id);
+          };
+        }
+      }
       
       // Render specific event's prizes inside the event page view
       if (!ev.categories || ev.categories.length === 0) {
@@ -11003,21 +11011,40 @@
       selectedAmount: 500
     };
 
-    function openDonationForm(name, color, eventId = null) {
+    function openDonationForm(param1, color, eventId = null) {
       const state = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
       let ev = null;
-      if (eventId) {
-        ev = (EVENTS || []).find(e => String(e.id) === String(eventId)) || (state.events || []).find(e => String(e.id) === String(eventId));
-      } else if (name) {
-        ev = (EVENTS || []).find(e => e.name === name) || (state.events || []).find(e => e.name === name);
+
+      if (param1 && typeof param1 === 'object') {
+        ev = param1;
+      } else if (param1 && (typeof param1 === 'string' || typeof param1 === 'number')) {
+        const pStr = String(param1);
+        ev = (EVENTS || []).find(e => String(e.id) === pStr) ||
+             (state.events || []).find(e => String(e.id) === pStr);
+      }
+      
+      if (!ev && eventId) {
+        ev = (EVENTS || []).find(e => String(e.id) === String(eventId)) ||
+             (state.events || []).find(e => String(e.id) === String(eventId));
       }
 
-      currentSupportState.eventId = ev ? ev.id : (eventId || null);
-      currentSupportState.eventName = (ev ? ev.name : name) || 'KNSDC Event';
-      currentSupportState.eventColor = (ev ? ev.col : color) || '#E91E8C';
-      currentSupportState.targetGoal = ev ? (Number(ev.targetGoal) || 50000) : 50000;
-      currentSupportState.raisedAmount = ev ? (Number(ev.raisedAmount) || 0) : 0;
-      currentSupportState.upiId = (ev && ev.upiId) ? ev.upiId : 'kalikapurnabinsangha@sbi';
+      if (!ev && param1 && typeof param1 === 'string') {
+        ev = (EVENTS || []).find(e => e.name === param1) ||
+             (state.events || []).find(e => e.name === param1);
+      }
+
+      if (!ev && EVENTS && EVENTS.length > 0) {
+        ev = EVENTS[0];
+      }
+
+      const rs = (ev && ev.roundSchedules) ? ev.roundSchedules : {};
+
+      currentSupportState.eventId = ev ? ev.id : (eventId || (typeof param1 === 'string' ? param1 : null));
+      currentSupportState.eventName = (ev ? ev.name : (typeof param1 === 'string' ? param1 : 'KNSDC Event')) || 'KNSDC Event';
+      currentSupportState.eventColor = (ev ? (ev.col || ev.color) : color) || '#E91E8C';
+      currentSupportState.targetGoal = ev ? (Number(ev.targetGoal) || (rs.targetGoal ? Number(rs.targetGoal) : 50000)) : 50000;
+      currentSupportState.raisedAmount = ev ? (Number(ev.raisedAmount) || (rs.raisedAmount ? Number(rs.raisedAmount) : 0)) : 0;
+      currentSupportState.upiId = (ev && ev.upiId) ? ev.upiId : (rs.upiId || 'kalikapurnabinsangha@sbi');
       currentSupportState.selectedAmount = 500;
 
       // Update Modal Header & Title
