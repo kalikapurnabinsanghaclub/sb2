@@ -22,6 +22,11 @@ ALTER TABLE public.events ADD COLUMN IF NOT EXISTS round_schedules JSONB  DEFAUL
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS "publicReg"    BOOLEAN DEFAULT false;
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS "stagePreview" BOOLEAN DEFAULT false;
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS "resultPublic" BOOLEAN DEFAULT false;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS whatsapp        TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS facebook        TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS facebook_url    TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS banner          TEXT;
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS created_at     TIMESTAMPTZ DEFAULT NOW();
 
 -- Step 2: Make sure RLS is not blocking writes
