@@ -67,14 +67,14 @@
     ];
 
     const initialSettings = {
-      clubName: 'Grand Horizon Sports & Social Club',
-      tagline: 'Premier Sports, Wellness & Community Finance Portal',
-      currencySymbol: '$',
-      currencyCode: 'USD',
+      clubName: 'Kalikapur Nabin Sangha (KNSDC)',
+      tagline: 'Sports, Culture & Community Club Finance Portal',
+      currencySymbol: '₹',
+      currencyCode: 'INR',
       dueDayOfMonth: 5,
       autoLateFee: true,
       lateFeeDays: 10,
-      lateFeeFixed: 15,
+      lateFeeFixed: 100,
       supabaseUrl: 'https://xyzcompany.supabase.co',
       supabaseConnected: true,
     };
@@ -87,10 +87,10 @@
     ];
 
     const initialPlans = [
-      { id: 'plan-standard', name: 'Standard Club Plan', fee: 75, billingCycle: 'monthly', description: 'Full access to general club facilities, lounge, and social mixers.', color: '#3b82f6', active: true, lateFeeDays: 10, lateFeeAmount: 10 },
-      { id: 'plan-premium', name: 'Premium Sports & Gym', fee: 140, billingCycle: 'monthly', description: 'All Standard perks plus fitness gym, court bookings, sauna, and pool.', color: '#8b5cf6', active: true, lateFeeDays: 10, lateFeeAmount: 15 },
-      { id: 'plan-vip', name: 'VIP Executive Plan', fee: 260, billingCycle: 'monthly', description: 'Exclusive lounge, 5 guest passes/mo, personal locker, priority courts.', color: '#f59e0b', active: true, lateFeeDays: 10, lateFeeAmount: 25 },
-      { id: 'plan-student', name: 'Student & Youth Athlete', fee: 45, billingCycle: 'monthly', description: 'Discounted membership for students under 24 with valid ID.', color: '#10b981', active: true, lateFeeDays: 10, lateFeeAmount: 5 },
+      { id: 'plan-standard', name: 'Standard Club Plan', fee: 500, billingCycle: 'monthly', description: 'Full access to general club facilities, lounge, and community events.', color: '#3b82f6', active: true, lateFeeDays: 10, lateFeeAmount: 50 },
+      { id: 'plan-premium', name: 'Premium Sports & Gym', fee: 1000, billingCycle: 'monthly', description: 'All Standard perks plus fitness gym, sports coaching, sauna, and grounds.', color: '#8b5cf6', active: true, lateFeeDays: 10, lateFeeAmount: 100 },
+      { id: 'plan-vip', name: 'VIP Executive Plan', fee: 2500, billingCycle: 'monthly', description: 'Executive lounge, priority ground bookings, free guest passes & lockers.', color: '#f59e0b', active: true, lateFeeDays: 10, lateFeeAmount: 200 },
+      { id: 'plan-student', name: 'Student & Youth Athlete', fee: 300, billingCycle: 'monthly', description: 'Discounted membership for youth athletes & students with club training.', color: '#10b981', active: true, lateFeeDays: 10, lateFeeAmount: 25 },
     ];
 
     const initialMembers = [];
@@ -98,6 +98,16 @@
     const initialPayments = [];
 
     function App() {
+
+      // Auto-migrate plans and settings to Indian Rupee (INR)
+      try {
+        const savedSettings = localStorage.getItem('fp_settings');
+        if (savedSettings && savedSettings.includes('$')) {
+          localStorage.removeItem('fp_settings');
+          localStorage.removeItem('fp_plans');
+        }
+      } catch(e) {}
+    
 
       // Auto-cleanup old mock members from previous session
       try {
@@ -152,7 +162,7 @@
       });
 
       const formatCurrency = (val) => {
-        return (settings.currencySymbol || '$') + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
       };
 
       const getMemberEffectiveFee = (member) => {
@@ -1516,76 +1526,262 @@
       );
     }
 
-    // Plans Component
+        // Upgraded Plans & Fee Customizer Component
     function PlansView({ plans, setPlans, members, formatCurrency }) {
       const [editingPlan, setEditingPlan] = useState(null);
+      const [isAddingNew, setIsAddingNew] = useState(false);
+      const [planForm, setPlanForm] = useState({
+        id: '',
+        name: '',
+        fee: 500,
+        billingCycle: 'monthly',
+        description: '',
+        color: '#3b82f6',
+        lateFeeDays: 10,
+        lateFeeAmount: 50
+      });
+
+      const openAddModal = () => {
+        setIsAddingNew(true);
+        setEditingPlan(null);
+        setPlanForm({
+          id: 'plan-' + Date.now(),
+          name: '',
+          fee: 500,
+          billingCycle: 'monthly',
+          description: '',
+          color: '#3b82f6',
+          lateFeeDays: 10,
+          lateFeeAmount: 50
+        });
+      };
+
+      const openEditModal = (p) => {
+        setIsAddingNew(false);
+        setEditingPlan(p);
+        setPlanForm({ ...p });
+      };
+
+      const handleSavePlan = (e) => {
+        e.preventDefault();
+        if (!planForm.name.trim()) {
+          alert('Please enter a Plan Name');
+          return;
+        }
+        if (isAddingNew) {
+          setPlans(prev => [...prev, { ...planForm, fee: Number(planForm.fee) || 0, lateFeeDays: Number(planForm.lateFeeDays) || 10, lateFeeAmount: Number(planForm.lateFeeAmount) || 0, active: true }]);
+        } else {
+          setPlans(prev => prev.map(p => p.id === planForm.id ? { ...planForm, fee: Number(planForm.fee) || 0, lateFeeDays: Number(planForm.lateFeeDays) || 10, lateFeeAmount: Number(planForm.lateFeeAmount) || 0 } : p));
+        }
+        setEditingPlan(null);
+        setIsAddingNew(false);
+      };
+
+      const handleDeletePlan = (planId, planName) => {
+        const enrolled = members.filter(m => m.planId === planId && m.status === 'active').length;
+        if (enrolled > 0) {
+          alert(`Cannot delete "${planName}" because it currently has ${enrolled} active member(s) enrolled. Please switch their plan first.`);
+          return;
+        }
+        if (confirm(`Are you sure you want to delete the "${planName}" plan?`)) {
+          setPlans(prev => prev.filter(p => p.id !== planId));
+        }
+      };
 
       return (
         <div className="space-y-6">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex justify-between items-center">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
                 <i data-lucide="sliders" className="w-6 h-6 text-indigo-400"></i>
                 <span>Monthly Club Membership Fee Customizer & Plans</span>
               </h1>
-              <p className="text-slate-400 text-sm mt-1">Configure membership tiers, pricing structures, and late fee policies.</p>
+              <p className="text-slate-400 text-sm mt-1">Configure membership tiers, customized monthly fees (in ₹ INR), grace periods, and late fee fines.</p>
             </div>
+            <button
+              onClick={openAddModal}
+              className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition shadow-lg shadow-indigo-600/30 whitespace-nowrap"
+            >
+              <i data-lucide="plus-circle" className="w-4 h-4"></i>
+              <span>+ Add New Plan</span>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             {plans.map(plan => {
               const count = members.filter(m => m.planId === plan.id && m.status === 'active').length;
               return (
-                <div key={plan.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden">
-                  <div className="absolute top-0 left-0 right-0 h-1.5" style={{ backgroundColor: plan.color }}></div>
+                <div key={plan.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden group hover:border-slate-700 transition">
+                  <div className="absolute top-0 left-0 right-0 h-2" style={{ backgroundColor: plan.color || '#3b82f6' }}></div>
                   <div>
-                    <h3 className="font-bold text-lg text-white">{plan.name}</h3>
-                    <p className="text-xs text-slate-400 mt-2 min-h-[36px]">{plan.description}</p>
-                    <div className="mt-4 bg-slate-800/60 p-4 rounded-xl border border-slate-700">
-                      <span className="text-xs text-slate-400 block font-medium">Monthly Fee</span>
-                      <span className="text-3xl font-extrabold text-white">{formatCurrency(plan.fee)}</span>
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-bold text-lg text-white">{plan.name}</h3>
+                      <button
+                        onClick={() => handleDeletePlan(plan.id, plan.name)}
+                        title="Delete Plan"
+                        className="text-slate-500 hover:text-red-400 p-1 transition"
+                      >
+                        <i data-lucide="trash-2" className="w-4 h-4"></i>
+                      </button>
                     </div>
-                    <div className="mt-3 text-xs text-slate-300 space-y-1">
-                      <div>Enrolled: <span className="font-bold text-white">{count} members</span></div>
-                      <div>Grace Period: <span className="font-bold text-amber-400">{plan.lateFeeDays} days</span></div>
+                    <p className="text-xs text-slate-400 mt-2 min-h-[36px] line-clamp-2">{plan.description || 'General membership tier'}</p>
+                    
+                    <div className="mt-4 bg-slate-800/80 p-4 rounded-xl border border-slate-700/80">
+                      <span className="text-xs text-slate-400 block font-medium">Monthly Fee</span>
+                      <span className="text-3xl font-extrabold text-emerald-400">{formatCurrency(plan.fee)}</span>
+                    </div>
+
+                    <div className="mt-3 text-xs text-slate-300 space-y-1.5 bg-slate-950/40 p-3 rounded-lg border border-slate-800">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Enrolled Members:</span>
+                        <span className="font-bold text-white">{count}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Grace Period:</span>
+                        <span className="font-bold text-amber-400">{plan.lateFeeDays || 10} days</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Late Fine:</span>
+                        <span className="font-bold text-red-400">{formatCurrency(plan.lateFeeAmount || 50)}</span>
+                      </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setEditingPlan(plan)}
-                    className="mt-5 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg"
-                  >
-                    Customize Fee
-                  </button>
+
+                  <div className="mt-5 pt-3 border-t border-slate-800 flex gap-2">
+                    <button
+                      onClick={() => openEditModal(plan)}
+                      className="flex-1 py-2 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5"
+                    >
+                      <i data-lucide="edit-3" className="w-3.5 h-3.5"></i>
+                      <span>Edit Plan</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          {editingPlan && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4">
-                <h3 className="text-lg font-bold text-white">Customize {editingPlan.name}</h3>
-                <div>
-                  <label className="block text-xs text-slate-300 font-semibold mb-1">Monthly Fee ($)</label>
-                  <input
-                    type="number"
-                    value={editingPlan.fee}
-                    onChange={(e) => setEditingPlan({ ...editingPlan, fee: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold"
-                  />
-                </div>
-                <div className="flex justify-end space-x-2 pt-2">
-                  <button onClick={() => setEditingPlan(null)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs">Cancel</button>
+          {/* Add / Edit Plan Modal */}
+          {(isAddingNew || editingPlan) && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="sliders" className="w-5 h-5 text-indigo-400"></i>
+                    <span>{isAddingNew ? '➕ Add New Membership Plan' : `✏️ Edit "${planForm.name}"`}</span>
+                  </h3>
                   <button
-                    onClick={() => {
-                      setPlans(prev => prev.map(p => p.id === editingPlan.id ? editingPlan : p));
-                      setEditingPlan(null);
-                    }}
-                    className="px-4 py-1.5 bg-indigo-600 text-white font-bold rounded-lg text-xs shadow"
+                    onClick={() => { setEditingPlan(null); setIsAddingNew(false); }}
+                    className="text-slate-400 hover:text-white p-1"
                   >
-                    Save Changes
+                    ✕
                   </button>
                 </div>
+
+                <form onSubmit={handleSavePlan} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs text-slate-300 font-semibold mb-1">Plan Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Lifetime Gold Member / Cricket Academy"
+                      value={planForm.name}
+                      onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-medium text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 font-semibold mb-1">Monthly Fee (₹ INR) *</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-emerald-400 font-bold text-base">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        placeholder="500"
+                        value={planForm.fee}
+                        onChange={(e) => setPlanForm({ ...planForm, fee: parseFloat(e.target.value) || 0 })}
+                        className="w-full pl-8 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-emerald-400 font-extrabold text-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 font-semibold mb-1">Plan Description & Benefits</label>
+                    <textarea
+                      rows="2"
+                      placeholder="What facilities, coaching, or perks does this plan include?"
+                      value={planForm.description}
+                      onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-300 font-semibold mb-1">Grace Period (Days)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={planForm.lateFeeDays}
+                        onChange={(e) => setPlanForm({ ...planForm, lateFeeDays: parseInt(e.target.value) || 0 })}
+                        className="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white font-semibold text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-300 font-semibold mb-1">Late Fine (₹ INR)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={planForm.lateFeeAmount}
+                        onChange={(e) => setPlanForm({ ...planForm, lateFeeAmount: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white font-semibold text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 font-semibold mb-1">Card Accent Theme Color</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={planForm.color || '#3b82f6'}
+                        onChange={(e) => setPlanForm({ ...planForm, color: e.target.value })}
+                        className="w-10 h-8 rounded border-0 cursor-pointer bg-transparent"
+                      />
+                      <div className="flex gap-1.5 flex-1">
+                        {['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899'].map(c => (
+                          <button
+                            type="button"
+                            key={c}
+                            onClick={() => setPlanForm({ ...planForm, color: c })}
+                            className="w-6 h-6 rounded-full border-2 transition"
+                            style={{ backgroundColor: c, borderColor: planForm.color === c ? '#ffffff' : 'transparent' }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-2 pt-3 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => { setEditingPlan(null); setIsAddingNew(false); }}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs shadow-lg shadow-indigo-600/30 flex items-center gap-1.5"
+                    >
+                      <i data-lucide="check" className="w-3.5 h-3.5"></i>
+                      <span>{isAddingNew ? 'Create Plan' : 'Save Changes'}</span>
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
