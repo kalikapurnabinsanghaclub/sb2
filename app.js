@@ -40,6 +40,7 @@ const renderApp = (isUpdate = false) => {
     console.log("Dashboard view requested for role:", state.role);
     const portalMap = {
       'admin': 'KNSDC-Admin.html',
+      'finance': 'KNSDC-Finance.html',
       'host': 'KNSDC-Host.html',
       'judge': 'KNSDC-Judge.html',
       'monitor': 'KNSDC-Monitor.html',
