@@ -1,0 +1,81 @@
+806:       // Step 1: Create Supabase Auth user so they can log in with signInWithPassword
+  807:       try {
+  808:         const { error: signUpErr } = await this.supabase.auth.signUp({
+  809:           email: emailLower,
+  810:           password: password,
+  811:           options: { data: { fullname: name, role: role } }
+  812:         });
+  813:         if (signUpErr) {
+  814:           // If user already exists in auth, that's OK â continue to upsert staff_credentials
+  815:           if (!signUpErr.message.includes('already registered') && !signUpErr.message.includes('already been registered')) {
+  816:             console.warn('[LocalSync] Auth signUp warning:', signUpErr.message);
+  817:           }
+  818:         }
+  819:       } catch (authErr) {
+  820:         console.warn('[LocalSync] Auth signUp exception (non-fatal):', authErr.message);
+  821:       }
+  822: 
+  823:       // Step 2: Use SECURITY DEFINER RPC to upsert into staff_credentials (bypasses RLS)
+  824:       const { data, error } = await this.supabase.rpc('admin_upsert_staff', {
+  825:         staff_email: emailLower,
+  826:         staff_password: password,
+  827:         staff_name: name,
+  828:         staff_role: role
+  829:       });
+  830: 
+  831:       if (error) return { success: false, error: error.message };
+  832:       const result = typeof data === 'string' ? JSON.parse(data) : data;
+  833:       if (result && result.success === false) return { success: false, error: result.error };
+  834: 
+  835:       // Also sync to global knsdc_state so portals can read it
+  836:       try {
+  837:         let globalState = this.state || {};
+  838:         if (!globalState.staff) globalState.staff = [];
+  839:         globalState.staff = globalState.staff.filter(s => s.email !== emailLower);
+  840:         globalState.staff.push({ email: emailLower, name, role, password });
+  841:         await this.pushState(globalState);
+  842:       } catch (err) {
+  843:         console.warn('Failed to sync staff to global state:', err);
+  844:       }
+  845: 
+  846:       console.log('[LocalSync] Staff member added via RPC:', emailLower, role);
+  847:       return { success: true };
+  848:     } catch (err) {
+  849:       return { success: false, error: err.message };
+  850:     }
+  851:   }
+  852: 
+  853:   async updateStaffDetails(email, name, newPassword) {
+  854:     if (!this.supabase) return { success: false, error: 'No connection' };
+  855:     try {
+  856:       const emailLower = email.trim().toLowerCase();
+  857: 
+  858:       // Use SECURITY DEFINER RPC to update staff (bypasses RLS)
+  859:       const { data, error } = await this.supabase.rpc('admin_update_staff', {
+  860:         target_email: emailLower,
+  861:         new_name: name || null,
+  862:         new_password: (newPassword && newPassword.trim() !== '') ? newPassword : null
+  863:       });
+  864: 
+  865:       if (error) return { success: false, error: error.message };
+  866:       const result = typeof data === 'string' ? JSON.parse(data) : data;
+  867:       if (result && result.success === false) return { success: false, error: result.error };
+  868: 
+  869:       // Also sync to global knsdc_state so portals can read it
+  870:       try {
+  871:         let globalState = this.state || {};
+  872:         let needsPush = false;
+  873:         const cleanName = name ? name.split('|IMAGE:')[0] : '';
+  874: 
+  875:         if (globalState.staff) {
+  876:           globalState.staff = globalState.staff.map(s => {
+  877:             if (s.email === emailLower) {
+  878:               needsPush = true;
+  879:               const updatedStaff = { ...s };
+  880:               if (name) updatedStaff.name = name;
+  881:               if (newPassword && newPassword.trim() !== '') {
+  882:                 updatedStaff.password = newPassword;
+  883:               }
+  884:               return updatedStaff;
+  885:             }
+  886:             return s;
