@@ -164,6 +164,7 @@
         else if (tabName === 'members' && typeof renderMembers === 'function') renderMembers();
         else if (tabName === 'plans' && typeof renderPlans === 'function') renderPlans();
         else if (tabName === 'earnings' && typeof renderEarnings === 'function') renderEarnings();
+        else if (tabName === 'custom-fields' && typeof renderCustomFields === 'function') renderCustomFields();
       } catch(err) {
         console.error('Render error:', err);
       }
@@ -206,9 +207,6 @@
     let members = JSON.parse(localStorage.getItem('fp_members') || '[]');
     let payments = JSON.parse(localStorage.getItem('fp_payments') || '[]');
     let earnings = JSON.parse(localStorage.getItem('fp_earnings') || '[]');
-    let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
-    let earningsFilter = 'all';
-
     let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
     let earningsFilter = 'all';
 
@@ -620,6 +618,15 @@
       const container = document.getElementById('plans-cards-container');
       if (!container) return;
 
+      if (!plans || plans.length === 0) {
+        container.innerHTML = `
+          <div style="grid-column: 1 / -1; text-align:center; padding:36px; background:#090f1d; border-radius:14px; border:1px dashed var(--border); color:#94a3b8; font-size:13px;">
+            🎛️ No membership plans created yet. Click "<b>+ Add New Plan</b>" above to configure your club membership tiers in ₹ INR!
+          </div>
+        `;
+        return;
+      }
+
       container.innerHTML = plans.map(plan => {
         const count = members.filter(m => m.planId === plan.id && m.status === 'active').length;
         return `
@@ -985,6 +992,135 @@
         setTimeout(() => {
           window.location.href = 'index.html';
         }, 400);
+      }
+    };
+
+    
+    // ══════════════════════════════════════════
+    // CUSTOM FIELDS ENGINE & LOGIC
+    // ══════════════════════════════════════════
+    let customFields = JSON.parse(localStorage.getItem('fp_custom_fields') || '[]');
+
+    function renderCustomFields() {
+      const memberList = document.getElementById('member-custom-fields-list');
+      const transList = document.getElementById('trans-custom-fields-list');
+      const countMem = document.getElementById('count-member-fields');
+      const countTrans = document.getElementById('count-trans-fields');
+
+      if (!memberList || !transList) return;
+
+      const memFields = customFields.filter(f => f.target === 'member');
+      const transFields = customFields.filter(f => f.target === 'transaction');
+
+      if (countMem) countMem.textContent = `${memFields.length} Fields`;
+      if (countTrans) countTrans.textContent = `${transFields.length} Fields`;
+
+      if (memFields.length === 0) {
+        memberList.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted); background:#090f1d; border-radius:12px; border:1px dashed var(--border);">No custom fields added for members. Click "+ Add Custom Field" above!</div>';
+      } else {
+        memberList.innerHTML = memFields.map(f => `
+          <div style="background:#090f1d; padding:12px 14px; border-radius:12px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:700; color:#fff; font-size:13px; display:flex; align-items:center; gap:6px;">
+                <span>${f.label}</span>
+                ${f.required ? '<span style="color:#f87171; font-size:11px;">*</span>' : ''}
+              </div>
+              <div style="color:var(--text-muted); font-size:11px; margin-top:2px;">${f.desc || f.fieldType.toUpperCase()} ${f.options ? '(' + f.options.join(', ') + ')' : ''}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-blue">${f.fieldType.toUpperCase()}</span>
+              <button type="button" onclick="editCustomField('${f.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;">✏️</button>
+              <button type="button" onclick="deleteCustomField('${f.id}', '${f.label.replace(/'/g, "\\'")}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      if (transFields.length === 0) {
+        transList.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted); background:#090f1d; border-radius:12px; border:1px dashed var(--border);">No custom fields added for transactions. Click "+ Add Custom Field" above!</div>';
+      } else {
+        transList.innerHTML = transFields.map(f => `
+          <div style="background:#090f1d; padding:12px 14px; border-radius:12px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:700; color:#fff; font-size:13px; display:flex; align-items:center; gap:6px;">
+                <span>${f.label}</span>
+                ${f.required ? '<span style="color:#f87171; font-size:11px;">*</span>' : ''}
+              </div>
+              <div style="color:var(--text-muted); font-size:11px; margin-top:2px;">${f.desc || f.fieldType.toUpperCase()} ${f.options ? '(' + f.options.join(', ') + ')' : ''}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-paid">${f.fieldType.toUpperCase()}</span>
+              <button type="button" onclick="editCustomField('${f.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;">✏️</button>
+              <button type="button" onclick="deleteCustomField('${f.id}', '${f.label.replace(/'/g, "\\'")}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    window.openAddCustomFieldModal = function() {
+      document.getElementById('cf-modal-title').textContent = '➕ Add New Custom Field';
+      document.getElementById('cf-id').value = 'cf-' + Date.now();
+      document.getElementById('cf-label').value = '';
+      document.getElementById('cf-target').value = 'member';
+      document.getElementById('cf-type').value = 'text';
+      document.getElementById('cf-options').value = '';
+      document.getElementById('cf-desc').value = '';
+      document.getElementById('cf-required').checked = false;
+      document.getElementById('cf-options-group').style.display = 'none';
+      openModal('custom-field-modal');
+    };
+
+    window.toggleCFOptionBox = function(type) {
+      const box = document.getElementById('cf-options-group');
+      if (box) box.style.display = (type === 'select') ? 'block' : 'none';
+    };
+
+    window.editCustomField = function(id) {
+      const f = customFields.find(x => x.id === id);
+      if (!f) return;
+      document.getElementById('cf-modal-title').textContent = `✏️ Edit "${f.label}"`;
+      document.getElementById('cf-id').value = f.id;
+      document.getElementById('cf-label').value = f.label;
+      document.getElementById('cf-target').value = f.target || 'member';
+      document.getElementById('cf-type').value = f.fieldType || 'text';
+      document.getElementById('cf-options').value = (f.options || []).join(', ');
+      document.getElementById('cf-desc').value = f.desc || '';
+      document.getElementById('cf-required').checked = !!f.required;
+      toggleCFOptionBox(f.fieldType);
+      openModal('custom-field-modal');
+    };
+
+    window.handleSaveCustomField = function(e) {
+      e.preventDefault();
+      const id = document.getElementById('cf-id').value;
+      const label = document.getElementById('cf-label').value.trim();
+      const target = document.getElementById('cf-target').value;
+      const fieldType = document.getElementById('cf-type').value;
+      const rawOptions = document.getElementById('cf-options').value.trim();
+      const desc = document.getElementById('cf-desc').value.trim();
+      const required = document.getElementById('cf-required').checked;
+
+      const options = (fieldType === 'select' && rawOptions)
+        ? rawOptions.split(',').map(o => o.trim()).filter(Boolean)
+        : [];
+
+      const cfObj = { id, label, target, fieldType, options, desc, required };
+
+      const idx = customFields.findIndex(x => x.id === id);
+      if (idx !== -1) customFields[idx] = cfObj;
+      else customFields.push(cfObj);
+
+      localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
+      closeModal('custom-field-modal');
+      renderCustomFields();
+    };
+
+    window.deleteCustomField = function(id, label) {
+      if (confirm(`Delete custom field "${label}"?`)) {
+        customFields = customFields.filter(x => x.id !== id);
+        localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
+        renderCustomFields();
       }
     };
 
@@ -1368,6 +1504,135 @@ function saveData() {
       }
     };
 
+    
+    // ══════════════════════════════════════════
+    // CUSTOM FIELDS ENGINE & LOGIC
+    // ══════════════════════════════════════════
+    let customFields = JSON.parse(localStorage.getItem('fp_custom_fields') || '[]');
+
+    function renderCustomFields() {
+      const memberList = document.getElementById('member-custom-fields-list');
+      const transList = document.getElementById('trans-custom-fields-list');
+      const countMem = document.getElementById('count-member-fields');
+      const countTrans = document.getElementById('count-trans-fields');
+
+      if (!memberList || !transList) return;
+
+      const memFields = customFields.filter(f => f.target === 'member');
+      const transFields = customFields.filter(f => f.target === 'transaction');
+
+      if (countMem) countMem.textContent = `${memFields.length} Fields`;
+      if (countTrans) countTrans.textContent = `${transFields.length} Fields`;
+
+      if (memFields.length === 0) {
+        memberList.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted); background:#090f1d; border-radius:12px; border:1px dashed var(--border);">No custom fields added for members. Click "+ Add Custom Field" above!</div>';
+      } else {
+        memberList.innerHTML = memFields.map(f => `
+          <div style="background:#090f1d; padding:12px 14px; border-radius:12px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:700; color:#fff; font-size:13px; display:flex; align-items:center; gap:6px;">
+                <span>${f.label}</span>
+                ${f.required ? '<span style="color:#f87171; font-size:11px;">*</span>' : ''}
+              </div>
+              <div style="color:var(--text-muted); font-size:11px; margin-top:2px;">${f.desc || f.fieldType.toUpperCase()} ${f.options ? '(' + f.options.join(', ') + ')' : ''}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-blue">${f.fieldType.toUpperCase()}</span>
+              <button type="button" onclick="editCustomField('${f.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;">✏️</button>
+              <button type="button" onclick="deleteCustomField('${f.id}', '${f.label.replace(/'/g, "\\'")}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      if (transFields.length === 0) {
+        transList.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted); background:#090f1d; border-radius:12px; border:1px dashed var(--border);">No custom fields added for transactions. Click "+ Add Custom Field" above!</div>';
+      } else {
+        transList.innerHTML = transFields.map(f => `
+          <div style="background:#090f1d; padding:12px 14px; border-radius:12px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:700; color:#fff; font-size:13px; display:flex; align-items:center; gap:6px;">
+                <span>${f.label}</span>
+                ${f.required ? '<span style="color:#f87171; font-size:11px;">*</span>' : ''}
+              </div>
+              <div style="color:var(--text-muted); font-size:11px; margin-top:2px;">${f.desc || f.fieldType.toUpperCase()} ${f.options ? '(' + f.options.join(', ') + ')' : ''}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-paid">${f.fieldType.toUpperCase()}</span>
+              <button type="button" onclick="editCustomField('${f.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;">✏️</button>
+              <button type="button" onclick="deleteCustomField('${f.id}', '${f.label.replace(/'/g, "\\'")}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    window.openAddCustomFieldModal = function() {
+      document.getElementById('cf-modal-title').textContent = '➕ Add New Custom Field';
+      document.getElementById('cf-id').value = 'cf-' + Date.now();
+      document.getElementById('cf-label').value = '';
+      document.getElementById('cf-target').value = 'member';
+      document.getElementById('cf-type').value = 'text';
+      document.getElementById('cf-options').value = '';
+      document.getElementById('cf-desc').value = '';
+      document.getElementById('cf-required').checked = false;
+      document.getElementById('cf-options-group').style.display = 'none';
+      openModal('custom-field-modal');
+    };
+
+    window.toggleCFOptionBox = function(type) {
+      const box = document.getElementById('cf-options-group');
+      if (box) box.style.display = (type === 'select') ? 'block' : 'none';
+    };
+
+    window.editCustomField = function(id) {
+      const f = customFields.find(x => x.id === id);
+      if (!f) return;
+      document.getElementById('cf-modal-title').textContent = `✏️ Edit "${f.label}"`;
+      document.getElementById('cf-id').value = f.id;
+      document.getElementById('cf-label').value = f.label;
+      document.getElementById('cf-target').value = f.target || 'member';
+      document.getElementById('cf-type').value = f.fieldType || 'text';
+      document.getElementById('cf-options').value = (f.options || []).join(', ');
+      document.getElementById('cf-desc').value = f.desc || '';
+      document.getElementById('cf-required').checked = !!f.required;
+      toggleCFOptionBox(f.fieldType);
+      openModal('custom-field-modal');
+    };
+
+    window.handleSaveCustomField = function(e) {
+      e.preventDefault();
+      const id = document.getElementById('cf-id').value;
+      const label = document.getElementById('cf-label').value.trim();
+      const target = document.getElementById('cf-target').value;
+      const fieldType = document.getElementById('cf-type').value;
+      const rawOptions = document.getElementById('cf-options').value.trim();
+      const desc = document.getElementById('cf-desc').value.trim();
+      const required = document.getElementById('cf-required').checked;
+
+      const options = (fieldType === 'select' && rawOptions)
+        ? rawOptions.split(',').map(o => o.trim()).filter(Boolean)
+        : [];
+
+      const cfObj = { id, label, target, fieldType, options, desc, required };
+
+      const idx = customFields.findIndex(x => x.id === id);
+      if (idx !== -1) customFields[idx] = cfObj;
+      else customFields.push(cfObj);
+
+      localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
+      closeModal('custom-field-modal');
+      renderCustomFields();
+    };
+
+    window.deleteCustomField = function(id, label) {
+      if (confirm(`Delete custom field "${label}"?`)) {
+        customFields = customFields.filter(x => x.id !== id);
+        localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
+        renderCustomFields();
+      }
+    };
+
     window.setEarningsFilter = function(filterType) {
       earningsFilter = filterType;
       ['all', 'earning', 'spending'].forEach(function(f) {
@@ -1444,10 +1709,8 @@ function saveData() {
         }
       });
 
-
-            // Pull Structured Data from Supabase & Big Data from MongoDB Atlas
+      // Background Data Pull: Supabase (Structured) & MongoDB Atlas (Big Data)
       setTimeout(async () => {
-        // 1. Pull Plans, Members, Payments from Supabase
         if (supabase) {
           try {
             const { data: dbPlans } = await supabase.from('membership_plans').select('*');
@@ -1485,7 +1748,7 @@ function saveData() {
           }
         }
 
-        // 2. Pull Big Data Transactions & Receipts from MongoDB Atlas API
+        // Pull Big Data Transactions & Receipts from MongoDB Atlas API
         try {
           const res = await fetch('/api/finance/transactions');
           const resData = await res.json();
@@ -1497,37 +1760,15 @@ function saveData() {
           console.warn('[MongoDB Atlas Pull Notice]:', e);
         }
 
-        renderDashboard();
-        renderChecklist();
-      }, 500);
-    }));
-          }
-
-          const { data: dbMembers, error: em } = await supabase.from('members').select('*');
-          if (!em && dbMembers && dbMembers.length > 0) {
-            members = dbMembers.map(m => ({
-              id: m.id, name: m.name, email: m.email || '', phone: m.phone || '',
-              planId: m.plan_id, role: m.role || 'Member',
-              customFee: m.custom_fee !== null ? Number(m.custom_fee) : null,
-              joinDate: m.join_date, status: m.status || 'active',
-              customFields: m.custom_fields || {}
-            }));
-          }
-
-          const { data: dbEarnings, error: ee } = await supabase.from('club_earnings').select('*');
-          if (!ee && dbEarnings && dbEarnings.length > 0) {
-            earnings = dbEarnings.map(e => ({
-              id: e.id, title: e.title, category: e.category, amount: Number(e.amount) || 0,
-              date: e.date, paymentMethod: e.payment_method, payerOrCustomer: e.payerOrCustomer,
-              referenceNo: e.reference_no, description: e.description
-            }));
-          }
-
-          renderDashboard();
-        } catch(err) {
-          console.warn('Background sync notice:', err);
-        }
-      }, 600);
+        // Re-render currently active view cleanly
+        const activeTab = document.querySelector('.tab-btn.active')?.id?.replace('tab-', '') || 'dashboard';
+        if (activeTab === 'dashboard') renderDashboard();
+        else if (activeTab === 'checklist') renderChecklist();
+        else if (activeTab === 'members') renderMembersDirectory();
+        else if (activeTab === 'plans') renderPlans();
+        else if (activeTab === 'earnings') renderEarnings();
+        else if (activeTab === 'custom-fields') renderCustomFields();
+      }, 400);
     }
 
     if (document.readyState === 'loading') {
@@ -1535,7 +1776,6 @@ function saveData() {
     } else {
       init();
     }
-  
 
     } catch(err) {
       console.error('FATAL FINANCE ERROR:', err);
@@ -1701,20 +1941,6 @@ function saveData() {
         </div>
       </div>
 
-      <div class="controls-bar" style="margin-bottom:14px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Filter:</span>
-          <button type="button" onclick="setEarningsFilter('all')" id="filter-all" class="btn btn-primary" style="padding:4px 12px; font-size:11px;">All (Earnings & Spending)</button>
-          <button type="button" onclick="setEarningsFilter('earning')" id="filter-earning" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#34d399;">🟢 Earnings Only</button>
-          <button type="button" onclick="setEarningsFilter('spending')" id="filter-spending" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#f87171;">🔴 Spending Only</button>
-        </div>
-        <div style="display:flex; gap:16px; font-size:12px; font-weight:800;">
-          <span style="color:#34d399;" id="summary-total-earnings">Income: +₹0</span>
-          <span style="color:#f87171;" id="summary-total-spendings">Expense: -₹0</span>
-          <span style="color:#fff;" id="summary-net-balance">Net: ₹0</span>
-        </div>
-      </div>
-
       <div class="table-card">
         <div class="table-container">
           <table>
@@ -1790,14 +2016,14 @@ function saveData() {
       <div class="controls-bar" style="margin-bottom:14px;">
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Filter:</span>
-          <button type="button" onclick="setEarningsFilter('all')" id="filter-all" class="btn btn-primary" style="padding:4px 12px; font-size:11px;">All (Earnings & Spending)</button>
-          <button type="button" onclick="setEarningsFilter('earning')" id="filter-earning" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#34d399;">🟢 Earnings Only</button>
-          <button type="button" onclick="setEarningsFilter('spending')" id="filter-spending" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#f87171;">🔴 Spending Only</button>
+          <button type="button" onclick="setEarningsFilter('all')" id="filter-btn-all" class="btn btn-secondary active" style="padding:4px 12px; font-size:11px;">All (Earnings & Spending)</button>
+          <button type="button" onclick="setEarningsFilter('earning')" id="filter-btn-earning" class="btn btn-secondary" style="padding:4px 12px; font-size:11px;">🟢 Earnings Only</button>
+          <button type="button" onclick="setEarningsFilter('spending')" id="filter-btn-spending" class="btn btn-secondary" style="padding:4px 12px; font-size:11px;">🔴 Spending Only</button>
         </div>
-        <div style="display:flex; gap:16px; font-size:12px; font-weight:800;">
-          <span style="color:#34d399;" id="summary-total-earnings">Income: +₹0</span>
-          <span style="color:#f87171;" id="summary-total-spendings">Expense: -₹0</span>
-          <span style="color:#fff;" id="summary-net-balance">Net: ₹0</span>
+        <div style="font-size:12px; font-weight:700; color:var(--text-dim); display:flex; gap:12px;">
+          <span style="color:#34d399;">Income: <b id="summary-total-earnings" class="font-mono">+₹0</b></span>
+          <span style="color:#f87171;">Expense: <b id="summary-total-spendings" class="font-mono">-₹0</b></span>
+          <span style="color:#818cf8;">Net: <b id="summary-net-balance" class="font-mono">₹0</b></span>
         </div>
       </div>
 
@@ -1828,32 +2054,37 @@ function saveData() {
       <div class="section-header">
         <div>
           <h1 class="section-title"><span>📑 Custom Form Fields Configuration</span></h1>
-          <p class="section-sub">Configure additional member properties (Locker #, Emergency Phone, Activity) and earning metadata.</p>
+          <p class="section-sub">Create and manage custom metadata fields for Member Profiles and Club Transactions.</p>
         </div>
+        <button type="button" onclick="openAddCustomFieldModal()" class="btn btn-primary" style="font-size:12px; font-weight:800;">
+          ➕ Add Custom Field
+        </button>
       </div>
 
       <div class="grid-2">
+        <!-- Member Profile Fields Card -->
         <div class="card">
-          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">👤 Member Profile Custom Fields</h3>
-          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
-            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-              <div><div style="font-weight:700; color:#fff;">Locker #</div><div style="color:var(--text-muted); font-size:11px;">Assigned member locker ID</div></div>
-              <span class="badge badge-blue">Text</span>
-            </div>
-            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-              <div><div style="font-weight:700; color:#fff;">Primary Activity</div><div style="color:var(--text-muted); font-size:11px;">Cricket, Football, Gym, Tennis, Swimming</div></div>
-              <span class="badge badge-blue">Select</span>
-            </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="font-size:15px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
+              <span>👤 Member Profile Custom Fields</span>
+            </h3>
+            <span class="badge badge-blue" id="count-member-fields">0 Fields</span>
+          </div>
+          <div id="member-custom-fields-list" style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+            <!-- Rendered via JS -->
           </div>
         </div>
 
+        <!-- Transaction & Spending Fields Card -->
         <div class="card">
-          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">💰 Earning & Sponsorship Custom Fields</h3>
-          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
-            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-              <div><div style="font-weight:700; color:#fff;">Sponsorship Level</div><div style="color:var(--text-muted); font-size:11px;">Platinum Title, Gold Partner, Silver, Patron</div></div>
-              <span class="badge badge-paid">Select</span>
-            </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="font-size:15px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
+              <span>💵 Transaction & Spending Custom Fields</span>
+            </h3>
+            <span class="badge badge-paid" id="count-trans-fields">0 Fields</span>
+          </div>
+          <div id="trans-custom-fields-list" style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+            <!-- Rendered via JS -->
           </div>
         </div>
       </div>
@@ -2205,6 +2436,68 @@ function saveData() {
         <div class="modal-foot">
           <button type="button" onclick="closeModal('add-earning-modal')" class="btn btn-secondary">Cancel</button>
           <button type="submit" class="btn btn-emerald">Save Earning</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  
+  <!-- ADD / EDIT CUSTOM FIELD MODAL -->
+  <div id="custom-field-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width:480px;">
+      <div class="modal-head">
+        <h3 class="modal-title" id="cf-modal-title" style="color:#818cf8;">
+          <span>📑 Add New Custom Field</span>
+        </h3>
+        <button type="button" onclick="closeModal('custom-field-modal')" class="modal-close">✕</button>
+      </div>
+
+      <form onsubmit="handleSaveCustomField(event)">
+        <input type="hidden" id="cf-id">
+
+        <div class="form-group">
+          <label class="form-label">Field Label / Name *</label>
+          <input type="text" id="cf-label" required placeholder="e.g. Blood Group / Jersey Size / Emergency Phone" class="form-input">
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Target Section *</label>
+            <select id="cf-target" required class="form-input">
+              <option value="member">👤 Member Profile</option>
+              <option value="transaction">💵 Transaction & Spending</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Field Type *</label>
+            <select id="cf-type" required onchange="toggleCFOptionBox(this.value)" class="form-input">
+              <option value="text">🔤 Short Text</option>
+              <option value="number">🔢 Number</option>
+              <option value="select">📋 Select Dropdown</option>
+              <option value="date">📅 Date</option>
+              <option value="checkbox">☑️ Checkbox (Yes/No)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="cf-options-group" class="form-group" style="display:none;">
+          <label class="form-label">Dropdown Options (Comma-separated)</label>
+          <input type="text" id="cf-options" placeholder="e.g. Cricket, Football, Gym, Swimming, Tennis" class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Help Text / Description</label>
+          <input type="text" id="cf-desc" placeholder="Brief guidance shown to staff filling this field" class="form-input">
+        </div>
+
+        <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="cf-required" style="width:16px; height:16px; cursor:pointer;">
+          <label for="cf-required" style="font-size:12px; color:#fff; cursor:pointer;">Mark as mandatory (Required)</label>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('custom-field-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Custom Field</button>
         </div>
       </form>
     </div>
