@@ -140,521 +140,48 @@
       .modal-box { border: 1px solid #ccc !important; box-shadow: none !important; color: #000 !important; background: #fff !important; max-width: 100% !important; }
     }
   </style>
-</head>
-<body>
+<script>
+    console.log('STARTING FINANCE SCRIPT...');
+    window.__finance_loaded = true;
 
-  <!-- TOPBAR HEADER -->
-  <header class="topbar no-print">
-    <div class="topbar-container">
-      <div class="topbar-header">
-        
-        <!-- Logo -->
-        <div class="club-brand" onclick="nav('dashboard')">
-          <div class="brand-logo">FP</div>
-          <div>
-            <div class="brand-title">
-              <span>Kalikapur Nabin Sangha</span>
-              <span class="badge-portal">FINANS PORTAL</span>
-            </div>
-            <div class="brand-sub">Premier Sports, Wellness & Community Finance Portal</div>
-          </div>
-        </div>
+    // 1. TOP-LEVEL NAV FUNCTION
+    window.nav = function(tabName) {
+      console.log('Navigating to:', tabName);
+      var panels = ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'custom-fields'];
+      panels.forEach(function(p) {
+        var el = document.getElementById('view-' + p);
+        var btn = document.getElementById('tab-' + p);
+        if (el) el.style.display = (p === tabName) ? 'block' : 'none';
+        if (btn) {
+          if (p === tabName) btn.classList.add('active');
+          else btn.classList.remove('active');
+        }
+      });
+      try {
+        if (tabName === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
+        else if (tabName === 'checklist' && typeof renderChecklist === 'function') renderChecklist();
+        else if (tabName === 'members' && typeof renderMembers === 'function') renderMembers();
+        else if (tabName === 'plans' && typeof renderPlans === 'function') renderPlans();
+        else if (tabName === 'earnings' && typeof renderEarnings === 'function') renderEarnings();
+      } catch(err) {
+        console.error('Render error:', err);
+      }
+    };
 
-        <!-- Top Right Actions -->
-        <div class="top-actions">
-          <div class="staff-badge">
-            <div class="staff-avatar">FN</div>
-            <div class="staff-info">
-              <div class="staff-name">
-                <span>Finance Officer</span>
-                <span class="live-dot" title="Supabase Connected"></span>
-              </div>
-              <span class="role-tag">ROLE: FINANCE</span>
-            </div>
-          </div>
+    window.openModal = function(id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.add('active');
+      if (id === 'add-member-modal' && typeof populatePlanOptions === 'function') populatePlanOptions();
+    };
 
-          <button type="button" onclick="openModal('add-member-modal')" class="btn btn-primary">
-            <span>+ Add Member</span>
-          </button>
+    window.closeModal = function(id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.remove('active');
+    };
 
-          <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald">
-            <span>+ Add Earning</span>
-          </button>
-        </div>
-      </div>
+    try {
 
-      <!-- Navigation Tabs -->
-      <nav class="nav-tabs">
-        <button type="button" onclick="nav('dashboard')" id="tab-dashboard" class="tab-btn active">
-          <span>📊 Club Dashboard</span>
-        </button>
-        <button type="button" onclick="nav('checklist')" id="tab-checklist" class="tab-btn">
-          <span>✅ Monthly Fee Checklist</span>
-          <span class="tab-pill">Monthly</span>
-        </button>
-        <button type="button" onclick="nav('members')" id="tab-members" class="tab-btn">
-          <span>👥 Members Directory</span>
-        </button>
-        <button type="button" onclick="nav('plans')" id="tab-plans" class="tab-btn">
-          <span>🎛️ Fee Customizer & Plans</span>
-        </button>
-        <button type="button" onclick="nav('earnings')" id="tab-earnings" class="tab-btn">
-          <span>💵 Club Earnings Logger</span>
-        </button>
-        <button type="button" onclick="nav('custom-fields')" id="tab-custom-fields" class="tab-btn">
-          <span>📑 Custom Fields</span>
-        </button>
-      </nav>
-    </div>
-  </header>
 
-  <!-- MAIN APP CONTAINER -->
-  <main class="main-content">
-
-    <!-- 1. DASHBOARD VIEW -->
-    <div id="view-dashboard" class="view-panel active">
-      <!-- 4 Stat Cards -->
-      <div class="grid-4" style="margin-bottom: 20px;">
-        <div class="card">
-          <div class="stat-label"><span>Total Club Revenue</span> <span>💼</span></div>
-          <div class="stat-value" id="dash-total-revenue">₹0</div>
-          <div class="stat-meta"><span style="color:#34d399; font-weight:700;">● Active Month</span> <span>Fees + Earnings</span></div>
-        </div>
-
-        <div class="card">
-          <div class="stat-label"><span>Membership Fees Collected</span> <span>✅</span></div>
-          <div class="stat-value" style="color:#34d399;" id="dash-fees-collected">₹0</div>
-          <div class="stat-meta"><span id="dash-target-fees">Target: ₹0</span> <span style="color:#34d399; font-weight:800;" id="dash-rate">0%</span></div>
-        </div>
-
-        <div class="card">
-          <div class="stat-label"><span>Monthly Pending Dues</span> <span>⏳</span></div>
-          <div class="stat-value" style="color:#fbbf24;" id="dash-fees-pending">₹0</div>
-          <div class="stat-meta"><span id="dash-pending-count">0 members pending</span> <span style="color:#f87171; font-weight:800;" id="dash-overdue-count">0 overdue</span></div>
-        </div>
-
-        <div class="card">
-          <div class="stat-label"><span>Other Club Earnings</span> <span>🏆</span></div>
-          <div class="stat-value" style="color:#c084fc;" id="dash-other-earnings">₹0</div>
-          <div class="stat-meta"><span>Tournaments, Sponsorships, Canteen</span></div>
-        </div>
-      </div>
-
-      <!-- Controls Bar -->
-      <div class="controls-bar">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <label style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Viewing Month:</label>
-          <input type="month" id="global-month-select" value="2026-08" onchange="handleMonthChange(this.value)" class="input-control">
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button type="button" onclick="nav('checklist')" class="btn btn-secondary">📋 View Full Checklist</button>
-          <button type="button" onclick="nav('members')" class="btn btn-secondary">👥 Manage Members</button>
-        </div>
-      </div>
-
-      <!-- Recent Transactions Table -->
-      <div class="table-card">
-        <div class="table-header">
-          <div>
-            <h3 style="font-size:15px; font-weight:800; color:#fff;">Recent Financial Transactions</h3>
-            <p style="font-size:11px; color:var(--text-muted); margin-top:2px;">Live fee collections & logged club earnings in ₹ INR</p>
-          </div>
-        </div>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Source / Member</th>
-                <th>Category / Plan</th>
-                <th>Date</th>
-                <th>Amount (₹)</th>
-                <th>Status / Ref</th>
-              </tr>
-            </thead>
-            <tbody id="dash-recent-tbody">
-              <!-- Rendered via JS -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- 2. MONTHLY FEE CHECKLIST VIEW -->
-    <div id="view-checklist" class="view-panel">
-      <div class="section-header">
-        <div>
-          <h1 class="section-title"><span>✅ Monthly Membership Fee Checklist</span></h1>
-          <p class="section-sub">Track payments, mark dues collected, issue receipts, and monitor active dues in ₹ INR.</p>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <input type="text" id="checklist-search" oninput="renderChecklist()" placeholder="Search member, phone..." class="input-control" style="width:200px;">
-          <button type="button" onclick="openModal('add-member-modal')" class="btn btn-primary">+ Add Member</button>
-        </div>
-      </div>
-
-      <div class="table-card">
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Member Name</th>
-                <th>Club Role</th>
-                <th>Assigned Plan</th>
-                <th>Monthly Fee (₹)</th>
-                <th>Payment Status</th>
-                <th>Method</th>
-                <th style="text-align:right;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="checklist-tbody">
-              <!-- Rendered via JS -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3. MEMBERS DIRECTORY VIEW -->
-    <div id="view-members" class="view-panel">
-      <div class="section-header">
-        <div>
-          <h1 class="section-title"><span>👥 Club Members Directory</span></h1>
-          <p class="section-sub">Manage enrolled club members, roles, contact information, and membership plans.</p>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <input type="text" id="members-search" oninput="renderMembers()" placeholder="Search name, phone..." class="input-control" style="width:200px;">
-          <button type="button" onclick="openModal('add-member-modal')" class="btn btn-primary">+ Add Member</button>
-        </div>
-      </div>
-
-      <div id="members-cards-container" class="grid-3">
-        <!-- Rendered via JS -->
-      </div>
-    </div>
-
-    <!-- 4. FEE CUSTOMIZER & PLANS VIEW -->
-    <div id="view-plans" class="view-panel">
-      <div class="section-header">
-        <div>
-          <h1 class="section-title"><span>🎛️ Monthly Fee Customizer & Plans</span></h1>
-          <p class="section-sub">Configure membership tiers, pricing in ₹ INR, grace periods, and late fee fine rules.</p>
-        </div>
-        <button onclick="openAddPlanModal()" class="btn btn-primary">+ Add New Plan</button>
-      </div>
-
-      <div id="plans-cards-container" class="grid-4">
-        <!-- Rendered via JS -->
-      </div>
-    </div>
-
-    <!-- 5. CLUB EARNINGS LOGGER VIEW -->
-    <div id="view-earnings" class="view-panel">
-      <div class="section-header">
-        <div>
-          <h1 class="section-title"><span>💵 Club Earnings & Income Logger</span></h1>
-          <p class="section-sub">Log revenue from cricket/football tournaments, sponsorships, canteen, jersey sales & donations.</p>
-        </div>
-        <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald">+ Log New Earning</button>
-      </div>
-
-      <div class="table-card">
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Earning Title</th>
-                <th>Category</th>
-                <th>Payer / Source</th>
-                <th>Date</th>
-                <th>Method</th>
-                <th>Amount (₹)</th>
-                <th style="text-align:right;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="earnings-tbody">
-              <!-- Rendered via JS -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- 6. CUSTOM FIELDS VIEW -->
-    <div id="view-custom-fields" class="view-panel">
-      <div class="section-header">
-        <div>
-          <h1 class="section-title"><span>📑 Custom Form Fields Configuration</span></h1>
-          <p class="section-sub">Configure additional member properties (Locker #, Emergency Phone, Activity) and earning metadata.</p>
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <div class="card">
-          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">👤 Member Profile Custom Fields</h3>
-          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
-            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-              <div><div style="font-weight:700; color:#fff;">Locker #</div><div style="color:var(--text-muted); font-size:11px;">Assigned member locker ID</div></div>
-              <span class="badge badge-blue">Text</span>
-            </div>
-            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-              <div><div style="font-weight:700; color:#fff;">Primary Activity</div><div style="color:var(--text-muted); font-size:11px;">Cricket, Football, Gym, Tennis, Swimming</div></div>
-              <span class="badge badge-blue">Select</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">💰 Earning & Sponsorship Custom Fields</h3>
-          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
-            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-              <div><div style="font-weight:700; color:#fff;">Sponsorship Level</div><div style="color:var(--text-muted); font-size:11px;">Platinum Title, Gold Partner, Silver, Patron</div></div>
-              <span class="badge badge-paid">Select</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-  <!-- MODALS -->
-
-  <!-- ADD MEMBER MODAL -->
-  <div id="add-member-modal" class="modal-overlay">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3 class="modal-title" id="add-member-title">➕ Add New Club Member</h3>
-        <button type="button" onclick="closeModal('add-member-modal')" class="modal-close">✕</button>
-      </div>
-
-      <form onsubmit="handleSaveMember(event)">
-        <input type="hidden" id="mem-id">
-        <div class="form-group">
-          <label class="form-label">Full Name *</label>
-          <input type="text" id="mem-name" required placeholder="e.g. Subhankar Mukherjee" class="form-input">
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Email Address</label>
-            <input type="email" id="mem-email" placeholder="member@kns.org" class="form-input">
-          </div>
-          <div>
-            <label class="form-label">Phone Number *</label>
-            <input type="tel" id="mem-phone" required placeholder="+91 98765 43210" class="form-input">
-          </div>
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Membership Plan *</label>
-            <select id="mem-plan" required onchange="handleMemberPlanSelect(this.value)" class="form-input">
-              <!-- Populated via JS -->
-            </select>
-          </div>
-          <div>
-            <label class="form-label">Member Club Role *</label>
-            <select id="mem-role" required class="form-input">
-              <option value="Member">🔵 Club Member (Standard)</option>
-              <option value="Finance">🟢 Finance Officer & Member</option>
-              <option value="Executive Member">🟣 Executive Member / Committee</option>
-              <option value="Athlete / Student">🟡 Athlete / Youth Student</option>
-              <option value="Volunteer / Coach">🟢 Volunteer / Coach</option>
-              <option value="Admin">🔴 Club Admin</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Custom Fee (Optional ₹)</label>
-            <input type="number" id="mem-custom-fee" placeholder="Leave blank for plan fee" class="form-input">
-          </div>
-          <div>
-            <label class="form-label">Joining Date</label>
-            <input type="date" id="mem-join-date" class="form-input">
-          </div>
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Locker #</label>
-            <input type="text" id="mem-locker" placeholder="e.g. LK-12" class="form-input">
-          </div>
-          <div>
-            <label class="form-label">Primary Activity</label>
-            <input type="text" id="mem-activity" placeholder="e.g. Cricket / Football" class="form-input">
-          </div>
-        </div>
-
-        <div class="modal-foot">
-          <button type="button" onclick="closeModal('add-member-modal')" class="btn btn-secondary">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Member</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ADD EARNING MODAL -->
-  <div id="add-earning-modal" class="modal-overlay">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3 class="modal-title">💰 Log New Club Earning</h3>
-        <button type="button" onclick="closeModal('add-earning-modal')" class="modal-close">✕</button>
-      </div>
-
-      <form onsubmit="handleSaveEarning(event)">
-        <div class="form-group">
-          <label class="form-label">Earning Title *</label>
-          <input type="text" id="earn-title" required placeholder="e.g. Summer Cricket Tournament Entry Fees" class="form-input">
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Amount (₹ INR) *</label>
-            <input type="number" id="earn-amount" min="1" step="1" required placeholder="5000" class="form-input" style="color:#34d399; font-weight:800; font-size:15px;">
-          </div>
-          <div>
-            <label class="form-label">Category *</label>
-            <select id="earn-category" class="form-input">
-              <option value="tournament">🏆 Tournament & Entry Fees</option>
-              <option value="sponsorship">🤝 Corporate Sponsorship & Banner</option>
-              <option value="canteen_bar">☕ Clubhouse Canteen & Tea Stall</option>
-              <option value="merchandise">👕 Club Jersey & Merch Sales</option>
-              <option value="events">🎉 Club Annual Gala & Ticket Sales</option>
-              <option value="guest_fees">🎟️ Ground & Court Booking Passes</option>
-              <option value="donations">💖 Patron Grant & Public Donation</option>
-              <option value="other">📦 Other Miscellaneous Income</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Payment Method</label>
-            <select id="earn-method" class="form-input">
-              <option value="cash">💵 Cash</option>
-              <option value="upi">📱 UPI / QR Code</option>
-              <option value="card">💳 Card / POS</option>
-              <option value="bank_transfer">🏦 Bank Transfer / NEFT</option>
-            </select>
-          </div>
-          <div>
-            <label class="form-label">Date Received</label>
-            <input type="date" id="earn-date" class="form-input">
-          </div>
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Received From / Payer</label>
-            <input type="text" id="earn-payer" placeholder="e.g. Apex Sports Agency" class="form-input">
-          </div>
-          <div>
-            <label class="form-label">Invoice / Reference #</label>
-            <input type="text" id="earn-ref" placeholder="REC-1029" class="form-input font-mono">
-          </div>
-        </div>
-
-        <div class="modal-foot">
-          <button type="button" onclick="closeModal('add-earning-modal')" class="btn btn-secondary">Cancel</button>
-          <button type="submit" class="btn btn-emerald">Save Earning</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ADD / EDIT PLAN MODAL -->
-  <div id="plan-modal" class="modal-overlay">
-    <div class="modal-box">
-      <div class="modal-head">
-        <h3 class="modal-title" id="plan-modal-title">➕ Membership Plan</h3>
-        <button type="button" onclick="closeModal('plan-modal')" class="modal-close">✕</button>
-      </div>
-
-      <form onsubmit="handleSavePlan(event)">
-        <input type="hidden" id="plan-id">
-        <div class="form-group">
-          <label class="form-label">Plan Name *</label>
-          <input type="text" id="plan-name" required placeholder="e.g. Cricket Academy Plan / VIP Member" class="form-input">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Monthly Fee (₹ INR) *</label>
-          <input type="number" id="plan-fee" min="0" step="1" required placeholder="500" class="form-input" style="color:#34d399; font-weight:800; font-size:16px;">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Description & Perks</label>
-          <textarea id="plan-desc" rows="2" placeholder="Full ground access, gym, coaching..." class="form-input" style="resize:none;"></textarea>
-        </div>
-
-        <div class="form-row form-group">
-          <div>
-            <label class="form-label">Grace Period (Days)</label>
-            <input type="number" id="plan-grace" min="0" value="10" class="form-input">
-          </div>
-          <div>
-            <label class="form-label">Late Fine (₹ INR)</label>
-            <input type="number" id="plan-late-fine" min="0" value="50" class="form-input">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Theme Accent Color</label>
-          <input type="color" id="plan-color" value="#3b82f6" style="width:100%; height:36px; border:none; border-radius:8px; cursor:pointer; background:transparent;">
-        </div>
-
-        <div class="modal-foot">
-          <button type="button" onclick="closeModal('plan-modal')" class="btn btn-secondary">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Plan</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- RECEIPT MODAL (READY TO PRINT) -->
-  <div id="receipt-modal" class="modal-overlay print-modal">
-    <div class="modal-box">
-      <div class="modal-head no-print">
-        <h3 class="modal-title">🧾 Payment Receipt</h3>
-        <div style="display:flex; gap:6px;">
-          <button onclick="window.print()" class="btn btn-primary">🖨️ Print</button>
-          <button type="button" onclick="closeModal('receipt-modal')" class="modal-close">✕</button>
-        </div>
-      </div>
-
-      <div style="background:#090f1d; padding:18px; border-radius:14px; border:1px solid var(--border); font-size:12px;">
-        <div style="text-align:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
-          <h2 style="font-size:16px; font-weight:800; color:#fff;">Kalikapur Nabin Sangha (KNSDC)</h2>
-          <p style="color:var(--text-muted); font-size:11px; margin-top:2px;">Official Monthly Membership Fee Receipt</p>
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Invoice No:</span> <span id="rec-invoice" class="font-mono" style="font-weight:700; color:#818cf8;">-</span></div>
-          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Member Name:</span> <span id="rec-name" style="font-weight:700; color:#fff;">-</span></div>
-          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Club Role:</span> <span id="rec-role" style="font-weight:700; color:#34d399;">-</span></div>
-          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Membership Plan:</span> <span id="rec-plan" style="font-weight:600; color:#fff;">-</span></div>
-          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Month Billed:</span> <span id="rec-month" style="font-weight:700; color:#fff;">-</span></div>
-          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Payment Method:</span> <span id="rec-method" style="font-weight:600; color:#fff;">-</span></div>
-          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Payment Date:</span> <span id="rec-date" style="color:var(--text-muted);">-</span></div>
-        </div>
-
-        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:12px; margin-top:12px; font-size:14px;">
-          <span style="font-weight:700; color:#fff;">Total Amount Paid:</span>
-          <span id="rec-amount" style="font-size:20px; font-weight:900; color:#34d399;">₹0</span>
-        </div>
-
-        <div style="text-align:center; font-size:10px; color:var(--text-dim); margin-top:14px; padding-top:10px; border-top:1px solid var(--border);">
-          Authorized by Kalikapur Nabin Sangha Treasury & Accounts
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- JAVASCRIPT APPLICATION LOGIC -->
-  <script>
     // 1. Live Supabase Client
     const SUPABASE_URL = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
@@ -696,21 +223,39 @@
 
     // Navigation & Tab Switcher (identical to Admin panel)
     function nav(tabName) {
+      console.log('Navigating to tab:', tabName);
       window.nav = nav;
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
 
+      // 1. Deactivate all buttons & hide all panels
+      document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+      });
+
+      document.querySelectorAll('.view-panel').forEach(function(panel) {
+        panel.classList.remove('active');
+        panel.style.display = 'none';
+      });
+
+      // 2. Activate target button & target panel
       const activeBtn = document.getElementById('tab-' + tabName);
       const activePanel = document.getElementById('view-' + tabName);
 
       if (activeBtn) activeBtn.classList.add('active');
-      if (activePanel) activePanel.classList.add('active');
+      if (activePanel) {
+        activePanel.classList.add('active');
+        activePanel.style.display = 'block';
+      }
 
-      if (tabName === 'dashboard') renderDashboard();
-      else if (tabName === 'checklist') renderChecklist();
-      else if (tabName === 'members') renderMembers();
-      else if (tabName === 'plans') renderPlans();
-      else if (tabName === 'earnings') renderEarnings();
+      // 3. Render contents
+      try {
+        if (tabName === 'dashboard') renderDashboard();
+        else if (tabName === 'checklist') renderChecklist();
+        else if (tabName === 'members') renderMembers();
+        else if (tabName === 'plans') renderPlans();
+        else if (tabName === 'earnings') renderEarnings();
+      } catch(err) {
+        console.error('Render error in tab ' + tabName + ':', err);
+      }
     };
 
     // Modal Control
@@ -1349,6 +894,526 @@
     } else {
       init();
     }
-  </script>
+  
+
+    } catch(err) {
+      console.error('FATAL FINANCE ERROR:', err);
+    }
+</script>
+</head>
+<body>
+
+  <!-- TOPBAR HEADER -->
+  <header class="topbar no-print">
+    <div class="topbar-container">
+      <div class="topbar-header">
+        
+        <!-- Logo -->
+        <div class="club-brand" onclick="nav('dashboard')">
+          <div class="brand-logo">FP</div>
+          <div>
+            <div class="brand-title">
+              <span>Kalikapur Nabin Sangha</span>
+              <span class="badge-portal">FINANS PORTAL</span>
+            </div>
+            <div class="brand-sub">Premier Sports, Wellness & Community Finance Portal</div>
+          </div>
+        </div>
+
+        <!-- Top Right Actions -->
+        <div class="top-actions">
+          <div class="staff-badge">
+            <div class="staff-avatar">FN</div>
+            <div class="staff-info">
+              <div class="staff-name">
+                <span>Finance Officer</span>
+                <span class="live-dot" title="Supabase Connected"></span>
+              </div>
+              <span class="role-tag">ROLE: FINANCE</span>
+            </div>
+          </div>
+
+          <button type="button" onclick="openModal('add-member-modal')" class="btn btn-primary">
+            <span>+ Add Member</span>
+          </button>
+
+          <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald">
+            <span>+ Add Earning</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-tabs">
+        <button type="button" onclick="nav('dashboard')" id="tab-dashboard" class="tab-btn active">
+          <span>📊 Club Dashboard</span>
+        </button>
+        <button type="button" onclick="nav('checklist')" id="tab-checklist" class="tab-btn">
+          <span>✅ Monthly Fee Checklist</span>
+          <span class="tab-pill">Monthly</span>
+        </button>
+        <button type="button" onclick="nav('members')" id="tab-members" class="tab-btn">
+          <span>👥 Members Directory</span>
+        </button>
+        <button type="button" onclick="nav('plans')" id="tab-plans" class="tab-btn">
+          <span>🎛️ Fee Customizer & Plans</span>
+        </button>
+        <button type="button" onclick="nav('earnings')" id="tab-earnings" class="tab-btn">
+          <span>💵 Club Earnings Logger</span>
+        </button>
+        <button type="button" onclick="nav('custom-fields')" id="tab-custom-fields" class="tab-btn">
+          <span>📑 Custom Fields</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- MAIN APP CONTAINER -->
+  <main class="main-content">
+
+    <!-- 1. DASHBOARD VIEW -->
+    <div id="view-dashboard" class="view-panel active">
+      <!-- 4 Stat Cards -->
+      <div class="grid-4" style="margin-bottom: 20px;">
+        <div class="card">
+          <div class="stat-label"><span>Total Club Revenue</span> <span>💼</span></div>
+          <div class="stat-value" id="dash-total-revenue">₹0</div>
+          <div class="stat-meta"><span style="color:#34d399; font-weight:700;">● Active Month</span> <span>Fees + Earnings</span></div>
+        </div>
+
+        <div class="card">
+          <div class="stat-label"><span>Membership Fees Collected</span> <span>✅</span></div>
+          <div class="stat-value" style="color:#34d399;" id="dash-fees-collected">₹0</div>
+          <div class="stat-meta"><span id="dash-target-fees">Target: ₹0</span> <span style="color:#34d399; font-weight:800;" id="dash-rate">0%</span></div>
+        </div>
+
+        <div class="card">
+          <div class="stat-label"><span>Monthly Pending Dues</span> <span>⏳</span></div>
+          <div class="stat-value" style="color:#fbbf24;" id="dash-fees-pending">₹0</div>
+          <div class="stat-meta"><span id="dash-pending-count">0 members pending</span> <span style="color:#f87171; font-weight:800;" id="dash-overdue-count">0 overdue</span></div>
+        </div>
+
+        <div class="card">
+          <div class="stat-label"><span>Other Club Earnings</span> <span>🏆</span></div>
+          <div class="stat-value" style="color:#c084fc;" id="dash-other-earnings">₹0</div>
+          <div class="stat-meta"><span>Tournaments, Sponsorships, Canteen</span></div>
+        </div>
+      </div>
+
+      <!-- Controls Bar -->
+      <div class="controls-bar">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Viewing Month:</label>
+          <input type="month" id="global-month-select" value="2026-08" onchange="handleMonthChange(this.value)" class="input-control">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" onclick="nav('checklist')" class="btn btn-secondary">📋 View Full Checklist</button>
+          <button type="button" onclick="nav('members')" class="btn btn-secondary">👥 Manage Members</button>
+        </div>
+      </div>
+
+      <!-- Recent Transactions Table -->
+      <div class="table-card">
+        <div class="table-header">
+          <div>
+            <h3 style="font-size:15px; font-weight:800; color:#fff;">Recent Financial Transactions</h3>
+            <p style="font-size:11px; color:var(--text-muted); margin-top:2px;">Live fee collections & logged club earnings in ₹ INR</p>
+          </div>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Source / Member</th>
+                <th>Category / Plan</th>
+                <th>Date</th>
+                <th>Amount (₹)</th>
+                <th>Status / Ref</th>
+              </tr>
+            </thead>
+            <tbody id="dash-recent-tbody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. MONTHLY FEE CHECKLIST VIEW -->
+    <div id="view-checklist" class="view-panel">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title"><span>✅ Monthly Membership Fee Checklist</span></h1>
+          <p class="section-sub">Track payments, mark dues collected, issue receipts, and monitor active dues in ₹ INR.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="text" id="checklist-search" oninput="renderChecklist()" placeholder="Search member, phone..." class="input-control" style="width:200px;">
+          <button type="button" onclick="openModal('add-member-modal')" class="btn btn-primary">+ Add Member</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Member Name</th>
+                <th>Club Role</th>
+                <th>Assigned Plan</th>
+                <th>Monthly Fee (₹)</th>
+                <th>Payment Status</th>
+                <th>Method</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="checklist-tbody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. MEMBERS DIRECTORY VIEW -->
+    <div id="view-members" class="view-panel">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title"><span>👥 Club Members Directory</span></h1>
+          <p class="section-sub">Manage enrolled club members, roles, contact information, and membership plans.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="text" id="members-search" oninput="renderMembers()" placeholder="Search name, phone..." class="input-control" style="width:200px;">
+          <button type="button" onclick="openModal('add-member-modal')" class="btn btn-primary">+ Add Member</button>
+        </div>
+      </div>
+
+      <div id="members-cards-container" class="grid-3">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- 4. FEE CUSTOMIZER & PLANS VIEW -->
+    <div id="view-plans" class="view-panel">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title"><span>🎛️ Monthly Fee Customizer & Plans</span></h1>
+          <p class="section-sub">Configure membership tiers, pricing in ₹ INR, grace periods, and late fee fine rules.</p>
+        </div>
+        <button onclick="openAddPlanModal()" class="btn btn-primary">+ Add New Plan</button>
+      </div>
+
+      <div id="plans-cards-container" class="grid-4">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- 5. CLUB EARNINGS LOGGER VIEW -->
+    <div id="view-earnings" class="view-panel">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title"><span>💵 Club Earnings & Income Logger</span></h1>
+          <p class="section-sub">Log revenue from cricket/football tournaments, sponsorships, canteen, jersey sales & donations.</p>
+        </div>
+        <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald">+ Log New Earning</button>
+      </div>
+
+      <div class="table-card">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Earning Title</th>
+                <th>Category</th>
+                <th>Payer / Source</th>
+                <th>Date</th>
+                <th>Method</th>
+                <th>Amount (₹)</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="earnings-tbody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. CUSTOM FIELDS VIEW -->
+    <div id="view-custom-fields" class="view-panel">
+      <div class="section-header">
+        <div>
+          <h1 class="section-title"><span>📑 Custom Form Fields Configuration</span></h1>
+          <p class="section-sub">Configure additional member properties (Locker #, Emergency Phone, Activity) and earning metadata.</p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">👤 Member Profile Custom Fields</h3>
+          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
+            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; color:#fff;">Locker #</div><div style="color:var(--text-muted); font-size:11px;">Assigned member locker ID</div></div>
+              <span class="badge badge-blue">Text</span>
+            </div>
+            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; color:#fff;">Primary Activity</div><div style="color:var(--text-muted); font-size:11px;">Cricket, Football, Gym, Tennis, Swimming</div></div>
+              <span class="badge badge-blue">Select</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">💰 Earning & Sponsorship Custom Fields</h3>
+          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
+            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; color:#fff;">Sponsorship Level</div><div style="color:var(--text-muted); font-size:11px;">Platinum Title, Gold Partner, Silver, Patron</div></div>
+              <span class="badge badge-paid">Select</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MODALS -->
+
+  <!-- ADD MEMBER MODAL -->
+  <div id="add-member-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title" id="add-member-title">➕ Add New Club Member</h3>
+        <button type="button" onclick="closeModal('add-member-modal')" class="modal-close">✕</button>
+      </div>
+
+      <form onsubmit="handleSaveMember(event)">
+        <input type="hidden" id="mem-id">
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input type="text" id="mem-name" required placeholder="e.g. Subhankar Mukherjee" class="form-input">
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Email Address</label>
+            <input type="email" id="mem-email" placeholder="member@kns.org" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Phone Number *</label>
+            <input type="tel" id="mem-phone" required placeholder="+91 98765 43210" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Membership Plan *</label>
+            <select id="mem-plan" required onchange="handleMemberPlanSelect(this.value)" class="form-input">
+              <!-- Populated via JS -->
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Member Club Role *</label>
+            <select id="mem-role" required class="form-input">
+              <option value="Member">🔵 Club Member (Standard)</option>
+              <option value="Finance">🟢 Finance Officer & Member</option>
+              <option value="Executive Member">🟣 Executive Member / Committee</option>
+              <option value="Athlete / Student">🟡 Athlete / Youth Student</option>
+              <option value="Volunteer / Coach">🟢 Volunteer / Coach</option>
+              <option value="Admin">🔴 Club Admin</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Custom Fee (Optional ₹)</label>
+            <input type="number" id="mem-custom-fee" placeholder="Leave blank for plan fee" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Joining Date</label>
+            <input type="date" id="mem-join-date" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Locker #</label>
+            <input type="text" id="mem-locker" placeholder="e.g. LK-12" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Primary Activity</label>
+            <input type="text" id="mem-activity" placeholder="e.g. Cricket / Football" class="form-input">
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-member-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Member</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD EARNING MODAL -->
+  <div id="add-earning-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title">💰 Log New Club Earning</h3>
+        <button type="button" onclick="closeModal('add-earning-modal')" class="modal-close">✕</button>
+      </div>
+
+      <form onsubmit="handleSaveEarning(event)">
+        <div class="form-group">
+          <label class="form-label">Earning Title *</label>
+          <input type="text" id="earn-title" required placeholder="e.g. Summer Cricket Tournament Entry Fees" class="form-input">
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Amount (₹ INR) *</label>
+            <input type="number" id="earn-amount" min="1" step="1" required placeholder="5000" class="form-input" style="color:#34d399; font-weight:800; font-size:15px;">
+          </div>
+          <div>
+            <label class="form-label">Category *</label>
+            <select id="earn-category" class="form-input">
+              <option value="tournament">🏆 Tournament & Entry Fees</option>
+              <option value="sponsorship">🤝 Corporate Sponsorship & Banner</option>
+              <option value="canteen_bar">☕ Clubhouse Canteen & Tea Stall</option>
+              <option value="merchandise">👕 Club Jersey & Merch Sales</option>
+              <option value="events">🎉 Club Annual Gala & Ticket Sales</option>
+              <option value="guest_fees">🎟️ Ground & Court Booking Passes</option>
+              <option value="donations">💖 Patron Grant & Public Donation</option>
+              <option value="other">📦 Other Miscellaneous Income</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Payment Method</label>
+            <select id="earn-method" class="form-input">
+              <option value="cash">💵 Cash</option>
+              <option value="upi">📱 UPI / QR Code</option>
+              <option value="card">💳 Card / POS</option>
+              <option value="bank_transfer">🏦 Bank Transfer / NEFT</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Date Received</label>
+            <input type="date" id="earn-date" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Received From / Payer</label>
+            <input type="text" id="earn-payer" placeholder="e.g. Apex Sports Agency" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Invoice / Reference #</label>
+            <input type="text" id="earn-ref" placeholder="REC-1029" class="form-input font-mono">
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-earning-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-emerald">Save Earning</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD / EDIT PLAN MODAL -->
+  <div id="plan-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title" id="plan-modal-title">➕ Membership Plan</h3>
+        <button type="button" onclick="closeModal('plan-modal')" class="modal-close">✕</button>
+      </div>
+
+      <form onsubmit="handleSavePlan(event)">
+        <input type="hidden" id="plan-id">
+        <div class="form-group">
+          <label class="form-label">Plan Name *</label>
+          <input type="text" id="plan-name" required placeholder="e.g. Cricket Academy Plan / VIP Member" class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Monthly Fee (₹ INR) *</label>
+          <input type="number" id="plan-fee" min="0" step="1" required placeholder="500" class="form-input" style="color:#34d399; font-weight:800; font-size:16px;">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Description & Perks</label>
+          <textarea id="plan-desc" rows="2" placeholder="Full ground access, gym, coaching..." class="form-input" style="resize:none;"></textarea>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Grace Period (Days)</label>
+            <input type="number" id="plan-grace" min="0" value="10" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Late Fine (₹ INR)</label>
+            <input type="number" id="plan-late-fine" min="0" value="50" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Theme Accent Color</label>
+          <input type="color" id="plan-color" value="#3b82f6" style="width:100%; height:36px; border:none; border-radius:8px; cursor:pointer; background:transparent;">
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('plan-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- RECEIPT MODAL (READY TO PRINT) -->
+  <div id="receipt-modal" class="modal-overlay print-modal">
+    <div class="modal-box">
+      <div class="modal-head no-print">
+        <h3 class="modal-title">🧾 Payment Receipt</h3>
+        <div style="display:flex; gap:6px;">
+          <button onclick="window.print()" class="btn btn-primary">🖨️ Print</button>
+          <button type="button" onclick="closeModal('receipt-modal')" class="modal-close">✕</button>
+        </div>
+      </div>
+
+      <div style="background:#090f1d; padding:18px; border-radius:14px; border:1px solid var(--border); font-size:12px;">
+        <div style="text-align:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
+          <h2 style="font-size:16px; font-weight:800; color:#fff;">Kalikapur Nabin Sangha (KNSDC)</h2>
+          <p style="color:var(--text-muted); font-size:11px; margin-top:2px;">Official Monthly Membership Fee Receipt</p>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Invoice No:</span> <span id="rec-invoice" class="font-mono" style="font-weight:700; color:#818cf8;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Member Name:</span> <span id="rec-name" style="font-weight:700; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Club Role:</span> <span id="rec-role" style="font-weight:700; color:#34d399;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Membership Plan:</span> <span id="rec-plan" style="font-weight:600; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Month Billed:</span> <span id="rec-month" style="font-weight:700; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Payment Method:</span> <span id="rec-method" style="font-weight:600; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Payment Date:</span> <span id="rec-date" style="color:var(--text-muted);">-</span></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:12px; margin-top:12px; font-size:14px;">
+          <span style="font-weight:700; color:#fff;">Total Amount Paid:</span>
+          <span id="rec-amount" style="font-size:20px; font-weight:900; color:#34d399;">₹0</span>
+        </div>
+
+        <div style="text-align:center; font-size:10px; color:var(--text-dim); margin-top:14px; padding-top:10px; border-top:1px solid var(--border);">
+          Authorized by Kalikapur Nabin Sangha Treasury & Accounts
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION LOGIC -->
+  
 </body>
 </html>
