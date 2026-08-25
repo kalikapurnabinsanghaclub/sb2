@@ -827,6 +827,7 @@
       const earningObj = { id: 'earn-' + Date.now(), title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo };
 
       earnings.unshift(earningObj);
+      syncMongoEarning(earningObj);
       saveData();
       closeModal('add-earning-modal');
       renderEarnings();
@@ -980,6 +981,7 @@
       removeAttachedReceipt();
 
       spendings.unshift(spendingObj);
+      syncMongoSpending(spendingObj);
       saveData();
       closeModal('add-spending-modal');
       renderEarnings();
@@ -989,6 +991,7 @@
     window.deleteSpending = function(id) {
       if (confirm('Delete this spending expense entry?')) {
         spendings = spendings.filter(x => x.id !== id);
+        syncMongoDelete(id);
         saveData();
         renderEarnings();
         renderDashboard();
@@ -997,6 +1000,7 @@
 
       if (confirm('Delete this earning entry?')) {
         earnings = earnings.filter(x => x.id !== id);
+        syncMongoDelete(id);
         saveData();
         renderEarnings();
         renderDashboard();
@@ -1006,6 +1010,45 @@
     // ══════════════════════════════════════════
     // PERSISTENCE & CLOUD SYNC
     // ══════════════════════════════════════════
+    
+    // ══════════════════════════════════════════
+    // MONGODB BACKEND CLOUD SYNC
+    // ══════════════════════════════════════════
+    async function syncMongoEarning(earningObj) {
+      try {
+        await fetch('/api/finance/earnings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(earningObj)
+        });
+        console.log('[MongoDB API] Earning synced:', earningObj.title);
+      } catch(e) {
+        console.log('[MongoDB API] Offline/Local mode:', e.message);
+      }
+    }
+
+    async function syncMongoSpending(spendingObj) {
+      try {
+        await fetch('/api/finance/spendings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(spendingObj)
+        });
+        console.log('[MongoDB API] Spending synced:', spendingObj.title);
+      } catch(e) {
+        console.log('[MongoDB API] Offline/Local mode:', e.message);
+      }
+    }
+
+    async function syncMongoDelete(id) {
+      try {
+        await fetch('/api/finance/transactions/' + id, { method: 'DELETE' });
+        console.log('[MongoDB API] Transaction deleted:', id);
+      } catch(e) {
+        console.log('[MongoDB API] Offline/Local mode:', e.message);
+      }
+    }
+
     function saveData() {
       localStorage.setItem('fp_plans', JSON.stringify(plans));
       localStorage.setItem('fp_members', JSON.stringify(members));
@@ -1211,6 +1254,7 @@
       removeAttachedReceipt();
 
       spendings.unshift(spendingObj);
+      syncMongoSpending(spendingObj);
       saveData();
       closeModal('add-spending-modal');
       renderEarnings();
@@ -1220,6 +1264,7 @@
     window.deleteSpending = function(id) {
       if (confirm('Delete this spending expense entry?')) {
         spendings = spendings.filter(x => x.id !== id);
+        syncMongoDelete(id);
         saveData();
         renderEarnings();
         renderDashboard();
