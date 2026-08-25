@@ -1289,12 +1289,22 @@
     }
 
     // Startup Initializer
-    window.addEventListener('DOMContentLoaded', async () => {
-      // Pull latest from Supabase if available
-      if (supabase) {
+        // Instant UI Initializer (Non-blocking)
+    function initPortal() {
+      console.log('Initializing KNSDC Finance Portal...');
+      window.switchTab('dashboard');
+      try {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          window.lucide.createIcons();
+        }
+      } catch(e) {}
+
+      // Background Supabase Sync (Non-blocking)
+      setTimeout(async () => {
+        if (!supabase) return;
         try {
-          const { data: dbPlans } = await supabase.from('membership_plans').select('*');
-          if (dbPlans && dbPlans.length > 0) {
+          const { data: dbPlans, error: ep } = await supabase.from('membership_plans').select('*');
+          if (!ep && dbPlans && dbPlans.length > 0) {
             plans = dbPlans.map(p => ({
               id: p.id, name: p.name, fee: Number(p.fee) || 0,
               billingCycle: p.billing_cycle || 'monthly', description: p.description || '',
@@ -1302,8 +1312,9 @@
               lateFeeDays: p.late_fee_days || 10, lateFeeAmount: Number(p.late_fee_amount) || 50
             }));
           }
-          const { data: dbMembers } = await supabase.from('members').select('*');
-          if (dbMembers) {
+
+          const { data: dbMembers, error: em } = await supabase.from('members').select('*');
+          if (!em && dbMembers && dbMembers.length > 0) {
             members = dbMembers.map(m => ({
               id: m.id, name: m.name, email: m.email || '', phone: m.phone || '',
               planId: m.plan_id, role: m.role || 'Member',
@@ -1312,22 +1323,37 @@
               customFields: m.custom_fields || {}
             }));
           }
-          const { data: dbEarnings } = await supabase.from('club_earnings').select('*');
-          if (dbEarnings && dbEarnings.length > 0) {
+
+          const { data: dbEarnings, error: ee } = await supabase.from('club_earnings').select('*');
+          if (!ee && dbEarnings && dbEarnings.length > 0) {
             earnings = dbEarnings.map(e => ({
               id: e.id, title: e.title, category: e.category, amount: Number(e.amount) || 0,
-              date: e.date, paymentMethod: e.payment_method, payerOrCustomer: e.payer_or_customer,
+              date: e.date, paymentMethod: e.payment_method, payerOrCustomer: e.payerOrCustomer,
               referenceNo: e.reference_no, description: e.description
             }));
           }
-        } catch(e) {
-          console.warn('Supabase fetch notice:', e);
-        }
-      }
 
-      window.switchTab('dashboard');
-      try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch(e) {}
-    });
+          // Refresh the currently active view with synced data
+          const activePanel = document.querySelector('.view-panel.active');
+          if (activePanel) {
+            const currentTab = activePanel.id.replace('view-', '');
+            if (currentTab === 'dashboard') renderDashboard();
+            else if (currentTab === 'checklist') renderChecklist();
+            else if (currentTab === 'members') renderMembers();
+            else if (currentTab === 'plans') renderPlans();
+            else if (currentTab === 'earnings') renderEarnings();
+          }
+        } catch(err) {
+          console.warn('Background Supabase Sync Notice:', err);
+        }
+      }, 500);
+    }
+
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', initPortal);
+    } else {
+      initPortal();
+    }
   </script>
 </body>
 </html>
