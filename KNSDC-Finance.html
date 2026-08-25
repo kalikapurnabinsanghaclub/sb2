@@ -7,217 +7,273 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KNSDC — Club Finance Portal</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    :root {
+      --bg: #090d16;
+      --card: #0f172a;
+      --card-hover: #172033;
+      --border: #1e293b;
+      --border-light: #334155;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --emerald: #10b981;
+      --emerald-bg: rgba(16, 185, 129, 0.15);
+      --amber: #f59e0b;
+      --amber-bg: rgba(245, 158, 11, 0.15);
+      --red: #ef4444;
+      --red-bg: rgba(239, 68, 68, 0.15);
+      --purple: #a855f7;
+      --purple-bg: rgba(168, 85, 247, 0.15);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
     .font-mono { font-family: 'JetBrains Mono', monospace; }
-    .tab-btn.active {
-      background-color: #4f46e5;
-      color: #ffffff;
-      box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.35);
-      font-weight: 700;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
+
+    /* Topbar */
+    .topbar { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 40; }
+    .topbar-container { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
+    .topbar-header { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+    .club-brand { display: flex; align-items: center; gap: 12px; cursor: pointer; text-decoration: none; }
+    .brand-logo { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #4f46e5, #9333ea, #ec4899); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px; color: #fff; box-shadow: 0 4px 14px rgba(79,70,229,0.3); }
+    .brand-title { font-size: 17px; font-weight: 800; color: #fff; letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; }
+    .badge-portal { font-size: 10px; font-weight: 800; text-transform: uppercase; background: rgba(79,70,229,0.25); color: #818cf8; border: 1px solid rgba(79,70,229,0.4); padding: 2px 8px; border-radius: 999px; }
+    .brand-sub { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .staff-badge { display: flex; align-items: center; gap: 10px; background: #131d31; border: 1px solid rgba(16,185,129,0.3); padding: 6px 12px; border-radius: 12px; }
+    .staff-avatar { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #10b981, #0d9488); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; }
+    .staff-info { text-align: left; }
+    .staff-name { font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; display: inline-block; box-shadow: 0 0 8px #34d399; }
+    .role-tag { font-size: 9px; font-weight: 800; background: var(--emerald-bg); color: #6ee7b7; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3); text-transform: uppercase; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; transition: all 0.15s ease; text-decoration: none; }
+    .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(79,70,229,0.3); }
+    .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .btn-emerald { background: var(--emerald); color: #fff; box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+    .btn-emerald:hover { background: #059669; transform: translateY(-1px); }
+    .btn-secondary { background: var(--card); color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--card-hover); color: #fff; }
+    .btn-danger { background: var(--red-bg); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+    .btn-danger:hover { background: var(--red); color: #fff; }
+
+    /* Nav Tabs */
+    .nav-tabs { display: flex; gap: 6px; padding: 6px 0 10px 0; overflow-x: auto; border-top: 1px solid rgba(30,41,59,0.5); scrollbar-width: none; }
+    .nav-tabs::-webkit-scrollbar { display: none; }
+    .tab-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--text-muted); background: transparent; border: none; cursor: pointer; white-space: nowrap; transition: all 0.15s ease; }
+    .tab-btn:hover { background: rgba(30,41,59,0.6); color: #fff; }
+    .tab-btn.active { background: var(--primary); color: #fff; font-weight: 700; box-shadow: 0 4px 14px rgba(79,70,229,0.35); }
+    .tab-pill { font-size: 10px; font-weight: 800; background: rgba(255,255,255,0.2); padding: 1px 6px; border-radius: 999px; }
+
+    /* Main Container */
+    .main-content { max-width: 1280px; width: 100%; margin: 0 auto; padding: 24px 16px; flex: 1; }
+
+    /* Panel Switching */
+    .view-panel { display: none; }
+    .view-panel.active { display: block; animation: fadeIn 0.2s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Cards & Grid */
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); position: relative; }
+    .stat-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; }
+    .stat-value { font-size: 28px; font-weight: 900; color: #fff; margin-top: 10px; letter-spacing: -0.5px; }
+    .stat-meta { margin-top: 8px; font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; }
+
+    /* Section Headers */
+    .section-header { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 20px; }
+    .section-title { font-size: 20px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .section-sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+    /* Controls Bar */
+    .controls-bar { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px 18px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .input-control { background: #0b1324; border: 1px solid var(--border); color: #fff; padding: 8px 12px; border-radius: 10px; font-size: 12px; font-weight: 600; outline: none; transition: border 0.15s; }
+    .input-control:focus { border-color: var(--primary); }
+
+    /* Table Styles */
+    .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+    .table-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .table-container { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+    th { background: rgba(30,41,59,0.5); color: var(--text-muted); font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 14px 18px; }
+    td { padding: 14px 18px; border-bottom: 1px solid rgba(30,41,59,0.6); vertical-align: middle; }
+    tr:hover td { background: rgba(30,41,59,0.3); }
+
+    /* Badges & Status */
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .badge-paid { background: var(--emerald-bg); color: #34d399; border: 1px solid rgba(16,185,129,0.4); }
+    .badge-pending { background: var(--amber-bg); color: #fbbf24; border: 1px solid rgba(245,158,11,0.4); }
+    .badge-overdue { background: var(--red-bg); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }
+    .badge-blue { background: rgba(79,70,229,0.2); color: #818cf8; border: 1px solid rgba(79,70,229,0.4); }
+
+    /* Modals */
+    .modal-overlay { position: fixed; inset: 0; z-index: 999; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; padding: 16px; }
+    .modal-overlay.active { display: flex; animation: fadeIn 0.15s ease-out; }
+    .modal-box { background: var(--card); border: 1px solid var(--border-light); border-radius: 20px; max-width: 520px; width: 100%; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); max-height: 85vh; overflow-y: auto; }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .modal-title { font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .modal-close { background: transparent; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 4px; border-radius: 8px; }
+    .modal-close:hover { color: #fff; background: var(--border); }
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-input { width: 100%; background: #090f1d; border: 1px solid var(--border-light); color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 13px; outline: none; transition: border 0.15s; }
+    .form-input:focus { border-color: var(--primary); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+    /* Print styling */
     @media print {
-      body { background: white !important; color: black !important; }
+      body { background: #fff !important; color: #000 !important; }
       .no-print { display: none !important; }
-      .print-only { display: block !important; }
+      .print-modal { display: block !important; position: static !important; background: transparent !important; }
+      .modal-box { border: 1px solid #ccc !important; box-shadow: none !important; color: #000 !important; background: #fff !important; max-width: 100% !important; }
     }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white flex flex-col">
+<body>
 
   <!-- TOPBAR HEADER -->
-  <header class="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-800 shadow-xl no-print">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
+  <header class="topbar no-print">
+    <div class="topbar-container">
+      <div class="topbar-header">
         
-        <!-- Logo & Club Info -->
-        <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('dashboard')">
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white font-black text-xl">
-            FP
-          </div>
+        <!-- Logo -->
+        <div class="club-brand" onclick="nav('dashboard')">
+          <div class="brand-logo">FP</div>
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-extrabold text-lg text-white tracking-tight">Kalikapur Nabin Sangha</span>
-              <span class="px-2 py-0.5 text-xs font-semibold uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full">
-                FINANS PORTAL
-              </span>
+            <div class="brand-title">
+              <span>Kalikapur Nabin Sangha</span>
+              <span class="badge-portal">FINANS PORTAL</span>
             </div>
-            <p class="text-xs text-slate-400 font-medium hidden sm:block">Premier Sports, Wellness & Community Finance Portal</p>
+            <div class="brand-sub">Premier Sports, Wellness & Community Finance Portal</div>
           </div>
         </div>
 
         <!-- Top Right Actions -->
-        <div class="flex items-center space-x-3">
-          <!-- Active Staff Badge -->
-          <div class="flex items-center space-x-2.5 bg-slate-800/90 border border-emerald-500/30 px-3 py-1.5 rounded-xl shadow">
-            <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white text-xs font-extrabold shadow">
-              FN
-            </div>
-            <div class="text-left hidden sm:block">
-              <div class="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+        <div class="top-actions">
+          <div class="staff-badge">
+            <div class="staff-avatar">FN</div>
+            <div class="staff-info">
+              <div class="staff-name">
                 <span>Finance Officer</span>
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Supabase Connected"></span>
+                <span class="live-dot" title="Supabase Connected"></span>
               </div>
-              <span class="px-1.5 py-0.2 text-[10px] font-extrabold uppercase rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                ROLE: FINANCE
-              </span>
+              <span class="role-tag">ROLE: FINANCE</span>
             </div>
           </div>
 
-          <button onclick="openModal('add-member-modal')" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-md shadow-indigo-600/30">
-            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          <button onclick="openModal('add-member-modal')" class="btn btn-primary">
             <span>+ Add Member</span>
           </button>
 
-          <button onclick="openModal('add-earning-modal')" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-600/30">
-            <i data-lucide="trending-up" class="w-4 h-4"></i>
-            <span>Add Earning</span>
+          <button onclick="openModal('add-earning-modal')" class="btn btn-emerald">
+            <span>+ Add Earning</span>
           </button>
         </div>
       </div>
 
       <!-- Navigation Tabs -->
-      <nav class="flex space-x-1 sm:space-x-2 py-2 overflow-x-auto border-t border-slate-800/60">
-        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn active flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition">
-          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
-          <span>Club Dashboard</span>
+      <nav class="nav-tabs">
+        <button onclick="nav('dashboard')" id="tab-dashboard" class="tab-btn active">
+          <span>📊 Club Dashboard</span>
         </button>
-
-        <button onclick="switchTab('checklist')" id="tab-checklist" class="tab-btn flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition">
-          <i data-lucide="check-square" class="w-4 h-4"></i>
-          <span>Monthly Fee Checklist</span>
-          <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-indigo-500/20 text-indigo-300">Monthly</span>
+        <button onclick="nav('checklist')" id="tab-checklist" class="tab-btn">
+          <span>✅ Monthly Fee Checklist</span>
+          <span class="tab-pill">Monthly</span>
         </button>
-
-        <button onclick="switchTab('members')" id="tab-members" class="tab-btn flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition">
-          <i data-lucide="users" class="w-4 h-4"></i>
-          <span>Members Directory</span>
+        <button onclick="nav('members')" id="tab-members" class="tab-btn">
+          <span>👥 Members Directory</span>
         </button>
-
-        <button onclick="switchTab('plans')" id="tab-plans" class="tab-btn flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition">
-          <i data-lucide="sliders" class="w-4 h-4"></i>
-          <span>Fee Customizer & Plans</span>
+        <button onclick="nav('plans')" id="tab-plans" class="tab-btn">
+          <span>🎛️ Fee Customizer & Plans</span>
         </button>
-
-        <button onclick="switchTab('earnings')" id="tab-earnings" class="tab-btn flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition">
-          <i data-lucide="dollar-sign" class="w-4 h-4"></i>
-          <span>Club Earnings Logger</span>
+        <button onclick="nav('earnings')" id="tab-earnings" class="tab-btn">
+          <span>💵 Club Earnings Logger</span>
         </button>
-
-        <button onclick="switchTab('custom-fields')" id="tab-custom-fields" class="tab-btn flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition">
-          <i data-lucide="layers" class="w-4 h-4"></i>
-          <span>Custom Fields</span>
+        <button onclick="nav('custom-fields')" id="tab-custom-fields" class="tab-btn">
+          <span>📑 Custom Fields</span>
         </button>
       </nav>
     </div>
   </header>
 
   <!-- MAIN APP CONTAINER -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+  <main class="main-content">
 
     <!-- 1. DASHBOARD VIEW -->
-    <div id="view-dashboard" style="display:block" class="view-panel active space-y-6">
-      <!-- Top Row Stats -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
-          <div class="absolute top-0 right-0 p-4 text-indigo-500/10">
-            <i data-lucide="wallet" class="w-16 h-16"></i>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Club Revenue</span>
-            <span class="p-2 rounded-xl bg-indigo-500/10 text-indigo-400"><i data-lucide="wallet" class="w-5 h-5"></i></span>
-          </div>
-          <div id="dash-total-revenue" class="text-2xl sm:text-3xl font-extrabold text-white mt-3">₹0</div>
-          <div class="mt-2 text-xs text-slate-400 flex items-center gap-1">
-            <span class="text-emerald-400 font-bold">● Active Month</span>
-            <span>Fees + Earnings</span>
-          </div>
+    <div id="view-dashboard" class="view-panel active">
+      <!-- 4 Stat Cards -->
+      <div class="grid-4" style="margin-bottom: 20px;">
+        <div class="card">
+          <div class="stat-label"><span>Total Club Revenue</span> <span>💼</span></div>
+          <div class="stat-value" id="dash-total-revenue">₹0</div>
+          <div class="stat-meta"><span style="color:#34d399; font-weight:700;">● Active Month</span> <span>Fees + Earnings</span></div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Membership Fees Collected</span>
-            <span class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><i data-lucide="check-circle" class="w-5 h-5"></i></span>
-          </div>
-          <div id="dash-fees-collected" class="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-3">₹0</div>
-          <div class="mt-2 text-xs text-slate-400 flex justify-between">
-            <span id="dash-target-fees">Target: ₹0</span>
-            <span id="dash-rate" class="font-bold text-emerald-400">0%</span>
-          </div>
+        <div class="card">
+          <div class="stat-label"><span>Membership Fees Collected</span> <span>✅</span></div>
+          <div class="stat-value" style="color:#34d399;" id="dash-fees-collected">₹0</div>
+          <div class="stat-meta"><span id="dash-target-fees">Target: ₹0</span> <span style="color:#34d399; font-weight:800;" id="dash-rate">0%</span></div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Monthly Pending Dues</span>
-            <span class="p-2 rounded-xl bg-amber-500/10 text-amber-400"><i data-lucide="clock" class="w-5 h-5"></i></span>
-          </div>
-          <div id="dash-fees-pending" class="text-2xl sm:text-3xl font-extrabold text-amber-400 mt-3">₹0</div>
-          <div class="mt-2 text-xs text-slate-400 flex justify-between">
-            <span id="dash-pending-count">0 members pending</span>
-            <span id="dash-overdue-count" class="text-red-400 font-bold">0 overdue</span>
-          </div>
+        <div class="card">
+          <div class="stat-label"><span>Monthly Pending Dues</span> <span>⏳</span></div>
+          <div class="stat-value" style="color:#fbbf24;" id="dash-fees-pending">₹0</div>
+          <div class="stat-meta"><span id="dash-pending-count">0 members pending</span> <span style="color:#f87171; font-weight:800;" id="dash-overdue-count">0 overdue</span></div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Other Club Earnings</span>
-            <span class="p-2 rounded-xl bg-purple-500/10 text-purple-400"><i data-lucide="trophy" class="w-5 h-5"></i></span>
-          </div>
-          <div id="dash-other-earnings" class="text-2xl sm:text-3xl font-extrabold text-purple-400 mt-3">₹0</div>
-          <div class="mt-2 text-xs text-slate-400">Tournaments, Sponsorship, Canteen</div>
-        </div>
-
-      </div>
-
-      <!-- Quick Action & Month Selector Bar -->
-      <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-wrap justify-between items-center gap-4">
-        <div class="flex items-center space-x-3">
-          <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Viewing Month:</label>
-          <input type="month" id="global-month-select" value="2026-08" onchange="handleMonthChange(this.value)" class="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500">
-        </div>
-        <div class="flex gap-2">
-          <button onclick="switchTab('checklist')" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded-lg text-xs font-bold transition">
-            📋 View Full Monthly Checklist
-          </button>
-          <button onclick="switchTab('members')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition">
-            👥 Manage Members
-          </button>
+        <div class="card">
+          <div class="stat-label"><span>Other Club Earnings</span> <span>🏆</span></div>
+          <div class="stat-value" style="color:#c084fc;" id="dash-other-earnings">₹0</div>
+          <div class="stat-meta"><span>Tournaments, Sponsorships, Canteen</span></div>
         </div>
       </div>
 
-      <!-- Recent Financial Activity Table -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-        <div class="p-5 border-b border-slate-800 flex justify-between items-center">
+      <!-- Controls Bar -->
+      <div class="controls-bar">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Viewing Month:</label>
+          <input type="month" id="global-month-select" value="2026-08" onchange="handleMonthChange(this.value)" class="input-control">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button onclick="nav('checklist')" class="btn btn-secondary">📋 View Full Checklist</button>
+          <button onclick="nav('members')" class="btn btn-secondary">👥 Manage Members</button>
+        </div>
+      </div>
+
+      <!-- Recent Transactions Table -->
+      <div class="table-card">
+        <div class="table-header">
           <div>
-            <h3 class="font-bold text-base text-white">Recent Financial Transactions</h3>
-            <p class="text-xs text-slate-400 mt-0.5">Live fee collections & logged club earnings</p>
+            <h3 style="font-size:15px; font-weight:800; color:#fff;">Recent Financial Transactions</h3>
+            <p style="font-size:11px; color:var(--text-muted); margin-top:2px;">Live fee collections & logged club earnings in ₹ INR</p>
           </div>
         </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-slate-800/60 text-slate-400 font-bold uppercase tracking-wider">
+        <div class="table-container">
+          <table>
+            <thead>
               <tr>
-                <th class="p-3.5">Type</th>
-                <th class="p-3.5">Source / Member</th>
-                <th class="p-3.5">Category / Plan</th>
-                <th class="p-3.5">Date</th>
-                <th class="p-3.5">Amount (₹)</th>
-                <th class="p-3.5">Status / Receipt</th>
+                <th>Type</th>
+                <th>Source / Member</th>
+                <th>Category / Plan</th>
+                <th>Date</th>
+                <th>Amount (₹)</th>
+                <th>Status / Ref</th>
               </tr>
             </thead>
-            <tbody id="dash-recent-tbody" class="divide-y divide-slate-800/60">
-              <tr><td colspan="6" class="text-center p-8 text-slate-400">Loading transactions...</td></tr>
+            <tbody id="dash-recent-tbody">
+              <!-- Rendered via JS -->
             </tbody>
           </table>
         </div>
@@ -225,40 +281,34 @@
     </div>
 
     <!-- 2. MONTHLY FEE CHECKLIST VIEW -->
-    <div id="view-checklist" style="display:none" class="view-panel space-y-6">
-      <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div id="view-checklist" class="view-panel">
+      <div class="section-header">
         <div>
-          <h1 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
-            <i data-lucide="check-square" class="w-6 h-6 text-indigo-400"></i>
-            <span>Monthly Membership Fee Checklist</span>
-          </h1>
-          <p class="text-slate-400 text-sm mt-1">Track payments, mark dues collected, issue receipts, and monitor active dues in ₹ INR.</p>
+          <h1 class="section-title"><span>✅ Monthly Membership Fee Checklist</span></h1>
+          <p class="section-sub">Track payments, mark dues collected, issue receipts, and monitor active dues in ₹ INR.</p>
         </div>
-        <div class="flex items-center gap-3">
-          <input type="text" id="checklist-search" oninput="renderChecklist()" placeholder="Search member, phone, role..." class="px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500 w-56">
-          <button onclick="openModal('add-member-modal')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 whitespace-nowrap">
-            + Add Member
-          </button>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="text" id="checklist-search" oninput="renderChecklist()" placeholder="Search member, phone..." class="input-control" style="width:200px;">
+          <button onclick="openModal('add-member-modal')" class="btn btn-primary">+ Add Member</button>
         </div>
       </div>
 
-      <!-- Checklist Table -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-slate-800/80 text-slate-300 font-bold uppercase tracking-wider">
+      <div class="table-card">
+        <div class="table-container">
+          <table>
+            <thead>
               <tr>
-                <th class="p-4">Member Name</th>
-                <th class="p-4">Club Role</th>
-                <th class="p-4">Assigned Plan</th>
-                <th class="p-4">Monthly Fee (₹)</th>
-                <th class="p-4">Payment Status</th>
-                <th class="p-4">Payment Method</th>
-                <th class="p-4 text-right">Actions</th>
+                <th>Member Name</th>
+                <th>Club Role</th>
+                <th>Assigned Plan</th>
+                <th>Monthly Fee (₹)</th>
+                <th>Payment Status</th>
+                <th>Method</th>
+                <th style="text-align:right;">Actions</th>
               </tr>
             </thead>
-            <tbody id="checklist-tbody" class="divide-y divide-slate-800">
-              <tr><td colspan="7" class="text-center p-8 text-slate-400">Loading checklist...</td></tr>
+            <tbody id="checklist-tbody">
+              <!-- Rendered via JS -->
             </tbody>
           </table>
         </div>
@@ -266,82 +316,64 @@
     </div>
 
     <!-- 3. MEMBERS DIRECTORY VIEW -->
-    <div id="view-members" style="display:none" class="view-panel space-y-6">
-      <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div id="view-members" class="view-panel">
+      <div class="section-header">
         <div>
-          <h1 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
-            <i data-lucide="users" class="w-6 h-6 text-indigo-400"></i>
-            <span>Club Members Directory</span>
-          </h1>
-          <p class="text-slate-400 text-sm mt-1">Manage enrolled club members, roles, contact information, and membership plans.</p>
+          <h1 class="section-title"><span>👥 Club Members Directory</span></h1>
+          <p class="section-sub">Manage enrolled club members, roles, contact information, and membership plans.</p>
         </div>
-        <div class="flex items-center gap-3">
-          <input type="text" id="members-search" oninput="renderMembers()" placeholder="Search name, role, email..." class="px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500 w-56">
-          <button onclick="openModal('add-member-modal')" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 whitespace-nowrap flex items-center gap-1.5">
-            <i data-lucide="user-plus" class="w-4 h-4"></i>
-            <span>+ Add Member</span>
-          </button>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="text" id="members-search" oninput="renderMembers()" placeholder="Search name, phone..." class="input-control" style="width:200px;">
+          <button onclick="openModal('add-member-modal')" class="btn btn-primary">+ Add Member</button>
         </div>
       </div>
 
-      <div id="members-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        <!-- Dynamic Cards -->
+      <div id="members-cards-container" class="grid-3">
+        <!-- Rendered via JS -->
       </div>
     </div>
 
     <!-- 4. FEE CUSTOMIZER & PLANS VIEW -->
-    <div id="view-plans" style="display:none" class="view-panel space-y-6">
-      <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div id="view-plans" class="view-panel">
+      <div class="section-header">
         <div>
-          <h1 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
-            <i data-lucide="sliders" class="w-6 h-6 text-indigo-400"></i>
-            <span>Monthly Club Membership Fee Customizer & Plans</span>
-          </h1>
-          <p class="text-slate-400 text-sm mt-1">Configure membership tiers, pricing in ₹ INR, grace periods, and late fee fine rules.</p>
+          <h1 class="section-title"><span>🎛️ Monthly Fee Customizer & Plans</span></h1>
+          <p class="section-sub">Configure membership tiers, pricing in ₹ INR, grace periods, and late fee fine rules.</p>
         </div>
-        <button onclick="openAddPlanModal()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 whitespace-nowrap flex items-center gap-1.5">
-          <i data-lucide="plus-circle" class="w-4 h-4"></i>
-          <span>+ Add New Plan</span>
-        </button>
+        <button onclick="openAddPlanModal()" class="btn btn-primary">+ Add New Plan</button>
       </div>
 
-      <div id="plans-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <!-- Dynamic Plan Cards -->
+      <div id="plans-cards-container" class="grid-4">
+        <!-- Rendered via JS -->
       </div>
     </div>
 
     <!-- 5. CLUB EARNINGS LOGGER VIEW -->
-    <div id="view-earnings" style="display:none" class="view-panel space-y-6">
-      <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div id="view-earnings" class="view-panel">
+      <div class="section-header">
         <div>
-          <h1 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
-            <i data-lucide="dollar-sign" class="w-6 h-6 text-emerald-400"></i>
-            <span>Club Earnings & Other Income Logger</span>
-          </h1>
-          <p class="text-slate-400 text-sm mt-1">Log revenue from cricket/football tournaments, banner sponsorships, canteen, jersey sales & donations.</p>
+          <h1 class="section-title"><span>💵 Club Earnings & Income Logger</span></h1>
+          <p class="section-sub">Log revenue from cricket/football tournaments, sponsorships, canteen, jersey sales & donations.</p>
         </div>
-        <button onclick="openModal('add-earning-modal')" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 whitespace-nowrap flex items-center gap-1.5">
-          <i data-lucide="plus-circle" class="w-4 h-4"></i>
-          <span>+ Log New Earning</span>
-        </button>
+        <button onclick="openModal('add-earning-modal')" class="btn btn-emerald">+ Log New Earning</button>
       </div>
 
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-slate-800/80 text-slate-300 font-bold uppercase tracking-wider">
+      <div class="table-card">
+        <div class="table-container">
+          <table>
+            <thead>
               <tr>
-                <th class="p-4">Earning Title</th>
-                <th class="p-4">Category</th>
-                <th class="p-4">Payer / Source</th>
-                <th class="p-4">Date</th>
-                <th class="p-4">Method</th>
-                <th class="p-4">Amount (₹)</th>
-                <th class="p-4 text-right">Actions</th>
+                <th>Earning Title</th>
+                <th>Category</th>
+                <th>Payer / Source</th>
+                <th>Date</th>
+                <th>Method</th>
+                <th>Amount (₹)</th>
+                <th style="text-align:right;">Actions</th>
               </tr>
             </thead>
-            <tbody id="earnings-tbody" class="divide-y divide-slate-800">
-              <tr><td colspan="7" class="text-center p-8 text-slate-400">Loading earnings...</td></tr>
+            <tbody id="earnings-tbody">
+              <!-- Rendered via JS -->
             </tbody>
           </table>
         </div>
@@ -349,19 +381,38 @@
     </div>
 
     <!-- 6. CUSTOM FIELDS VIEW -->
-    <div id="view-custom-fields" style="display:none" class="view-panel space-y-6">
-      <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex justify-between items-center">
+    <div id="view-custom-fields" class="view-panel">
+      <div class="section-header">
         <div>
-          <h1 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
-            <i data-lucide="layers" class="w-6 h-6 text-indigo-400"></i>
-            <span>Custom Form Fields Configuration</span>
-          </h1>
-          <p class="text-slate-400 text-sm mt-1">Configure additional member properties (Locker #, Emergency Phone, Activity) and earning metadata.</p>
+          <h1 class="section-title"><span>📑 Custom Form Fields Configuration</span></h1>
+          <p class="section-sub">Configure additional member properties (Locker #, Emergency Phone, Activity) and earning metadata.</p>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5" id="custom-fields-container">
-        <!-- Dynamic Custom Fields List -->
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">👤 Member Profile Custom Fields</h3>
+          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
+            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; color:#fff;">Locker #</div><div style="color:var(--text-muted); font-size:11px;">Assigned member locker ID</div></div>
+              <span class="badge badge-blue">Text</span>
+            </div>
+            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; color:#fff;">Primary Activity</div><div style="color:var(--text-muted); font-size:11px;">Cricket, Football, Gym, Tennis, Swimming</div></div>
+              <span class="badge badge-blue">Select</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size:15px; font-weight:800; color:#fff; margin-bottom:12px;">💰 Earning & Sponsorship Custom Fields</h3>
+          <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
+            <div style="background:#090f1d; padding:12px; border-radius:10px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; color:#fff;">Sponsorship Level</div><div style="color:var(--text-muted); font-size:11px;">Platinum Title, Gold Partner, Silver, Patron</div></div>
+              <span class="badge badge-paid">Select</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -370,44 +421,41 @@
   <!-- MODALS -->
 
   <!-- ADD MEMBER MODAL -->
-  <div id="add-member-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="user-plus" class="w-5 h-5 text-indigo-400"></i>
-          <span id="add-member-title">➕ Add New Club Member</span>
-        </h3>
-        <button onclick="closeModal('add-member-modal')" class="text-slate-400 hover:text-white p-1">✕</button>
+  <div id="add-member-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title" id="add-member-title">➕ Add New Club Member</h3>
+        <button onclick="closeModal('add-member-modal')" class="modal-close">✕</button>
       </div>
 
-      <form onsubmit="handleSaveMember(event)" class="space-y-3.5 max-h-[75vh] overflow-y-auto pr-1">
+      <form onsubmit="handleSaveMember(event)">
         <input type="hidden" id="mem-id">
-        <div>
-          <label class="block text-xs text-slate-300 font-semibold mb-1">Full Name *</label>
-          <input type="text" id="mem-name" required placeholder="e.g. Subhankar Mukherjee" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-medium text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input type="text" id="mem-name" required placeholder="e.g. Subhankar Mukherjee" class="form-input">
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="form-row form-group">
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Email Address</label>
-            <input type="email" id="mem-email" placeholder="member@kns.org" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="mem-email" placeholder="member@kns.org" class="form-input">
           </div>
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Phone Number *</label>
-            <input type="tel" id="mem-phone" required placeholder="+91 98765 43210" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+            <label class="form-label">Phone Number *</label>
+            <input type="tel" id="mem-phone" required placeholder="+91 98765 43210" class="form-input">
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="form-row form-group">
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Membership Plan *</label>
-            <select id="mem-plan" required onchange="handleMemberPlanSelect(this.value)" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
-              <!-- Dynamic Plans -->
+            <label class="form-label">Membership Plan *</label>
+            <select id="mem-plan" required onchange="handleMemberPlanSelect(this.value)" class="form-input">
+              <!-- Populated via JS -->
             </select>
           </div>
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Member Club Role *</label>
-            <select id="mem-role" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none">
+            <label class="form-label">Member Club Role *</label>
+            <select id="mem-role" required class="form-input">
               <option value="Member">🔵 Club Member (Standard)</option>
               <option value="Finance">🟢 Finance Officer & Member</option>
               <option value="Executive Member">🟣 Executive Member / Committee</option>
@@ -418,61 +466,58 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="form-row form-group">
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Custom Fee Discount (Optional ₹)</label>
-            <input type="number" id="mem-custom-fee" placeholder="Leave blank for plan fee" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500">
+            <label class="form-label">Custom Fee (Optional ₹)</label>
+            <input type="number" id="mem-custom-fee" placeholder="Leave blank for plan fee" class="form-input">
           </div>
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Joining Date</label>
-            <input type="date" id="mem-join-date" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
+            <label class="form-label">Joining Date</label>
+            <input type="date" id="mem-join-date" class="form-input">
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs text-slate-300 font-semibold mb-1">Locker # / Primary Activity</label>
-          <div class="grid grid-cols-2 gap-3">
-            <input type="text" id="mem-locker" placeholder="Locker # (e.g. LK-12)" class="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
-            <input type="text" id="mem-activity" placeholder="e.g. Cricket / Football / Gym" class="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Locker #</label>
+            <input type="text" id="mem-locker" placeholder="e.g. LK-12" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Primary Activity</label>
+            <input type="text" id="mem-activity" placeholder="e.g. Cricket / Football" class="form-input">
           </div>
         </div>
 
-        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-800">
-          <button type="button" onclick="closeModal('add-member-modal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs shadow-lg shadow-indigo-600/30">Save Member</button>
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-member-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Member</button>
         </div>
       </form>
     </div>
   </div>
 
   <!-- ADD EARNING MODAL -->
-  <div id="add-earning-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="trending-up" class="w-5 h-5 text-emerald-400"></i>
-          <span>💰 Log New Club Earning</span>
-        </h3>
-        <button onclick="closeModal('add-earning-modal')" class="text-slate-400 hover:text-white p-1">✕</button>
+  <div id="add-earning-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title">💰 Log New Club Earning</h3>
+        <button onclick="closeModal('add-earning-modal')" class="modal-close">✕</button>
       </div>
 
-      <form onsubmit="handleSaveEarning(event)" class="space-y-3.5 max-h-[75vh] overflow-y-auto pr-1">
-        <div>
-          <label class="block text-xs text-slate-300 font-semibold mb-1">Earning Title *</label>
-          <input type="text" id="earn-title" required placeholder="e.g. Annual Cricket Tournament Entry Fees / Banner Sponsorship" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-medium text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+      <form onsubmit="handleSaveEarning(event)">
+        <div class="form-group">
+          <label class="form-label">Earning Title *</label>
+          <input type="text" id="earn-title" required placeholder="e.g. Summer Cricket Tournament Entry Fees" class="form-input">
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="form-row form-group">
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Amount (₹ INR) *</label>
-            <div class="relative">
-              <span class="absolute left-3 top-2 text-emerald-400 font-bold text-base">₹</span>
-              <input type="number" id="earn-amount" min="1" step="1" required placeholder="5000" class="w-full pl-8 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-emerald-400 font-extrabold text-base focus:ring-2 focus:ring-emerald-500 outline-none">
-            </div>
+            <label class="form-label">Amount (₹ INR) *</label>
+            <input type="number" id="earn-amount" min="1" step="1" required placeholder="5000" class="form-input" style="color:#34d399; font-weight:800; font-size:15px;">
           </div>
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Category *</label>
-            <select id="earn-category" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-semibold">
+            <label class="form-label">Category *</label>
+            <select id="earn-category" class="form-input">
               <option value="tournament">🏆 Tournament & Entry Fees</option>
               <option value="sponsorship">🤝 Corporate Sponsorship & Banner</option>
               <option value="canteen_bar">☕ Clubhouse Canteen & Tea Stall</option>
@@ -485,10 +530,10 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="form-row form-group">
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Payment Method</label>
-            <select id="earn-method" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-semibold">
+            <label class="form-label">Payment Method</label>
+            <select id="earn-method" class="form-input">
               <option value="cash">💵 Cash</option>
               <option value="upi">📱 UPI / QR Code</option>
               <option value="card">💳 Card / POS</option>
@@ -496,120 +541,112 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Date Received</label>
-            <input type="date" id="earn-date" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
+            <label class="form-label">Date Received</label>
+            <input type="date" id="earn-date" class="form-input">
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="form-row form-group">
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Received From / Payer</label>
-            <input type="text" id="earn-payer" placeholder="e.g. Apex Sports Agency" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs">
+            <label class="form-label">Received From / Payer</label>
+            <input type="text" id="earn-payer" placeholder="e.g. Apex Sports Agency" class="form-input">
           </div>
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Invoice / Reference #</label>
-            <input type="text" id="earn-ref" placeholder="REC-1029" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs font-mono">
+            <label class="form-label">Invoice / Reference #</label>
+            <input type="text" id="earn-ref" placeholder="REC-1029" class="form-input font-mono">
           </div>
         </div>
 
-        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-800">
-          <button type="button" onclick="closeModal('add-earning-modal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs shadow-lg shadow-emerald-600/30">Save Earning</button>
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-earning-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-emerald">Save Earning</button>
         </div>
       </form>
     </div>
   </div>
 
   <!-- ADD / EDIT PLAN MODAL -->
-  <div id="plan-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="sliders" class="w-5 h-5 text-indigo-400"></i>
-          <span id="plan-modal-title">➕ Membership Plan</span>
-        </h3>
-        <button onclick="closeModal('plan-modal')" class="text-slate-400 hover:text-white p-1">✕</button>
+  <div id="plan-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title" id="plan-modal-title">➕ Membership Plan</h3>
+        <button onclick="closeModal('plan-modal')" class="modal-close">✕</button>
       </div>
 
-      <form onsubmit="handleSavePlan(event)" class="space-y-3.5">
+      <form onsubmit="handleSavePlan(event)">
         <input type="hidden" id="plan-id">
-        <div>
-          <label class="block text-xs text-slate-300 font-semibold mb-1">Plan Name *</label>
-          <input type="text" id="plan-name" required placeholder="e.g. Cricket Academy Plan / VIP Member" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-medium text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+        <div class="form-group">
+          <label class="form-label">Plan Name *</label>
+          <input type="text" id="plan-name" required placeholder="e.g. Cricket Academy Plan / VIP Member" class="form-input">
         </div>
 
-        <div>
-          <label class="block text-xs text-slate-300 font-semibold mb-1">Monthly Fee (₹ INR) *</label>
-          <div class="relative">
-            <span class="absolute left-3 top-2 text-emerald-400 font-bold text-base">₹</span>
-            <input type="number" id="plan-fee" min="0" step="1" required placeholder="500" class="w-full pl-8 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-emerald-400 font-extrabold text-lg focus:ring-2 focus:ring-emerald-500 outline-none">
-          </div>
+        <div class="form-group">
+          <label class="form-label">Monthly Fee (₹ INR) *</label>
+          <input type="number" id="plan-fee" min="0" step="1" required placeholder="500" class="form-input" style="color:#34d399; font-weight:800; font-size:16px;">
         </div>
 
-        <div>
-          <label class="block text-xs text-slate-300 font-semibold mb-1">Description & Perks</label>
-          <textarea id="plan-desc" rows="2" placeholder="Full ground access, gym, coaching..." class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-xs outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+        <div class="form-group">
+          <label class="form-label">Description & Perks</label>
+          <textarea id="plan-desc" rows="2" placeholder="Full ground access, gym, coaching..." class="form-input" style="resize:none;"></textarea>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="form-row form-group">
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Grace Period (Days)</label>
-            <input type="number" id="plan-grace" min="0" value="10" class="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white font-semibold text-sm">
+            <label class="form-label">Grace Period (Days)</label>
+            <input type="number" id="plan-grace" min="0" value="10" class="form-input">
           </div>
           <div>
-            <label class="block text-xs text-slate-300 font-semibold mb-1">Late Fine (₹ INR)</label>
-            <input type="number" id="plan-late-fine" min="0" value="50" class="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white font-semibold text-sm">
+            <label class="form-label">Late Fine (₹ INR)</label>
+            <input type="number" id="plan-late-fine" min="0" value="50" class="form-input">
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs text-slate-300 font-semibold mb-1">Theme Accent Color</label>
-          <input type="color" id="plan-color" value="#3b82f6" class="w-full h-8 rounded border-0 cursor-pointer bg-transparent">
+        <div class="form-group">
+          <label class="form-label">Theme Accent Color</label>
+          <input type="color" id="plan-color" value="#3b82f6" style="width:100%; height:36px; border:none; border-radius:8px; cursor:pointer; background:transparent;">
         </div>
 
-        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-800">
-          <button type="button" onclick="closeModal('plan-modal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs shadow-lg shadow-indigo-600/30">Save Plan</button>
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('plan-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Plan</button>
         </div>
       </form>
     </div>
   </div>
 
   <!-- RECEIPT MODAL (READY TO PRINT) -->
-  <div id="receipt-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-      <div class="flex justify-between items-center border-b border-slate-800 pb-3 no-print">
-        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <span>🧾 Payment Receipt</span>
-        </h3>
-        <div class="flex items-center gap-2">
-          <button onclick="window.print()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg shadow">🖨️ Print</button>
-          <button onclick="closeModal('receipt-modal')" class="text-slate-400 hover:text-white p-1">✕</button>
+  <div id="receipt-modal" class="modal-overlay print-modal">
+    <div class="modal-box">
+      <div class="modal-head no-print">
+        <h3 class="modal-title">🧾 Payment Receipt</h3>
+        <div style="display:flex; gap:6px;">
+          <button onclick="window.print()" class="btn btn-primary">🖨️ Print</button>
+          <button onclick="closeModal('receipt-modal')" class="modal-close">✕</button>
         </div>
       </div>
 
-      <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4 text-xs">
-        <div class="text-center border-b border-slate-800 pb-3">
-          <h2 class="text-base font-extrabold text-white">Kalikapur Nabin Sangha (KNSDC)</h2>
-          <p class="text-slate-400 text-[11px] mt-0.5">Club Monthly Membership Fee Official Receipt</p>
+      <div style="background:#090f1d; padding:18px; border-radius:14px; border:1px solid var(--border); font-size:12px;">
+        <div style="text-align:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
+          <h2 style="font-size:16px; font-weight:800; color:#fff;">Kalikapur Nabin Sangha (KNSDC)</h2>
+          <p style="color:var(--text-muted); font-size:11px; margin-top:2px;">Official Monthly Membership Fee Receipt</p>
         </div>
 
-        <div class="space-y-1.5">
-          <div class="flex justify-between"><span class="text-slate-400">Invoice No:</span> <span id="rec-invoice" class="font-mono font-bold text-indigo-300">-</span></div>
-          <div class="flex justify-between"><span class="text-slate-400">Member Name:</span> <span id="rec-name" class="font-bold text-white">-</span></div>
-          <div class="flex justify-between"><span class="text-slate-400">Club Role:</span> <span id="rec-role" class="text-emerald-400 font-bold">-</span></div>
-          <div class="flex justify-between"><span class="text-slate-400">Membership Plan:</span> <span id="rec-plan" class="font-semibold text-white">-</span></div>
-          <div class="flex justify-between"><span class="text-slate-400">Month Billed:</span> <span id="rec-month" class="font-bold text-white">-</span></div>
-          <div class="flex justify-between"><span class="text-slate-400">Payment Method:</span> <span id="rec-method" class="font-semibold text-slate-200">-</span></div>
-          <div class="flex justify-between"><span class="text-slate-400">Payment Date:</span> <span id="rec-date" class="text-slate-200">-</span></div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Invoice No:</span> <span id="rec-invoice" class="font-mono" style="font-weight:700; color:#818cf8;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Member Name:</span> <span id="rec-name" style="font-weight:700; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Club Role:</span> <span id="rec-role" style="font-weight:700; color:#34d399;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Membership Plan:</span> <span id="rec-plan" style="font-weight:600; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Month Billed:</span> <span id="rec-month" style="font-weight:700; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Payment Method:</span> <span id="rec-method" style="font-weight:600; color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Payment Date:</span> <span id="rec-date" style="color:var(--text-muted);">-</span></div>
         </div>
 
-        <div class="flex justify-between items-center pt-3 border-t border-slate-800 text-sm">
-          <span class="font-bold text-white">Total Paid:</span>
-          <span id="rec-amount" class="text-xl font-extrabold text-emerald-400">₹0</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:12px; margin-top:12px; font-size:14px;">
+          <span style="font-weight:700; color:#fff;">Total Amount Paid:</span>
+          <span id="rec-amount" style="font-size:20px; font-weight:900; color:#34d399;">₹0</span>
         </div>
 
-        <div class="text-center text-[10px] text-slate-500 pt-2 border-t border-slate-800">
+        <div style="text-align:center; font-size:10px; color:var(--text-dim); margin-top:14px; padding-top:10px; border-top:1px solid var(--border);">
           Authorized by Kalikapur Nabin Sangha Treasury & Accounts
         </div>
       </div>
@@ -623,11 +660,11 @@
     const SUPABASE_KEY = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
     let supabase = null;
     try {
-      if (window.supabase && window.supabase.createClient) {
+      if (window.supabase && typeof window.supabase.createClient === 'function') {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       }
     } catch(e) {
-      console.warn('Supabase offline mode:', e);
+      console.warn('Supabase initialization notice:', e);
     }
 
     // 2. Default State & Seed Data (in Indian Rupees ₹)
@@ -657,46 +694,37 @@
       return '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     }
 
-    // Tab Switcher
-    window.switchTab = function(tabName) {
-      var panels = ['dashboard','checklist','members','plans','earnings','custom-fields'];
-      panels.forEach(function(name) {
-        var panel = document.getElementById('view-' + name);
-        var btn   = document.getElementById('tab-' + name);
-        if (panel) panel.style.display = (name === tabName) ? 'block' : 'none';
-        if (btn) {
-          if (name === tabName) {
-            btn.style.backgroundColor = '#4f46e5';
-            btn.style.color = '#ffffff';
-            btn.style.fontWeight = '700';
-          } else {
-            btn.style.backgroundColor = '';
-            btn.style.color = '';
-            btn.style.fontWeight = '';
-          }
-        }
-      });
-      try {
-        if (tabName === 'dashboard') renderDashboard();
-        else if (tabName === 'checklist') renderChecklist();
-        else if (tabName === 'members') renderMembers();
-        else if (tabName === 'plans') renderPlans();
-        else if (tabName === 'earnings') renderEarnings();
-        else if (tabName === 'custom-fields') renderCustomFields();
-      } catch(err) { console.error('Tab render error:', err); }
-      try { if (window.lucide) window.lucide.createIcons(); } catch(e) {}
+    // Navigation & Tab Switcher (identical to Admin panel)
+    function nav(tabName) {
+      window.nav = nav;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+
+      const activeBtn = document.getElementById('tab-' + tabName);
+      const activePanel = document.getElementById('view-' + tabName);
+
+      if (activeBtn) activeBtn.classList.add('active');
+      if (activePanel) activePanel.classList.add('active');
+
+      if (tabName === 'dashboard') renderDashboard();
+      else if (tabName === 'checklist') renderChecklist();
+      else if (tabName === 'members') renderMembers();
+      else if (tabName === 'plans') renderPlans();
+      else if (tabName === 'earnings') renderEarnings();
     };
 
-    window.openModal = function(id) {
+    // Modal Control
+    function openModal(id) {
+      window.openModal = openModal;
       const el = document.getElementById(id);
-      if (el) el.classList.remove('hidden');
+      if (el) el.classList.add('active');
       if (id === 'add-member-modal') populatePlanOptions();
-      try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch(e) {}
     };
 
-    window.closeModal = function(id) {
+    function closeModal(id) {
+      window.closeModal = closeModal;
       const el = document.getElementById(id);
-      if (el) el.classList.add('hidden');
+      if (el) el.classList.remove('active');
     };
 
     function populatePlanOptions() {
@@ -712,9 +740,10 @@
       }
     }
 
-    window.handleMonthChange = function(m) {
+    function handleMonthChange(m) {
+      window.handleMonthChange = handleMonthChange;
       activeMonth = m;
-      window.switchTab('dashboard');
+      renderDashboard();
       renderChecklist();
     };
 
@@ -748,14 +777,23 @@
       let totalClubRevenue = feesCollected + totalOtherEarnings;
       let collectionRate = feesExpected > 0 ? Math.round((feesCollected / feesExpected) * 100) : 0;
 
-      document.getElementById('dash-total-revenue').textContent = formatINR(totalClubRevenue);
-      document.getElementById('dash-fees-collected').textContent = formatINR(feesCollected);
-      document.getElementById('dash-target-fees').textContent = `Target: ${formatINR(feesExpected)}`;
-      document.getElementById('dash-rate').textContent = `${collectionRate}%`;
-      document.getElementById('dash-fees-pending').textContent = formatINR(feesPending);
-      document.getElementById('dash-pending-count').textContent = `${pendingCount} members pending`;
-      document.getElementById('dash-overdue-count').textContent = `${overdueCount} overdue`;
-      document.getElementById('dash-other-earnings').textContent = formatINR(totalOtherEarnings);
+      const elRev = document.getElementById('dash-total-revenue');
+      const elCol = document.getElementById('dash-fees-collected');
+      const elTar = document.getElementById('dash-target-fees');
+      const elRate = document.getElementById('dash-rate');
+      const elPen = document.getElementById('dash-fees-pending');
+      const elPenCnt = document.getElementById('dash-pending-count');
+      const elOvdCnt = document.getElementById('dash-overdue-count');
+      const elOth = document.getElementById('dash-other-earnings');
+
+      if (elRev) elRev.textContent = formatINR(totalClubRevenue);
+      if (elCol) elCol.textContent = formatINR(feesCollected);
+      if (elTar) elTar.textContent = `Target: ${formatINR(feesExpected)}`;
+      if (elRate) elRate.textContent = `${collectionRate}%`;
+      if (elPen) elPen.textContent = formatINR(feesPending);
+      if (elPenCnt) elPenCnt.textContent = `${pendingCount} members pending`;
+      if (elOvdCnt) elOvdCnt.textContent = `${overdueCount} overdue`;
+      if (elOth) elOth.textContent = formatINR(totalOtherEarnings);
 
       // Recent Transactions
       const tbody = document.getElementById('dash-recent-tbody');
@@ -764,13 +802,13 @@
       let rows = [];
       earnings.slice(0, 4).forEach(e => {
         rows.push(`
-          <tr class="hover:bg-slate-800/40 transition">
-            <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">EARNING</span></td>
-            <td class="p-3.5 font-bold text-white">${e.title}</td>
-            <td class="p-3.5 text-slate-300">${e.category}</td>
-            <td class="p-3.5 text-slate-400 font-mono">${e.date}</td>
-            <td class="p-3.5 font-bold text-emerald-400">+${formatINR(e.amount)}</td>
-            <td class="p-3.5 text-slate-400 font-mono">${e.referenceNo || '-'}</td>
+          <tr>
+            <td><span class="badge badge-paid">EARNING</span></td>
+            <td style="font-weight:700; color:#fff;">${e.title}</td>
+            <td style="color:var(--text-muted);">${e.category}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${e.date}</td>
+            <td style="font-weight:800; color:#34d399;">+${formatINR(e.amount)}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${e.referenceNo || '-'}</td>
           </tr>
         `);
       });
@@ -779,19 +817,19 @@
         const m = members.find(x => x.id === p.memberId);
         if (!m) return;
         rows.push(`
-          <tr class="hover:bg-slate-800/40 transition">
-            <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">MEMBER FEE</span></td>
-            <td class="p-3.5 font-bold text-white">${m.name}</td>
-            <td class="p-3.5 text-slate-300">${p.monthYear} Fee</td>
-            <td class="p-3.5 text-slate-400 font-mono">${p.paidAt ? p.paidAt.split('T')[0] : activeMonth}</td>
-            <td class="p-3.5 font-bold text-emerald-400">+${formatINR(p.paidAmount || p.amount)}</td>
-            <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">PAID</span></td>
+          <tr>
+            <td><span class="badge badge-blue">MEMBER FEE</span></td>
+            <td style="font-weight:700; color:#fff;">${m.name}</td>
+            <td style="color:var(--text-muted);">${p.monthYear} Fee</td>
+            <td class="font-mono" style="color:var(--text-dim);">${p.paidAt ? p.paidAt.split('T')[0] : activeMonth}</td>
+            <td style="font-weight:800; color:#34d399;">+${formatINR(p.paidAmount || p.amount)}</td>
+            <td><span class="badge badge-paid">PAID</span></td>
           </tr>
         `);
       });
 
       if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center p-8 text-slate-400">No transactions recorded yet. Add a member or log an earning!</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">No transactions recorded yet. Click "+ Add Member" or "+ Add Earning" to start!</td></tr>';
       } else {
         tbody.innerHTML = rows.join('');
       }
@@ -812,7 +850,7 @@
       });
 
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center p-12 text-slate-400">No members found for this month. Click "+ Add Member" to add members.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No members found. Click "+ Add Member" to add your first member.</td></tr>';
         return;
       }
 
@@ -824,38 +862,37 @@
         const isOverdue = pay && pay.status === 'overdue';
 
         let statusBadge = isPaid 
-          ? '<span class="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">✓ PAID</span>'
-          : (isOverdue 
-              ? '<span class="px-2.5 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold">⚠️ OVERDUE</span>'
-              : '<span class="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold">⏳ PENDING</span>');
+          ? '<span class="badge badge-paid">✓ PAID</span>'
+          : (isOverdue ? '<span class="badge badge-overdue">⚠️ OVERDUE</span>' : '<span class="badge badge-pending">⏳ PENDING</span>');
 
         let actions = isPaid
-          ? `<button onclick="viewReceipt('${m.id}', '${activeMonth}')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 font-bold rounded-lg text-xs">🧾 Receipt</button>`
+          ? `<button onclick="viewReceipt('${m.id}', '${activeMonth}')" class="btn btn-secondary" style="padding:4px 10px; font-size:11px;">🧾 Receipt</button>`
           : `
-            <div class="flex gap-1.5 justify-end">
-              <button onclick="markPaymentPaid('${m.id}', '${activeMonth}', 'cash')" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs shadow">💵 Cash</button>
-              <button onclick="markPaymentPaid('${m.id}', '${activeMonth}', 'upi')" class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs shadow">📱 UPI</button>
+            <div style="display:flex; gap:6px; justify-content:flex-end;">
+              <button onclick="markPaymentPaid('${m.id}', '${activeMonth}', 'cash')" class="btn btn-emerald" style="padding:4px 8px; font-size:11px;">💵 Cash</button>
+              <button onclick="markPaymentPaid('${m.id}', '${activeMonth}', 'upi')" class="btn btn-primary" style="padding:4px 8px; font-size:11px;">📱 UPI</button>
             </div>
           `;
 
         return `
-          <tr class="hover:bg-slate-800/40 transition">
-            <td class="p-4">
-              <div class="font-bold text-white text-sm">${m.name}</div>
-              <div class="text-[11px] text-slate-400">${m.phone || m.email || ''}</div>
+          <tr>
+            <td>
+              <div style="font-weight:700; color:#fff; font-size:13px;">${m.name}</div>
+              <div style="font-size:11px; color:var(--text-dim);">${m.phone || m.email || ''}</div>
             </td>
-            <td class="p-4"><span class="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-slate-700 font-bold">${m.role || 'Member'}</span></td>
-            <td class="p-4 font-semibold text-slate-300">${plan ? plan.name : 'Standard'}</td>
-            <td class="p-4 font-extrabold text-emerald-400 text-sm">${formatINR(fee)}</td>
-            <td class="p-4">${statusBadge}</td>
-            <td class="p-4 text-slate-400 uppercase font-mono">${isPaid ? (pay.paymentMethod || 'cash') : '-'}</td>
-            <td class="p-4 text-right">${actions}</td>
+            <td><span class="badge badge-blue">${m.role || 'Member'}</span></td>
+            <td style="font-weight:600; color:#fff;">${plan ? plan.name : 'Standard'}</td>
+            <td style="font-weight:800; color:#34d399; font-size:13px;">${formatINR(fee)}</td>
+            <td>${statusBadge}</td>
+            <td class="font-mono" style="color:var(--text-muted); text-transform:uppercase;">${isPaid ? (pay.paymentMethod || 'cash') : '-'}</td>
+            <td style="text-align:right;">${actions}</td>
           </tr>
         `;
       }).join('');
     }
 
-    window.markPaymentPaid = function(memberId, mStr, method) {
+    function markPaymentPaid(memberId, mStr, method) {
+      window.markPaymentPaid = markPaymentPaid;
       const m = members.find(x => x.id === memberId);
       if (!m) return;
       const plan = plans.find(p => p.id === m.planId);
@@ -877,18 +914,16 @@
         notes: `Paid via ${method}`
       };
 
-      if (existingIndex !== -1) {
-        payments[existingIndex] = payObj;
-      } else {
-        payments.push(payObj);
-      }
+      if (existingIndex !== -1) payments[existingIndex] = payObj;
+      else payments.push(payObj);
 
       saveData();
       renderChecklist();
-      window.switchTab('dashboard');
+      renderDashboard();
     };
 
-    window.viewReceipt = function(memberId, mStr) {
+    function viewReceipt(memberId, mStr) {
+      window.viewReceipt = viewReceipt;
       const m = members.find(x => x.id === memberId);
       const p = payments.find(x => x.memberId === memberId && x.monthYear === mStr);
       if (!m || !p) return;
@@ -920,7 +955,7 @@
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="col-span-full text-center p-12 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400">No members in directory. Click "+ Add Member" to register your first club member.</div>';
+        container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:48px; background:var(--card); border:1px solid var(--border); border-radius:18px; color:var(--text-muted);">No members in directory. Click "+ Add Member" to register your first club member.</div>';
         return;
       }
 
@@ -929,44 +964,41 @@
         const fee = (m.customFee !== undefined && m.customFee !== null && m.customFee >= 0) ? m.customFee : (plan ? plan.fee : 0);
 
         return `
-          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between hover:border-slate-700 transition">
+          <div class="card" style="display:flex; flex-direction:column; justify-content:space-between;">
             <div>
-              <div class="flex justify-between items-start">
-                <div class="flex items-center space-x-3">
-                  <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-extrabold text-sm">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div style="width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg,#4f46e5,#9333ea); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:14px;">
                     ${m.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <h3 class="font-bold text-base text-white">${m.name}</h3>
-                    <span class="px-2 py-0.2 rounded text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      ${m.role || 'Member'}
-                    </span>
+                    <h3 style="font-size:15px; font-weight:800; color:#fff;">${m.name}</h3>
+                    <span class="badge badge-paid">${m.role || 'Member'}</span>
                   </div>
                 </div>
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${m.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}">
-                  ${(m.status || 'active').toUpperCase()}
-                </span>
+                <span class="badge badge-blue">${(m.status || 'active').toUpperCase()}</span>
               </div>
 
-              <div class="mt-4 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-1 text-xs">
-                <div class="flex justify-between"><span class="text-slate-400">Phone:</span> <span class="text-slate-200 font-semibold">${m.phone || '-'}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Email:</span> <span class="text-slate-200">${m.email || '-'}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Plan:</span> <span class="text-indigo-300 font-semibold">${plan ? plan.name : 'Standard'}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Monthly Fee:</span> <span class="text-emerald-400 font-extrabold">${formatINR(fee)}</span></div>
-                ${m.customFields?.lockerNumber ? `<div class="flex justify-between"><span class="text-slate-400">Locker:</span> <span class="text-white font-bold">${m.customFields.lockerNumber}</span></div>` : ''}
+              <div style="margin-top:14px; background:#090f1d; padding:12px; border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; font-size:12px;">
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Phone:</span> <span style="color:#fff; font-weight:600;">${m.phone || '-'}</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Email:</span> <span style="color:#fff;">${m.email || '-'}</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Plan:</span> <span style="color:#818cf8; font-weight:700;">${plan ? plan.name : 'Standard'}</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Monthly Fee:</span> <span style="color:#34d399; font-weight:900;">${formatINR(fee)}</span></div>
+                ${m.customFields?.lockerNumber ? `<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Locker:</span> <span style="color:#fff; font-weight:700;">${m.customFields.lockerNumber}</span></div>` : ''}
               </div>
             </div>
 
-            <div class="mt-4 pt-3 border-t border-slate-800 flex gap-2">
-              <button onclick="editMember('${m.id}')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-xs transition">✏️ Edit</button>
-              <button onclick="deleteMember('${m.id}', '${m.name}')" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-bold rounded-lg text-xs transition">🗑️</button>
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; gap:8px;">
+              <button onclick="editMember('${m.id}')" class="btn btn-secondary" style="flex:1;">✏️ Edit</button>
+              <button onclick="deleteMember('${m.id}', '${m.name}')" class="btn btn-danger" style="padding:8px 12px;">🗑️</button>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    window.handleSaveMember = function(e) {
+    function handleSaveMember(e) {
+      window.handleSaveMember = handleSaveMember;
       e.preventDefault();
       const id = document.getElementById('mem-id').value || ('mem-' + Date.now());
       const name = document.getElementById('mem-name').value.trim();
@@ -993,10 +1025,11 @@
       closeModal('add-member-modal');
       renderMembers();
       renderChecklist();
-      window.switchTab('dashboard');
+      renderDashboard();
     };
 
-    window.editMember = function(id) {
+    function editMember(id) {
+      window.editMember = editMember;
       const m = members.find(x => x.id === id);
       if (!m) return;
       document.getElementById('add-member-title').textContent = `✏️ Edit "${m.name}"`;
@@ -1016,14 +1049,15 @@
       openModal('add-member-modal');
     };
 
-    window.deleteMember = function(id, name) {
+    function deleteMember(id, name) {
+      window.deleteMember = deleteMember;
       if (confirm(`Are you sure you want to delete member "${name}"?`)) {
         members = members.filter(x => x.id !== id);
         payments = payments.filter(x => x.memberId !== id);
         saveData();
         renderMembers();
         renderChecklist();
-        window.switchTab('dashboard');
+        renderDashboard();
       }
     };
 
@@ -1037,38 +1071,36 @@
       container.innerHTML = plans.map(plan => {
         const count = members.filter(m => m.planId === plan.id && m.status === 'active').length;
         return `
-          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden group hover:border-slate-700 transition">
-            <div class="absolute top-0 left-0 right-0 h-2" style="background-color: ${plan.color || '#3b82f6'}"></div>
+          <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; border-top:3px solid ${plan.color || '#3b82f6'};">
             <div>
-              <div class="flex justify-between items-start">
-                <h3 class="font-bold text-lg text-white">${plan.name}</h3>
-                <button onclick="deletePlan('${plan.id}', '${plan.name}')" class="text-slate-500 hover:text-red-400 p-1">🗑️</button>
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <h3 style="font-size:16px; font-weight:800; color:#fff;">${plan.name}</h3>
+                <button onclick="deletePlan('${plan.id}', '${plan.name}')" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;">🗑️</button>
               </div>
-              <p class="text-xs text-slate-400 mt-2 min-h-[36px]">${plan.description || ''}</p>
+              <p style="font-size:11px; color:var(--text-muted); margin-top:6px; min-height:32px;">${plan.description || ''}</p>
 
-              <div class="mt-4 bg-slate-800/80 p-4 rounded-xl border border-slate-700/80">
-                <span class="text-xs text-slate-400 block font-medium">Monthly Fee</span>
-                <span class="text-3xl font-extrabold text-emerald-400">${formatINR(plan.fee)}</span>
+              <div style="margin-top:14px; background:#090f1d; padding:12px; border-radius:12px; border:1px solid var(--border);">
+                <span style="font-size:11px; color:var(--text-muted); display:block;">Monthly Fee</span>
+                <span style="font-size:24px; font-weight:900; color:#34d399;">${formatINR(plan.fee)}</span>
               </div>
 
-              <div class="mt-3 text-xs text-slate-300 space-y-1.5 bg-slate-950/40 p-3 rounded-lg border border-slate-800">
-                <div class="flex justify-between"><span class="text-slate-400">Enrolled Members:</span> <span class="font-bold text-white">${count}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Grace Period:</span> <span class="font-bold text-amber-400">${plan.lateFeeDays || 10} days</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Late Fine:</span> <span class="font-bold text-red-400">${formatINR(plan.lateFeeAmount || 50)}</span></div>
+              <div style="margin-top:10px; font-size:11px; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; display:flex; flex-direction:column; gap:4px;">
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Enrolled:</span> <span style="font-weight:700; color:#fff;">${count} members</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Grace Period:</span> <span style="font-weight:700; color:#fbbf24;">${plan.lateFeeDays || 10} days</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Late Fine:</span> <span style="font-weight:700; color:#f87171;">${formatINR(plan.lateFeeAmount || 50)}</span></div>
               </div>
             </div>
 
-            <div class="mt-5 pt-3 border-t border-slate-800">
-              <button onclick="editPlan('${plan.id}')" class="w-full py-2 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-bold rounded-lg transition">
-                ✏️ Edit Plan
-              </button>
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+              <button onclick="editPlan('${plan.id}')" class="btn btn-secondary" style="width:100%;">✏️ Edit Plan</button>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    window.openAddPlanModal = function() {
+    function openAddPlanModal() {
+      window.openAddPlanModal = openAddPlanModal;
       document.getElementById('plan-modal-title').textContent = '➕ Add New Membership Plan';
       document.getElementById('plan-id').value = 'plan-' + Date.now();
       document.getElementById('plan-name').value = '';
@@ -1080,7 +1112,8 @@
       openModal('plan-modal');
     };
 
-    window.editPlan = function(id) {
+    function editPlan(id) {
+      window.editPlan = editPlan;
       const p = plans.find(x => x.id === id);
       if (!p) return;
       document.getElementById('plan-modal-title').textContent = `✏️ Edit "${p.name}"`;
@@ -1094,7 +1127,8 @@
       openModal('plan-modal');
     };
 
-    window.handleSavePlan = function(e) {
+    function handleSavePlan(e) {
+      window.handleSavePlan = handleSavePlan;
       e.preventDefault();
       const id = document.getElementById('plan-id').value;
       const name = document.getElementById('plan-name').value.trim();
@@ -1117,7 +1151,8 @@
       renderChecklist();
     };
 
-    window.deletePlan = function(id, name) {
+    function deletePlan(id, name) {
+      window.deletePlan = deletePlan;
       const enrolled = members.filter(m => m.planId === id && m.status === 'active').length;
       if (enrolled > 0) {
         alert(`Cannot delete "${name}" because it has ${enrolled} active member(s) enrolled.`);
@@ -1138,26 +1173,27 @@
       if (!tbody) return;
 
       if (earnings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center p-12 text-slate-400">No earnings recorded. Click "+ Log New Earning" to record income.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No earnings recorded. Click "+ Log New Earning" to record income.</td></tr>';
         return;
       }
 
       tbody.innerHTML = earnings.map(e => `
-        <tr class="hover:bg-slate-800/40 transition">
-          <td class="p-4 font-bold text-white text-sm">${e.title}</td>
-          <td class="p-4"><span class="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-bold">${e.category}</span></td>
-          <td class="p-4 text-slate-300">${e.payerOrCustomer || '-'}</td>
-          <td class="p-4 text-slate-400 font-mono">${e.date}</td>
-          <td class="p-4 text-slate-300 uppercase font-mono">${e.paymentMethod || 'cash'}</td>
-          <td class="p-4 font-extrabold text-emerald-400 text-sm">+${formatINR(e.amount)}</td>
-          <td class="p-4 text-right">
-            <button onclick="deleteEarning('${e.id}')" class="text-slate-500 hover:text-red-400 p-1">🗑️</button>
+        <tr>
+          <td style="font-weight:700; color:#fff; font-size:13px;">${e.title}</td>
+          <td><span class="badge badge-blue">${e.category}</span></td>
+          <td style="color:#fff;">${e.payerOrCustomer || '-'}</td>
+          <td class="font-mono" style="color:var(--text-dim);">${e.date}</td>
+          <td class="font-mono" style="color:var(--text-muted); text-transform:uppercase;">${e.paymentMethod || 'cash'}</td>
+          <td style="font-weight:900; color:#34d399; font-size:13px;">+${formatINR(e.amount)}</td>
+          <td style="text-align:right;">
+            <button onclick="deleteEarning('${e.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>
           </td>
         </tr>
       `).join('');
     }
 
-    window.handleSaveEarning = function(e) {
+    function handleSaveEarning(e) {
+      window.handleSaveEarning = handleSaveEarning;
       e.preventDefault();
       const title = document.getElementById('earn-title').value.trim();
       const amount = Number(document.getElementById('earn-amount').value) || 0;
@@ -1167,62 +1203,27 @@
       const payerOrCustomer = document.getElementById('earn-payer').value.trim();
       const referenceNo = document.getElementById('earn-ref').value.trim() || ('REC-' + Date.now().toString().slice(-6));
 
-      const earningObj = {
-        id: 'earn-' + Date.now(),
-        title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo
-      };
+      const earningObj = { id: 'earn-' + Date.now(), title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo };
 
       earnings.unshift(earningObj);
       saveData();
       closeModal('add-earning-modal');
       renderEarnings();
-      window.switchTab('dashboard');
+      renderDashboard();
     };
 
-    window.deleteEarning = function(id) {
+    function deleteEarning(id) {
+      window.deleteEarning = deleteEarning;
       if (confirm('Delete this earning entry?')) {
         earnings = earnings.filter(x => x.id !== id);
         saveData();
         renderEarnings();
-        window.switchTab('dashboard');
+        renderDashboard();
       }
     };
 
     // ══════════════════════════════════════════
-    // 6. CUSTOM FIELDS RENDER
-    // ══════════════════════════════════════════
-    function renderCustomFields() {
-      const c = document.getElementById('custom-fields-container');
-      if (!c) return;
-      c.innerHTML = `
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-          <h3 class="font-bold text-white text-base">👤 Member Profile Custom Fields</h3>
-          <div class="space-y-2 text-xs">
-            <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 flex justify-between items-center">
-              <div><div class="font-bold text-white">Locker #</div><div class="text-slate-400">Assigned member locker ID</div></div>
-              <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">Text</span>
-            </div>
-            <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 flex justify-between items-center">
-              <div><div class="font-bold text-white">Primary Activity</div><div class="text-slate-400">Cricket, Football, Gym, Tennis, Swimming</div></div>
-              <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">Select</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-          <h3 class="font-bold text-white text-base">💰 Earning & Sponsorship Custom Fields</h3>
-          <div class="space-y-2 text-xs">
-            <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 flex justify-between items-center">
-              <div><div class="font-bold text-white">Sponsorship Level</div><div class="text-slate-400">Platinum Title, Gold Partner, Silver, Patron</div></div>
-              <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">Select</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    // ══════════════════════════════════════════
-    // PERSISTENCE & SUPABASE SYNC
+    // PERSISTENCE & CLOUD SYNC
     // ══════════════════════════════════════════
     function saveData() {
       localStorage.setItem('fp_plans', JSON.stringify(plans));
@@ -1230,7 +1231,7 @@
       localStorage.setItem('fp_payments', JSON.stringify(payments));
       localStorage.setItem('fp_earnings', JSON.stringify(earnings));
 
-      // Live Supabase Push in background
+      // Background Supabase Push
       if (supabase) {
         if (members.length > 0) {
           const payload = members.map(m => ({
@@ -1267,18 +1268,30 @@
       }
     }
 
-    // Startup Initializer
-        // Instant UI Initializer (Non-blocking)
-    function initPortal() {
-      // First, force-hide all panels inline (override any CSS/Tailwind)
-      ['dashboard','checklist','members','plans','earnings','custom-fields'].forEach(function(name) {
-        var el = document.getElementById('view-' + name);
-        if (el) el.style.display = 'none';
-      });
-      window.switchTab('dashboard');
-      try { if (window.lucide) window.lucide.createIcons(); } catch(e) {}
+    
+    // Global function exposures
+    window.nav = nav;
+    window.openModal = openModal;
+    window.closeModal = closeModal;
+    window.markPaymentPaid = markPaymentPaid;
+    window.viewReceipt = viewReceipt;
+    window.handleSaveMember = handleSaveMember;
+    window.editMember = editMember;
+    window.deleteMember = deleteMember;
+    window.openAddPlanModal = openAddPlanModal;
+    window.editPlan = editPlan;
+    window.handleSavePlan = handleSavePlan;
+    window.deletePlan = deletePlan;
+    window.handleSaveEarning = handleSaveEarning;
+    window.deleteEarning = deleteEarning;
+    window.handleMonthChange = handleMonthChange;
 
-      // Background Supabase Sync (Non-blocking)
+    // Portal Bootloader
+    function init() {
+      console.log('KNSDC Finance Portal Initializing...');
+      nav('dashboard');
+
+      // Background Supabase Pull
       setTimeout(async () => {
         if (!supabase) return;
         try {
@@ -1291,6 +1304,7 @@
               lateFeeDays: p.late_fee_days || 10, lateFeeAmount: Number(p.late_fee_amount) || 50
             }));
           }
+
           const { data: dbMembers, error: em } = await supabase.from('members').select('*');
           if (!em && dbMembers && dbMembers.length > 0) {
             members = dbMembers.map(m => ({
@@ -1301,23 +1315,27 @@
               customFields: m.custom_fields || {}
             }));
           }
+
           const { data: dbEarnings, error: ee } = await supabase.from('club_earnings').select('*');
           if (!ee && dbEarnings && dbEarnings.length > 0) {
             earnings = dbEarnings.map(e => ({
               id: e.id, title: e.title, category: e.category, amount: Number(e.amount) || 0,
-              date: e.date, paymentMethod: e.payment_method, payerOrCustomer: e.payer_or_customer,
+              date: e.date, paymentMethod: e.payment_method, payerOrCustomer: e.payerOrCustomer,
               referenceNo: e.reference_no, description: e.description
             }));
           }
+
           renderDashboard();
-        } catch(err) { console.warn('Supabase sync:', err); }
-      }, 500);
+        } catch(err) {
+          console.warn('Background sync notice:', err);
+        }
+      }, 600);
     }
 
     if (document.readyState === 'loading') {
-      window.addEventListener('DOMContentLoaded', initPortal);
+      window.addEventListener('DOMContentLoaded', init);
     } else {
-      initPortal();
+      init();
     }
   </script>
 </body>
