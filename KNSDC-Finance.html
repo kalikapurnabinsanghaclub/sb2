@@ -22,8 +22,7 @@
       box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.35);
       font-weight: 700;
     }
-    .view-panel { display: none !important; }
-    .view-panel.active { display: block !important; animation: fadeIn 0.2s ease-in-out; }
+    .view-panel { display: none; }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
@@ -661,51 +660,32 @@
 
     // Tab Switcher
     window.switchTab = function(tabName) {
-      console.log('Switching to tab:', tabName);
-
-      // 1. Hide all panels with direct style
-      var allPanels = document.querySelectorAll('.view-panel');
-      for (var i = 0; i < allPanels.length; i++) {
-        allPanels[i].classList.remove('active');
-        allPanels[i].style.setProperty('display', 'none', 'important');
-      }
-
-      // 2. Deactivate all buttons
-      var allBtns = document.querySelectorAll('.tab-btn');
-      for (var j = 0; j < allBtns.length; j++) {
-        allBtns[j].classList.remove('active');
-      }
-
-      // 3. Show selected panel
-      var activePanel = document.getElementById('view-' + tabName);
-      var activeBtn = document.getElementById('tab-' + tabName);
-
-      if (activePanel) {
-        activePanel.classList.add('active');
-        activePanel.style.setProperty('display', 'block', 'important');
-      }
-
-      if (activeBtn) {
-        activeBtn.classList.add('active');
-      }
-
-      // 4. Render data for the selected tab
+      var panels = ['dashboard','checklist','members','plans','earnings','custom-fields'];
+      panels.forEach(function(name) {
+        var panel = document.getElementById('view-' + name);
+        var btn   = document.getElementById('tab-' + name);
+        if (panel) panel.style.display = (name === tabName) ? 'block' : 'none';
+        if (btn) {
+          if (name === tabName) {
+            btn.style.backgroundColor = '#4f46e5';
+            btn.style.color = '#ffffff';
+            btn.style.fontWeight = '700';
+          } else {
+            btn.style.backgroundColor = '';
+            btn.style.color = '';
+            btn.style.fontWeight = '';
+          }
+        }
+      });
       try {
-        if (tabName === 'dashboard') window.switchTab('dashboard');
+        if (tabName === 'dashboard') renderDashboard();
         else if (tabName === 'checklist') renderChecklist();
         else if (tabName === 'members') renderMembers();
         else if (tabName === 'plans') renderPlans();
         else if (tabName === 'earnings') renderEarnings();
         else if (tabName === 'custom-fields') renderCustomFields();
-      } catch(err) {
-        console.error('Error rendering tab ' + tabName + ':', err);
-      }
-
-      try {
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-          window.lucide.createIcons();
-        }
-      } catch(e) {}
+      } catch(err) { console.error('Tab render error:', err); }
+      try { if (window.lucide) window.lucide.createIcons(); } catch(e) {}
     };
 
     window.openModal = function(id) {
@@ -1291,13 +1271,13 @@
     // Startup Initializer
         // Instant UI Initializer (Non-blocking)
     function initPortal() {
-      console.log('Initializing KNSDC Finance Portal...');
+      // First, force-hide all panels inline (override any CSS/Tailwind)
+      ['dashboard','checklist','members','plans','earnings','custom-fields'].forEach(function(name) {
+        var el = document.getElementById('view-' + name);
+        if (el) el.style.display = 'none';
+      });
       window.switchTab('dashboard');
-      try {
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-          window.lucide.createIcons();
-        }
-      } catch(e) {}
+      try { if (window.lucide) window.lucide.createIcons(); } catch(e) {}
 
       // Background Supabase Sync (Non-blocking)
       setTimeout(async () => {
@@ -1312,7 +1292,6 @@
               lateFeeDays: p.late_fee_days || 10, lateFeeAmount: Number(p.late_fee_amount) || 50
             }));
           }
-
           const { data: dbMembers, error: em } = await supabase.from('members').select('*');
           if (!em && dbMembers && dbMembers.length > 0) {
             members = dbMembers.map(m => ({
@@ -1323,29 +1302,16 @@
               customFields: m.custom_fields || {}
             }));
           }
-
           const { data: dbEarnings, error: ee } = await supabase.from('club_earnings').select('*');
           if (!ee && dbEarnings && dbEarnings.length > 0) {
             earnings = dbEarnings.map(e => ({
               id: e.id, title: e.title, category: e.category, amount: Number(e.amount) || 0,
-              date: e.date, paymentMethod: e.payment_method, payerOrCustomer: e.payerOrCustomer,
+              date: e.date, paymentMethod: e.payment_method, payerOrCustomer: e.payer_or_customer,
               referenceNo: e.reference_no, description: e.description
             }));
           }
-
-          // Refresh the currently active view with synced data
-          const activePanel = document.querySelector('.view-panel.active');
-          if (activePanel) {
-            const currentTab = activePanel.id.replace('view-', '');
-            if (currentTab === 'dashboard') renderDashboard();
-            else if (currentTab === 'checklist') renderChecklist();
-            else if (currentTab === 'members') renderMembers();
-            else if (currentTab === 'plans') renderPlans();
-            else if (currentTab === 'earnings') renderEarnings();
-          }
-        } catch(err) {
-          console.warn('Background Supabase Sync Notice:', err);
-        }
+          renderDashboard();
+        } catch(err) { console.warn('Supabase sync:', err); }
       }, 500);
     }
 
