@@ -215,6 +215,17 @@
     let members = JSON.parse(localStorage.getItem('fp_members') || '[]');
     let payments = JSON.parse(localStorage.getItem('fp_payments') || '[]');
     let earnings = JSON.parse(localStorage.getItem('fp_earnings') || JSON.stringify(defaultEarnings));
+
+    const defaultSpendings = [
+      { id: 'spend-1', title: 'CESC Clubhouse Electricity & Floodlights Bill', category: 'utilities', amount: 8400, date: '2026-08-12', paymentMethod: 'upi', vendorOrRecipient: 'CESC Ltd', referenceNo: 'EXP-ELEC-882', description: 'Monthly electricity bill.' },
+      { id: 'spend-2', title: 'SG Cricket Match Balls & Practice Stumps (1 Box)', category: 'equipment', amount: 6200, date: '2026-08-09', paymentMethod: 'cash', vendorOrRecipient: 'Maidan Sports Corner', referenceNo: 'BILL-9921', description: 'Tournament grade leather balls.' },
+      { id: 'spend-3', title: 'Cricket Pitch Soil, Grass Trimming & Maintenance', category: 'ground_maintenance', amount: 4500, date: '2026-08-05', paymentMethod: 'cash', vendorOrRecipient: 'Ground Staff Team', referenceNo: 'VOUCHER-044', description: 'Soil leveling and boundary marking.' },
+      { id: 'spend-4', title: 'First Aid Kit, Pain Sprays & Ice Packs Refill', category: 'medical_firstaid', amount: 1800, date: '2026-08-02', paymentMethod: 'upi', vendorOrRecipient: 'Apollo Pharmacy', referenceNo: 'MED-1120', description: 'Sports injuries emergency kit.' }
+    ];
+
+    let spendings = JSON.parse(localStorage.getItem('fp_spendings') || JSON.stringify(defaultSpendings));
+    let earningsFilter = 'all';
+
     let activeMonth = '2026-08';
 
     // Currency Formatter (₹ INR)
@@ -320,6 +331,8 @@
       });
 
       let totalOtherEarnings = earnings.reduce((sum, e) => sum + (e.amount || 0), 0);
+      let totalClubSpendings = spendings.reduce((sum, s) => sum + (s.amount || 0), 0);
+      let netClubTreasury = (feesCollected + totalOtherEarnings) - totalClubSpendings;
       let totalClubRevenue = feesCollected + totalOtherEarnings;
       let collectionRate = feesExpected > 0 ? Math.round((feesCollected / feesExpected) * 100) : 0;
 
@@ -340,6 +353,13 @@
       if (elPenCnt) elPenCnt.textContent = `${pendingCount} members pending`;
       if (elOvdCnt) elOvdCnt.textContent = `${overdueCount} overdue`;
       if (elOth) elOth.textContent = formatINR(totalOtherEarnings);
+      const elSpend = document.getElementById('dash-total-spending');
+      const elNetTreasury = document.getElementById('dash-net-treasury');
+      if (elSpend) elSpend.textContent = '-' + formatINR(totalClubSpendings);
+      if (elNetTreasury) {
+        elNetTreasury.textContent = 'Net Balance: ' + (netClubTreasury >= 0 ? '+' : '') + formatINR(netClubTreasury);
+        elNetTreasury.style.color = netClubTreasury >= 0 ? '#34d399' : '#f87171';
+      }
 
       // Recent Transactions
       const tbody = document.getElementById('dash-recent-tbody');
@@ -718,24 +738,68 @@
       const tbody = document.getElementById('earnings-tbody');
       if (!tbody) return;
 
-      if (earnings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No earnings recorded. Click "+ Log New Earning" to record income.</td></tr>';
+      let totalEarn = earnings.reduce((sum, e) => sum + (e.amount || 0), 0);
+      let totalSpend = spendings.reduce((sum, s) => sum + (s.amount || 0), 0);
+      let netBal = totalEarn - totalSpend;
+
+      const elEarn = document.getElementById('summary-total-earnings');
+      const elSpend = document.getElementById('summary-total-spendings');
+      const elNet = document.getElementById('summary-net-balance');
+
+      if (elEarn) elEarn.textContent = `Income: +${formatINR(totalEarn)}`;
+      if (elSpend) elSpend.textContent = `Expense: -${formatINR(totalSpend)}`;
+      if (elNet) {
+        elNet.textContent = `Net: ${netBal >= 0 ? '+' : ''}${formatINR(netBal)}`;
+        elNet.style.color = netBal >= 0 ? '#34d399' : '#f87171';
+      }
+
+      let combined = [];
+      if (earningsFilter === 'all' || earningsFilter === 'earning') {
+        earnings.forEach(e => combined.push({ ...e, itemType: 'earning' }));
+      }
+      if (earningsFilter === 'all' || earningsFilter === 'spending') {
+        spendings.forEach(s => combined.push({ ...s, itemType: 'spending' }));
+      }
+
+      // Sort by date descending
+      combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
+
+      if (combined.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No entries found for this filter. Click "+ Log New Earning" or "+ Log Spending" to add!</td></tr>';
         return;
       }
 
-      tbody.innerHTML = earnings.map(e => `
-        <tr>
-          <td style="font-weight:700; color:#fff; font-size:13px;">${e.title}</td>
-          <td><span class="badge badge-blue">${e.category}</span></td>
-          <td style="color:#fff;">${e.payerOrCustomer || '-'}</td>
-          <td class="font-mono" style="color:var(--text-dim);">${e.date}</td>
-          <td class="font-mono" style="color:var(--text-muted); text-transform:uppercase;">${e.paymentMethod || 'cash'}</td>
-          <td style="font-weight:900; color:#34d399; font-size:13px;">+${formatINR(e.amount)}</td>
-          <td style="text-align:right;">
-            <button onclick="deleteEarning('${e.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = combined.map(item => {
+        const isEarn = item.itemType === 'earning';
+        const badge = isEarn
+          ? '<span class="badge badge-paid">🟢 INCOME</span>'
+          : '<span class="badge badge-overdue" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);">🔴 SPENDING</span>';
+        
+        const amountDisplay = isEarn
+          ? `<span style="font-weight:900; color:#34d399; font-size:13px;">+${formatINR(item.amount)}</span>`
+          : `<span style="font-weight:900; color:#f87171; font-size:13px;">-${formatINR(item.amount)}</span>`;
+
+        const deleteAction = isEarn
+          ? `<button type="button" onclick="deleteEarning('${item.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>`
+          : `<button type="button" onclick="deleteSpending('${item.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>`;
+
+        return `
+          <tr>
+            <td>
+              <div style="display:flex; align-items:center; gap:8px;">
+                ${badge}
+                <span style="font-weight:700; color:#fff; font-size:13px;">${item.title}</span>
+              </div>
+            </td>
+            <td><span class="badge badge-blue">${item.category}</span></td>
+            <td style="color:#fff;">${item.payerOrCustomer || item.vendorOrRecipient || '-'}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${item.date}</td>
+            <td class="font-mono" style="color:var(--text-muted); text-transform:uppercase;">${item.paymentMethod || 'cash'}</td>
+            <td>${amountDisplay}</td>
+            <td style="text-align:right;">${deleteAction}</td>
+          </tr>
+        `;
+      }).join('');
     }
 
     function handleSaveEarning(e) {
@@ -760,6 +824,57 @@
 
     function deleteEarning(id) {
       window.deleteEarning = deleteEarning;
+
+    window.setEarningsFilter = function(filterType) {
+      earningsFilter = filterType;
+      ['all', 'earning', 'spending'].forEach(function(f) {
+        var btn = document.getElementById('filter-' + f);
+        if (btn) {
+          if (f === filterType) {
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-primary');
+          } else {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-secondary');
+          }
+        }
+      });
+      renderEarnings();
+    };
+
+    window.handleSaveSpending = function(e) {
+      e.preventDefault();
+      const title = document.getElementById('spend-title').value.trim();
+      const amount = Number(document.getElementById('spend-amount').value) || 0;
+      const category = document.getElementById('spend-category').value;
+      const paymentMethod = document.getElementById('spend-method').value;
+      const date = document.getElementById('spend-date').value || new Date().toISOString().split('T')[0];
+      const vendorOrRecipient = document.getElementById('spend-vendor').value.trim();
+      const referenceNo = document.getElementById('spend-ref').value.trim() || ('EXP-' + Date.now().toString().slice(-6));
+      const description = document.getElementById('spend-desc').value.trim();
+
+      const spendingObj = {
+        id: 'spend-' + Date.now(),
+        title, amount, category, paymentMethod, date, vendorOrRecipient, referenceNo, description,
+        type: 'spending'
+      };
+
+      spendings.unshift(spendingObj);
+      saveData();
+      closeModal('add-spending-modal');
+      renderEarnings();
+      renderDashboard();
+    };
+
+    window.deleteSpending = function(id) {
+      if (confirm('Delete this spending expense entry?')) {
+        spendings = spendings.filter(x => x.id !== id);
+        saveData();
+        renderEarnings();
+        renderDashboard();
+      }
+    };
+
       if (confirm('Delete this earning entry?')) {
         earnings = earnings.filter(x => x.id !== id);
         saveData();
@@ -776,6 +891,7 @@
       localStorage.setItem('fp_members', JSON.stringify(members));
       localStorage.setItem('fp_payments', JSON.stringify(payments));
       localStorage.setItem('fp_earnings', JSON.stringify(earnings));
+      localStorage.setItem('fp_spendings', JSON.stringify(spendings));
 
       // Background Supabase Push
       if (supabase) {
@@ -830,6 +946,57 @@
     window.deletePlan = deletePlan;
     window.handleSaveEarning = handleSaveEarning;
     window.deleteEarning = deleteEarning;
+
+    window.setEarningsFilter = function(filterType) {
+      earningsFilter = filterType;
+      ['all', 'earning', 'spending'].forEach(function(f) {
+        var btn = document.getElementById('filter-' + f);
+        if (btn) {
+          if (f === filterType) {
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-primary');
+          } else {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-secondary');
+          }
+        }
+      });
+      renderEarnings();
+    };
+
+    window.handleSaveSpending = function(e) {
+      e.preventDefault();
+      const title = document.getElementById('spend-title').value.trim();
+      const amount = Number(document.getElementById('spend-amount').value) || 0;
+      const category = document.getElementById('spend-category').value;
+      const paymentMethod = document.getElementById('spend-method').value;
+      const date = document.getElementById('spend-date').value || new Date().toISOString().split('T')[0];
+      const vendorOrRecipient = document.getElementById('spend-vendor').value.trim();
+      const referenceNo = document.getElementById('spend-ref').value.trim() || ('EXP-' + Date.now().toString().slice(-6));
+      const description = document.getElementById('spend-desc').value.trim();
+
+      const spendingObj = {
+        id: 'spend-' + Date.now(),
+        title, amount, category, paymentMethod, date, vendorOrRecipient, referenceNo, description,
+        type: 'spending'
+      };
+
+      spendings.unshift(spendingObj);
+      saveData();
+      closeModal('add-spending-modal');
+      renderEarnings();
+      renderDashboard();
+    };
+
+    window.deleteSpending = function(id) {
+      if (confirm('Delete this spending expense entry?')) {
+        spendings = spendings.filter(x => x.id !== id);
+        saveData();
+        renderEarnings();
+        renderDashboard();
+      }
+    };
+
     window.handleMonthChange = handleMonthChange;
 
     // Portal Bootloader
@@ -961,7 +1128,7 @@
           <span>🎛️ Fee Customizer & Plans</span>
         </button>
         <button type="button" onclick="nav('earnings')" id="tab-earnings" class="tab-btn">
-          <span>💵 Club Earnings Logger</span>
+          <span>💵 Earnings & Spending</span>
         </button>
         <button type="button" onclick="nav('custom-fields')" id="tab-custom-fields" class="tab-btn">
           <span>📑 Custom Fields</span>
@@ -996,9 +1163,9 @@
         </div>
 
         <div class="card">
-          <div class="stat-label"><span>Other Club Earnings</span> <span>🏆</span></div>
-          <div class="stat-value" style="color:#c084fc;" id="dash-other-earnings">₹0</div>
-          <div class="stat-meta"><span>Tournaments, Sponsorships, Canteen</span></div>
+          <div class="stat-label"><span>Club Spending & Outflow</span> <span style="color:#f87171;">💸</span></div>
+          <div class="stat-value" style="color:#f87171;" id="dash-total-spending">₹0</div>
+          <div class="stat-meta"><span id="dash-net-treasury" style="color:#34d399; font-weight:800;">Net Balance: ₹0</span> <span>Expenses</span></div>
         </div>
       </div>
 
@@ -1052,6 +1219,20 @@
         <div style="display:flex; align-items:center; gap:10px;">
           <input type="text" id="checklist-search" oninput="renderChecklist()" placeholder="Search member, phone..." class="input-control" style="width:200px;">
           <button type="button" onclick="openModal('add-member-modal')" class="btn btn-primary">+ Add Member</button>
+        </div>
+      </div>
+
+      <div class="controls-bar" style="margin-bottom:14px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Filter:</span>
+          <button type="button" onclick="setEarningsFilter('all')" id="filter-all" class="btn btn-primary" style="padding:4px 12px; font-size:11px;">All (Earnings & Spending)</button>
+          <button type="button" onclick="setEarningsFilter('earning')" id="filter-earning" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#34d399;">🟢 Earnings Only</button>
+          <button type="button" onclick="setEarningsFilter('spending')" id="filter-spending" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#f87171;">🔴 Spending Only</button>
+        </div>
+        <div style="display:flex; gap:16px; font-size:12px; font-weight:800;">
+          <span style="color:#34d399;" id="summary-total-earnings">Income: +₹0</span>
+          <span style="color:#f87171;" id="summary-total-spendings">Expense: -₹0</span>
+          <span style="color:#fff;" id="summary-net-balance">Net: ₹0</span>
         </div>
       </div>
 
@@ -1117,7 +1298,28 @@
           <h1 class="section-title"><span>💵 Club Earnings & Income Logger</span></h1>
           <p class="section-sub">Log revenue from cricket/football tournaments, sponsorships, canteen, jersey sales & donations.</p>
         </div>
-        <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald">+ Log New Earning</button>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button type="button" onclick="openModal('add-spending-modal')" class="btn btn-danger" style="background:#dc2626; color:#fff; font-size:12px; font-weight:800; border:none; box-shadow:0 4px 14px rgba(220,38,38,0.35); padding:8px 16px;">
+            💸 + Log Spending
+          </button>
+          <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald" style="font-size:12px; font-weight:800; padding:8px 16px;">
+            💰 + Log New Earning
+          </button>
+        </div>
+      </div>
+
+      <div class="controls-bar" style="margin-bottom:14px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Filter:</span>
+          <button type="button" onclick="setEarningsFilter('all')" id="filter-all" class="btn btn-primary" style="padding:4px 12px; font-size:11px;">All (Earnings & Spending)</button>
+          <button type="button" onclick="setEarningsFilter('earning')" id="filter-earning" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#34d399;">🟢 Earnings Only</button>
+          <button type="button" onclick="setEarningsFilter('spending')" id="filter-spending" class="btn btn-secondary" style="padding:4px 12px; font-size:11px; color:#f87171;">🔴 Spending Only</button>
+        </div>
+        <div style="display:flex; gap:16px; font-size:12px; font-weight:800;">
+          <span style="color:#34d399;" id="summary-total-earnings">Income: +₹0</span>
+          <span style="color:#f87171;" id="summary-total-spendings">Expense: -₹0</span>
+          <span style="color:#fff;" id="summary-net-balance">Net: ₹0</span>
+        </div>
       </div>
 
       <div class="table-card">
@@ -1253,6 +1455,84 @@
         <div class="modal-foot">
           <button type="button" onclick="closeModal('add-member-modal')" class="btn btn-secondary">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Member</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  
+  <!-- ADD SPENDING MODAL -->
+  <div id="add-spending-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title" style="color:#f87171;">
+          <span>💸 Log Club Spending / Expense</span>
+        </h3>
+        <button type="button" onclick="closeModal('add-spending-modal')" class="modal-close">✕</button>
+      </div>
+
+      <form onsubmit="handleSaveSpending(event)">
+        <div class="form-group">
+          <label class="form-label">Expense / Spending Title *</label>
+          <input type="text" id="spend-title" required placeholder="e.g. Ground Electricity Bill / Match Cricket Balls / Refreshments" class="form-input">
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Amount Spent (₹ INR) *</label>
+            <input type="number" id="spend-amount" min="1" step="1" required placeholder="2500" class="form-input" style="color:#f87171; font-weight:800; font-size:16px;">
+          </div>
+          <div>
+            <label class="form-label">Category *</label>
+            <select id="spend-category" class="form-input">
+              <option value="utilities">⚡ Electricity, Water & Utilities</option>
+              <option value="equipment">🏏 Sports Equipment & Kits</option>
+              <option value="ground_maintenance">🌱 Ground & Field Maintenance</option>
+              <option value="prizes_trophies">🏆 Tournament Prizes & Medals</option>
+              <option value="coaching_referee">👨‍⚖️ Referee & Coach Fees</option>
+              <option value="refreshments">🍕 Food, Snacks & Catering</option>
+              <option value="medical_firstaid">💊 Medical Kit & Physiotherapy</option>
+              <option value="repairs_cleaning">🛠️ Clubhouse Repair & Cleaning</option>
+              <option value="other_expense">📦 Other Club Expense</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Payment Method</label>
+            <select id="spend-method" class="form-input">
+              <option value="cash">💵 Cash</option>
+              <option value="upi">📱 UPI / QR Code</option>
+              <option value="card">💳 Card / POS</option>
+              <option value="bank_transfer">🏦 Bank Transfer / NEFT</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Date of Expense</label>
+            <input type="date" id="spend-date" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Paid To / Vendor / Recipient</label>
+            <input type="text" id="spend-vendor" placeholder="e.g. CESC Electric / Champion Sports" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Bill / Voucher / Receipt #</label>
+            <input type="text" id="spend-ref" placeholder="EXP-2026-081" class="form-input font-mono">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Remarks / Description</label>
+          <textarea id="spend-desc" rows="2" placeholder="Purchased 6 SG cricket balls for tournament practice..." class="form-input" style="resize:none;"></textarea>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-spending-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-danger" style="background:#dc2626; color:#fff; font-weight:800;">Save Expense</button>
         </div>
       </form>
     </div>
