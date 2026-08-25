@@ -201,35 +201,15 @@
       console.warn('Supabase initialization notice:', e);
     }
 
-    // 2. Default State & Seed Data (in Indian Rupees ₹)
-    const defaultPlans = [
-      { id: 'plan-standard', name: 'Standard Club Plan', fee: 500, billingCycle: 'monthly', description: 'Full access to general club facilities, lounge, and community events.', color: '#3b82f6', active: true, lateFeeDays: 10, lateFeeAmount: 50 },
-      { id: 'plan-premium', name: 'Premium Sports & Gym', fee: 1000, billingCycle: 'monthly', description: 'All Standard perks plus fitness gym, sports coaching, sauna, and grounds.', color: '#8b5cf6', active: true, lateFeeDays: 10, lateFeeAmount: 100 },
-      { id: 'plan-vip', name: 'VIP Executive Plan', fee: 2500, billingCycle: 'monthly', description: 'Executive lounge, priority ground bookings, free guest passes & lockers.', color: '#f59e0b', active: true, lateFeeDays: 10, lateFeeAmount: 200 },
-      { id: 'plan-student', name: 'Student & Youth Athlete', fee: 300, billingCycle: 'monthly', description: 'Discounted membership for youth athletes & students with club training.', color: '#10b981', active: true, lateFeeDays: 10, lateFeeAmount: 25 }
-    ];
-
-    const defaultEarnings = [
-      { id: 'earn-1', title: 'Annual Summer Cricket Tournament Entry Fees', category: 'tournament', amount: 25000, date: '2026-08-14', paymentMethod: 'upi', payerOrCustomer: '24 Participating Teams', referenceNo: 'TRN-2026-08', description: 'Entry fees for club tournament.' },
-      { id: 'earn-2', title: 'Corporate Ground Banner Sponsorship (Q3)', category: 'sponsorship', amount: 50000, date: '2026-08-10', paymentMethod: 'bank_transfer', payerOrCustomer: 'Apex Sports India', referenceNo: 'SPON-Q3-091', description: 'Main pavilion banner placement.' },
-      { id: 'earn-3', title: 'Clubhouse Canteen & Tea Stall August Revenue', category: 'canteen_bar', amount: 12400, date: '2026-08-20', paymentMethod: 'cash', payerOrCustomer: 'Canteen Counter', referenceNo: 'CAN-AUG-2026', description: 'Snacks, beverages, and breakfast sales.' },
-      { id: 'earn-4', title: 'Official Club Jersey & Sports Kit Sales', category: 'merchandise', amount: 8500, date: '2026-08-08', paymentMethod: 'upi', payerOrCustomer: 'Club Pro Shop', referenceNo: 'MERCH-8832', description: 'Club jerseys, caps, and wristbands.' }
-    ];
-
-    // State Variables
-    let plans = JSON.parse(localStorage.getItem('fp_plans') || JSON.stringify(defaultPlans));
+    // 2. Clean Database-Driven State (Zero Mock Data)
+    let plans = JSON.parse(localStorage.getItem('fp_plans') || '[]');
     let members = JSON.parse(localStorage.getItem('fp_members') || '[]');
     let payments = JSON.parse(localStorage.getItem('fp_payments') || '[]');
-    let earnings = JSON.parse(localStorage.getItem('fp_earnings') || JSON.stringify(defaultEarnings));
+    let earnings = JSON.parse(localStorage.getItem('fp_earnings') || '[]');
+    let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
+    let earningsFilter = 'all';
 
-    const defaultSpendings = [
-      { id: 'spend-1', title: 'CESC Clubhouse Electricity & Floodlights Bill', category: 'utilities', amount: 8400, date: '2026-08-12', paymentMethod: 'upi', vendorOrRecipient: 'CESC Ltd', referenceNo: 'EXP-ELEC-882', description: 'Monthly electricity bill.' },
-      { id: 'spend-2', title: 'SG Cricket Match Balls & Practice Stumps (1 Box)', category: 'equipment', amount: 6200, date: '2026-08-09', paymentMethod: 'cash', vendorOrRecipient: 'Maidan Sports Corner', referenceNo: 'BILL-9921', description: 'Tournament grade leather balls.' },
-      { id: 'spend-3', title: 'Cricket Pitch Soil, Grass Trimming & Maintenance', category: 'ground_maintenance', amount: 4500, date: '2026-08-05', paymentMethod: 'cash', vendorOrRecipient: 'Ground Staff Team', referenceNo: 'VOUCHER-044', description: 'Soil leveling and boundary marking.' },
-      { id: 'spend-4', title: 'First Aid Kit, Pain Sprays & Ice Packs Refill', category: 'medical_firstaid', amount: 1800, date: '2026-08-02', paymentMethod: 'upi', vendorOrRecipient: 'Apollo Pharmacy', referenceNo: 'MED-1120', description: 'Sports injuries emergency kit.' }
-    ];
-
-    let spendings = JSON.parse(localStorage.getItem('fp_spendings') || JSON.stringify(defaultSpendings));
+    let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
     let earningsFilter = 'all';
 
     let activeMonth = '2026-08';
@@ -401,7 +381,7 @@
       });
 
       if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">No transactions recorded yet. Click "+ Add Member" or "+ Add Earning" to start!</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">📝 No transactions recorded yet. Click "+ Add Member", "💰 + Log New Earning", or "💸 + Log Spending" to start recording your club finances!</td></tr>';
       } else {
         tbody.innerHTML = rows.join('');
       }
@@ -422,7 +402,7 @@
       });
 
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No members found. Click "+ Add Member" to add your first member.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">👥 No members registered for this month yet. Click "+ Add Member" to register your first club member!</td></tr>';
         return;
       }
 
@@ -527,7 +507,7 @@
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:48px; background:var(--card); border:1px solid var(--border); border-radius:18px; color:var(--text-muted);">No members in directory. Click "+ Add Member" to register your first club member.</div>';
+        container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:48px; background:var(--card); border:1px solid var(--border); border-radius:18px; color:var(--text-muted);">👥 Members directory is empty. Click "+ Add Member" to register your first club member!</div>';
         return;
       }
 
@@ -771,7 +751,7 @@
       combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
 
       if (combined.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No entries found for this filter. Click "+ Log New Earning" or "+ Log Spending" to add!</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">💵 No earnings or spendings recorded yet. Click "💰 + Log New Earning" or "💸 + Log Spending" above!</td></tr>';
         return;
       }
 
@@ -827,7 +807,7 @@
       const earningObj = { id: 'earn-' + Date.now(), title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo };
 
       earnings.unshift(earningObj);
-      syncMongoEarning(earningObj);
+      syncToMongoDB(earningObj);
       saveData();
       closeModal('add-earning-modal');
       renderEarnings();
@@ -1048,7 +1028,7 @@
       removeAttachedReceipt();
 
       spendings.unshift(spendingObj);
-      syncMongoSpending(spendingObj);
+      syncToMongoDB(spendingObj);
       saveData();
       closeModal('add-spending-modal');
       renderEarnings();
@@ -1058,7 +1038,7 @@
     window.deleteSpending = function(id) {
       if (confirm('Delete this spending expense entry?')) {
         spendings = spendings.filter(x => x.id !== id);
-        syncMongoDelete(id);
+        deleteFromMongoDB(id);
         saveData();
         renderEarnings();
         renderDashboard();
@@ -1067,7 +1047,7 @@
 
       if (confirm('Delete this earning entry?')) {
         earnings = earnings.filter(x => x.id !== id);
-        syncMongoDelete(id);
+        deleteFromMongoDB(id);
         saveData();
         renderEarnings();
         renderDashboard();
@@ -1078,45 +1058,85 @@
     // PERSISTENCE & CLOUD SYNC
     // ══════════════════════════════════════════
     
-    // ══════════════════════════════════════════
-    // MONGODB BACKEND CLOUD SYNC
-    // ══════════════════════════════════════════
-    async function syncMongoEarning(earningObj) {
+    
+    // ══════════════════════════════════════════════════════════════════
+    // HYBRID DATA LAYER: BIG DATA IN MONGODB, STRUCTURED IN SUPABASE
+    // ══════════════════════════════════════════════════════════════════
+
+    // 1. Push Big Data (Heavy Transaction & Receipt Photos) to MongoDB Atlas
+    async function syncToMongoDB(transactionObj) {
       try {
-        await fetch('/api/finance/earnings', {
+        let payload = { ...transactionObj };
+        // If image is a large base64, upload to MongoDB Binary Store
+        if (payload.receiptPhoto && payload.receiptPhoto.startsWith('data:image')) {
+          try {
+            const uploadRes = await fetch('/api/finance/receipt-upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                imageBase64: payload.receiptPhoto,
+                filename: (payload.title || 'receipt').replace(/[^a-zA-Z0-9]/g, '_') + '.jpg'
+              })
+            });
+            const data = await uploadRes.json();
+            if (data.photoUrl) payload.receiptPhoto = data.photoUrl;
+          } catch(e) {
+            console.warn('[MongoDB Image Upload Notice]:', e.message);
+          }
+        }
+
+        await fetch('/api/finance/transactions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(earningObj)
+          body: JSON.stringify(payload)
         });
-        console.log('[MongoDB API] Earning synced:', earningObj.title);
-      } catch(e) {
-        console.log('[MongoDB API] Offline/Local mode:', e.message);
+        console.log('[MongoDB Atlas] Saved transaction & receipt image:', payload.title);
+      } catch(err) {
+        console.warn('[MongoDB Atlas Sync]: Local fallback active.');
       }
     }
 
-    async function syncMongoSpending(spendingObj) {
-      try {
-        await fetch('/api/finance/spendings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(spendingObj)
-        });
-        console.log('[MongoDB API] Spending synced:', spendingObj.title);
-      } catch(e) {
-        console.log('[MongoDB API] Offline/Local mode:', e.message);
-      }
-    }
-
-    async function syncMongoDelete(id) {
+    async function deleteFromMongoDB(id) {
       try {
         await fetch('/api/finance/transactions/' + id, { method: 'DELETE' });
-        console.log('[MongoDB API] Transaction deleted:', id);
-      } catch(e) {
-        console.log('[MongoDB API] Offline/Local mode:', e.message);
+        console.log('[MongoDB Atlas] Deleted transaction:', id);
+      } catch(e) {}
+    }
+
+    // 2. Push Core Relational Data (Members, Plans, Payments) to Supabase
+    async function syncToSupabase() {
+      if (!supabase) return;
+      try {
+        if (members.length > 0) {
+          const payload = members.map(m => ({
+            id: m.id, name: m.name, email: m.email, phone: m.phone,
+            plan_id: m.planId, role: m.role, custom_fee: m.customFee,
+            join_date: m.joinDate, status: m.status, custom_fields: m.customFields || {}
+          }));
+          await supabase.from('members').upsert(payload);
+        }
+        if (plans.length > 0) {
+          const pPayload = plans.map(p => ({
+            id: p.id, name: p.name, fee: p.fee, billing_cycle: p.billingCycle,
+            description: p.description, color: p.color, active: p.active,
+            late_fee_days: p.lateFeeDays, late_fee_amount: p.lateFeeAmount
+          }));
+          await supabase.from('membership_plans').upsert(pPayload);
+        }
+        if (payments.length > 0) {
+          const payPayload = payments.map(p => ({
+            id: p.id, member_id: p.memberId, plan_id: p.planId, month_year: p.monthYear,
+            amount: p.amount, paid_amount: p.paidAmount, status: p.status, payment_method: p.paymentMethod,
+            paid_at: p.paidAt, invoice_no: p.invoiceNo, notes: p.notes
+          }));
+          await supabase.from('payment_records').upsert(payPayload);
+        }
+      } catch(err) {
+        console.warn('[Supabase Sync Notice]:', err);
       }
     }
 
-    function saveData() {
+function saveData() {
       localStorage.setItem('fp_plans', JSON.stringify(plans));
       localStorage.setItem('fp_members', JSON.stringify(members));
       localStorage.setItem('fp_payments', JSON.stringify(payments));
@@ -1388,7 +1408,7 @@
       removeAttachedReceipt();
 
       spendings.unshift(spendingObj);
-      syncMongoSpending(spendingObj);
+      syncToMongoDB(spendingObj);
       saveData();
       closeModal('add-spending-modal');
       renderEarnings();
@@ -1398,7 +1418,7 @@
     window.deleteSpending = function(id) {
       if (confirm('Delete this spending expense entry?')) {
         spendings = spendings.filter(x => x.id !== id);
-        syncMongoDelete(id);
+        deleteFromMongoDB(id);
         saveData();
         renderEarnings();
         renderDashboard();
@@ -1425,18 +1445,62 @@
       });
 
 
-      // Background Supabase Pull
+            // Pull Structured Data from Supabase & Big Data from MongoDB Atlas
       setTimeout(async () => {
-        if (!supabase) return;
+        // 1. Pull Plans, Members, Payments from Supabase
+        if (supabase) {
+          try {
+            const { data: dbPlans } = await supabase.from('membership_plans').select('*');
+            if (dbPlans && dbPlans.length > 0) {
+              plans = dbPlans.map(p => ({
+                id: p.id, name: p.name, fee: Number(p.fee) || 0,
+                billingCycle: p.billing_cycle || 'monthly', description: p.description || '',
+                color: p.color || '#3b82f6', active: p.active !== false,
+                lateFeeDays: p.late_fee_days || 10, lateFeeAmount: Number(p.late_fee_amount) || 50
+              }));
+            }
+
+            const { data: dbMembers } = await supabase.from('members').select('*');
+            if (dbMembers && dbMembers.length > 0) {
+              members = dbMembers.map(m => ({
+                id: m.id, name: m.name, email: m.email || '', phone: m.phone || '',
+                planId: m.plan_id, role: m.role || 'Member',
+                customFee: m.custom_fee !== null ? Number(m.custom_fee) : null,
+                joinDate: m.join_date, status: m.status || 'active',
+                customFields: m.custom_fields || {}
+              }));
+            }
+
+            const { data: dbPayments } = await supabase.from('payment_records').select('*');
+            if (dbPayments && dbPayments.length > 0) {
+              payments = dbPayments.map(p => ({
+                id: p.id, memberId: p.member_id, planId: p.plan_id, monthYear: p.month_year,
+                amount: Number(p.amount) || 0, paidAmount: Number(p.paid_amount) || 0,
+                status: p.status || 'paid', paymentMethod: p.payment_method || 'cash',
+                paidAt: p.paid_at, invoiceNo: p.invoice_no, notes: p.notes
+              }));
+            }
+          } catch(e) {
+            console.warn('[Supabase Pull Notice]:', e);
+          }
+        }
+
+        // 2. Pull Big Data Transactions & Receipts from MongoDB Atlas API
         try {
-          const { data: dbPlans, error: ep } = await supabase.from('membership_plans').select('*');
-          if (!ep && dbPlans && dbPlans.length > 0) {
-            plans = dbPlans.map(p => ({
-              id: p.id, name: p.name, fee: Number(p.fee) || 0,
-              billingCycle: p.billing_cycle || 'monthly', description: p.description || '',
-              color: p.color || '#3b82f6', active: p.active !== false,
-              lateFeeDays: p.late_fee_days || 10, lateFeeAmount: Number(p.late_fee_amount) || 50
-            }));
+          const res = await fetch('/api/finance/transactions');
+          const resData = await res.json();
+          if (resData && resData.data && resData.data.length > 0) {
+            earnings = resData.data.filter(t => t.type === 'earning');
+            spendings = resData.data.filter(t => t.type === 'spending');
+          }
+        } catch(e) {
+          console.warn('[MongoDB Atlas Pull Notice]:', e);
+        }
+
+        renderDashboard();
+        renderChecklist();
+      }, 500);
+    }));
           }
 
           const { data: dbMembers, error: em } = await supabase.from('members').select('*');

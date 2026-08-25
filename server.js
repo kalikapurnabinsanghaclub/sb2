@@ -253,15 +253,80 @@ app.get('/api/orders', (req, res) => {
 // Catch-all route to serve index.html for Single Page Applications (SPA)
 
 // ══════════════════════════════════════════════════════════════════
-// MONGODB BACKEND API — EARNINGS & SPENDING (FINANCE PORTAL)
+
+// ══════════════════════════════════════════════════════════════════
+// MONGODB ATLAS — BIG DATA & RECEIPT PHOTO ATTACHMENTS BACKEND
 // ══════════════════════════════════════════════════════════════════
 
-// 1. GET ALL TRANSACTIONS (EARNINGS & SPENDINGS)
+// 1. UPLOAD & STORE LARGE RECEIPT/BILL PHOTO IN MONGODB
+app.post('/api/finance/receipt-upload', upload.single('receipt'), async (req, res) => {
+  try {
+    let receiptBuffer = null;
+    let contentType = 'image/jpeg';
+    let filename = 'receipt_' + Date.now() + '.jpg';
+
+    if (req.file) {
+      receiptBuffer = req.file.buffer;
+      contentType = req.file.mimetype || 'image/jpeg';
+      filename = req.file.originalname || filename;
+    } else if (req.body.imageBase64) {
+      const parts = req.body.imageBase64.split(';base64,');
+      contentType = parts[0].replace('data:', '') || 'image/jpeg';
+      receiptBuffer = Buffer.from(parts[1] || parts[0], 'base64');
+      filename = req.body.filename || filename;
+    }
+
+    if (!receiptBuffer) {
+      return res.status(400).json({ status: 'error', message: 'No receipt file or image provided.' });
+    }
+
+    if (db) {
+      const col = db.collection('finance_receipt_images');
+      const doc = {
+        filename,
+        contentType,
+        data: receiptBuffer,
+        size: receiptBuffer.length,
+        uploadedAt: new Date()
+      };
+      const result = await col.insertOne(doc);
+      const photoUrl = `/api/finance/receipt-image/${result.insertedId}`;
+      console.log(`[MongoDB] Stored receipt image in Atlas: ${result.insertedId} (${receiptBuffer.length} bytes)`);
+      return res.json({ status: 'success', photoUrl, imageId: result.insertedId });
+    }
+
+    // Fallback: Return inline base64 if MongoDB not connected
+    res.json({ status: 'success', photoUrl: req.body.imageBase64 || '' });
+  } catch (err) {
+    console.error('[MongoDB Receipt Error]:', err);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// 2. RETRIEVE RECEIPT/BILL PHOTO FROM MONGODB
+app.get('/api/finance/receipt-image/:id', async (req, res) => {
+  try {
+    if (!db) return res.status(500).send('Database not connected.');
+    const col = db.collection('finance_receipt_images');
+    const imageId = new ObjectId(req.params.id);
+    const doc = await col.findOne({ _id: imageId });
+
+    if (!doc) return res.status(404).send('Receipt image not found in MongoDB.');
+
+    res.set('Content-Type', doc.contentType || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(doc.data.buffer || doc.data);
+  } catch (err) {
+    console.error('[MongoDB Image Serve Error]:', err);
+    res.status(500).send('Error retrieving receipt image.');
+  }
+});
+
+// 3. GET TRANSACTIONS FROM MONGODB (WITH RECEIPT LINKS)
 app.get('/api/finance/transactions', async (req, res) => {
   try {
     const { type, month, category } = req.query;
     let query = {};
-
     if (type && type !== 'all') query.type = type;
     if (category) query.category = category;
     if (month) query.date = { $regex: `^${month}` };
@@ -270,196 +335,66 @@ app.get('/api/finance/transactions', async (req, res) => {
     if (db) {
       const col = db.collection('finance_transactions');
       items = await col.find(query).sort({ date: -1, createdAt: -1 }).toArray();
-    }
-
-    // Fallback if empty: seed initial records
-    if (items.length === 0 && (!type || type === 'all')) {
+    } else {
       const state = loadState();
       items = state.financeTransactions || [];
     }
 
     res.json({ status: 'success', count: items.length, data: items });
   } catch (err) {
-    console.error('[MongoDB] Error fetching finance transactions:', err);
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
-// 2. POST LOG NEW EARNING
-app.post('/api/finance/earnings', async (req, res) => {
+// 4. SAVE EARNING / SPENDING IN MONGODB
+app.post('/api/finance/transactions', async (req, res) => {
   try {
-    const { title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo, description } = req.body;
-
-    if (!title || !amount) {
+    const item = req.body;
+    if (!item.title || !item.amount) {
       return res.status(400).json({ status: 'error', message: 'Title and amount are required.' });
     }
 
-    const newEarning = {
-      id: req.body.id || ('earn-' + Date.now()),
-      type: 'earning',
-      title: title.trim(),
-      amount: Number(amount) || 0,
-      category: category || 'other',
-      paymentMethod: paymentMethod || 'cash',
-      date: date || new Date().toISOString().split('T')[0],
-      payerOrCustomer: payerOrCustomer ? payerOrCustomer.trim() : '',
-      referenceNo: referenceNo ? referenceNo.trim() : ('REC-' + Date.now().toString().slice(-6)),
-      description: description ? description.trim() : '',
-      createdAt: new Date(),
+    const doc = {
+      ...item,
+      amount: Number(item.amount) || 0,
+      createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
       updatedAt: new Date()
     };
 
     if (db) {
       const col = db.collection('finance_transactions');
-      await col.insertOne(newEarning);
-      console.log(`[MongoDB] Logged new earning: "${newEarning.title}" (+₹${newEarning.amount})`);
+      await col.updateOne({ id: doc.id }, { $set: doc }, { upsert: true });
+      console.log(`[MongoDB] Upserted transaction ${doc.id} (${doc.type}: ${doc.title})`);
     }
 
-    // Also update sync state fallback
+    // Fallback sync state
     const state = loadState();
     if (!state.financeTransactions) state.financeTransactions = [];
-    state.financeTransactions.unshift(newEarning);
+    const idx = state.financeTransactions.findIndex(x => x.id === doc.id);
+    if (idx !== -1) state.financeTransactions[idx] = doc;
+    else state.financeTransactions.unshift(doc);
     saveState(state);
 
-    res.json({ status: 'success', message: 'Earning logged successfully in MongoDB', data: newEarning });
+    res.json({ status: 'success', message: 'Transaction saved in MongoDB', data: doc });
   } catch (err) {
-    console.error('[MongoDB] Error saving earning:', err);
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
-// 3. POST LOG NEW SPENDING / EXPENSE
-app.post('/api/finance/spendings', async (req, res) => {
-  try {
-    const { title, amount, category, paymentMethod, date, vendorOrRecipient, referenceNo, description, receiptPhoto } = req.body;
-
-    if (!title || !amount) {
-      return res.status(400).json({ status: 'error', message: 'Title and amount are required.' });
-    }
-
-    const newSpending = {
-      id: req.body.id || ('spend-' + Date.now()),
-      type: 'spending',
-      title: title.trim(),
-      amount: Number(amount) || 0,
-      category: category || 'other_expense',
-      paymentMethod: paymentMethod || 'cash',
-      date: date || new Date().toISOString().split('T')[0],
-      vendorOrRecipient: vendorOrRecipient ? vendorOrRecipient.trim() : '',
-      referenceNo: referenceNo ? referenceNo.trim() : ('EXP-' + Date.now().toString().slice(-6)),
-      description: description ? description.trim() : '',
-      receiptPhoto: receiptPhoto || '',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    if (db) {
-      const col = db.collection('finance_transactions');
-      await col.insertOne(newSpending);
-      console.log(`[MongoDB] Logged new spending: "${newSpending.title}" (-₹${newSpending.amount})`);
-    }
-
-    // Also update sync state fallback
-    const state = loadState();
-    if (!state.financeTransactions) state.financeTransactions = [];
-    state.financeTransactions.unshift(newSpending);
-    saveState(state);
-
-    res.json({ status: 'success', message: 'Spending logged successfully in MongoDB', data: newSpending });
-  } catch (err) {
-    console.error('[MongoDB] Error saving spending:', err);
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-// 4. DELETE TRANSACTION (EARNING OR SPENDING)
+// 5. DELETE TRANSACTION FROM MONGODB
 app.delete('/api/finance/transactions/:id', async (req, res) => {
   try {
     const { id } = req.params;
-
     if (db) {
       const col = db.collection('finance_transactions');
       await col.deleteOne({ $or: [{ id: id }, { _id: ObjectId.isValid(id) ? new ObjectId(id) : null }] });
-      console.log(`[MongoDB] Deleted transaction: ${id}`);
     }
-
-    // Also remove from fallback state
     const state = loadState();
     if (state.financeTransactions) {
-      state.financeTransactions = state.financeTransactions.filter(t => t.id !== id);
+      state.financeTransactions = state.financeTransactions.filter(x => x.id !== id);
       saveState(state);
     }
-
-    res.json({ status: 'success', message: `Transaction ${id} deleted successfully.` });
-  } catch (err) {
-    console.error('[MongoDB] Error deleting transaction:', err);
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-// 5. GET FINANCIAL SUMMARY (TOTAL INFLOW, OUTFLOW, NET TREASURY BALANCE)
-app.get('/api/finance/summary', async (req, res) => {
-  try {
-    const { month } = req.query;
-    let query = {};
-    if (month) query.date = { $regex: `^${month}` };
-
-    let transactions = [];
-    if (db) {
-      const col = db.collection('finance_transactions');
-      transactions = await col.find(query).toArray();
-    } else {
-      const state = loadState();
-      transactions = state.financeTransactions || [];
-    }
-
-    const totalEarnings = transactions
-      .filter(t => t.type === 'earning')
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-
-    const totalSpendings = transactions
-      .filter(t => t.type === 'spending')
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-
-    const netBalance = totalEarnings - totalSpendings;
-
-    res.json({
-      status: 'success',
-      month: month || 'all-time',
-      summary: {
-        totalEarnings,
-        totalSpendings,
-        netBalance,
-        transactionCount: transactions.length
-      }
-    });
-  } catch (err) {
-    console.error('[MongoDB] Error computing summary:', err);
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-// 6. MEMBERSHIP PLANS SYNC IN MONGODB
-app.get('/api/finance/plans', async (req, res) => {
-  try {
-    let plans = [];
-    if (db) {
-      plans = await db.collection('finance_plans').find({}).toArray();
-    }
-    res.json({ status: 'success', data: plans });
-  } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-app.post('/api/finance/plans', async (req, res) => {
-  try {
-    const plan = req.body;
-    if (db) {
-      const col = db.collection('finance_plans');
-      await col.updateOne({ id: plan.id }, { $set: plan }, { upsert: true });
-    }
-    res.json({ status: 'success', message: 'Plan saved in MongoDB' });
+    res.json({ status: 'success', message: 'Deleted from MongoDB' });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
   }
