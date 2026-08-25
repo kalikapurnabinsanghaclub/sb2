@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Club Finance Portal ("Finans Portal") - Supabase Authorized</title>
@@ -148,12 +149,176 @@
       // Persistence
       useEffect(() => { localStorage.setItem('fp_current_user', JSON.stringify(currentUser)); }, [currentUser]);
       useEffect(() => { localStorage.setItem('fp_staff_users', JSON.stringify(staffUsers)); }, [staffUsers]);
-      useEffect(() => { localStorage.setItem('fp_members', JSON.stringify(members)); }, [members]);
-      useEffect(() => { localStorage.setItem('fp_plans', JSON.stringify(plans)); }, [plans]);
-      useEffect(() => { localStorage.setItem('fp_payments', JSON.stringify(payments)); }, [payments]);
-      useEffect(() => { localStorage.setItem('fp_earnings', JSON.stringify(earnings)); }, [earnings]);
-      useEffect(() => { localStorage.setItem('fp_custom_fields', JSON.stringify(customFields)); }, [customFields]);
+
+      // Live Supabase Sync on Startup
+      useEffect(() => {
+        if (!supabase) return;
+
+        const loadFromSupabase = async () => {
+          try {
+            // 1. Fetch Plans
+            const { data: dbPlans, error: errPlans } = await supabase.from('membership_plans').select('*').order('created_at', { ascending: true });
+            if (!errPlans && dbPlans && dbPlans.length > 0) {
+              const formattedPlans = dbPlans.map(p => ({
+                id: p.id,
+                name: p.name,
+                fee: Number(p.fee) || 0,
+                billingCycle: p.billing_cycle || 'monthly',
+                description: p.description || '',
+                color: p.color || '#3b82f6',
+                active: p.active !== false,
+                lateFeeDays: p.late_fee_days || 10,
+                lateFeeAmount: Number(p.late_fee_amount) || 50
+              }));
+              setPlans(formattedPlans);
+            }
+
+            // 2. Fetch Members
+            const { data: dbMembers, error: errMem } = await supabase.from('members').select('*').order('created_at', { ascending: false });
+            if (!errMem && dbMembers) {
+              const formattedMembers = dbMembers.map(m => ({
+                id: m.id,
+                name: m.name,
+                email: m.email || '',
+                phone: m.phone || '',
+                planId: m.plan_id,
+                role: m.role || 'Member',
+                customFee: m.custom_fee !== null ? Number(m.custom_fee) : null,
+                joinDate: m.join_date || new Date().toISOString().split('T')[0],
+                status: m.status || 'active',
+                notes: m.notes || '',
+                customFields: m.custom_fields || {}
+              }));
+              setMembers(formattedMembers);
+            }
+
+            // 3. Fetch Payments
+            const { data: dbPayments, error: errPay } = await supabase.from('payment_records').select('*');
+            if (!errPay && dbPayments) {
+              const formattedPayments = dbPayments.map(p => ({
+                id: p.id,
+                memberId: p.member_id,
+                planId: p.plan_id,
+                monthYear: p.month_year,
+                amount: Number(p.amount) || 0,
+                paidAmount: Number(p.paid_amount) || 0,
+                status: p.status || 'pending',
+                paymentMethod: p.payment_method || 'cash',
+                paidAt: p.paid_at,
+                invoiceNo: p.invoice_no,
+                notes: p.notes
+              }));
+              setPayments(formattedPayments);
+            }
+
+            // 4. Fetch Earnings
+            const { data: dbEarnings, error: errEarn } = await supabase.from('club_earnings').select('*').order('date', { ascending: false });
+            if (!errEarn && dbEarnings) {
+              const formattedEarnings = dbEarnings.map(e => ({
+                id: e.id,
+                title: e.title,
+                category: e.category,
+                amount: Number(e.amount) || 0,
+                date: e.date,
+                paymentMethod: e.payment_method,
+                payerOrCustomer: e.payer_or_customer,
+                referenceNo: e.reference_no,
+                description: e.description,
+                customFields: e.custom_fields || {}
+              }));
+              setEarnings(formattedEarnings);
+            }
+          } catch (e) {
+            console.warn('Supabase sync notice:', e);
+          }
+        };
+
+        loadFromSupabase();
+      }, []);
+
+      // Auto-save Members to Supabase
+      useEffect(() => {
+        localStorage.setItem('fp_members', JSON.stringify(members));
+        if (supabase && members.length > 0) {
+          const payload = members.map(m => ({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            phone: m.phone,
+            plan_id: m.planId,
+            role: m.role,
+            custom_fee: m.customFee,
+            join_date: m.joinDate,
+            status: m.status,
+            notes: m.notes,
+            custom_fields: m.customFields || {}
+          }));
+          supabase.from('members').upsert(payload).then(() => {});
+        }
+      }, [members]);
+
+      // Auto-save Plans to Supabase
+      useEffect(() => {
+        localStorage.setItem('fp_plans', JSON.stringify(plans));
+        if (supabase && plans.length > 0) {
+          const payload = plans.map(p => ({
+            id: p.id,
+            name: p.name,
+            fee: p.fee,
+            billing_cycle: p.billingCycle,
+            description: p.description,
+            color: p.color,
+            active: p.active,
+            late_fee_days: p.lateFeeDays,
+            late_fee_amount: p.lateFeeAmount
+          }));
+          supabase.from('membership_plans').upsert(payload).then(() => {});
+        }
+      }, [plans]);
+
+      // Auto-save Payments to Supabase
+      useEffect(() => {
+        localStorage.setItem('fp_payments', JSON.stringify(payments));
+        if (supabase && payments.length > 0) {
+          const payload = payments.map(p => ({
+            id: p.id,
+            member_id: p.memberId,
+            plan_id: p.planId,
+            month_year: p.monthYear,
+            amount: p.amount,
+            paid_amount: p.paidAmount,
+            status: p.status,
+            payment_method: p.paymentMethod,
+            paid_at: p.paidAt,
+            invoice_no: p.invoiceNo,
+            notes: p.notes
+          }));
+          supabase.from('payment_records').upsert(payload).then(() => {});
+        }
+      }, [payments]);
+
+      // Auto-save Earnings to Supabase
+      useEffect(() => {
+        localStorage.setItem('fp_earnings', JSON.stringify(earnings));
+        if (supabase && earnings.length > 0) {
+          const payload = earnings.map(e => ({
+            id: e.id,
+            title: e.title,
+            category: e.category,
+            amount: e.amount,
+            date: e.date,
+            payment_method: e.paymentMethod,
+            payer_or_customer: e.payerOrCustomer,
+            reference_no: e.referenceNo,
+            description: e.description,
+            custom_fields: e.customFields || {}
+          }));
+          supabase.from('club_earnings').upsert(payload).then(() => {});
+        }
+      }, [earnings]);
+
       useEffect(() => { localStorage.setItem('fp_settings', JSON.stringify(settings)); }, [settings]);
+      useEffect(() => { localStorage.setItem('fp_custom_fields', JSON.stringify(customFields)); }, [customFields]);
 
       useEffect(() => {
         if (window.lucide) {
