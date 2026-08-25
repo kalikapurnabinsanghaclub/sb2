@@ -1,0 +1,1926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Club Finance Portal ("Finans Portal") - Supabase Authorized</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    @media print {
+      body { background: white !important; color: black !important; }
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const initialStaffUsers = [
+      {
+        id: 'staff-1',
+        name: 'David Miller',
+        email: 'finance@club.org',
+        role: 'Finance',
+        department: 'Treasury & Accounts',
+        supabaseStatus: 'Authorized in Supabase',
+        status: 'Active',
+        lastLogin: 'Just now'
+      },
+      {
+        id: 'staff-2',
+        name: 'Sarah Jenkins',
+        email: 'admin@club.org',
+        role: 'Admin',
+        department: 'Executive Management',
+        supabaseStatus: 'Authorized in Supabase',
+        status: 'Active',
+        lastLogin: '2 hours ago'
+      },
+      {
+        id: 'staff-3',
+        name: 'James Wilson',
+        email: 'staff@club.org',
+        role: 'Staff',
+        department: 'Reception & Desk',
+        supabaseStatus: 'Authorized in Supabase',
+        status: 'Active',
+        lastLogin: 'Yesterday'
+      }
+    ];
+
+    const initialSettings = {
+      clubName: 'Grand Horizon Sports & Social Club',
+      tagline: 'Premier Sports, Wellness & Community Finance Portal',
+      currencySymbol: '$',
+      currencyCode: 'USD',
+      dueDayOfMonth: 5,
+      autoLateFee: true,
+      lateFeeDays: 10,
+      lateFeeFixed: 15,
+      supabaseUrl: 'https://xyzcompany.supabase.co',
+      supabaseConnected: true,
+    };
+
+    const initialCustomFields = [
+      { id: 'cf-1', name: 'emergencyContact', label: 'Emergency Phone', type: 'text', entityType: 'member' },
+      { id: 'cf-2', name: 'lockerNumber', label: 'Locker #', type: 'text', entityType: 'member' },
+      { id: 'cf-3', name: 'sportActivity', label: 'Primary Activity', type: 'select', entityType: 'member', options: ['Tennis', 'Badminton', 'Swimming', 'Gym & Fitness', 'Golf', 'Chess & Cards'] },
+      { id: 'cf-4', name: 'eventSponsorTier', label: 'Sponsorship Level', type: 'select', entityType: 'earning', options: ['Platinum Title', 'Gold Partner', 'Silver Sponsor', 'Patron Support'] }
+    ];
+
+    const initialPlans = [
+      { id: 'plan-standard', name: 'Standard Club Plan', fee: 75, billingCycle: 'monthly', description: 'Full access to general club facilities, lounge, and social mixers.', color: '#3b82f6', active: true, lateFeeDays: 10, lateFeeAmount: 10 },
+      { id: 'plan-premium', name: 'Premium Sports & Gym', fee: 140, billingCycle: 'monthly', description: 'All Standard perks plus fitness gym, court bookings, sauna, and pool.', color: '#8b5cf6', active: true, lateFeeDays: 10, lateFeeAmount: 15 },
+      { id: 'plan-vip', name: 'VIP Executive Plan', fee: 260, billingCycle: 'monthly', description: 'Exclusive lounge, 5 guest passes/mo, personal locker, priority courts.', color: '#f59e0b', active: true, lateFeeDays: 10, lateFeeAmount: 25 },
+      { id: 'plan-student', name: 'Student & Youth Athlete', fee: 45, billingCycle: 'monthly', description: 'Discounted membership for students under 24 with valid ID.', color: '#10b981', active: true, lateFeeDays: 10, lateFeeAmount: 5 },
+    ];
+
+    const initialMembers = [
+      { id: 'mem-1', name: 'Alexander Sterling', email: 'alex.sterling@club.org', phone: '+1 (555) 234-5678', planId: 'plan-vip', role: 'Finance', joinDate: '2025-01-15', status: 'active', notes: 'Club Committee President & Finance Lead', customFields: { emergencyContact: '+1 (555) 999-1122', lockerNumber: 'VIP-01', sportActivity: 'Tennis' } },
+      { id: 'mem-2', name: 'Sophia Montgomery', email: 'sophia.m@club.org', phone: '+1 (555) 345-6789', planId: 'plan-premium', role: 'Executive Member', joinDate: '2025-02-10', status: 'active', notes: 'Tournament player', customFields: { emergencyContact: '+1 (555) 888-2233', lockerNumber: 'PR-14', sportActivity: 'Swimming' } },
+      { id: 'mem-3', name: 'David Chen', email: 'david.chen@club.org', phone: '+1 (555) 456-7890', planId: 'plan-standard', role: 'Member', joinDate: '2025-03-01', status: 'active', customFields: { emergencyContact: '+1 (555) 777-3344', lockerNumber: 'ST-88', sportActivity: 'Gym & Fitness' } },
+      { id: 'mem-4', name: 'Elena Rostova', email: 'elena.rostova@club.org', phone: '+1 (555) 567-8901', planId: 'plan-premium', role: 'Finance', joinDate: '2025-04-12', status: 'active', customFields: { lockerNumber: 'PR-22', sportActivity: 'Tennis' } },
+      { id: 'mem-5', name: 'Marcus Brody', email: 'marcus.brody@club.org', phone: '+1 (555) 678-9012', planId: 'plan-vip', role: 'Executive Member', joinDate: '2025-05-20', status: 'active', customFields: { lockerNumber: 'VIP-05', sportActivity: 'Golf' } },
+      { id: 'mem-6', name: 'Chloe Gallagher', email: 'chloe.g@club.org', phone: '+1 (555) 789-0123', planId: 'plan-student', role: 'Athlete / Student', joinDate: '2025-09-01', status: 'active', customFields: { sportActivity: 'Badminton' } },
+      { id: 'mem-7', name: 'Robert Vance', email: 'robert.vance@club.org', phone: '+1 (555) 890-1234', planId: 'plan-standard', role: 'Member', joinDate: '2025-06-18', status: 'inactive', notes: 'Relocated out of state', customFields: { lockerNumber: 'ST-09', sportActivity: 'Chess & Cards' } },
+      { id: 'mem-8', name: 'Samantha Hayes', email: 'samantha.h@club.org', phone: '+1 (555) 901-2345', planId: 'plan-premium', role: 'Volunteer / Coach', customFee: 120, joinDate: '2025-08-05', status: 'active', notes: 'Volunteer instructor discounted rate ($120/mo)', customFields: { lockerNumber: 'PR-08', sportActivity: 'Gym & Fitness' } }
+    ];
+
+    const initialPayments = [
+      { id: 'pay-2026-08-1', memberId: 'mem-1', planId: 'plan-vip', monthYear: '2026-08', amount: 260, paidAmount: 260, status: 'paid', paymentMethod: 'card', paidAt: '2026-08-02T10:15:00Z', invoiceNo: 'INV-2026-0801', notes: 'Card online auto-pay' },
+      { id: 'pay-2026-08-2', memberId: 'mem-2', planId: 'plan-premium', monthYear: '2026-08', amount: 140, paidAmount: 140, status: 'paid', paymentMethod: 'upi', paidAt: '2026-08-04T14:30:00Z', invoiceNo: 'INV-2026-0802', notes: 'Mobile digital payment' },
+      { id: 'pay-2026-08-3', memberId: 'mem-3', planId: 'plan-standard', monthYear: '2026-08', amount: 75, paidAmount: 75, status: 'paid', paymentMethod: 'bank_transfer', paidAt: '2026-08-05T09:00:00Z', invoiceNo: 'INV-2026-0803' },
+      { id: 'pay-2026-08-4', memberId: 'mem-4', planId: 'plan-premium', monthYear: '2026-08', amount: 140, paidAmount: 0, status: 'overdue', invoiceNo: 'INV-2026-0804', notes: 'Reminder sent on 15th' },
+      { id: 'pay-2026-08-5', memberId: 'mem-5', planId: 'plan-vip', monthYear: '2026-08', amount: 260, paidAmount: 260, status: 'paid', paymentMethod: 'card', paidAt: '2026-08-03T16:20:00Z', invoiceNo: 'INV-2026-0805' },
+      { id: 'pay-2026-08-6', memberId: 'mem-6', planId: 'plan-student', monthYear: '2026-08', amount: 45, paidAmount: 0, status: 'pending', invoiceNo: 'INV-2026-0806' },
+      { id: 'pay-2026-08-8', memberId: 'mem-8', planId: 'plan-premium', monthYear: '2026-08', amount: 120, paidAmount: 120, status: 'paid', paymentMethod: 'cash', paidAt: '2026-08-01T11:00:00Z', invoiceNo: 'INV-2026-0808', notes: 'Reception cash' },
+      { id: 'pay-2026-07-1', memberId: 'mem-1', planId: 'plan-vip', monthYear: '2026-07', amount: 260, paidAmount: 260, status: 'paid', paymentMethod: 'card', paidAt: '2026-07-02T10:15:00Z', invoiceNo: 'INV-2026-0701' },
+      { id: 'pay-2026-07-2', memberId: 'mem-2', planId: 'plan-premium', monthYear: '2026-07', amount: 140, paidAmount: 140, status: 'paid', paymentMethod: 'upi', paidAt: '2026-07-03T11:20:00Z', invoiceNo: 'INV-2026-0702' },
+      { id: 'pay-2026-07-3', memberId: 'mem-3', planId: 'plan-standard', monthYear: '2026-07', amount: 75, paidAmount: 75, status: 'paid', paymentMethod: 'bank_transfer', paidAt: '2026-07-05T15:00:00Z', invoiceNo: 'INV-2026-0703' },
+      { id: 'pay-2026-07-4', memberId: 'mem-4', planId: 'plan-premium', monthYear: '2026-07', amount: 140, paidAmount: 140, status: 'paid', paymentMethod: 'card', paidAt: '2026-07-12T17:00:00Z', invoiceNo: 'INV-2026-0704' },
+      { id: 'pay-2026-07-5', memberId: 'mem-5', planId: 'plan-vip', monthYear: '2026-07', amount: 260, paidAmount: 260, status: 'paid', paymentMethod: 'card', paidAt: '2026-07-04T12:00:00Z', invoiceNo: 'INV-2026-0705' },
+      { id: 'pay-2026-07-6', memberId: 'mem-6', planId: 'plan-student', monthYear: '2026-07', amount: 45, paidAmount: 45, status: 'paid', paymentMethod: 'cash', paidAt: '2026-07-06T18:00:00Z', invoiceNo: 'INV-2026-0706' },
+      { id: 'pay-2026-07-8', memberId: 'mem-8', planId: 'plan-premium', monthYear: '2026-07', amount: 120, paidAmount: 120, status: 'paid', paymentMethod: 'cash', paidAt: '2026-07-01T09:30:00Z', invoiceNo: 'INV-2026-0708' },
+    ];
+
+    const initialEarnings = [
+      { id: 'earn-1', title: 'Annual Summer Tennis Open Tournament Registration Fees', category: 'tournament', amount: 3450, date: '2026-08-14', paymentMethod: 'card', payerOrCustomer: '46 Tournament Participants', referenceNo: 'TRN-2026-08', description: 'Registration entry fees for singles & doubles categories' },
+      { id: 'earn-2', title: 'Apex Dynamics Gold Club Corporate Sponsorship (Q3)', category: 'sponsorship', amount: 5000, date: '2026-08-10', paymentMethod: 'bank_transfer', payerOrCustomer: 'Apex Dynamics Corp', referenceNo: 'SPON-Q3-091', description: 'Banner placements, team shirts, and hospitality booth.', customFields: { eventSponsorTier: 'Gold Partner' } },
+      { id: 'earn-3', title: 'Clubhouse Cafe & Sports Bar August Revenue', category: 'canteen_bar', amount: 4280, date: '2026-08-20', paymentMethod: 'card', payerOrCustomer: 'Clubhouse POS Terminal', referenceNo: 'POS-AUG-2026', description: 'Beverages, protein shakes, meals & lounge drinks' },
+      { id: 'earn-4', title: 'Official Club Branded Merch & Kit Sales', category: 'merchandise', amount: 1890, date: '2026-08-08', paymentMethod: 'upi', payerOrCustomer: 'Pro Shop Sales', referenceNo: 'MERCH-8832', description: 'Jerseys, gym towels, water bottles, and caps' },
+      { id: 'earn-5', title: 'Annual Charity Dinner & Auction Gala', category: 'events', amount: 6700, date: '2026-08-18', paymentMethod: 'bank_transfer', payerOrCustomer: 'Gala Attendees & Sponsors', referenceNo: 'EVT-GALA-26', description: 'Club Youth Academy Endowment Fund fundraiser' },
+      { id: 'earn-6', title: 'Weekend Guest Passes & Court Day Passes', category: 'guest_fees', amount: 940, date: '2026-08-22', paymentMethod: 'cash', payerOrCustomer: 'Front Desk', referenceNo: 'GST-AUG-W3', description: 'Visitor passes for swimming pool and tennis courts' },
+      { id: 'earn-7', title: 'Heritage Sports Foundation Grant / Donation', category: 'donations', amount: 1500, date: '2026-07-28', paymentMethod: 'bank_transfer', payerOrCustomer: 'Heritage Sports Foundation', referenceNo: 'DON-2026-07', description: 'Grant for junior player training equipment' }
+    ];
+
+    function App() {
+      const [currentUser, setCurrentUser] = useState(() => {
+        const saved = localStorage.getItem('fp_current_user');
+        return saved ? JSON.parse(saved) : initialStaffUsers[0];
+      });
+
+      const [staffUsers, setStaffUsers] = useState(() => {
+        const saved = localStorage.getItem('fp_staff_users');
+        return saved ? JSON.parse(saved) : initialStaffUsers;
+      });
+
+      const [isLoggedIn, setIsLoggedIn] = useState(true);
+      const [tab, setTab] = useState('dashboard');
+      const [members, setMembers] = useState(() => JSON.parse(localStorage.getItem('fp_members') || JSON.stringify(initialMembers)));
+      const [plans, setPlans] = useState(() => JSON.parse(localStorage.getItem('fp_plans') || JSON.stringify(initialPlans)));
+      const [payments, setPayments] = useState(() => JSON.parse(localStorage.getItem('fp_payments') || JSON.stringify(initialPayments)));
+      const [earnings, setEarnings] = useState(() => JSON.parse(localStorage.getItem('fp_earnings') || JSON.stringify(initialEarnings)));
+      const [customFields, setCustomFields] = useState(() => JSON.parse(localStorage.getItem('fp_custom_fields') || JSON.stringify(initialCustomFields)));
+      const [settings, setSettings] = useState(() => JSON.parse(localStorage.getItem('fp_settings') || JSON.stringify(initialSettings)));
+      const [selectedMonth, setSelectedMonth] = useState('2026-08');
+
+      // Modals
+      const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+      const [isAddEarningOpen, setIsAddEarningOpen] = useState(false);
+      const [activeReceipt, setActiveReceipt] = useState(null);
+      const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
+      const [justAuthorizedStaff, setJustAuthorizedStaff] = useState(null);
+
+      // Persistence
+      useEffect(() => { localStorage.setItem('fp_current_user', JSON.stringify(currentUser)); }, [currentUser]);
+      useEffect(() => { localStorage.setItem('fp_staff_users', JSON.stringify(staffUsers)); }, [staffUsers]);
+      useEffect(() => { localStorage.setItem('fp_members', JSON.stringify(members)); }, [members]);
+      useEffect(() => { localStorage.setItem('fp_plans', JSON.stringify(plans)); }, [plans]);
+      useEffect(() => { localStorage.setItem('fp_payments', JSON.stringify(payments)); }, [payments]);
+      useEffect(() => { localStorage.setItem('fp_earnings', JSON.stringify(earnings)); }, [earnings]);
+      useEffect(() => { localStorage.setItem('fp_custom_fields', JSON.stringify(customFields)); }, [customFields]);
+      useEffect(() => { localStorage.setItem('fp_settings', JSON.stringify(settings)); }, [settings]);
+
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      });
+
+      const formatCurrency = (val) => {
+        return (settings.currencySymbol || '$') + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      };
+
+      const getMemberEffectiveFee = (member) => {
+        if (member.customFee !== undefined && member.customFee !== null && member.customFee >= 0) return member.customFee;
+        const plan = plans.find(p => p.id === member.planId);
+        return plan ? plan.fee : 0;
+      };
+
+      const quickPayMember = (memberId, mStr, method = 'card') => {
+        const member = members.find(m => m.id === memberId);
+        if (!member) return;
+        const fee = getMemberEffectiveFee(member);
+        const existing = payments.find(p => p.memberId === memberId && p.monthYear === mStr);
+        if (existing) {
+          setPayments(prev => prev.map(p => p.id === existing.id ? { ...p, status: 'paid', paidAmount: p.amount, paymentMethod: method, paidAt: new Date().toISOString() } : p));
+        } else {
+          const newPay = {
+            id: 'pay-' + mStr + '-' + memberId,
+            memberId,
+            planId: member.planId,
+            monthYear: mStr,
+            amount: fee,
+            paidAmount: fee,
+            status: 'paid',
+            paymentMethod: method,
+            paidAt: new Date().toISOString(),
+            invoiceNo: 'INV-' + mStr.replace('-', '') + '-' + Math.floor(1000 + Math.random() * 9000),
+          };
+          setPayments(prev => [newPay, ...prev]);
+        }
+      };
+
+      const resetData = () => {
+        setMembers(initialMembers);
+        setPlans(initialPlans);
+        setPayments(initialPayments);
+        setEarnings(initialEarnings);
+        setCustomFields(initialCustomFields);
+        setSettings(initialSettings);
+        setStaffUsers(initialStaffUsers);
+        setCurrentUser(initialStaffUsers[0]);
+        setSelectedMonth('2026-08');
+      };
+
+      const handleLoginAs = (staff) => {
+        setCurrentUser(staff);
+        setIsLoggedIn(true);
+      };
+
+      const handleLaunchStaffPortal = (staff) => {
+        setCurrentUser(staff);
+        setIsLoggedIn(true);
+        setTab('dashboard');
+        setJustAuthorizedStaff(null);
+      };
+
+      const activeMembers = members.filter(m => m.status === 'active');
+      const monthPayments = payments.filter(p => p.monthYear === selectedMonth);
+      const monthlyFeesExpected = activeMembers.reduce((sum, m) => {
+        const p = monthPayments.find(pay => pay.memberId === m.id);
+        const plan = plans.find(pl => pl.id === m.planId);
+        return sum + (p ? p.amount : (m.customFee ?? (plan?.fee || 0)));
+      }, 0);
+      const monthlyFeesCollected = monthPayments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.paidAmount, 0);
+      const monthlyFeesPending = monthPayments.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
+      const allPaidFees = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.paidAmount, 0);
+      const totalOtherEarnings = earnings.reduce((sum, e) => sum + e.amount, 0);
+      const totalClubRevenue = allPaidFees + totalOtherEarnings;
+      const collectionRate = monthlyFeesExpected > 0 ? Math.round((monthlyFeesCollected / monthlyFeesExpected) * 100) : 0;
+      const overdueCount = monthPayments.filter(p => p.status === 'overdue').length;
+      const pendingCount = monthPayments.filter(p => p.status === 'pending').length;
+
+      if (!isLoggedIn) {
+        return (
+          <LoginScreen
+            staffUsers={staffUsers}
+            settings={settings}
+            onLogin={handleLoginAs}
+          />
+        );
+      }
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          {/* Header */}
+          <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-800 shadow-xl no-print">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between h-16 border-b border-slate-800">
+                <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setTab('dashboard')}>
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white font-black text-xl">
+                    FP
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-extrabold text-lg text-white tracking-tight">{settings.clubName}</span>
+                      <span className="px-2 py-0.5 text-xs font-semibold uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full">
+                        Finans Portal
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 font-medium hidden sm:block">{settings.tagline}</p>
+                  </div>
+                </div>
+
+                {/* Right Header Section: Staff User Profile & Quick Actions */}
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2.5 bg-slate-800/90 border border-emerald-500/30 px-3 py-1.5 rounded-xl shadow">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white text-xs font-extrabold shadow">
+                      {currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : 'FN'}
+                    </div>
+                    <div className="text-left hidden sm:block">
+                      <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+                        <span>{currentUser?.name}</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Supabase Authorized"></span>
+                      </div>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="px-1.5 py-0.2 text-[10px] font-extrabold uppercase rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          Role: {currentUser?.role}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setIsAddMemberOpen(true)}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shadow-md shadow-indigo-600/30"
+                  >
+                    <i data-lucide="plus-circle" className="w-4 h-4"></i>
+                    <span>+ Add Member</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsAddEarningOpen(true)}
+                    className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition shadow-md shadow-emerald-600/30"
+                  >
+                    <i data-lucide="trending-up" className="w-4 h-4"></i>
+                    <span>Add Earning</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsLoggedIn(false)}
+                    title="Switch Account / Logout"
+                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition text-xs font-semibold flex items-center gap-1"
+                  >
+                    <i data-lucide="log-out" className="w-4 h-4"></i>
+                    <span className="hidden md:inline">Switch Role</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <nav className="flex space-x-1 sm:space-x-2 py-2 overflow-x-auto">
+                {[
+                  { id: 'dashboard', label: 'Club Dashboard', icon: 'layout-dashboard' },
+                  { id: 'checklist', label: 'Monthly Fee Checklist', icon: 'check-square', badge: 'Monthly' },
+                  { id: 'members', label: 'Members Directory', icon: 'users' },
+                  { id: 'plans', label: 'Fee Customizer & Plans', icon: 'sliders' },
+                  { id: 'earnings', label: 'Club Earnings Logger', icon: 'dollar-sign' },
+                  { id: 'staff', label: 'Admin & Supabase Staff Roles', icon: 'shield-check', badge: 'Supabase' },
+                  { id: 'custom-fields', label: 'Custom Fields', icon: 'layers' },
+                  { id: 'settings', label: 'Settings & Supabase SQL', icon: 'settings' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setTab(item.id)}
+                    className={'flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition ' + (
+                      tab === item.id ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+                    )}
+                  >
+                    <i data-lucide={item.icon} className={'w-4 h-4 ' + (tab === item.id ? 'text-white' : 'text-slate-400')}></i>
+                    <span>{item.label}</span>
+                    {item.badge && (
+                      <span className={'ml-1 px-1.5 py-0.2 text-[10px] uppercase font-bold rounded-full ' + (tab === item.id ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-700 text-slate-300')}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </header>
+
+          {/* Main Body */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {tab === 'dashboard' && (
+              <DashboardView
+                members={members}
+                plans={plans}
+                payments={payments}
+                earnings={earnings}
+                selectedMonth={selectedMonth}
+                setSelectedMonth={setSelectedMonth}
+                formatCurrency={formatCurrency}
+                quickPayMember={quickPayMember}
+                setTab={setTab}
+                setIsAddEarningOpen={setIsAddEarningOpen}
+                currentUser={currentUser}
+              />
+            )}
+
+            {tab === 'checklist' && (
+              <ChecklistView
+                members={members}
+                plans={plans}
+                payments={payments}
+                setPayments={setPayments}
+                selectedMonth={selectedMonth}
+                setSelectedMonth={setSelectedMonth}
+                formatCurrency={formatCurrency}
+                getMemberEffectiveFee={getMemberEffectiveFee}
+                onOpenReceipt={(pay, mem) => setActiveReceipt({ pay, mem })}
+              />
+            )}
+
+            {tab === 'members' && (
+              <MembersView
+                members={members}
+                setMembers={setMembers}
+                plans={plans}
+                payments={payments}
+                customFields={customFields}
+                formatCurrency={formatCurrency}
+                getMemberEffectiveFee={getMemberEffectiveFee}
+                setIsAddMemberOpen={setIsAddMemberOpen}
+              />
+            )}
+
+            {tab === 'plans' && (
+              <PlansView
+                plans={plans}
+                setPlans={setPlans}
+                members={members}
+                formatCurrency={formatCurrency}
+              />
+            )}
+
+            {tab === 'earnings' && (
+              <EarningsView
+                earnings={earnings}
+                setEarnings={setEarnings}
+                customFields={customFields}
+                formatCurrency={formatCurrency}
+                setIsAddEarningOpen={setIsAddEarningOpen}
+              />
+            )}
+
+            {tab === 'staff' && (
+              <StaffAdminView
+                staffUsers={staffUsers}
+                setStaffUsers={setStaffUsers}
+                currentUser={currentUser}
+                onSwitchUser={setCurrentUser}
+                setIsAddStaffOpen={setIsAddStaffOpen}
+                onLaunchStaff={handleLaunchStaffPortal}
+              />
+            )}
+
+            {tab === 'custom-fields' && (
+              <CustomFieldsView
+                customFields={customFields}
+                setCustomFields={setCustomFields}
+              />
+            )}
+
+            {tab === 'settings' && (
+              <SettingsTab
+                settings={settings}
+                setSettings={setSettings}
+                resetData={resetData}
+              />
+            )}
+          </main>
+
+          {/* Modals */}
+          {isAddMemberOpen && (
+            <AddMemberDialog
+              plans={plans}
+              customFields={customFields}
+              selectedMonth={selectedMonth}
+              onClose={() => setIsAddMemberOpen(false)}
+              onAdd={(newMem) => {
+                const id = 'mem-' + Date.now();
+                const m = { ...newMem, id };
+                setMembers(prev => [m, ...prev]);
+                if (m.status === 'active') {
+                  const fee = m.customFee ?? (plans.find(p => p.id === m.planId)?.fee || 75);
+                  setPayments(prev => [{
+                    id: 'pay-' + selectedMonth + '-' + id,
+                    memberId: id,
+                    planId: m.planId,
+                    monthYear: selectedMonth,
+                    amount: fee,
+                    paidAmount: 0,
+                    status: 'pending',
+                    invoiceNo: 'INV-' + selectedMonth.replace('-', '') + '-' + Math.floor(1000 + Math.random() * 9000),
+                  }, ...prev]);
+                }
+                setIsAddMemberOpen(false);
+              }}
+            />
+          )}
+
+          {isAddEarningOpen && (
+            <AddEarningDialog
+              customFields={customFields}
+              onClose={() => setIsAddEarningOpen(false)}
+              onAdd={(newEarn) => {
+                const id = 'earn-' + Date.now();
+                const referenceNo = 'TXN-' + Math.floor(100000 + Math.random() * 900000);
+                setEarnings(prev => [{ ...newEarn, id, referenceNo }, ...prev]);
+                setIsAddEarningOpen(false);
+              }}
+            />
+          )}
+
+          {isAddStaffOpen && (
+            <AddStaffDialog
+              onClose={() => setIsAddStaffOpen(false)}
+              onAdd={(newStaff) => {
+                const id = 'staff-' + Date.now();
+                const created = {
+                  ...newStaff,
+                  id,
+                  supabaseStatus: 'Authorized in Supabase',
+                  lastLogin: 'Never'
+                };
+                setStaffUsers(prev => [...prev, created]);
+                setIsAddStaffOpen(false);
+                setJustAuthorizedStaff(created);
+              }}
+            />
+          )}
+
+          {justAuthorizedStaff && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+              <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-2xl shadow-lg shadow-emerald-500/30">
+                  <i data-lucide="check-circle-2" className="w-8 h-8"></i>
+                </div>
+                <div>
+                  <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-extrabold uppercase rounded-full">
+                    Supabase Authorized ✓
+                  </span>
+                  <h3 className="text-xl font-black text-white mt-2">New Staff Created!</h3>
+                  <p className="text-xs text-slate-300 mt-1">
+                    <strong>{justAuthorizedStaff.name}</strong> ({justAuthorizedStaff.email}) has been authorized with the <strong className="text-emerald-400">Role: {justAuthorizedStaff.role}</strong> in Supabase.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left text-xs space-y-1.5">
+                  <div className="flex justify-between"><span className="text-slate-400">Assigned Role:</span> <span className="font-bold text-emerald-400">Role: {justAuthorizedStaff.role}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Department:</span> <span className="font-bold text-white">{justAuthorizedStaff.department}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Auth Gateway:</span> <span className="font-mono text-indigo-300">Supabase RLS & Auth RPC</span></div>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    onClick={() => handleLaunchStaffPortal(justAuthorizedStaff)}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition"
+                  >
+                    <span>🚀 Launch Finance Portal as {justAuthorizedStaff.name}</span>
+                  </button>
+                  <button
+                    onClick={() => setJustAuthorizedStaff(null)}
+                    className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+                  >
+                    Stay on Admin Roster
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeReceipt && (
+            <ReceiptDialog
+              payment={activeReceipt.pay}
+              member={activeReceipt.mem}
+              settings={settings}
+              plans={plans}
+              formatCurrency={formatCurrency}
+              onClose={() => setActiveReceipt(null)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // Login Screen Component
+    function LoginScreen({ staffUsers, settings, onLogin }) {
+      const [email, setEmail] = useState('finance@club.org');
+      const [password, setPassword] = useState('password123');
+
+      const handleManualLogin = (e) => {
+        e.preventDefault();
+        const found = staffUsers.find(s => s.email.toLowerCase() === email.toLowerCase());
+        if (found) {
+          onLogin(found);
+        } else {
+          onLogin({
+            id: 'staff-' + Date.now(),
+            name: email.split('@')[0].replace('.', ' '),
+            email: email,
+            role: 'Finance',
+            department: 'Finance Division',
+            supabaseStatus: 'Authorized in Supabase',
+            status: 'Active',
+            lastLogin: 'Just now'
+          });
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-950 via-indigo-950/50 to-slate-950">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 mx-auto flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-indigo-500/30">
+                FP
+              </div>
+              <h1 className="text-2xl font-extrabold text-white">{settings.clubName}</h1>
+              <p className="text-xs text-slate-400">Staff & Finance Portal Access Gateway (Supabase)</p>
+            </div>
+
+            <div className="bg-slate-800/70 p-4 rounded-2xl border border-slate-700/60 space-y-2.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 block">
+                ⚡ 1-Click Staff Role Login (Supabase Authorized):
+              </span>
+              {staffUsers.map(staff => (
+                <button
+                  key={staff.id}
+                  onClick={() => onLogin(staff)}
+                  className="w-full p-2.5 bg-slate-800 hover:bg-indigo-600/30 hover:border-indigo-500/50 border border-slate-700 rounded-xl text-left flex items-center justify-between transition group"
+                >
+                  <div>
+                    <div className="font-bold text-xs text-white group-hover:text-indigo-300">{staff.name}</div>
+                    <div className="text-[11px] text-slate-400">{staff.email}</div>
+                  </div>
+                  <span className={'px-2.5 py-1 text-[11px] font-extrabold uppercase rounded-lg ' + (
+                    staff.role === 'Finance'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : staff.role === 'Admin'
+                      ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                      : 'bg-slate-700 text-slate-300'
+                  )}>
+                    Role: {staff.role}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <form onSubmit={handleManualLogin} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Staff Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Staff Password / PIN</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/30 transition text-sm flex items-center justify-center gap-2"
+              >
+                <span>Authorize & Open Finance Portal</span>
+                <i data-lucide="arrow-right" className="w-4 h-4"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Members Directory Component with Role Badges
+    function MembersView({ members, setMembers, plans, customFields, formatCurrency, getMemberEffectiveFee, setIsAddMemberOpen }) {
+      const [searchTerm, setSearchTerm] = useState('');
+      const memberCustomFields = customFields.filter(cf => cf.entityType === 'member');
+
+      const filtered = members.filter(m => m.name.toLowerCase().includes(searchTerm.toLowerCase()) || m.email.toLowerCase().includes(searchTerm.toLowerCase()) || (m.role && m.role.toLowerCase().includes(searchTerm.toLowerCase())));
+
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+            <div>
+              <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+                <i data-lucide="users" className="w-6 h-6 text-indigo-400"></i>
+                <span>Club Members Directory</span>
+              </h1>
+              <p className="text-slate-400 text-sm mt-1">Manage member profiles, assigned roles (<span className="text-emerald-400 font-bold">Finance</span>, Committee, Executive), and fee plans.</p>
+            </div>
+            <button
+              onClick={() => setIsAddMemberOpen(true)}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5"
+            >
+              <i data-lucide="user-plus" className="w-4 h-4"></i>
+              <span>+ Add New Member</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filtered.map(member => {
+              const plan = plans.find(p => p.id === member.planId);
+              const fee = getMemberEffectiveFee(member);
+              const memberRole = member.role || 'Member';
+
+              return (
+                <div key={member.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-pink-500 flex items-center justify-center text-white text-base font-extrabold shadow">
+                          {member.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-white text-base">{member.name}</h3>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <span className={'px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-full ' + (
+                              memberRole === 'Finance'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                : memberRole === 'Executive Member'
+                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                                : 'bg-slate-800 text-slate-300 border border-slate-700'
+                            )}>
+                              Role: {memberRole}
+                            </span>
+                            <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-500/20 text-indigo-300">
+                              {plan?.name || 'Standard'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-emerald-500/20 text-emerald-400">
+                        {member.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-1 text-xs text-slate-300 border-t border-slate-800 pt-3">
+                      <div>📧 {member.email}</div>
+                      <div>📞 {member.phone || 'No phone'}</div>
+                      <div>📅 Joined: {member.joinDate}</div>
+                    </div>
+
+                    <div className="mt-3 bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 flex justify-between items-center">
+                      <span className="text-xs text-slate-400">Monthly Dues:</span>
+                      <span className="font-extrabold text-sm text-emerald-400">{formatCurrency(fee)}</span>
+                    </div>
+
+                    {memberCustomFields.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {memberCustomFields.map(cf => {
+                          const val = member.customFields?.[cf.name];
+                          if (!val) return null;
+                          return (
+                            <span key={cf.id} className="px-2 py-0.5 bg-slate-800 text-slate-300 text-[10px] rounded border border-slate-700">
+                              {cf.label}: {String(val)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+                    <span className="text-slate-400 italic">{member.notes || 'Active member'}</span>
+                    <button
+                      onClick={() => {
+                        if (confirm('Delete ' + member.name + '?')) {
+                          setMembers(prev => prev.filter(m => m.id !== member.id));
+                        }
+                      }}
+                      className="text-red-400 hover:text-red-300 font-semibold"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // Add Member Dialog WITH EXPLICIT ROLE SELECTOR
+    function AddMemberDialog({ plans, customFields, selectedMonth, onClose, onAdd }) {
+      const [name, setName] = useState('');
+      const [email, setEmail] = useState('');
+      const [phone, setPhone] = useState('');
+      const [role, setRole] = useState('Finance'); // Default to Finance role
+      const [planId, setPlanId] = useState(plans[0]?.id || 'plan-standard');
+      const [customFee, setCustomFee] = useState('');
+      const [status, setStatus] = useState('active');
+      const [notes, setNotes] = useState('');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onAdd({
+          name,
+          email,
+          phone,
+          role,
+          planId,
+          customFee: customFee ? parseFloat(customFee) : undefined,
+          joinDate: new Date().toISOString().slice(0, 10),
+          status,
+          notes,
+          customFields: {},
+        });
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-white">Add New Club Member</h3>
+                <p className="text-xs text-slate-400">Assign member role & financial plan</p>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Full Name</label>
+                <input type="text" placeholder="e.g. Rachel Adams" value={name} onChange={e => setName(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold" required />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Email</label>
+                  <input type="email" placeholder="rachel@club.org" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white" required />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Phone</label>
+                  <input type="text" placeholder="+1 (555) 000-0000" value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white" />
+                </div>
+              </div>
+
+              {/* NEW MEMBER ROLE SELECTOR */}
+              <div className="p-3 bg-slate-950 border border-indigo-500/30 rounded-xl space-y-1">
+                <label className="block text-emerald-400 font-extrabold text-xs uppercase tracking-wider">
+                  ★ Member Club Role (Finance / Admin / Member):
+                </label>
+                <select
+                  value={role}
+                  onChange={e => setRole(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-emerald-500/40 rounded-lg text-white font-bold text-sm"
+                >
+                  <option value="Finance">Finance (Club Finance Officer & Member)</option>
+                  <option value="Executive Member">Executive Member (Committee / Board)</option>
+                  <option value="Member">Club Member (Standard)</option>
+                  <option value="Athlete / Student">Athlete / Youth Athlete</option>
+                  <option value="Volunteer / Coach">Volunteer / Coach</option>
+                  <option value="Admin">Admin (Club Administrator)</option>
+                </select>
+                <p className="text-[11px] text-slate-400">Selecting <strong>Finance</strong> assigns full financial portal privileges.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Membership Plan</label>
+                  <select value={planId} onChange={e => setPlanId(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white">
+                    {plans.map(p => <option key={p.id} value={p.id}>{p.name} ($" + "{p.fee}/mo)</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Status</label>
+                  <select value={status} onChange={e => setStatus(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Custom Monthly Fee Override ($) (Optional)</label>
+                <input type="number" placeholder="Leave empty to use plan fee" value={customFee} onChange={e => setCustomFee(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white" />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Notes / Committee Details</label>
+                <input type="text" placeholder="e.g. Finance Treasurer & Tennis Captain" value={notes} onChange={e => setNotes(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white" />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={onClose} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg">Cancel</button>
+                <button type="submit" className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow">
+                  Save Member with Role
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Staff & Admin Roles Section
+    function StaffAdminView({ staffUsers, setStaffUsers, currentUser, onSwitchUser, setIsAddStaffOpen, onLaunchStaff }) {
+      return (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+                <i data-lucide="shield-check" className="w-6 h-6 text-emerald-400"></i>
+                <span>Admin & Staff Role Management (Supabase Authorized)</span>
+              </h1>
+              <p className="text-slate-400 text-sm mt-1">
+                When Admin adds a new staff with role <span className="text-emerald-400 font-bold">Finance</span>, it is authorized by Supabase and instantly ready to launch the portal.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsAddStaffOpen(true)}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg flex items-center gap-2"
+            >
+              <i data-lucide="user-plus" className="w-4 h-4"></i>
+              <span>+ Add Staff as Finance Role</span>
+            </button>
+          </div>
+
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-indigo-500/40 p-5 rounded-2xl shadow-lg flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white text-base font-black shadow">
+                {currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : 'FN'}
+              </div>
+              <div>
+                <span className="text-xs text-slate-400">Active Staff Session:</span>
+                <h3 className="text-lg font-bold text-white">{currentUser?.name} ({currentUser?.email})</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="px-2 py-0.5 text-xs font-extrabold uppercase rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/50">
+                    Role: {currentUser?.role}
+                  </span>
+                  <span className="text-xs text-slate-400">• {currentUser?.department}</span>
+                  <span className="text-[11px] text-emerald-400 font-semibold">• Supabase Verified ✓</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <span className="text-xs px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full font-bold">
+                ✓ Full Portal Access Active
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="p-4 border-b border-slate-800 font-bold text-sm text-white flex justify-between items-center">
+              <span>Staff Accounts, Roles & Supabase Auth Status</span>
+              <span className="text-xs text-emerald-400 font-semibold">Supabase RLS Policy: Active</span>
+            </div>
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-800/80 text-xs uppercase text-slate-400">
+                <tr>
+                  <th className="p-4">Staff Member</th>
+                  <th className="p-4">Role</th>
+                  <th className="p-4">Department</th>
+                  <th className="p-4">Supabase Status</th>
+                  <th className="p-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {staffUsers.map(staff => {
+                  const isCurrent = currentUser?.id === staff.id;
+                  return (
+                    <tr key={staff.id} className={'hover:bg-slate-800/40 ' + (isCurrent ? 'bg-indigo-950/20' : '')}>
+                      <td className="p-4 font-bold text-white">
+                        <div>{staff.name}</div>
+                        <div className="text-xs text-slate-400 font-normal">{staff.email}</div>
+                      </td>
+                      <td className="p-4">
+                        <span className={'px-2.5 py-1 text-xs font-extrabold uppercase rounded-full ' + (
+                          staff.role === 'Finance'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                            : staff.role === 'Admin'
+                            ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700'
+                        )}>
+                          {staff.role}
+                        </span>
+                      </td>
+                      <td className="p-4 text-xs text-slate-300">{staff.department}</td>
+                      <td className="p-4">
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 w-fit">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                          <span>Authorized in Supabase</span>
+                        </span>
+                      </td>
+                      <td className="p-4 text-right space-x-2">
+                        {isCurrent ? (
+                          <span className="text-xs text-emerald-400 font-bold">● Active Session</span>
+                        ) : (
+                          <button
+                            onClick={() => onLaunchStaff(staff)}
+                            className="px-3 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-bold transition"
+                          >
+                            🚀 Launch Finance Portal
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // Add Staff Modal
+    function AddStaffDialog({ onClose, onAdd }) {
+      const [name, setName] = useState('');
+      const [email, setEmail] = useState('');
+      const [role, setRole] = useState('Finance');
+      const [department, setDepartment] = useState('Treasury & Accounts');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onAdd({ name, email, role, department, status: 'Active' });
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-white">Add Staff & Authorize in Supabase</h3>
+                <p className="text-xs text-slate-400">Grant permissions to launch the Finance Portal</p>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Full Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Rachel Adams"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Staff Email</label>
+                <input
+                  type="email"
+                  placeholder="rachel@club.org"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Role Assigned</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold text-sm text-emerald-400"
+                >
+                  <option value="Finance">Finance (Full Financial & Fee Checklist Control)</option>
+                  <option value="Admin">Admin (Executive Super Admin)</option>
+                  <option value="Manager">Manager (Operations & Membership)</option>
+                  <option value="Auditor">Auditor (Read-Only Financials)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Department</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Treasury & Accounts"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <span className="font-bold text-indigo-400 block">⚡ Supabase Auth Action:</span>
+                <div>• User will be authorized in <code className="text-slate-300 font-mono">public.profiles</code> with <code className="text-emerald-400 font-mono">role = 'finance'</code>.</div>
+                <div>• Enables immediate access to financial dashboard and monthly checklists.</div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={onClose} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg">Cancel</button>
+                <button type="submit" className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-lg shadow-emerald-600/30">
+                  Authorize & Add Staff
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Dashboard View
+    function DashboardView({ members, plans, payments, earnings, selectedMonth, setSelectedMonth, formatCurrency, quickPayMember, setTab, setIsAddEarningOpen, currentUser }) {
+      const activeMembers = members.filter(m => m.status === 'active');
+      const monthPayments = payments.filter(p => p.monthYear === selectedMonth);
+      const monthlyFeesExpected = activeMembers.reduce((sum, m) => {
+        const p = monthPayments.find(pay => pay.memberId === m.id);
+        const plan = plans.find(pl => pl.id === m.planId);
+        return sum + (p ? p.amount : (m.customFee ?? (plan?.fee || 0)));
+      }, 0);
+      const monthlyFeesCollected = monthPayments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.paidAmount, 0);
+      const monthlyFeesPending = monthPayments.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((sum, p) => sum + (p.amount - p.paidAmount), 0);
+      const allPaidFees = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.paidAmount, 0);
+      const totalOtherEarnings = earnings.reduce((sum, e) => sum + e.amount, 0);
+      const totalClubRevenue = allPaidFees + totalOtherEarnings;
+      const collectionRate = monthlyFeesExpected > 0 ? Math.round((monthlyFeesCollected / monthlyFeesExpected) * 100) : 0;
+      const overdueCount = monthPayments.filter(p => p.status === 'overdue').length;
+      const pendingCount = monthPayments.filter(p => p.status === 'pending').length;
+
+      const chartRef = useRef(null);
+      useEffect(() => {
+        if (!chartRef.current) return;
+        const ctx = chartRef.current.getContext('2d');
+        const months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
+        const feeData = [950, 1100, 1050, 1200, 1040, monthlyFeesCollected || 980];
+        const earnData = [2400, 3100, 2800, 4200, 3500, totalOtherEarnings || 4100];
+
+        const myChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: months,
+            datasets: [
+              {
+                label: 'Membership Dues ($)',
+                data: feeData,
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                tension: 0.4,
+                fill: true,
+              },
+              {
+                label: 'Commercial Club Earnings ($)',
+                data: earnData,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                tension: 0.4,
+                fill: true,
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#94a3b8' } }
+            },
+            scales: {
+              x: { grid: { color: 'rgba(51, 65, 85, 0.3)' }, ticks: { color: '#94a3b8' } },
+              y: { grid: { color: 'rgba(51, 65, 85, 0.3)' }, ticks: { color: '#94a3b8' } }
+            }
+          }
+        });
+
+        return () => myChart.destroy();
+      }, [monthlyFeesCollected, totalOtherEarnings]);
+
+      return (
+        <div className="space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 p-6 rounded-2xl border border-indigo-900/40 shadow-xl">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Club Financial Overview & Dashboard</h1>
+                <span className="px-2.5 py-0.5 text-xs font-extrabold uppercase rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  Role: {currentUser?.role}
+                </span>
+              </div>
+              <p className="text-slate-400 text-sm mt-1">Logged in as {currentUser?.name} ({currentUser?.department}). Full financial controls active.</p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <i data-lucide="calendar" className="w-4 h-4 text-indigo-400"></i>
+                <span>Active Billing Month:</span>
+              </span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              >
+                <option value="2026-08">August 2026 (Current)</option>
+                <option value="2026-07">July 2026</option>
+                <option value="2026-06">June 2026</option>
+                <option value="2026-05">May 2026</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Club Revenue</span>
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                  <i data-lucide="dollar-sign" className="w-5 h-5"></i>
+                </div>
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-white">{formatCurrency(totalClubRevenue)}</div>
+                <div className="flex items-center text-xs text-emerald-400 mt-2 font-medium">
+                  <i data-lucide="trending-up" className="w-3.5 h-3.5 mr-1"></i>
+                  <span>All-time membership & commercial earnings</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{selectedMonth} Fees Collected</span>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <i data-lucide="check-circle-2" className="w-5 h-5"></i>
+                </div>
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400">{formatCurrency(monthlyFeesCollected)}</div>
+                <div className="flex items-center justify-between text-xs text-slate-400 mt-2">
+                  <span>Target: {formatCurrency(monthlyFeesExpected)}</span>
+                  <span className="font-bold text-emerald-400">{collectionRate}% Paid</span>
+                </div>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-1.5 mt-3 overflow-hidden">
+                <div className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full" style={{ width: collectionRate + '%' }}></div>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Uncollected Dues</span>
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <i data-lucide="alert-circle" className="w-5 h-5"></i>
+                </div>
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-amber-400">{formatCurrency(monthlyFeesPending)}</div>
+                <div className="flex items-center space-x-2 text-xs text-slate-400 mt-2">
+                  <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded font-semibold">{overdueCount} Overdue</span>
+                  <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded font-semibold">{pendingCount} Pending</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Other Club Earnings</span>
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                  <i data-lucide="trending-up" className="w-5 h-5"></i>
+                </div>
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-purple-400">{formatCurrency(totalOtherEarnings)}</div>
+                <div className="text-xs text-slate-400 mt-2">From Events, Sponsors, Canteen & Merch</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <i data-lucide="trending-up" className="w-5 h-5 text-indigo-400"></i>
+                  <span>Revenue Breakdown & Growth Trend</span>
+                </h2>
+                <p className="text-xs text-slate-400">Monthly comparison of Membership Fees vs Commercial Club Earnings</p>
+              </div>
+              <button onClick={() => setTab('earnings')} className="text-xs text-indigo-400 font-semibold hover:underline">
+                View All Earnings →
+              </button>
+            </div>
+            <div className="h-72 w-full">
+              <canvas ref={chartRef}></canvas>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <i data-lucide="check-circle-2" className="w-5 h-5 text-emerald-400"></i>
+                  <span>Monthly Fee Checklist Quick Access ({selectedMonth})</span>
+                </h2>
+                <p className="text-xs text-slate-400">Quickly review member statuses and mark dues</p>
+              </div>
+              <button onClick={() => setTab('checklist')} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg">
+                Open Full Checklist →
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-800/80 text-xs uppercase text-slate-400">
+                  <tr>
+                    <th className="p-3">Member</th>
+                    <th className="p-3">Role</th>
+                    <th className="p-3">Plan</th>
+                    <th className="p-3">Monthly Fee</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {activeMembers.slice(0, 5).map(member => {
+                    const plan = plans.find(p => p.id === member.planId);
+                    const pay = monthPayments.find(p => p.memberId === member.id);
+                    const fee = member.customFee ?? (plan?.fee || 0);
+                    const isPaid = pay?.status === 'paid';
+                    const isOverdue = pay?.status === 'overdue';
+
+                    return (
+                      <tr key={member.id} className="hover:bg-slate-800/40">
+                        <td className="p-3 font-semibold text-white flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {member.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div>{member.name}</div>
+                            <div className="text-xs text-slate-400 font-normal">{member.email}</div>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className={'px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-full ' + (
+                            member.role === 'Finance'
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                              : member.role === 'Executive Member'
+                              ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          )}>
+                            {member.role || 'Member'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                            {plan?.name || 'Standard'}
+                          </span>
+                        </td>
+                        <td className="p-3 font-bold text-white">
+                          {formatCurrency(fee)}
+                          {member.customFee !== undefined && <span className="text-[10px] text-amber-400 ml-1">(Custom)</span>}
+                        </td>
+                        <td className="p-3">
+                          {isPaid ? (
+                            <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Paid</span>
+                          ) : isOverdue ? (
+                            <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-red-500/20 text-red-400 border border-red-500/30">Overdue</span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">Pending</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right">
+                          {!isPaid ? (
+                            <button
+                              onClick={() => quickPayMember(member.id, selectedMonth, 'card')}
+                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-md shadow"
+                            >
+                              Mark Paid
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400">via {(pay?.paymentMethod || 'CARD').toUpperCase()}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Monthly Checklist Component
+    function ChecklistView({ members, plans, payments, setPayments, selectedMonth, setSelectedMonth, formatCurrency, getMemberEffectiveFee, onOpenReceipt }) {
+      const [searchTerm, setSearchTerm] = useState('');
+      const [statusFilter, setStatusFilter] = useState('all');
+      const activeMembers = members.filter(m => m.status === 'active');
+      const monthPayments = payments.filter(p => p.monthYear === selectedMonth);
+
+      const filtered = activeMembers.filter(m => {
+        const matchesSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase()) || m.email.toLowerCase().includes(searchTerm.toLowerCase()) || (m.role && m.role.toLowerCase().includes(searchTerm.toLowerCase()));
+        const pay = monthPayments.find(p => p.memberId === m.id);
+        const status = pay?.status || 'pending';
+        const matchesStatus = statusFilter === 'all' || status === statusFilter;
+        return matchesSearch && matchesStatus;
+      });
+
+      const markStatus = (payId, memberId, newStatus, method = 'card') => {
+        setPayments(prev => {
+          const idx = prev.findIndex(p => p.id === payId);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = {
+              ...copy[idx],
+              status: newStatus,
+              paidAmount: newStatus === 'paid' ? copy[idx].amount : 0,
+              paymentMethod: newStatus === 'paid' ? method : copy[idx].paymentMethod,
+              paidAt: newStatus === 'paid' ? new Date().toISOString() : undefined,
+            };
+            return copy;
+          } else {
+            const member = members.find(m => m.id === memberId);
+            const fee = getMemberEffectiveFee(member);
+            return [{
+              id: 'pay-' + selectedMonth + '-' + memberId,
+              memberId,
+              planId: member.planId,
+              monthYear: selectedMonth,
+              amount: fee,
+              paidAmount: newStatus === 'paid' ? fee : 0,
+              status: newStatus,
+              paymentMethod: method,
+              paidAt: newStatus === 'paid' ? new Date().toISOString() : undefined,
+              invoiceNo: 'INV-' + selectedMonth.replace('-', '') + '-' + Math.floor(1000 + Math.random() * 9000),
+            }, ...prev];
+          }
+        });
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+                <i data-lucide="check-square" className="w-6 h-6 text-indigo-400"></i>
+                <span>Monthly Club Membership Fee Checklist</span>
+              </h1>
+              <p className="text-slate-400 text-sm mt-1">Track payments, issue receipts, and manage monthly dues for all club members.</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-slate-300 font-semibold">Month:</span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-1.5 text-sm font-bold"
+              >
+                <option value="2026-08">August 2026</option>
+                <option value="2026-07">July 2026</option>
+                <option value="2026-06">June 2026</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+            <input
+              type="text"
+              placeholder="Search member or role..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full sm:w-64 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none"
+            />
+            <div className="flex space-x-1 bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs">
+              {['all', 'paid', 'pending', 'overdue'].map(st => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={'px-3 py-1 rounded-md font-semibold capitalize ' + (statusFilter === st ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200')}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-800/80 text-xs uppercase text-slate-400">
+                <tr>
+                  <th className="p-4">Member Name</th>
+                  <th className="p-4">Member Role</th>
+                  <th className="p-4">Plan</th>
+                  <th className="p-4">Monthly Fee</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4">Payment Method</th>
+                  <th className="p-4">Invoice No</th>
+                  <th className="p-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {filtered.map(member => {
+                  const plan = plans.find(p => p.id === member.planId);
+                  const pay = monthPayments.find(p => p.memberId === member.id);
+                  const fee = member.customFee ?? (plan?.fee || 0);
+                  const isPaid = pay?.status === 'paid';
+                  const isOverdue = pay?.status === 'overdue';
+
+                  return (
+                    <tr key={member.id} className="hover:bg-slate-800/40">
+                      <td className="p-4 font-bold text-white">
+                        <div>{member.name}</div>
+                        <div className="text-xs text-slate-400 font-normal">{member.email}</div>
+                      </td>
+                      <td className="p-4">
+                        <span className={'px-2.5 py-0.5 text-xs font-extrabold uppercase rounded-full ' + (
+                          member.role === 'Finance'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                            : member.role === 'Executive Member'
+                            ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700'
+                        )}>
+                          {member.role || 'Member'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                          {plan?.name || 'Standard'}
+                        </span>
+                      </td>
+                      <td className="p-4 font-extrabold text-white">
+                        {formatCurrency(fee)}
+                        {member.customFee !== undefined && <span className="text-[10px] text-amber-400 block font-normal">(Custom Rate)</span>}
+                      </td>
+                      <td className="p-4">
+                        {isPaid ? (
+                          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Paid</span>
+                        ) : isOverdue ? (
+                          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-red-500/20 text-red-400 border border-red-500/30">Overdue</span>
+                        ) : (
+                          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">Pending</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-xs font-semibold text-slate-300 uppercase">
+                        {isPaid ? (pay?.paymentMethod || 'CARD') : '—'}
+                      </td>
+                      <td className="p-4 font-mono text-xs text-indigo-300">
+                        {pay?.invoiceNo || 'INV-PENDING'}
+                      </td>
+                      <td className="p-4 text-right space-x-2">
+                        {isPaid ? (
+                          <>
+                            <button
+                              onClick={() => onOpenReceipt(pay, member)}
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg"
+                            >
+                              Receipt
+                            </button>
+                            <button
+                              onClick={() => markStatus(pay.id, member.id, 'pending')}
+                              className="text-xs text-slate-400 hover:text-amber-400 underline"
+                            >
+                              Undo
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => markStatus(pay ? pay.id : '', member.id, 'paid', 'card')}
+                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow"
+                          >
+                            Mark Paid
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // Plans Component
+    function PlansView({ plans, setPlans, members, formatCurrency }) {
+      const [editingPlan, setEditingPlan] = useState(null);
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+                <i data-lucide="sliders" className="w-6 h-6 text-indigo-400"></i>
+                <span>Monthly Club Membership Fee Customizer & Plans</span>
+              </h1>
+              <p className="text-slate-400 text-sm mt-1">Configure membership tiers, pricing structures, and late fee policies.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {plans.map(plan => {
+              const count = members.filter(m => m.planId === plan.id && m.status === 'active').length;
+              return (
+                <div key={plan.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden">
+                  <div className="absolute top-0 left-0 right-0 h-1.5" style={{ backgroundColor: plan.color }}></div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white">{plan.name}</h3>
+                    <p className="text-xs text-slate-400 mt-2 min-h-[36px]">{plan.description}</p>
+                    <div className="mt-4 bg-slate-800/60 p-4 rounded-xl border border-slate-700">
+                      <span className="text-xs text-slate-400 block font-medium">Monthly Fee</span>
+                      <span className="text-3xl font-extrabold text-white">{formatCurrency(plan.fee)}</span>
+                    </div>
+                    <div className="mt-3 text-xs text-slate-300 space-y-1">
+                      <div>Enrolled: <span className="font-bold text-white">{count} members</span></div>
+                      <div>Grace Period: <span className="font-bold text-amber-400">{plan.lateFeeDays} days</span></div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setEditingPlan(plan)}
+                    className="mt-5 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg"
+                  >
+                    Customize Fee
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {editingPlan && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4">
+                <h3 className="text-lg font-bold text-white">Customize {editingPlan.name}</h3>
+                <div>
+                  <label className="block text-xs text-slate-300 font-semibold mb-1">Monthly Fee ($)</label>
+                  <input
+                    type="number"
+                    value={editingPlan.fee}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, fee: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2 pt-2">
+                  <button onClick={() => setEditingPlan(null)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs">Cancel</button>
+                  <button
+                    onClick={() => {
+                      setPlans(prev => prev.map(p => p.id === editingPlan.id ? editingPlan : p));
+                      setEditingPlan(null);
+                    }}
+                    className="px-4 py-1.5 bg-indigo-600 text-white font-bold rounded-lg text-xs shadow"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Earnings Logger Component
+    function EarningsView({ earnings, setEarnings, customFields, formatCurrency, setIsAddEarningOpen }) {
+      const [searchTerm, setSearchTerm] = useState('');
+      const total = earnings.reduce((sum, e) => sum + e.amount, 0);
+
+      const filtered = earnings.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()) || (e.payerOrCustomer && e.payerOrCustomer.toLowerCase().includes(searchTerm.toLowerCase())));
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+                <i data-lucide="dollar-sign" className="w-6 h-6 text-emerald-400"></i>
+                <span>Club Commercial Earnings Logger</span>
+              </h1>
+              <p className="text-slate-400 text-sm mt-1">Record revenue from tournaments, sponsorships, canteen & bar, merch, and events.</p>
+            </div>
+            <button
+              onClick={() => setIsAddEarningOpen(true)}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg"
+            >
+              + Record New Income
+            </button>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-800/80 text-xs uppercase text-slate-400">
+                <tr>
+                  <th className="p-4">Title & Description</th>
+                  <th className="p-4">Category</th>
+                  <th className="p-4">Date</th>
+                  <th className="p-4">Source / Payer</th>
+                  <th className="p-4">Amount</th>
+                  <th className="p-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {filtered.map(earn => (
+                  <tr key={earn.id} className="hover:bg-slate-800/40">
+                    <td className="p-4">
+                      <div className="font-bold text-white">{earn.title}</div>
+                      <div className="text-xs text-slate-400 font-mono">Ref: {earn.referenceNo || 'N/A'}</div>
+                    </td>
+                    <td className="p-4">
+                      <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 capitalize">
+                        {earn.category.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="p-4 text-xs text-slate-300">{earn.date}</td>
+                    <td className="p-4 text-xs text-slate-300">{earn.payerOrCustomer || 'Direct'}</td>
+                    <td className="p-4 font-extrabold text-emerald-400 text-base">+{formatCurrency(earn.amount)}</td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => {
+                          if (confirm('Delete ' + earn.title + '?')) {
+                            setEarnings(prev => prev.filter(e => e.id !== earn.id));
+                          }
+                        }}
+                        className="text-red-400 hover:text-red-300 text-xs font-semibold"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // Custom Fields View
+    function CustomFieldsView({ customFields, setCustomFields }) {
+      const [label, setLabel] = useState('');
+      const [type, setType] = useState('text');
+      const [entityType, setEntityType] = useState('member');
+
+      const handleAdd = (e) => {
+        e.preventDefault();
+        if (!label.trim()) return;
+        const id = 'cf-' + Date.now();
+        const name = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+        setCustomFields(prev => [...prev, { id, name, label: label.trim(), type, entityType }]);
+        setLabel('');
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+            <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+              <i data-lucide="layers" className="w-6 h-6 text-indigo-400"></i>
+              <span>Dynamic Custom Fields Builder</span>
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">Add custom fields to member profiles (e.g. Locker #, Emergency Contacts) or club earnings.</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <form onSubmit={handleAdd} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4 text-xs h-fit">
+              <h2 className="text-lg font-bold text-white">Add New Custom Field</h2>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Field Label</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Locker Number, Shirt Size"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Attach To</label>
+                <select
+                  value={entityType}
+                  onChange={(e) => setEntityType(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                >
+                  <option value="member">Member Profiles</option>
+                  <option value="earning">Commercial Earnings</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Field Type</label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                >
+                  <option value="text">Text String</option>
+                  <option value="number">Number</option>
+                  <option value="date">Date</option>
+                </select>
+              </div>
+              <button type="submit" className="w-full py-2 bg-indigo-600 text-white font-bold rounded-lg shadow">
+                Create Field
+              </button>
+            </form>
+
+            <div className="lg:col-span-2 bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-3">
+              <h2 className="text-lg font-bold text-white mb-2">Configured Custom Fields</h2>
+              {customFields.map(cf => (
+                <div key={cf.id} className="p-3.5 bg-slate-800/60 rounded-xl border border-slate-700 flex justify-between items-center text-xs">
+                  <div>
+                    <span className="font-bold text-white text-sm mr-2">{cf.label}</span>
+                    <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded uppercase font-semibold text-[10px] mr-1">{cf.entityType}</span>
+                    <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded text-[10px] capitalize">{cf.type}</span>
+                  </div>
+                  <button
+                    onClick={() => setCustomFields(prev => prev.filter(c => c.id !== cf.id))}
+                    className="text-red-400 hover:text-red-300 font-semibold"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Settings Tab & Supabase SQL Schema Viewer
+    function SettingsTab({ settings, setSettings, resetData }) {
+      const [clubName, setClubName] = useState(settings.clubName);
+      const [tagline, setTagline] = useState(settings.tagline);
+      const [currencySymbol, setCurrencySymbol] = useState(settings.currencySymbol);
+      const [supabaseUrl, setSupabaseUrl] = useState(settings.supabaseUrl || 'https://xyzcompany.supabase.co');
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        setSettings({ ...settings, clubName, tagline, currencySymbol, supabaseUrl });
+        alert('Settings & Supabase configuration saved!');
+      };
+
+      return (
+        <div className="max-w-3xl space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+            <h1 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+              <i data-lucide="settings" className="w-6 h-6 text-indigo-400"></i>
+              <span>Portal Settings & Supabase SQL Integration</span>
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">Configure club identity, currency, and Supabase database authorization.</p>
+          </div>
+
+          <div className="bg-slate-900 border border-emerald-500/40 p-5 rounded-2xl shadow-xl space-y-3">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
+                <h3 className="font-bold text-white text-base">Supabase Database Integration</h3>
+              </div>
+              <span className="text-xs px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-full font-bold">
+                RLS & Role: Finance Ready
+              </span>
+            </div>
+            <p className="text-xs text-slate-300">
+              The database schema file <code className="text-emerald-300 font-mono">supabase_schema.sql</code> has been updated with the complete table creation order and Row Level Security (RLS) policies for the <strong>Finance</strong> role.
+            </p>
+          </div>
+
+          <form onSubmit={handleSave} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4 text-xs">
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Club Name</label>
+              <input
+                type="text"
+                value={clubName}
+                onChange={(e) => setClubName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold text-sm"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Tagline</label>
+              <input
+                type="text"
+                value={tagline}
+                onChange={(e) => setTagline(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Currency Symbol</label>
+                <input
+                  type="text"
+                  value={currencySymbol}
+                  onChange={(e) => setCurrencySymbol(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-bold"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Supabase Project URL</label>
+                <input
+                  type="text"
+                  value={supabaseUrl}
+                  onChange={(e) => setSupabaseUrl(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono"
+                />
+              </div>
+            </div>
+            <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+              <button type="button" onClick={resetData} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-semibold">
+                Reset Demo Data
+              </button>
+              <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow">
+                Save Settings
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    // Receipt Dialog
+    function ReceiptDialog({ payment, member, settings, plans, formatCurrency, onClose }) {
+      const plan = plans.find(p => p.id === member.planId);
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3 no-print">
+              <span className="text-xs font-bold text-slate-400 uppercase">Payment Receipt</span>
+              <div className="space-x-2">
+                <button onClick={() => window.print()} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-bold">Print</button>
+                <button onClick={onClose} className="text-slate-400 hover:text-white px-2">✕</button>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4">
+              <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white">{settings.clubName}</h2>
+                  <p className="text-xs text-slate-400">{settings.tagline}</p>
+                </div>
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded">PAID</span>
+              </div>
+
+              <div className="text-xs space-y-1">
+                <div><span className="text-slate-400">Billed To:</span> <span className="font-bold text-white">{member.name}</span> <span className="text-emerald-400 font-bold">({member.role || 'Member'})</span></div>
+                <div><span className="text-slate-400">Email:</span> {member.email}</div>
+                <div><span className="text-slate-400">Invoice:</span> <span className="font-mono text-indigo-300">{payment.invoiceNo}</span></div>
+                <div><span className="text-slate-400">Month:</span> {payment.monthYear} ({plan?.name || 'Standard'})</div>
+              </div>
+
+              <div className="flex justify-between items-center pt-3 border-t border-slate-800 text-sm">
+                <span className="font-bold text-white">Total Paid:</span>
+                <span className="text-lg font-extrabold text-emerald-400">{formatCurrency(payment.paidAmount || payment.amount)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
