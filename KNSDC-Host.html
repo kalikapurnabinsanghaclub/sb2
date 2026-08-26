@@ -1641,10 +1641,18 @@ function renderStage() {
   }
 }
 
+// ── HOST STAGE & QUEUE HARDENING ────────────────
+let _isHostMoveQueueInProgress = false;
+let _isHostQueueOpInProgress = false;
+
 window.moveQueueItem = (id, direction) => {
+  if (_isHostMoveQueueInProgress) return;
+  _isHostMoveQueueInProgress = true;
+
   const dirNum = direction === 'up' || direction === -1 ? -1 : 1;
   const s = syncEngine.getData() || {};
   const activeEvId = s.activeEventId;
+  const now = Date.now();
   
   let queueParts = participants.filter(p => 
     p.stageStatus === 'queue' && 
@@ -1654,11 +1662,17 @@ window.moveQueueItem = (id, direction) => {
   );
   queueParts = sortQueue(queueParts);
   
-  const currentIdx = queueParts.findIndex(p => p.id === id);
-  if (currentIdx === -1) return;
+  const currentIdx = queueParts.findIndex(p => String(p.id) === String(id));
+  if (currentIdx === -1) {
+    _isHostMoveQueueInProgress = false;
+    return;
+  }
   
   const targetIdx = currentIdx + dirNum;
-  if (targetIdx < 0 || targetIdx >= queueParts.length) return;
+  if (targetIdx < 0 || targetIdx >= queueParts.length) {
+    _isHostMoveQueueInProgress = false;
+    return;
+  }
   
   const currentP = queueParts[currentIdx];
   const targetP = queueParts[targetIdx];
@@ -1670,60 +1684,138 @@ window.moveQueueItem = (id, direction) => {
   const temp = currentP.queueOrder;
   currentP.queueOrder = targetP.queueOrder;
   targetP.queueOrder = temp;
+
+  currentP.localMutatedAt = now;
+  targetP.localMutatedAt = now;
   
   if (window.syncEngine && window.syncEngine.updateParticipant) {
     Promise.all([
-      window.syncEngine.updateParticipant(currentP.id, { queueOrder: currentP.queueOrder }),
-      window.syncEngine.updateParticipant(targetP.id, { queueOrder: targetP.queueOrder })
+      window.syncEngine.updateParticipant(currentP.id, { queueOrder: currentP.queueOrder, localMutatedAt: now }),
+      window.syncEngine.updateParticipant(targetP.id, { queueOrder: targetP.queueOrder, localMutatedAt: now })
     ]).then(() => {
       toast(`Moved performer ${direction === 'up' || direction === -1 ? 'Up' : 'Down'}`);
-    }).catch(e => console.error(e));
+    }).catch(e => console.error('[Host moveQueueItem] error:', e))
+    .finally(() => {
+      setTimeout(() => { _isHostMoveQueueInProgress = false; }, 400);
+    });
   } else {
     toast(`Moved performer ${direction === 'up' || direction === -1 ? 'Up' : 'Down'}`);
     syncAll();
+    setTimeout(() => { _isHostMoveQueueInProgress = false; }, 400);
   }
 };
 
 window.pushToQueueFromList = (id) => {
+  if (_isHostQueueOpInProgress) return;
+  _isHostQueueOpInProgress = true;
+  const now = Date.now();
+
+  const p = participants.find(x => String(x.id) === String(id));
+  if (!p) {
+    _isHostQueueOpInProgress = false;
+    return;
+  }
+
+  if (p.stageStatus === 'queue') {
+    toast(`⚠️ ${p.name} is already in the queue!`);
+    _isHostQueueOpInProgress = false;
+    return;
+  }
+
+  // Calculate sequential queue order
+  const currentlyQueued = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
+  const maxOrder = currentlyQueued.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+  const newOrder = maxOrder + 1;
+
+  p.stageStatus = 'queue';
+  p.queueOrder = newOrder;
+  p.queuedAt = now;
+  p.localMutatedAt = now;
+  const round = p.round || 'audition';
+  setRoundPresent(p, round, true);
+
+  // Direct Supabase write
+  if (window.syncEngine && window.syncEngine.updateParticipant) {
+    window.syncEngine.updateParticipant(p.id, {
+      stageStatus: 'queue',
+      queueOrder: newOrder,
+      queuedAt: now,
+      localMutatedAt: now,
+      roundPresence: p.roundPresence,
+      present: true
+    }).catch(e => console.error('[Host pushToQueueFromList] DB error:', e));
+  }
+
   syncEngine.setData(s => {
-    const parts = [...(s.participants || [])];
-    const p = parts.find(x => x.id === id);
-    if (p) {
-      p.stageStatus = 'queue';
-      const round = p.round || 'audition';
-      setRoundPresent(p, round, true);
-      toast(`Added ${p.name} to the Queue!`);
-    }
+    const parts = (s.participants || []).map(x => String(x.id) === String(p.id) ? { ...p } : x);
     return { ...s, participants: parts };
   });
+
+  renderDashboard();
+  renderStage();
+  toast(`➕ Added ${p.name} to the Queue! (Position #${newOrder + 1})`);
+  setTimeout(() => { _isHostQueueOpInProgress = false; }, 400);
 };
 
 window.hostAddParticipantToQueue = () => {
+  if (_isHostQueueOpInProgress) return;
   const input = document.getElementById('host-add-queue-id');
   if(!input) return;
   const targetId = input.value.trim().toUpperCase();
   if(!targetId) return;
-  
+
+  _isHostQueueOpInProgress = true;
+  const now = Date.now();
+
+  const p = participants.find(x => String(x.id).toUpperCase() === targetId);
+  if (!p) {
+    toast(`⚠️ Participant ID "${targetId}" not found.`);
+    _isHostQueueOpInProgress = false;
+    return;
+  }
+  if (hostAssignedVenueId && String(p.venueId) !== String(hostAssignedVenueId)) {
+    toast(`⚠️ Participant ${p.name} is registered for another venue.`);
+    _isHostQueueOpInProgress = false;
+    return;
+  }
+  if (p.stageStatus === 'queue') {
+    toast(`⚠️ ${p.name} is already in the queue.`);
+    _isHostQueueOpInProgress = false;
+    return;
+  }
+
+  const currentlyQueued = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
+  const maxOrder = currentlyQueued.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+  const newOrder = maxOrder + 1;
+
+  p.stageStatus = 'queue';
+  p.queueOrder = newOrder;
+  p.queuedAt = now;
+  p.localMutatedAt = now;
+  const round = p.round || 'audition';
+  setRoundPresent(p, round, true);
+
+  if (window.syncEngine && window.syncEngine.updateParticipant) {
+    window.syncEngine.updateParticipant(p.id, {
+      stageStatus: 'queue',
+      queueOrder: newOrder,
+      queuedAt: now,
+      localMutatedAt: now,
+      roundPresence: p.roundPresence,
+      present: true
+    }).catch(e => console.error('[Host hostAddParticipantToQueue] DB error:', e));
+  }
+
   syncEngine.setData(s => {
-    const parts = [...(s.participants || [])];
-    const p = parts.find(x => x.id.toUpperCase() === targetId);
-    if (!p) {
-      toast(`Participant ID ${targetId} not found.`);
-      return s;
-    }
-    if (hostAssignedVenueId && String(p.venueId) !== String(hostAssignedVenueId)) {
-      toast(`Participant ID ${targetId} is registered for another venue.`);
-      return s;
-    }
-    if (p.stageStatus === 'queue') {
-      toast(`${p.name} is already in the queue.`);
-      return s;
-    }
-    p.stageStatus = 'queue';
-    toast(`Added ${p.name} to the Queue!`);
-    input.value = ''; // clear
+    const parts = (s.participants || []).map(x => String(x.id) === String(p.id) ? { ...p } : x);
     return { ...s, participants: parts };
   });
+
+  input.value = '';
+  renderDashboard();
+  renderStage();
+  toast(`➕ Added ${p.name} to the Queue! (Position #${newOrder + 1})`);
+  setTimeout(() => { _isHostQueueOpInProgress = false; }, 400);
 };
 
 let isPushingToCloud = false;
