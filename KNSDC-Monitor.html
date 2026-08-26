@@ -5285,23 +5285,34 @@ function hydrate() {
   }
   if (textEl) textEl.textContent = isOffline ? 'OFFLINE' : 'LIVE';
   
-  // Refresh current active page if any
+  // DASH-BUG-FIX 9: Replace nav(pageId) with targeted per-page renders.
+  // Previously every state tick (scores, presence, realtime) called nav() which
+  // re-ran full page layout → dashboard flicker + momentary blank states.
+  // Now only the relevant data sections are refreshed per active page.
   const activeNavItem = document.querySelector('.nav-item.active');
   if (activeNavItem) {
-    const pageId = activeNavItem.getAttribute('onclick').match(/'([^']+)'/)[1];
-    nav(pageId);
-    
-    // Realtime Sub-tab Refresh: Ensure currently viewed registration sub-tab redraws
-    if (pageId === 'registration') {
+    const onclickAttr = activeNavItem.getAttribute('onclick');
+    const pageIdMatch = onclickAttr && onclickAttr.match(/'([^']+)'/);
+    const pageId = pageIdMatch ? pageIdMatch[1] : null;
+
+    if (pageId === 'dashboard') {
+      renderDashboard();
+    } else if (pageId === 'venue') {
+      renderVenueParticipants();
+      renderStageView();
+    } else if (pageId === 'registration') {
       const activeSubTab = typeof currentRegTab2 !== 'undefined' ? currentRegTab2 : 'applied';
       if (activeSubTab === 'applied') renderApplied();
-      if (activeSubTab === 'formbuilder') renderFormBuilder();
-      if (activeSubTab === 'categories') renderCategories();
-      if (activeSubTab === 'venues') renderVenueDates();
-    }
-    if (pageId === 'statistics' && typeof currentStatsTab !== 'undefined') {
+      else if (activeSubTab === 'formbuilder') renderFormBuilder();
+      else if (activeSubTab === 'categories') renderCategories();
+      else if (activeSubTab === 'venues') renderVenueDates();
+    } else if (pageId === 'statistics' && typeof currentStatsTab !== 'undefined') {
       if (currentStatsTab === 'feedback' && typeof renderFeedbacks === 'function') renderFeedbacks();
       if (currentStatsTab === 'publicvotes' && typeof renderPublicVotes === 'function') renderPublicVotes();
+    } else if (pageId === 'scoring') {
+      if (typeof renderLeaderboard === 'function') renderLeaderboard();
+    } else if (pageId === 'events') {
+      if (typeof renderMonitorEvents === 'function') renderMonitorEvents();
     }
   }
   
@@ -6591,6 +6602,10 @@ window.togglePreviousScoresFromAssign = (cb) => {
   toast(`${cb.checked ? '✅ Enabled' : '🔒 Disabled'}: Previous Score Viewer`);
 };
 
+// BUG-FIX: Per-switch debounce timers — rapid clicks on the same switch only
+// fire one DB write (the last click in the burst). UI updates instantly for UX.
+const _switchDebounceTimers = {};
+
 function toggleSwitch(sw, cb){
   const row = document.getElementById('sw-'+sw);
   if(!row) return;
@@ -6604,6 +6619,7 @@ function toggleSwitch(sw, cb){
     return;
   }
 
+  // Update visual state immediately (instant UX feedback)
   if(cb.checked) row.classList.add('on'); else row.classList.remove('on');
   
   const stateMap = {
@@ -6634,26 +6650,33 @@ function toggleSwitch(sw, cb){
     switchStates['liveStreamUrl'] = '';
   }
 
-  switchStates[stateKey] = cb.checked;
-  
-  syncAll();
+  // Capture the latest checked value at the time of this call
+  const checkedValue = cb.checked;
+  switchStates[stateKey] = checkedValue;
 
-  // Persist switch changes directly to the Supabase event columns for public view
-  if (activeEventId) {
-    const eventUpdate = {
-      switchStates: { ...switchStates }
-    };
-    if (stateKey === 'publicReg') eventUpdate.publicReg = cb.checked;
-    if (stateKey === 'stagePreview') eventUpdate.stagePreview = cb.checked;
-    if (stateKey === 'resultPublic') eventUpdate.resultPublic = cb.checked;
-    if (stateKey === 'promoPublic') eventUpdate.promoPublic = cb.checked;
+  // BUG-FIX: Debounce — cancel any pending write for this switch and schedule a fresh one.
+  // Only the LAST click in a rapid burst will reach syncAll + updateEvent.
+  clearTimeout(_switchDebounceTimers[sw]);
+  _switchDebounceTimers[sw] = setTimeout(() => {
+    syncAll();
 
-    syncEngine.updateEvent(activeEventId, eventUpdate).catch(err => {
-      console.error('[Monitor] Failed to sync event switches to Supabase events table:', err);
-    });
-  }
+    // Persist switch changes directly to the Supabase event columns for public view
+    if (activeEventId) {
+      const eventUpdate = {
+        switchStates: { ...switchStates }
+      };
+      if (stateKey === 'publicReg') eventUpdate.publicReg = checkedValue;
+      if (stateKey === 'stagePreview') eventUpdate.stagePreview = checkedValue;
+      if (stateKey === 'resultPublic') eventUpdate.resultPublic = checkedValue;
+      if (stateKey === 'promoPublic') eventUpdate.promoPublic = checkedValue;
 
-  toast(`${cb.checked?'✅ Enabled':'🔒 Disabled'}: ${sw.replace('-',' ')}`);
+      syncEngine.updateEvent(activeEventId, eventUpdate).catch(err => {
+        console.error('[Monitor] Failed to sync event switches to Supabase events table:', err);
+      });
+    }
+  }, 400); // 400ms debounce — only the final click in a rapid burst writes to DB
+
+  toast(`${checkedValue?'✅ Enabled':'🔒 Disabled'}: ${sw.replace('-',' ')}`);
 }
 
 // ══════════════════════════════════════════
@@ -7361,7 +7384,7 @@ async function saveNewRegAsync() {
 
       if (f.required && (!val || (Array.isArray(val) && val.length === 0))) {
         toast(`Please fill required field: ${f.label}`);
-        return;
+        throw new Error(`VALIDATION:Required field missing: ${f.label}`); // BUG-FIX: was bare return — finally now always resets guard
       }
 
       formData[f.label] = val;
@@ -7392,7 +7415,10 @@ async function saveNewRegAsync() {
       }
     }
 
-    if (!name) { toast('Please ensure a Name field exists and is filled!'); return; }
+    if (!name) {
+      toast('Please ensure a Name field exists and is filled!');
+      throw new Error('VALIDATION:Name field missing'); // BUG-FIX: was bare return — finally now always resets guard
+    }
 
     // Validate Age against Category limits
     const catObj = (activeEv.categories || []).find(c => String(c.id) === String(catId));
@@ -7402,7 +7428,7 @@ async function saveNewRegAsync() {
       if (age < min || age > max) {
         const maxText = max === 999 ? 'above' : max;
         toast(`Age Not Eligible: Age ${age} is outside the allowed range (${min} - ${maxText}) for category "${catObj.name}".`);
-        return;
+        throw new Error('VALIDATION:Age out of range'); // BUG-FIX: was bare return — finally now always resets guard
       }
     }
 
@@ -7449,7 +7475,14 @@ async function saveNewRegAsync() {
     document.getElementById('rs-venue').textContent = ven ? ven.name : 'Main Venue';
     
     openM('reg-success-modal');
+  } catch(err) {
+    // Swallow known validation errors (already toasted above); log real unexpected errors
+    if (!err.message || !err.message.startsWith('VALIDATION:')) {
+      console.error('[saveNewRegAsync] Unexpected error:', err);
+    }
   } finally {
+    // BUG-FIX: This block now ALWAYS runs regardless of validation outcome,
+    // preventing the Register button from being permanently disabled after failed validation.
     isSavingReg = false;
     if (btn) { btn.disabled = false; btn.innerText = 'Register Participant'; }
   }
@@ -8426,6 +8459,12 @@ window.refreshVenueView = refreshVenueView;
 function addToUpcoming(id) {
   const p = participants.find(x => String(x.id) === String(id));
   if (p) {
+    // DASH-BUG-FIX 4a: Prevent rapid double-click from queuing the same participant twice
+    if (p.stageStatus === 'queue') {
+      toast(`⚠️ ${p.name} is already in the queue!`);
+      return;
+    }
+
     const now = Date.now();
     p.stageStatus = 'queue';
     p.queuedAt = now;
@@ -8441,6 +8480,16 @@ function addToUpcoming(id) {
       setRoundPresent(p, round, true);
     }
     
+    // DASH-BUG-FIX 4b: Direct Supabase write so queue addition persists immediately
+    // Previously only syncAll() was called (debounced 1s), which could be lost if another
+    // rapid action fires and overwrites the state before it flushes.
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, {
+        stageStatus: 'queue', queuedAt: now, queueOrder: p.queueOrder,
+        localMutatedAt: now, roundPresence: p.roundPresence
+      }).catch(e => console.error('[addToUpcoming] DB write error:', e));
+    }
+
     syncAll();
     renderVenueParticipants();
     renderStageView();
@@ -8516,29 +8565,50 @@ function moveQueueItem(id, direction) {
 }
 window.moveQueueItem = moveQueueItem;
 
-function resetQueueOrder() {
+// DASH-BUG-FIX 5: Guard + batched writes for queue clear operation
+let _isResettingQueue = false;
+
+async function resetQueueOrder() {
+  if (_isResettingQueue) { toast('⏳ Queue reset in progress, please wait…'); return; }
   if (!confirm('Are you sure you want to clear all upcoming performers from the queue? This will return them to the waiting list.')) {
     return;
   }
+  _isResettingQueue = true;
+
   const venId = currentVenueMonitor;
-  
   let queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
   if (venId) queueParts = queueParts.filter(p => String(p.venueId) === String(venId));
-  const promises = queueParts.map(p => {
+
+  // Mutate in-memory immediately
+  const ids = [];
+  queueParts.forEach(p => {
     p.stageStatus = 'waiting';
     p.queueOrder = null;
-    if (window.syncEngine && window.syncEngine.updateParticipant) {
-      return window.syncEngine.updateParticipant(p.id, { stageStatus: 'waiting', queueOrder: null });
-    }
-    return Promise.resolve();
+    ids.push(p.id);
   });
-  
-  Promise.all(promises).then(() => {
-    syncAll();
-    renderVenueParticipants();
-    renderStageView();
-    toast('🧹 Upcoming queue cleared and returned to waiting!');
-  }).catch(err => console.error('Error clearing queue:', err));
+
+  syncAll();
+  renderVenueParticipants();
+  renderStageView();
+  toast('🧹 Upcoming queue cleared and returned to waiting!');
+
+  // Batched Supabase writes to avoid N parallel calls flooding the DB
+  if (window.syncEngine && window.syncEngine.updateParticipant && ids.length > 0) {
+    try {
+      const CHUNK = 5;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(id => window.syncEngine.updateParticipant(id, { stageStatus: 'waiting', queueOrder: null }).catch(err => console.error('[resetQueueOrder] write error:', id, err))));
+        if (i + CHUNK < ids.length) await new Promise(r => setTimeout(r, 100));
+      }
+    } catch(e) {
+      console.error('[resetQueueOrder] batch error:', e);
+    } finally {
+      _isResettingQueue = false;
+    }
+  } else {
+    _isResettingQueue = false;
+  }
 }
 
 let onstageTimerInterval = null;
@@ -9234,31 +9304,52 @@ function renderVenueParticipants(){
 }
 window.renderVenueParticipants = renderVenueParticipants;
 
-function pushToStage(id){
-  const now = Date.now();
-  const nextP = participants.find(x=>String(x.id)===String(id));
-  if (!nextP) return;
+// ── BUG-FIX: Stage operation mutex — prevents double-clicks from putting
+//    multiple participants on-stage simultaneously. All three stage ops share
+//    this single flag so they also block each other.
+let _stageOpInProgress = false;
 
-  // 1. Move previous on-stage to done in-memory
-  participants.forEach(p=>{ 
-    if(p.stageStatus==='on-stage' && String(p.id) !== String(id)) {
-      p.stageStatus='done';
-      p.localMutatedAt = now;
+function pushToStage(id){
+  if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
+  _stageOpInProgress = true;
+  try {
+    const now = Date.now();
+    const nextP = participants.find(x=>String(x.id)===String(id));
+    if (!nextP) return;
+
+    // 1. Move previous on-stage to done in-memory + persist to Supabase
+    participants.forEach(p=>{ 
+      if(p.stageStatus==='on-stage' && String(p.id) !== String(id)) {
+        p.stageStatus='done';
+        p.localMutatedAt = now;
+        // BUG-FIX: Direct Supabase write so Monitor and Host stay in sync
+        if(window.syncEngine && window.syncEngine.updateParticipant) {
+          window.syncEngine.updateParticipant(p.id, { stageStatus: 'done', localMutatedAt: now }).catch(e=>console.error('[pushToStage] done write error:', e));
+        }
+      }
+    });
+    
+    // 2. Set new performer on-stage
+    nextP.stageStatus='on-stage'; 
+    const round = nextP.round || 'audition';
+    setRoundPresent(nextP, round, true);
+    nextP.localMutatedAt = now;
+    currentOnStage = nextP.id;
+
+    // BUG-FIX: Direct Supabase write for the new on-stage participant
+    if(window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(nextP.id, { stageStatus: 'on-stage', localMutatedAt: now, roundPresence: nextP.roundPresence }).catch(e=>console.error('[pushToStage] on-stage write error:', e));
     }
-  });
-  
-  // 2. Set new performer on-stage
-  nextP.stageStatus='on-stage'; 
-  const round = nextP.round || 'audition';
-  setRoundPresent(nextP, round, true);
-  nextP.localMutatedAt = now;
-  currentOnStage = nextP.id;
-  
-  // 3. Single atomic sync & immediate render
-  syncAll();
-  renderVenueParticipants();
-  renderStageView();
-  toast(`⬆ ${nextP.name} pushed to stage!`);
+    
+    // 3. Single atomic sync & immediate render
+    syncAll();
+    renderVenueParticipants();
+    renderStageView();
+    toast(`⬆ ${nextP.name} pushed to stage!`);
+  } finally {
+    // Release lock after a short delay to absorb any accidental double-taps
+    setTimeout(() => { _stageOpInProgress = false; }, 800);
+  }
 }
 window.pushToStage = pushToStage;
 
@@ -9273,43 +9364,70 @@ function pushNextToStage(){
 window.pushNextToStage = pushNextToStage;
 
 function markStageDone(){
-  const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
-  if(p){ 
-    p.stageStatus='done'; 
-    p.localMutatedAt = Date.now();
-    currentOnStage=null;
-    if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
+  if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
+  _stageOpInProgress = true;
+  try {
+    const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
+    if(p){ 
+      const now = Date.now();
+      p.stageStatus='done'; 
+      p.localMutatedAt = now;
+      currentOnStage=null;
+      if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
+      // BUG-FIX: Direct Supabase write so Host portal reflects done state immediately
+      if(window.syncEngine && window.syncEngine.updateParticipant) {
+        window.syncEngine.updateParticipant(p.id, { stageStatus: 'done', localMutatedAt: now }).catch(e=>console.error('[markStageDone] write error:', e));
+      }
+    }
+    
+    syncAll();
+    renderVenueParticipants();
+    renderStageView();
+    toast('Marked as done!');
+  } finally {
+    setTimeout(() => { _stageOpInProgress = false; }, 800);
   }
-  
-  syncAll();
-  renderVenueParticipants();
-  renderStageView();
-  toast('Marked as done!');
 }
 window.markStageDone = markStageDone;
 
 function dropToQueue(){
-  const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
-  if(p){ 
-    const now = Date.now();
-    p.stageStatus='queue'; 
-    p.queuedAt = now;
-    p.localMutatedAt = now;
-    const queuedParts = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
-    const maxOrder = queuedParts.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
-    p.queueOrder = maxOrder + 1;
-    currentOnStage=null; 
-    if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
+  if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
+  _stageOpInProgress = true;
+  try {
+    const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
+    if(p){ 
+      const now = Date.now();
+      p.stageStatus='queue'; 
+      p.queuedAt = now;
+      p.localMutatedAt = now;
+      const queuedParts = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
+      const maxOrder = queuedParts.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+      p.queueOrder = maxOrder + 1;
+      currentOnStage=null; 
+      if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
+      // BUG-FIX: Direct Supabase write so drop is not overwritten by stale syncAll
+      if(window.syncEngine && window.syncEngine.updateParticipant) {
+        window.syncEngine.updateParticipant(p.id, { stageStatus: 'queue', queuedAt: now, queueOrder: p.queueOrder, localMutatedAt: now }).catch(e=>console.error('[dropToQueue] write error:', e));
+      }
+    }
+    
+    syncAll();
+    renderVenueParticipants();
+    renderStageView();
+    toast('Dropped back to queue!');
+  } finally {
+    setTimeout(() => { _stageOpInProgress = false; }, 800);
   }
-  
-  syncAll();
-  renderVenueParticipants();
-  renderStageView();
-  toast('Dropped back to queue!');
 }
 window.dropToQueue = dropToQueue;
 
+// DASH-BUG-FIX 3: Guard prevents double-running auto-promotion.
+// Batched DB writes prevent rate-limiting from silently dropping promotions.
+let _isAutoPromoting = false;
+
 async function autoPromoteTopN() {
+  if (_isAutoPromoting) { toast('⏳ Auto-promotion already in progress…'); return; }
+
   const nInput = prompt("Enter Top N to promote per category (e.g. 3):", "3");
   if(!nInput) return;
   const n = parseInt(nInput);
@@ -9349,25 +9467,43 @@ async function autoPromoteTopN() {
   
   if(!confirm(`Promote ${toPromote.length} participants from ${fromRound.toUpperCase()} to ${toRound.toUpperCase()}?`)) return;
 
-  toast('Auto-Promoting via Bulk Sync...');
-  toPromote.forEach(p => {
-    if(!p.roundScores) p.roundScores = {};
-    p.roundScores[fromRound] = JSON.parse(JSON.stringify(p.scores || {}));
-    p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
-    p.round = toRound;
-    p.stageStatus = 'waiting';
-    // Reset presence for new round — they must be marked present again
-    setRoundPresent(p, toRound, false);
-    
-    // Auto-sync to Supabase database
-    if (window.syncEngine && window.syncEngine.supabase) {
-      window.syncEngine.updateParticipant(p.id, p).catch(err => console.error("Database sync error:", err));
+  _isAutoPromoting = true;
+  toast(toPromote.length > 5 ? `⏳ Auto-promoting ${toPromote.length} participants…` : 'Auto-Promoting via Bulk Sync...');
+
+  try {
+    // Step 1: Mutate in-memory
+    const updates = [];
+    toPromote.forEach(p => {
+      if(!p.roundScores) p.roundScores = {};
+      p.roundScores[fromRound] = JSON.parse(JSON.stringify(p.scores || {}));
+      p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
+      p.round = toRound;
+      p.stageStatus = 'waiting';
+      // Reset presence for new round — they must be marked present again
+      setRoundPresent(p, toRound, false);
+      updates.push({ id: p.id, payload: p });
+    });
+
+    syncAll();
+    nav('dashboard');
+
+    // Step 2: Batched Supabase writes (5 at a time, 100ms gap)
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      const CHUNK = 5;
+      for (let i = 0; i < updates.length; i += CHUNK) {
+        const chunk = updates.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(u => window.syncEngine.updateParticipant(u.id, u.payload).catch(err => console.error('[autoPromoteTopN] DB error:', err))));
+        if (i + CHUNK < updates.length) await new Promise(r => setTimeout(r, 100));
+      }
     }
-  });
-  
-  syncAll();
-  nav('dashboard');
-  toast(`🔺 Successfully auto-promoted ${toPromote.length} participants!`);
+
+    toast(`🔺 Successfully auto-promoted ${toPromote.length} participants!`);
+  } catch(e) {
+    console.error('[autoPromoteTopN] error:', e);
+    toast('⚠️ Some auto-promotions may not have saved. Please check.');
+  } finally {
+    _isAutoPromoting = false;
+  }
 }
 
 function markPresent(id, roundOverride){
@@ -9398,7 +9534,13 @@ function markPresent(id, roundOverride){
   }
 }
 
+// BUG-FIX: Attendance bulk-write guard — prevents double-clicks triggering
+// duplicate batch runs when marking all participants present/absent.
+let _markingAttendance = false;
+
 function toggleAllAttendance(status) {
+  if (_markingAttendance) { toast('⏳ Attendance update in progress, please wait…'); return; }
+
   const roundSel = document.getElementById('venue-round-sel');
   const round = roundSel ? roundSel.value : 'audition';
   const venId = currentVenueMonitor;
@@ -9414,7 +9556,11 @@ function toggleAllAttendance(status) {
     toast('No participants to update!');
     return;
   }
-  
+
+  _markingAttendance = true;
+
+  // Step 1: Mutate all in-memory state first (instant visual update)
+  const updates = [];
   dataToMark.forEach(p => {
     setRoundPresent(p, round, status);
     if (!status) {
@@ -9423,26 +9569,78 @@ function toggleAllAttendance(status) {
         p.stageStatus = 'waiting';
       }
     }
-    if(window.syncEngine && window.syncEngine.updateParticipant) {
-      window.syncEngine.updateParticipant(p.id, { present: p.present, presentMarkedAt: p.presentMarkedAt, roundPresence: p.roundPresence, queueOrder: p.queueOrder, stageStatus: p.stageStatus }).catch(e=>console.error(e));
-    }
+    updates.push({
+      id: p.id,
+      payload: { present: p.present, presentMarkedAt: p.presentMarkedAt, roundPresence: p.roundPresence, queueOrder: p.queueOrder, stageStatus: p.stageStatus }
+    });
   });
-  
+
   syncAll();
   renderVenueParticipants();
   if (document.getElementById('pp-registration').classList.contains('active')) renderApplied();
   
-  toast(`✓ Marked all ${dataToMark.length} participants ${status ? 'Present' : 'Absent'} for ${round}!`);
+  const label = status ? 'Present' : 'Absent';
+  if (dataToMark.length <= 5) {
+    toast(`✓ Marked all ${dataToMark.length} participants ${label} for ${round}!`);
+  } else {
+    toast(`⏳ Saving ${dataToMark.length} participants to database…`);
+  }
+
+  // Step 2: BUG-FIX — Chunked serial Supabase writes (5 at a time, 100ms gap)
+  // Previously: N simultaneous calls → Supabase rate-limits → some writes dropped silently
+  if (window.syncEngine && window.syncEngine.updateParticipant) {
+    (async () => {
+      const CHUNK_SIZE = 5;
+      let written = 0;
+      try {
+        for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
+          const chunk = updates.slice(i, i + CHUNK_SIZE);
+          await Promise.all(chunk.map(u => window.syncEngine.updateParticipant(u.id, u.payload).catch(e => console.error('[toggleAllAttendance] write error:', u.id, e))));
+          written += chunk.length;
+          // Pause between chunks to avoid rate limiting
+          if (i + CHUNK_SIZE < updates.length) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+        }
+        if (dataToMark.length > 5) {
+          toast(`✅ All ${written} participants marked ${label} for ${round}!`);
+        }
+      } catch(e) {
+        console.error('[toggleAllAttendance] batch error:', e);
+        toast('⚠️ Some attendance records may not have saved. Please refresh.');
+      } finally {
+        _markingAttendance = false;
+      }
+    })();
+  } else {
+    _markingAttendance = false;
+    if (dataToMark.length > 5) {
+      toast(`✓ Marked all ${dataToMark.length} participants ${label} for ${round}!`);
+    }
+  }
 }
 
 function markAllPresent() {
   toggleAllAttendance(true);
 }
 
-function deleteAllParticipants() {
+// DASH-BUG-FIX 8: Force-save deletion to Supabase immediately so deleted
+// participants don't re-appear on page reload (previously only setData was
+// called — if page reloaded within the 1s debounce window, all data returned).
+let _isDeletingAll = false;
+
+async function deleteAllParticipants() {
+  if (_isDeletingAll) return;
   if (!confirm("⚠️ Are you absolutely sure you want to delete ALL participants for the active event? This action is permanent and cannot be undone.")) {
     return;
   }
+  // Double-confirm for destructive action
+  if (!confirm("⚠️ FINAL WARNING: This will permanently delete ALL participants from Supabase. Type OK to confirm.")) {
+    return;
+  }
+
+  _isDeletingAll = true;
+  toast('🗑 Deleting all participants…');
 
   syncEngine.setData(state => {
     const newState = { ...state };
@@ -9452,12 +9650,26 @@ function deleteAllParticipants() {
   });
 
   localStorage.setItem('knsdc_participants_deleted_v1', 'true');
+  currentOnStage = null;
 
   hydrate();
   renderVenueParticipants();
   if (document.getElementById('pp-registration').classList.contains('active')) renderApplied();
   
-  toast("🗑 Deleted all participants successfully!");
+  // Immediately persist deletion to Supabase (bypasses 1s debounce)
+  try {
+    if (typeof syncEngine.forceSaveStateToSupabase === 'function') {
+      await syncEngine.forceSaveStateToSupabase(syncEngine.state);
+    } else {
+      await syncAll();
+    }
+    toast("🗑 Deleted all participants successfully!");
+  } catch(e) {
+    console.error('[deleteAllParticipants] force-save error:', e);
+    toast("⚠️ Deleted locally but cloud save failed — please use Push to Cloud.");
+  } finally {
+    _isDeletingAll = false;
+  }
 }
 
 function openAddToQueueModal(){
@@ -9518,6 +9730,13 @@ function saveAddToUpcoming() {
   
   const p = participants.find(x => String(x.id) === String(id));
   if (p) {
+    // DASH-BUG-FIX 4c: Prevent duplicate queue entry via modal
+    if (p.stageStatus === 'queue') {
+      toast(`⚠️ ${p.name} is already in the queue!`);
+      closeM('add-upcoming-modal');
+      return;
+    }
+
     const now = Date.now();
     p.stageStatus = 'queue';
     p.queuedAt = now;
@@ -9530,6 +9749,15 @@ function saveAddToUpcoming() {
 
     const round = p.round || 'audition';
     setRoundPresent(p, round, true);
+
+    // DASH-BUG-FIX 4d: Direct Supabase write
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, {
+        stageStatus: 'queue', queuedAt: now, queueOrder: p.queueOrder,
+        localMutatedAt: now, roundPresence: p.roundPresence
+      }).catch(e => console.error('[saveAddToUpcoming] DB write error:', e));
+    }
+
     syncAll();
     renderVenueParticipants();
     renderStageView();
@@ -9656,31 +9884,51 @@ function openScoreModalFor(id){
   openM('score-modal');
 }
 
+// DASH-BUG-FIX 6: Guard prevents rapid double-click from submitting
+// overlapping score writes (one with stale input values).
+let _isSavingScores = false;
+
 function saveScores(){
+  if (_isSavingScores) return;
   const p = participants.find(x=>x.id===scoringParticipantId);
   if(!p){ closeM('score-modal'); return; }
-  p.present = true;
-  const sState = syncEngine.getData() || {};
-  const activeJudges = judges.filter(j => {
-    if (!j.present) return false;
-    const agr = (sState.judgeAgreements || []).find(a => 
-      (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-      (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-    );
-    return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
-  });
 
-  activeJudges.forEach(j=>{
-    if(!p.scores[j.id]) p.scores[j.id] = {};
-    subjects.forEach(s=>{
-      const inp = document.getElementById(`score_${j.id}_${s.id}`);
-      if(inp) p.scores[j.id][s.id] = Math.min(s.maxMarks, parseFloat(inp.value)||0);
+  _isSavingScores = true;
+  try {
+    p.present = true;
+    p.localMutatedAt = Date.now(); // stamp so optimistic lock protects the new scores
+    const sState = syncEngine.getData() || {};
+    const activeJudges = judges.filter(j => {
+      if (!j.present) return false;
+      const agr = (sState.judgeAgreements || []).find(a => 
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      );
+      return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
     });
-  });
-  closeM('score-modal');
-  syncAll();
-  renderVenueParticipants();
-  toast('Scores saved!');
+
+    activeJudges.forEach(j=>{
+      if(!p.scores[j.id]) p.scores[j.id] = {};
+      subjects.forEach(s=>{
+        const inp = document.getElementById(`score_${j.id}_${s.id}`);
+        if(inp) p.scores[j.id][s.id] = Math.min(s.maxMarks, parseFloat(inp.value)||0);
+      });
+    });
+
+    closeM('score-modal');
+    syncAll();
+    renderVenueParticipants();
+    toast('Scores saved!');
+
+    // Direct Supabase write so scores survive rapid subsequent actions
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      window.syncEngine.updateParticipant(p.id, { scores: p.scores, present: true, localMutatedAt: p.localMutatedAt })
+        .catch(e => console.error('[saveScores] DB write error:', e));
+    }
+  } finally {
+    // Small delay before releasing so accidental double-click can't fire a second write
+    setTimeout(() => { _isSavingScores = false; }, 1000);
+  }
 }
 
 // ══════════════════════════════════════════
@@ -11665,35 +11913,61 @@ function autoSelectTopN(){
   renderPromoList();
 }
 
+// DASH-BUG-FIX 2: Guard prevents double-clicking Promote button from
+// promoting the same participants twice. Batched writes prevent Supabase
+// rate-limiting from silently dropping promotion records.
+let _isPromoting = false;
+
 async function promoteSelected() {
+  if (_isPromoting) { toast('⏳ Promotion in progress, please wait…'); return; }
   if(!promoSelections.size){ toast('Select participants to promote!'); return; }
   if(!confirm(`Promote ${promoSelections.size} participants via Bulk Sync?`)) return;
+
   const fromRound = document.getElementById('promo-from-round').value;
   const toRound = {audition:'qualified',qualified:'semifinal',semifinal:'final'}[fromRound];
-  
-  toast('Promoting participants via Bulk Sync, please wait...');
-  promoSelections.forEach(id=>{
-    const p = participants.find(x=>x.id===id);
-    if(p){
-      if(!p.roundScores) p.roundScores = {};
-      p.roundScores[fromRound] = JSON.parse(JSON.stringify(p.scores || {}));
-      p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
-      p.round=toRound;
-      p.stageStatus='waiting';
-      p.isReady=false;
-      
-      // Force sync to Supabase database so the promotion saves globally
-      if (window.syncEngine && window.syncEngine.supabase) {
-        window.syncEngine.updateParticipant(p.id, p).catch(err => console.error("Database sync error:", err));
+  if (!toRound) { toast('Invalid round selected!'); return; }
+
+  _isPromoting = true;
+  const count = promoSelections.size;
+  toast(count > 5 ? `⏳ Promoting ${count} participants, please wait…` : 'Promoting participants via Bulk Sync, please wait...');
+
+  try {
+    // Step 1: Mutate in-memory immediately
+    const updates = [];
+    promoSelections.forEach(id=>{
+      const p = participants.find(x=>x.id===id);
+      if(p){
+        if(!p.roundScores) p.roundScores = {};
+        p.roundScores[fromRound] = JSON.parse(JSON.stringify(p.scores || {}));
+        p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
+        p.round=toRound;
+        p.stageStatus='waiting';
+        p.isReady=false;
+        updates.push({ id: p.id, payload: p });
+      }
+    });
+
+    syncAll();
+    promoSelections.clear();
+    renderPromoList();
+
+    // Step 2: Batched Supabase writes (5 at a time, 100ms gap)
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      const CHUNK = 5;
+      for (let i = 0; i < updates.length; i += CHUNK) {
+        const chunk = updates.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(u => window.syncEngine.updateParticipant(u.id, u.payload).catch(err => console.error('[promoteSelected] DB error:', err))));
+        if (i + CHUNK < updates.length) await new Promise(r => setTimeout(r, 100));
       }
     }
-  });
-  
-  syncAll();
-  const count = promoSelections.size;
-  promoSelections.clear();
-  renderPromoList();
-  toast(`🔺 ${count} participant${count>1?'s':''} promoted to ${toRound.toUpperCase()}!`);
+
+    toast(`🔺 ${count} participant${count>1?'s':''} promoted to ${toRound.toUpperCase()}!`);
+  } catch(e) {
+    console.error('[promoteSelected] error:', e);
+    toast('⚠️ Some promotions may not have saved. Please check and retry.');
+  } finally {
+    _isPromoting = false;
+  }
 }
 
 async function downloadPromoPDF(){
@@ -12379,7 +12653,10 @@ async function saveEventSettings() {
   const banner = document.getElementById('set-ev-logo').value.trim();
   const description = document.getElementById('set-ev-desc').value.trim();
 
-  if (!name) { toast('Event name is required!'); return; }
+  if (!name) {
+    toast('Event name is required!');
+    return; // Guard is NOT set yet, so bare return here is safe
+  }
 
   const btn = document.getElementById('save-ev-btn');
   const btnText = btn ? btn.querySelector('.btn-text') : null;
@@ -12394,10 +12671,14 @@ async function saveEventSettings() {
 
   try {
     const success = await syncEngine.updateEvent(activeEventId, { name, banner, description });
-    if(!success) { toast('❌ Error saving event settings'); return; }
+    if(!success) {
+      toast('❌ Error saving event settings');
+      return; // finally still runs — guard resets correctly
+    }
     await syncAll(); // Force push to sync_state to prevent data loss on reload
     toast('✅ Event settings saved!');
   } finally {
+    // DASH-BUG-FIX 1: always resets guard so button is never permanently locked
     isSavingEvent = false;
     if(btn) {
       btn.disabled = false;
@@ -14037,45 +14318,52 @@ try {
   console.error('[Initialization Error] Monitor portal failed to launch:', e);
 }
 
+// DASH-BUG-FIX 7: Debounced system status toggle — rapid clicks on the
+// LIVE/OFFLINE master switch only fire one setData + syncAll (the last click).
+let _systemStatusDebounce = null;
+
 function toggleSystemStatus(isLive) {
-  if (!isLive) {
-    // Master switch OFF → turn off EVERY switch EXCEPT publicReg
-    const savedPublicReg = switchStates.publicReg;
-    const allKeys = Object.keys(switchStates);
-    allKeys.forEach(k => {
-      if (k !== 'publicReg') switchStates[k] = false;
-    });
-    // Ensure publicReg stays as it was
-    switchStates.publicReg = savedPublicReg;
-    // Also clear live stream URL
-    switchStates.liveStreamUrl = '';
-  }
-
-  // Set the systemStatus directly in syncEngine
-  syncEngine.setData(st => {
-    const newState = {
-      ...st,
-      systemStatus: isLive ? 'live' : 'offline',
-      switchStates: { ...switchStates }
-    };
-    // Also update per-event switches so reload picks up the OFF state
-    if (activeEventId) {
-      if (!newState.eventSwitches) newState.eventSwitches = {};
-      newState.eventSwitches[activeEventId] = { ...switchStates };
+  clearTimeout(_systemStatusDebounce);
+  _systemStatusDebounce = setTimeout(() => {
+    if (!isLive) {
+      // Master switch OFF → turn off EVERY switch EXCEPT publicReg
+      const savedPublicReg = switchStates.publicReg;
+      const allKeys = Object.keys(switchStates);
+      allKeys.forEach(k => {
+        if (k !== 'publicReg') switchStates[k] = false;
+      });
+      // Ensure publicReg stays as it was
+      switchStates.publicReg = savedPublicReg;
+      // Also clear live stream URL
+      switchStates.liveStreamUrl = '';
     }
-    return newState;
-  });
 
-  // Save all memory states including the newly turned off switches
-  syncAll();
-  
-  // Visually update the switches on the monitor screen
-  renderSwitches();
-  
-  // Broadcast controls update to public interface
-  if (typeof broadcastControlsToPublic === 'function') {
-    broadcastControlsToPublic();
-  }
+    // Set the systemStatus directly in syncEngine
+    syncEngine.setData(st => {
+      const newState = {
+        ...st,
+        systemStatus: isLive ? 'live' : 'offline',
+        switchStates: { ...switchStates }
+      };
+      // Also update per-event switches so reload picks up the OFF state
+      if (activeEventId) {
+        if (!newState.eventSwitches) newState.eventSwitches = {};
+        newState.eventSwitches[activeEventId] = { ...switchStates };
+      }
+      return newState;
+    });
+
+    // Save all memory states including the newly turned off switches
+    syncAll();
+    
+    // Visually update the switches on the monitor screen
+    renderSwitches();
+    
+    // Broadcast controls update to public interface
+    if (typeof broadcastControlsToPublic === 'function') {
+      broadcastControlsToPublic();
+    }
+  }, 400); // 400ms debounce — prevents rapid toggle from flooding DB
 }
 
 // =========== EXPOSE REST TO WINDOW ===========
