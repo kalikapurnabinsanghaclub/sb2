@@ -16,27 +16,6 @@
       `;
       document.body ? document.body.appendChild(div) : document.documentElement.appendChild(div);
     });
-
-    function showAuth(isSignup = false) {
-      const modal = document.getElementById('auth-modal');
-      if (!modal) return;
-      modal.classList.add('active');
-      if (isSignup) {
-        document.getElementById('auth-login').style.display = 'none';
-        document.getElementById('auth-signup').style.display = 'block';
-      } else {
-        document.getElementById('auth-login').style.display = 'block';
-        document.getElementById('auth-signup').style.display = 'none';
-      }
-    }
-
-    function hideAuth() {
-      const modal = document.getElementById('auth-modal');
-      if (modal) modal.classList.remove('active');
-    }
-
-    window.showAuth = showAuth;
-    window.hideAuth = hideAuth;
     
     // Local Mode Check
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -3999,8 +3978,11 @@
       document.getElementById('imageModal').classList.remove('hidden');
     }
 
-    // ══════════ PUBLIC VOTING ══════════
+    // ══════════ PUBLIC VOTING HARDENING ══════════
+    let _isSubmittingVote = false;
+
     function submitPublicVote(eventId, participantId, round) {
+      if (_isSubmittingVote) return;
       const msgEl = document.getElementById('vote-msg-' + eventId);
       const slider = document.getElementById('vote-slider-' + eventId);
       const phoneEl = document.getElementById('vote-phone-' + eventId);
@@ -4035,38 +4017,43 @@
         return;
       }
 
-      // Write vote into shared state
-      syncEngine.setData(s => {
-        const updated = { ...s };
-        if (!updated.publicVotes) updated.publicVotes = {};
-        const voteKey = participantId + '_' + round;
-        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
-        // Double-check server side for same phone (in case of different device)
-        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
-        if (alreadyVoted) return s; // no change
-        updated.publicVotes[voteKey] = [
-          ...updated.publicVotes[voteKey],
-          { phone, name: voterName, score, ts: Date.now() }
-        ];
-        return updated;
-      });
+      _isSubmittingVote = true;
+      try {
+        // Write vote into shared state
+        syncEngine.setData(s => {
+          const updated = { ...s };
+          if (!updated.publicVotes) updated.publicVotes = {};
+          const voteKey = participantId + '_' + round;
+          if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+          // Double-check server side for same phone
+          const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+          if (alreadyVoted) return s;
+          updated.publicVotes[voteKey] = [
+            ...updated.publicVotes[voteKey],
+            { phone, name: voterName, score, ts: Date.now() }
+          ];
+          return updated;
+        });
 
-      // Mark locally so same browser can't re-vote
-      localStorage.setItem(lsKey, '1');
+        // Mark locally so same browser can't re-vote
+        localStorage.setItem(lsKey, '1');
 
-      // UI feedback
-      msgEl.style.color = '#059669';
-      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
-      slider.disabled = true;
-      phoneEl.disabled = true;
-      if (nameEl) nameEl.disabled = true;
-      const btn = document.querySelector(`#vote-widget-${eventId} button`);
-      if (btn) {
-        btn.disabled = true;
-        btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
-        btn.style.color = '#059669';
-        btn.style.boxShadow = 'none';
-        btn.textContent = '✅ Rating Submitted!';
+        // UI feedback
+        msgEl.style.color = '#059669';
+        msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+        slider.disabled = true;
+        phoneEl.disabled = true;
+        if (nameEl) nameEl.disabled = true;
+        const btn = document.querySelector(`#vote-widget-${eventId} button`);
+        if (btn) {
+          btn.disabled = true;
+          btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+          btn.style.color = '#059669';
+          btn.style.boxShadow = 'none';
+          btn.textContent = '✅ Rating Submitted!';
+        }
+      } finally {
+        setTimeout(() => { _isSubmittingVote = false; }, 600);
       }
     }
     
@@ -4111,6 +4098,7 @@
     window.showFavoriteVoteModal = showFavoriteVoteModal;
     
     function submitFavoriteVote() {
+      if (_isSubmittingVote) return;
       const eventId = document.getElementById('fav-vote-evid').value;
       const participantId = document.getElementById('fav-vote-pid').value;
       const msgEl = document.getElementById('fav-vote-msg');
@@ -4140,44 +4128,49 @@
         return;
       }
 
-      syncEngine.setData(s => {
-        const updated = { ...s };
-        if (!updated.publicVotes) updated.publicVotes = {};
-        // We save favorite votes as round="favorite" with a score of 10 to boost average if wanted, or just 0
-        const voteKey = participantId + '_favorite';
-        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
-        
-        updated.publicVotes[voteKey].push({
-          score: 10,
-          phone: phone,
-          name: voterName,
-          timestamp: new Date().toISOString()
+      _isSubmittingVote = true;
+      try {
+        syncEngine.setData(s => {
+          const updated = { ...s };
+          if (!updated.publicVotes) updated.publicVotes = {};
+          const voteKey = participantId + '_favorite';
+          if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+          
+          updated.publicVotes[voteKey].push({
+            score: 10,
+            phone: phone,
+            name: voterName,
+            timestamp: new Date().toISOString()
+          });
+          
+          return updated;
         });
-        
-        return updated;
-      });
 
-      localStorage.setItem(lsKey, 'true');
-      
-      msgEl.style.color = '#059669';
-      msgEl.innerHTML = `✅ Thank you for supporting! 🙏`;
-      nameEl.disabled = true;
-      phoneEl.disabled = true;
-      
-      btn.disabled = true;
-      btn.textContent = '✅ Supported!';
-      btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
-      btn.style.color = '#059669';
-      
-      setTimeout(() => {
-        document.getElementById('favoriteVoteModal').classList.add('hidden');
-        showEventDetail(eventId); // Refresh the view to show updated likes
-      }, 1500);
+        localStorage.setItem(lsKey, 'true');
+        
+        msgEl.style.color = '#059669';
+        msgEl.innerHTML = `✅ Thank you for supporting! 🙏`;
+        nameEl.disabled = true;
+        phoneEl.disabled = true;
+        
+        btn.disabled = true;
+        btn.textContent = '✅ Supported!';
+        btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+        btn.style.color = '#059669';
+        
+        setTimeout(() => {
+          document.getElementById('favoriteVoteModal').classList.add('hidden');
+          showEventDetail(eventId);
+        }, 1500);
+      } finally {
+        setTimeout(() => { _isSubmittingVote = false; }, 600);
+      }
     }
     window.submitFavoriteVote = submitFavoriteVote;
 
     // Standalone version for the white-background rating section
     function submitPublicVoteStandalone(eventId, participantId, round) {
+      if (_isSubmittingVote) return;
       const msgEl = document.getElementById('vote-msg-standalone');
       const slider = document.getElementById('vote-slider-standalone');
       const phoneEl = document.getElementById('vote-phone-standalone');
@@ -4209,39 +4202,45 @@
         return;
       }
 
-      syncEngine.setData(s => {
-        const updated = { ...s };
-        if (!updated.publicVotes) updated.publicVotes = {};
-        const voteKey = participantId + '_' + round;
-        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
-        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
-        if (alreadyVoted) return s;
-        updated.publicVotes[voteKey] = [
-          ...updated.publicVotes[voteKey],
-          { phone, name: voterName, score, ts: Date.now() }
-        ];
-        return updated;
-      });
+      _isSubmittingVote = true;
+      try {
+        syncEngine.setData(s => {
+          const updated = { ...s };
+          if (!updated.publicVotes) updated.publicVotes = {};
+          const voteKey = participantId + '_' + round;
+          if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+          const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+          if (alreadyVoted) return s;
+          updated.publicVotes[voteKey] = [
+            ...updated.publicVotes[voteKey],
+            { phone, name: voterName, score, ts: Date.now() }
+          ];
+          return updated;
+        });
 
-      localStorage.setItem(lsKey, '1');
+        localStorage.setItem(lsKey, '1');
 
-      msgEl.style.color = '#059669';
-      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
-      slider.disabled = true;
-      phoneEl.disabled = true;
-      if (nameEl) nameEl.disabled = true;
-      const btn = document.querySelector('#vote-widget-standalone button');
-      if (btn) {
-        btn.disabled = true;
-        btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
-        btn.style.color = '#059669';
-        btn.style.boxShadow = 'none';
-        btn.textContent = '✅ Rating Submitted!';
+        msgEl.style.color = '#059669';
+        msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+        slider.disabled = true;
+        phoneEl.disabled = true;
+        if (nameEl) nameEl.disabled = true;
+        const btn = document.querySelector('#vote-widget-standalone button');
+        if (btn) {
+          btn.disabled = true;
+          btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+          btn.style.color = '#059669';
+          btn.style.boxShadow = 'none';
+          btn.textContent = '✅ Rating Submitted!';
+        }
+      } finally {
+        setTimeout(() => { _isSubmittingVote = false; }, 600);
       }
     }
 
     // Live section vote (renderLiveUI)
     function submitPublicVoteLive(eventId, participantId, round) {
+      if (_isSubmittingVote) return;
       const msgEl = document.getElementById('vote-msg-live');
       const slider = document.getElementById('vote-slider-live');
       const phoneEl = document.getElementById('vote-phone-live');
@@ -4273,34 +4272,39 @@
         return;
       }
 
-      syncEngine.setData(s => {
-        const updated = { ...s };
-        if (!updated.publicVotes) updated.publicVotes = {};
-        const voteKey = participantId + '_' + round;
-        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
-        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
-        if (alreadyVoted) return s;
-        updated.publicVotes[voteKey] = [
-          ...updated.publicVotes[voteKey],
-          { phone, name: voterName, score, ts: Date.now() }
-        ];
-        return updated;
-      });
+      _isSubmittingVote = true;
+      try {
+        syncEngine.setData(s => {
+          const updated = { ...s };
+          if (!updated.publicVotes) updated.publicVotes = {};
+          const voteKey = participantId + '_' + round;
+          if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+          const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+          if (alreadyVoted) return s;
+          updated.publicVotes[voteKey] = [
+            ...updated.publicVotes[voteKey],
+            { phone, name: voterName, score, ts: Date.now() }
+          ];
+          return updated;
+        });
 
-      localStorage.setItem(lsKey, '1');
+        localStorage.setItem(lsKey, '1');
 
-      msgEl.style.color = '#059669';
-      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
-      slider.disabled = true;
-      phoneEl.disabled = true;
-      if (nameEl) nameEl.disabled = true;
-      const btn = document.querySelector('#vote-widget-live button');
-      if (btn) {
-        btn.disabled = true;
-        btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
-        btn.style.color = '#059669';
-        btn.style.boxShadow = 'none';
-        btn.textContent = '✅ Rating Submitted!';
+        msgEl.style.color = '#059669';
+        msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+        slider.disabled = true;
+        phoneEl.disabled = true;
+        if (nameEl) nameEl.disabled = true;
+        const btn = document.querySelector('#vote-widget-live button');
+        if (btn) {
+          btn.disabled = true;
+          btn.style.background = 'linear-gradient(135deg,#d1fae5,#a7f3d0)';
+          btn.style.color = '#059669';
+          btn.style.boxShadow = 'none';
+          btn.textContent = '✅ Rating Submitted!';
+        }
+      } finally {
+        setTimeout(() => { _isSubmittingVote = false; }, 600);
       }
     }
 
@@ -4309,6 +4313,7 @@
     window.submitPublicVoteLive = submitPublicVoteLive;
 
     function submitPublicVoteEPV(eventId, participantId, round) {
+      if (_isSubmittingVote) return;
       const msgEl = document.getElementById('vote-msg-epv-' + participantId);
       const slider = document.getElementById('vote-slider-epv-' + participantId);
       const phoneEl = document.getElementById('vote-phone-epv-' + participantId);
@@ -4340,27 +4345,32 @@
         return;
       }
 
-      syncEngine.setData(s => {
-        const updated = { ...s };
-        if (!updated.publicVotes) updated.publicVotes = {};
-        const voteKey = participantId + '_' + round;
-        if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
-        const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
-        if (alreadyVoted) return s;
-        updated.publicVotes[voteKey] = [
-          ...updated.publicVotes[voteKey],
-          { phone, name: voterName, score, ts: Date.now() }
-        ];
-        return updated;
-      });
+      _isSubmittingVote = true;
+      try {
+        syncEngine.setData(s => {
+          const updated = { ...s };
+          if (!updated.publicVotes) updated.publicVotes = {};
+          const voteKey = participantId + '_' + round;
+          if (!updated.publicVotes[voteKey]) updated.publicVotes[voteKey] = [];
+          const alreadyVoted = updated.publicVotes[voteKey].some(v => v.phone === phone);
+          if (alreadyVoted) return s;
+          updated.publicVotes[voteKey] = [
+            ...updated.publicVotes[voteKey],
+            { phone, name: voterName, score, ts: Date.now() }
+          ];
+          return updated;
+        });
 
-      localStorage.setItem(lsKey, '1');
+        localStorage.setItem(lsKey, '1');
 
-      msgEl.style.color = '#059669';
-      msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
-      slider.disabled = true;
-      phoneEl.disabled = true;
-      if (nameEl) nameEl.disabled = true;
+        msgEl.style.color = '#059669';
+        msgEl.innerHTML = `✅ Your rating of <strong>${score}/10</strong> was submitted! Thank you 🙏`;
+        slider.disabled = true;
+        phoneEl.disabled = true;
+        if (nameEl) nameEl.disabled = true;
+      } finally {
+        setTimeout(() => { _isSubmittingVote = false; }, 600);
+      }
     }
     window.submitPublicVoteEPV = submitPublicVoteEPV;
     window.lastAutoScrolledPerformerRound = null;
@@ -10805,7 +10815,10 @@
       }
     }
 
+    let _isSigningUp = false;
+
     function handleSignup() {
+      if (_isSigningUp) return;
       const state = syncEngine.getData();
       const participants = state.participants || [];
       const eventId = suSelectedEventId;
@@ -10884,7 +10897,9 @@
           showToast("Required Field", `Please fill in: ${f.label}`, "⚠️");
           return;
         }
-      }      // Finalize Cat/Ven labels for storage (replace ID with Name)
+      }
+
+      // Finalize Cat/Ven labels for storage (replace ID with Name)
       if (catEl && catEl.value) {
         formData[catEl.getAttribute("data-label")] = catEl.options[catEl.selectedIndex].text;
       }
@@ -10911,8 +10926,8 @@
             const dob = new Date(val);
             const diff = Date.now() - dob.getTime();
             const calcAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
-          if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
-              if (age === 0 || lbl.includes('BIRTH') || lbl.includes('DOB')) age = calcAge; // prioritize explicit DOB fields, else take any valid date
+            if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
+              if (age === 0 || lbl.includes('BIRTH') || lbl.includes('DOB')) age = calcAge;
             }
           }
         }
@@ -10936,80 +10951,92 @@
         }
       }
 
-      const email = document.getElementById("suEmail").value.trim();
-      const password = document.getElementById("suPass").value;
+      _isSigningUp = true;
+      try {
+        const email = document.getElementById("suEmail").value.trim();
+        const password = document.getElementById("suPass").value;
 
-      // Generate ID using random 2-letter, 4-digit unique code
-      const s = syncEngine.getData();
-      const allParticipants = s.participants || [];
-      const newId = syncEngine.generateUniqueParticipantId();
+        // Generate ID using random 2-letter, 4-digit unique code
+        const s = syncEngine.getData();
+        const newId = syncEngine.generateUniqueParticipantId();
+        const now = Date.now();
 
-      const newP = {
-        id: newId, name, phone: phone || '—', age, gender,
-        email: email || '', password: password || '',
-        eventId: eventId, formAnswers: formData,
-        catId, venueId, round: "audition",
-        stageStatus: "waiting", present: false,
-        isPublic: true, isVerified: true, scores: {},
-        regDate: new Date().toISOString()
-      };
+        const newP = {
+          id: newId, name, phone: phone || '—', age, gender,
+          email: email || '', password: password || '',
+          eventId: eventId, formAnswers: formData,
+          catId, venueId, round: "audition",
+          stageStatus: "waiting", present: false,
+          isPublic: true, isVerified: true, scores: {},
+          localMutatedAt: now,
+          regDate: new Date().toISOString()
+        };
 
-      if (syncEngine.supabase) {
-        syncEngine.createParticipant(newP).then((success) => {
-          if (!success) {
-            console.error('[Supabase] Error auto-syncing participant to database');
-          } else {
-            console.log('[Supabase] Participant auto-synced successfully');
-          }
+        // Update local memory state immediately
+        syncEngine.setData(st => {
+          const parts = [...(st.participants || [])];
+          const idx = parts.findIndex(x => x.id === newId);
+          if (idx > -1) parts[idx] = newP;
+          else parts.push(newP);
+          return { ...st, participants: parts };
         });
-      } else {
-        allParticipants.push(newP);
-        syncEngine.updateState({ participants: allParticipants });
+
+        // Persist to Supabase database
+        if (syncEngine.supabase && syncEngine.createParticipant) {
+          syncEngine.createParticipant(newP).then((success) => {
+            if (!success) {
+              console.error('[Supabase] Error auto-syncing participant to database');
+            } else {
+              console.log('[Supabase] Participant auto-synced successfully');
+            }
+          }).catch(e => console.error('[Supabase] createParticipant error:', e));
+        }
+
+        const updatedNxtId = { ...(s.nxtId || { reg: 1 }) };
+        updatedNxtId.reg = (updatedNxtId.reg || 1) + 1;
+        syncEngine.updateState({ nxtId: updatedNxtId });
+
+        // Store details for download
+        window.lastRegDetails = {
+          id: newId,
+          name: name,
+          event: ev ? ev.name : "Unknown Event",
+          date: ev ? ev.disp : "---",
+          venue: ev ? ev.venue : "---",
+          eventCategory: ev ? (ev.cat || ev.category) : "General",
+          category: (catEl && catEl.value) ? catEl.options[catEl.selectedIndex].text : "General",
+          timestamp: now
+        };
+
+        // Show Success Modal
+        document.getElementById("successRegId").textContent = newId;
+        document.getElementById("successEventDate").textContent = ev ? ev.disp : "---";
+        document.getElementById("successEventVenue").textContent = ev ? ev.venue : "---";
+        const uName = (name || "").split(" ")[0] || "User";
+        const uEl = document.getElementById("successRegUser");
+        if (uEl) uEl.textContent = uName;
+        const pEl = document.getElementById("successRegPass");
+        if (pEl) {
+          pEl.setAttribute("data-pass", newId);
+          pEl.textContent = newId;
+        }
+        const tBtn = document.getElementById("toggleSuccessPassBtn");
+        if (tBtn) tBtn.textContent = "🙈";
+
+        // Automatically collect username and password for login fields
+        const loginUInput = document.getElementById("loginU");
+        const loginPInput = document.getElementById("loginP");
+        if (loginUInput) loginUInput.value = uName;
+        if (loginPInput) loginPInput.value = newId;
+        
+        selectedRole = "public";
+        if (typeof renderRoles === 'function') renderRoles();
+
+        document.getElementById("regSuccessModal").classList.remove("hidden");
+        hideAuth();
+      } finally {
+        _isSigningUp = false;
       }
-
-      const updatedNxtId = { ...(s.nxtId || { reg: 1 }) };
-      updatedNxtId.reg = (updatedNxtId.reg || 1) + 1;
-      syncEngine.updateState({ nxtId: updatedNxtId });
-
-      // Store details for download
-      window.lastRegDetails = {
-        id: newId,
-        name: name,
-        event: ev ? ev.name : "Unknown Event",
-        date: ev ? ev.disp : "---",
-        venue: ev ? ev.venue : "---",
-        eventCategory: ev ? (ev.cat || ev.category) : "General",
-        category: (catEl && catEl.value) ? catEl.options[catEl.selectedIndex].text : "General",
-        timestamp: Date.now()
-      };
-
-      // Show Success Modal
-      document.getElementById("successRegId").textContent = newId;
-      document.getElementById("successEventDate").textContent = ev ? ev.disp : "---";
-      document.getElementById("successEventVenue").textContent = ev ? ev.venue : "---";
-      const uName = (name || "").split(" ")[0] || "User";
-      const uEl = document.getElementById("successRegUser");
-      if (uEl) uEl.textContent = uName;
-      const pEl = document.getElementById("successRegPass");
-      if (pEl) {
-        pEl.setAttribute("data-pass", newId);
-        pEl.textContent = newId;
-      }
-      const tBtn = document.getElementById("toggleSuccessPassBtn");
-      if (tBtn) tBtn.textContent = "🙈";
-
-      // Automatically collect username and password for login fields
-      const loginUInput = document.getElementById("loginU");
-      const loginPInput = document.getElementById("loginP");
-      if (loginUInput) loginUInput.value = uName;
-      if (loginPInput) loginPInput.value = newId;
-      
-      // Auto-select 'public' (or suitable role) for participant login representation
-      selectedRole = "public";
-      if (typeof renderRoles === 'function') renderRoles();
-
-      document.getElementById("regSuccessModal").classList.remove("hidden");
-      hideAuth();
     }
 
     // ══════════════════════════════════════════════════════════════

@@ -1675,8 +1675,11 @@ function triggerDownload(blob) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+let _isReadyToggling = false;
+
 function markParticipantReady() {
-  if (!CURRENT_USER || !window.syncEngine) return;
+  if (!CURRENT_USER || !window.syncEngine || _isReadyToggling) return;
+  _isReadyToggling = true;
   
   // Request native background notification permissions on interaction
   if ('Notification' in window && Notification.permission !== 'granted') {
@@ -1688,11 +1691,15 @@ function markParticipantReady() {
 
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-  if (!p) return;
+  if (!p) {
+    _isReadyToggling = false;
+    return;
+  }
 
   const newState = !p.isReady;
+  const now = Date.now();
   
-  window.syncEngine.updateParticipant(CURRENT_USER, { isReady: newState })
+  window.syncEngine.updateParticipant(CURRENT_USER, { isReady: newState, localMutatedAt: now })
     .then(() => {
       const btn = document.getElementById('ready-btn');
       if (btn) {
@@ -1708,7 +1715,10 @@ function markParticipantReady() {
       }
       toast(newState ? '✅ Organizer notified that you are ready!' : 'Ready alert cancelled.');
     })
-    .catch(e => console.error(e));
+    .catch(e => console.error('[markParticipantReady] error:', e))
+    .finally(() => {
+      setTimeout(() => { _isReadyToggling = false; }, 500);
+    });
 }
 
 let queueAudioCtx = null;
@@ -2383,7 +2393,10 @@ function renderDashboard() {
   }
 }
 
+let _isSubmittingFeedback = false;
+
 async function submitParticipantFeedback() {
+  if (_isSubmittingFeedback) return;
   const ratingEl = document.querySelector('input[name="fb_rating"]:checked');
   if (!ratingEl) {
     toast("⚠️ Please select a star rating.");
@@ -2392,19 +2405,27 @@ async function submitParticipantFeedback() {
   const rating = parseInt(ratingEl.value, 10);
   const text = document.getElementById('feedback-text').value.trim();
   
-  if (window.syncEngine && window.syncEngine.submitFeedback) {
-    const success = await window.syncEngine.submitFeedback(CURRENT_USER, rating, text);
-    if (success) {
-      document.getElementById('feedback-form-container').style.display = 'none';
-      document.getElementById('feedback-success-msg').style.display = 'block';
-      toast("💖 Feedback sent successfully! Disappearing in 30 seconds...");
-      setTimeout(() => {
-        const fbCard = document.getElementById('feedback-card');
-        if (fbCard) fbCard.style.display = 'none';
-      }, 30000);
-    } else {
-      toast("❌ Failed to send feedback.");
+  _isSubmittingFeedback = true;
+  try {
+    if (window.syncEngine && window.syncEngine.submitFeedback) {
+      const success = await window.syncEngine.submitFeedback(CURRENT_USER, rating, text);
+      if (success) {
+        document.getElementById('feedback-form-container').style.display = 'none';
+        document.getElementById('feedback-success-msg').style.display = 'block';
+        toast("💖 Feedback sent successfully! Disappearing in 30 seconds...");
+        setTimeout(() => {
+          const fbCard = document.getElementById('feedback-card');
+          if (fbCard) fbCard.style.display = 'none';
+        }, 30000);
+      } else {
+        toast("❌ Failed to send feedback.");
+      }
     }
+  } catch(e) {
+    console.error('[submitParticipantFeedback] error:', e);
+    toast("❌ Failed to send feedback.");
+  } finally {
+    _isSubmittingFeedback = false;
   }
 }
 function generateParticipantCertificateHTML() {
@@ -3861,21 +3882,31 @@ function toggleChatModal() {
 // dummy — no longer needed for inline mode
 function initInlineChatReadTracking() {}
 
+let _isSendingChat = false;
+
 async function sendChatMessage() {
-  if (!CURRENT_USER || !window.syncEngine) return;
+  if (!CURRENT_USER || !window.syncEngine || _isSendingChat) return;
   const input = document.getElementById('chat-input');
+  if (!input) return;
   const text = input.value.trim();
   if (!text) return;
   
-  input.value = '';
-  await window.syncEngine.addChatMessage(text, CURRENT_USER, 'participant');
-  
-  // Instantly render
-  renderChatMessages();
-  setTimeout(() => {
-    const cont = document.getElementById('chat-messages-container');
-    cont.scrollTop = cont.scrollHeight;
-  }, 50);
+  _isSendingChat = true;
+  try {
+    input.value = '';
+    await window.syncEngine.addChatMessage(text, CURRENT_USER, 'participant');
+    
+    // Instantly render
+    renderChatMessages();
+    setTimeout(() => {
+      const cont = document.getElementById('chat-messages-container');
+      if (cont) cont.scrollTop = cont.scrollHeight;
+    }, 50);
+  } catch(e) {
+    console.error('[sendChatMessage] error:', e);
+  } finally {
+    _isSendingChat = false;
+  }
 }
 
 function renderChatMessages() {
