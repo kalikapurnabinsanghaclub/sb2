@@ -6685,7 +6685,12 @@ function toggleSwitch(sw, cb){
 function regTab(tab, el){
   currentRegTab2 = tab;
   document.querySelectorAll('#reg-tabs .tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
+  if (el && el.classList) {
+    el.classList.add('active');
+  } else {
+    const match = document.querySelector(`#reg-tabs .tab[onclick*="'${tab}'"]`) || document.querySelector(`#reg-tabs .tab[onclick*='"${tab}"']`);
+    if (match) match.classList.add('active');
+  }
   ['applied','formbuilder','categories','venues'].forEach(t=>{
     const targetEl = document.getElementById('rt-'+t);
     if(targetEl) targetEl.style.display = t===tab?'block':'none';
@@ -6844,10 +6849,6 @@ function viewFormAnswers(id) {
   });
   html += `</div>`;
   
-  // We'll use a simple alert/confirm or reuse a modal if available. 
-  // For now, let's inject into a temporary overlay or just toast it.
-  // Actually, let's use the 'FIELD PREVIEW' area or similar if we want a clean UI.
-  // Better: reuse the ffield-modal for a quick display
   const modal = document.getElementById('ffield-modal');
   if (modal) {
     const modalBox = modal.querySelector('.modal') || modal;
@@ -6911,10 +6912,11 @@ async function handleFileEdit(input, hiddenId) {
 
 function openEditReg(id){
   const p = participants.find(x=>x.id===id);
+  if (!p) return;
   document.getElementById('er-id').value = id;
   document.getElementById('er-name').value = p.name || '';
   document.getElementById('er-phone').value = p.phone || '';
-  document.getElementById('er-age').value = p.age || '';
+  document.getElementById('er-age').value = p.age !== undefined && p.age !== null ? p.age : '';
   document.getElementById('er-present').value = String(p.present);
   
   // Render Dynamic custom fields
@@ -6983,87 +6985,150 @@ function openEditReg(id){
   
   renderApplied(); // ensure selects populated
   setTimeout(()=>{
-    document.getElementById('er-cat').value = p.catId;
-    document.getElementById('er-venue').value = p.venueId;
+    const catEl = document.getElementById('er-cat');
+    const venEl = document.getElementById('er-venue');
+    if (catEl && p.catId !== undefined) catEl.value = p.catId;
+    if (venEl && p.venueId !== undefined) venEl.value = p.venueId;
     openM('edit-reg-modal');
   },50);
 }
 
-function saveEditReg(){
+// ── APPLIED SECTION BUG-FIXES: Mutex guard, direct DB writes, optimistic lock stamp
+let _isSavingEditReg = false;
+let _isDeletingReg = false;
+
+async function saveEditReg(){
+  if (_isSavingEditReg) return;
   const id = document.getElementById('er-id').value;
-  const p = participants.find(x=>x.id===id);
-  p.name = document.getElementById('er-name').value;
-  p.phone = document.getElementById('er-phone').value;
-  p.age = parseInt(document.getElementById('er-age').value);
-  p.catId = parseInt(document.getElementById('er-cat').value);
-  p.venueId = parseInt(document.getElementById('er-venue').value);
-  p.present = document.getElementById('er-present').value==='true';
-  
-  // Save Dynamic custom fields
-  const ev = EVENTS.find(e => String(e.id) === String(p.eventId));
-  let fFields = ev && ev.formFields ? ev.formFields : [];
-  if (typeof fFields === 'string') {
-    try { fFields = JSON.parse(fFields); } catch(e) { fFields = []; }
-  }
-  if (!Array.isArray(fFields)) fFields = [];
-  if (!p.formAnswers) p.formAnswers = {};
-  
-  fFields.forEach((f, i) => {
-    if (f.type === 'category' || f.type === 'venue') return;
-    const labelUpper = (f.label || '').toUpperCase();
-    if (labelUpper.includes('NAME') && f.type === 'text') return;
-    if (labelUpper.includes('PHONE') || labelUpper.includes('MOBILE')) return;
-    if (labelUpper.includes('AGE') && f.type === 'number') return;
+  const p = participants.find(x=>String(x.id)===String(id));
+  if (!p) { closeM('edit-reg-modal'); return; }
+
+  _isSavingEditReg = true;
+  const now = Date.now();
+
+  try {
+    p.name = document.getElementById('er-name').value.trim();
+    p.phone = document.getElementById('er-phone').value.trim();
     
-    const fieldId = `er-custom-${i}`;
-    const el = document.getElementById(fieldId);
-    if (el) {
-       p.formAnswers[f.label] = el.value;
+    const parsedAge = parseInt(document.getElementById('er-age').value);
+    p.age = isNaN(parsedAge) ? 0 : parsedAge;
+    
+    const parsedCat = parseInt(document.getElementById('er-cat').value);
+    p.catId = isNaN(parsedCat) ? (p.catId || 1) : parsedCat;
+    
+    const parsedVenue = parseInt(document.getElementById('er-venue').value);
+    p.venueId = isNaN(parsedVenue) ? (p.venueId || 1) : parsedVenue;
+    
+    p.present = document.getElementById('er-present').value==='true';
+    p.localMutatedAt = now; // Stamp optimistic lock so remote merge doesn't revert edits
+    
+    // Save Dynamic custom fields
+    const ev = EVENTS.find(e => String(e.id) === String(p.eventId));
+    let fFields = ev && ev.formFields ? ev.formFields : [];
+    if (typeof fFields === 'string') {
+      try { fFields = JSON.parse(fFields); } catch(e) { fFields = []; }
     }
-  });
-  
-  closeM('edit-reg-modal');
-  syncAll();
-  renderApplied();
-  toast('Registration updated!');
+    if (!Array.isArray(fFields)) fFields = [];
+    if (!p.formAnswers) p.formAnswers = {};
+    
+    fFields.forEach((f, i) => {
+      if (f.type === 'category' || f.type === 'venue') return;
+      const labelUpper = (f.label || '').toUpperCase();
+      if (labelUpper.includes('NAME') && f.type === 'text') return;
+      if (labelUpper.includes('PHONE') || labelUpper.includes('MOBILE')) return;
+      if (labelUpper.includes('AGE') && f.type === 'number') return;
+      
+      const fieldId = `er-custom-${i}`;
+      const el = document.getElementById(fieldId);
+      if (el) {
+         p.formAnswers[f.label] = el.value;
+      }
+    });
+    
+    closeM('edit-reg-modal');
+
+    // Direct write to Supabase
+    if (window.syncEngine && window.syncEngine.updateParticipant) {
+      await window.syncEngine.updateParticipant(p.id, {
+        name: p.name,
+        phone: p.phone,
+        age: p.age,
+        catId: p.catId,
+        venueId: p.venueId,
+        present: p.present,
+        formAnswers: p.formAnswers,
+        localMutatedAt: now
+      }).catch(e => console.error('[saveEditReg] DB error:', e));
+    }
+
+    syncAll();
+    renderApplied();
+    toast('Registration updated!');
+  } finally {
+    _isSavingEditReg = false;
+  }
 }
 
 async function unlockParticipantForm(id) {
   if(!confirm("Unlock this participant's form? They will be able to edit their data via the Participant Portal.")) return;
   try {
+    const now = Date.now();
+    const p = participants.find(x => String(x.id) === String(id));
+    if (p) {
+      p.formLocked = false;
+      p.localMutatedAt = now;
+    }
     if(window.syncEngine && window.syncEngine.updateParticipant) {
-      await window.syncEngine.updateParticipant(id, { formLocked: false });
+      await window.syncEngine.updateParticipant(id, { formLocked: false, localMutatedAt: now });
+      syncAll();
+      renderApplied();
       toast('Form unlocked successfully!');
     }
   } catch(e) {
-    console.error(e);
+    console.error('[unlockParticipantForm] error:', e);
     toast('Error unlocking form');
   }
 }
 
 async function deleteReg(id) {
+  if (_isDeletingReg) return;
   if(!confirm('Archive this registration?\n\n✅ The participant data, scores, and uploaded files will be PRESERVED in the database.\nThey will be hidden from the active list but can be restored by Admin.')) return;
-  const success = await syncEngine.deleteParticipant(id);
-  if (!success) { toast('❌ Error archiving registration'); return; }
-  const idx = participants.findIndex(p=>p.id===id);
-  if(idx>-1) participants.splice(idx,1);
-  renderApplied();
-  toast('🗄 Registration archived — data is safe');
+  
+  _isDeletingReg = true;
+  try {
+    const success = await syncEngine.deleteParticipant(id);
+    if (!success) { toast('❌ Error archiving registration'); return; }
+    const idx = participants.findIndex(p=>String(p.id)===String(id));
+    if(idx>-1) participants.splice(idx,1);
+    syncAll();
+    renderApplied();
+    toast('🗄 Registration archived — data is safe');
+  } finally {
+    _isDeletingReg = false;
+  }
 }
 
 async function permanentDeleteReg(id) {
-  const p = participants.find(x => x.id === id);
+  if (_isDeletingReg) return;
+  const p = participants.find(x => String(x.id) === String(id));
   const pName = p ? p.name : id;
   const confirm1 = confirm(`⚠️ PERMANENT DELETE\n\nYou are about to PERMANENTLY DELETE:\n"${pName}" (${id})\n\nThis will:\n• Remove the database row forever\n• Delete all uploaded files\n• Cannot be undone\n\nAre you absolutely sure?`);
   if (!confirm1) return;
   const typed = prompt(`Type DELETE (all caps) to confirm permanent deletion of "${pName}":`);
   if (typed !== 'DELETE') { toast('❌ Permanent delete cancelled — text did not match'); return; }
-  const success = await syncEngine.permanentlyDeleteParticipant(id);
-  if (!success) { toast('❌ Error permanently deleting registration'); return; }
-  const idx = participants.findIndex(x=>x.id===id);
-  if(idx>-1) participants.splice(idx,1);
-  renderApplied();
-  toast('🗑 Registration permanently deleted from database');
+  
+  _isDeletingReg = true;
+  try {
+    const success = await syncEngine.permanentlyDeleteParticipant(id);
+    if (!success) { toast('❌ Error permanently deleting registration'); return; }
+    const idx = participants.findIndex(p=>String(p.id)===String(id));
+    if(idx>-1) participants.splice(idx,1);
+    syncAll();
+    renderApplied();
+    toast('🗑 Registration permanently deleted from database');
+  } finally {
+    _isDeletingReg = false;
+  }
 }
 
 function sendWhatsAppReg(id) {
@@ -7839,55 +7904,82 @@ function removeFormField(i){
   });
 }
 function previewForm(){ renderFormPreview(); toast('Preview updated'); }
+let _isSavingForm = false;
+
 async function saveForm() {
-  // Visual feedback: saving state
+  if (_isSavingForm) return;
+  if (!activeEventId) {
+    toast('⚠️ Please select an active event first!');
+    return;
+  }
+
+  _isSavingForm = true;
   const saveBtn = document.querySelector('[onclick="saveForm()"]');
   if (saveBtn) { saveBtn.textContent = '⏳ Saving...'; saveBtn.disabled = true; }
 
-  const s = syncEngine.getData();
-  const evIdx = (s.events || []).findIndex(e => String(e.id) === String(activeEventId));
-  let dbSuccess = true;
+  try {
+    const s = syncEngine.getData();
+    const evIdx = (s.events || []).findIndex(e => String(e.id) === String(activeEventId));
+    let dbSuccess = true;
 
-  // 1. Save to Supabase DB
-  if (evIdx !== -1) {
-    const ev = s.events[evIdx];
-    dbSuccess = await syncEngine.updateEvent(activeEventId, { ...ev, formFields: formFields });
-  }
-
-  // 2. Update local sync state (eventFormFields + events)
-  syncEngine.setData(state => {
-    const newState = { ...state };
-    const idx = newState.events.findIndex(e => String(e.id) === String(activeEventId));
-    if (idx !== -1) {
-      newState.events[idx].formFields = formFields;
+    // 1. Save to Supabase DB
+    if (evIdx !== -1) {
+      const ev = s.events[evIdx];
+      dbSuccess = await syncEngine.updateEvent(activeEventId, { ...ev, formFields: formFields });
     }
-    if (!newState.eventFormFields) newState.eventFormFields = {};
-    if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
-    return newState;
-  });
 
-  // 3. Force push sync_state to Supabase
-  await syncAll();
+    // Update in-memory EVENTS array immediately
+    const localEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+    if (localEv) localEv.formFields = [...formFields];
 
-  // 4. Broadcast form fields to ALL connected devices via Supabase Realtime (the safe way)
-  const freshState = syncEngine.getData();
-  await syncEngine.broadcastFormUpdate(freshState.eventFormFields || {});
+    // 2. Update local sync state (eventFormFields + events)
+    syncEngine.setData(state => {
+      const newState = { ...state };
+      const idx = newState.events.findIndex(e => String(e.id) === String(activeEventId));
+      if (idx !== -1) {
+        newState.events[idx].formFields = [...formFields];
+      }
+      if (!newState.eventFormFields) newState.eventFormFields = {};
+      if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
+      return newState;
+    });
 
-  // 5. Restore button with LIVE indicator
-  if (saveBtn) {
-    saveBtn.textContent = '🌐 Saved & LIVE';
-    saveBtn.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
-    saveBtn.disabled = false;
-    setTimeout(() => {
+    // 3. Force push sync_state to Supabase
+    await syncAll();
+
+    // 4. Broadcast form fields to ALL connected devices via Supabase Realtime
+    const freshState = syncEngine.getData();
+    if (syncEngine.broadcastFormUpdate) {
+      await syncEngine.broadcastFormUpdate(freshState.eventFormFields || {}).catch(e=>console.error('[saveForm] broadcast error:', e));
+    }
+
+    // 5. Restore button with LIVE indicator
+    if (saveBtn) {
+      saveBtn.textContent = '🌐 Saved & LIVE';
+      saveBtn.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
+      saveBtn.disabled = false;
+      setTimeout(() => {
+        if (saveBtn) {
+          saveBtn.textContent = 'Save Form';
+          saveBtn.style.background = '';
+        }
+      }, 3000);
+    }
+
+    if (dbSuccess) {
+      toast('🌐 Form saved & now LIVE globally on all devices!');
+    } else {
+      toast('✅ Form saved to sync state — will sync to DB when online');
+    }
+  } catch(e) {
+    console.error('[saveForm] error:', e);
+    toast('❌ Error saving form fields');
+    if (saveBtn) {
       saveBtn.textContent = 'Save Form';
-      saveBtn.style.background = '';
-    }, 3000);
-  }
-
-  if (dbSuccess) {
-    toast('🌐 Form saved & now LIVE globally on all devices!');
-  } else {
-    toast('✅ Form saved to sync state — will sync to DB when online');
+      saveBtn.disabled = false;
+    }
+  } finally {
+    _isSavingForm = false;
   }
 }
 
@@ -7966,79 +8058,125 @@ function togglePrizePanel(id, header){
   }
 }
 
+// ── CATEGORIES & PRIZES HARDENING ────────────────
+let _isSavingCat = false;
+let _isDeletingCat = false;
+let _isSavingPrize = false;
+let _isDeletingPrize = false;
+let _isSavingOtherPrize = false;
+let _isDeletingOtherPrize = false;
+let _isSavingVenue = false;
+let _isDeletingVenue = false;
+
 function openCatModal(id=null){
   editingCatId = id;
-  document.getElementById('cat-modal-title').textContent = id?'Edit Category':'Add Category';
-  if(id){ const c=categories.find(x=>x.id===id);
-    document.getElementById('cm-name').value=c.name;
-    document.getElementById('cm-agemin').value=c.ageMin;
-    document.getElementById('cm-agemax').value=c.ageMax;
-    document.getElementById('cm-color').value=c.color;
-  } else { ['cm-name','cm-agemin','cm-agemax'].forEach(i=>document.getElementById(i).value=''); }
+  document.getElementById('cat-modal-title').textContent = id ? 'Edit Category' : 'Add Category';
+  if(id !== null && id !== undefined){
+    const c = categories.find(x => String(x.id) === String(id));
+    if (c) {
+      document.getElementById('cm-name').value = c.name || '';
+      document.getElementById('cm-agemin').value = c.ageMin !== undefined && c.ageMin !== null ? c.ageMin : '';
+      document.getElementById('cm-agemax').value = c.ageMax !== undefined && c.ageMax !== null ? c.ageMax : '';
+      document.getElementById('cm-color').value = c.color || 'b-amber';
+    }
+  } else {
+    ['cm-name','cm-agemin','cm-agemax'].forEach(i => document.getElementById(i).value = '');
+    document.getElementById('cm-color').value = 'b-amber';
+  }
   openM('cat-modal');
 }
 
-let isSavingCat = false;
 async function saveCat() {
-  const name=document.getElementById('cm-name').value.trim();
-  if(!name){toast('Name required!');return;}
+  if (_isSavingCat) return;
+  const name = document.getElementById('cm-name').value.trim();
+  if(!name){ toast('Category name is required!'); return; }
   
-  const ageMin = parseInt(document.getElementById('cm-agemin').value)||0;
-  const ageMax = parseInt(document.getElementById('cm-agemax').value)||99;
-  const color = document.getElementById('cm-color').value;
+  let ageMin = parseInt(document.getElementById('cm-agemin').value);
+  let ageMax = parseInt(document.getElementById('cm-agemax').value);
+  if (isNaN(ageMin)) ageMin = 0;
+  if (isNaN(ageMax)) ageMax = 99;
+
+  if (ageMin > ageMax) {
+    toast('⚠️ Minimum age cannot be greater than maximum age!');
+    return;
+  }
+
+  // Duplicate name check (for different ID in same event)
+  const duplicate = categories.find(c =>
+    (String(c.eventId) === String(activeEventId) || !c.eventId) &&
+    c.name.toLowerCase() === name.toLowerCase() &&
+    String(c.id) !== String(editingCatId)
+  );
+  if (duplicate) {
+    toast(`⚠️ A category named "${name}" already exists for this event!`);
+    return;
+  }
+
+  const color = document.getElementById('cm-color').value || 'b-amber';
   const btn = document.querySelector('#cat-modal .btn-amber');
 
   closeM('cat-modal');
 
-  const actionMsg = editingCatId ? `Update category "${name}"?` : `Create category "${name}"?`;
+  const actionMsg = (editingCatId !== null && editingCatId !== undefined) ? `Update category "${name}"?` : `Create category "${name}"?`;
 
   showUndoToast(actionMsg, async () => {
-    if (isSavingCat) return;
-    isSavingCat = true;
+    if (_isSavingCat) return;
+    _isSavingCat = true;
     if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
     try {
-      const obj={name,ageMin,ageMax,color, eventId: activeEventId};
-      if(editingCatId){
-        const existing = categories.find(c=>c.id===editingCatId);
+      const obj = { name, ageMin, ageMax, color, eventId: activeEventId };
+      if(editingCatId !== null && editingCatId !== undefined){
+        const existing = categories.find(c => String(c.id) === String(editingCatId));
         if(existing && existing.prizes) obj.prizes = existing.prizes;
         const success = await syncEngine.updateCategory(editingCatId, obj);
         if (!success) { toast('❌ Error saving category'); return; }
         if(existing) Object.assign(existing, obj);
       } else {
-        obj.id=Date.now();
-        obj.prizes=[];
+        obj.id = Date.now();
+        obj.prizes = [];
         const success = await syncEngine.createCategory(obj);
         if (!success) { toast('❌ Error creating category'); return; }
-        if(!categories.find(c=>c.id===obj.id)) categories.push(obj);
+        if(!categories.find(c => String(c.id) === String(obj.id))) categories.push(obj);
       }
       syncAll();
-      renderCategories();toast('Category saved!');
-      broadcast('DATA_SYNC', { categories, subjects });
+      renderCategories();
+      toast('Category saved!');
+      if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
     } finally {
-      isSavingCat = false;
+      _isSavingCat = false;
       if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
     }
   });
 }
 
 async function deleteCat(id) {
-  const cat = categories.find(c => c.id === id);
+  if (_isDeletingCat) return;
+  const cat = categories.find(c => String(c.id) === String(id));
   const name = cat ? cat.name : 'Category';
-  showUndoToast(`Delete category "${name}"?`, async () => {
-    const success = await syncEngine.deleteCategory(id);
-    if (!success) { toast('❌ Error deleting category'); return; }
-    categories = categories.filter(c => c.id !== id);
-    syncAll();
-    renderCategories();
-    toast('Category deleted');
-    broadcast('DATA_SYNC', { categories, subjects });
+
+  const assignedCount = participants.filter(p => String(p.catId) === String(id) && (String(p.eventId) === String(activeEventId) || !p.eventId)).length;
+  const warning = assignedCount > 0 ? ` (${assignedCount} participant(s) currently assigned)` : '';
+
+  showUndoToast(`Delete category "${name}"${warning}?`, async () => {
+    if (_isDeletingCat) return;
+    _isDeletingCat = true;
+    try {
+      const success = await syncEngine.deleteCategory(id);
+      if (!success) { toast('❌ Error deleting category'); return; }
+      categories = categories.filter(c => String(c.id) !== String(id));
+      syncAll();
+      renderCategories();
+      toast('Category deleted');
+      if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
+    } finally {
+      _isDeletingCat = false;
+    }
   });
 }
 
 // ── PRIZE MANAGEMENT ─────────────────────────
 let editingPrizeCatId = null;
 let editingPrizeIdx = null;
-let isSavingPrize = false;
 
 function openPrizeModal(catId, prizeIdx) {
   editingPrizeCatId = catId;
@@ -8062,10 +8200,11 @@ function openPrizeModal(catId, prizeIdx) {
 }
 
 async function savePrize() {
-  if (isSavingPrize) return;
+  if (_isSavingPrize) return;
   const title = document.getElementById('pm-title').value.trim();
   if (!title) { toast('Prize title is required!'); return; }
-  isSavingPrize = true;
+  
+  _isSavingPrize = true;
   const btn = document.getElementById('prize-modal-save-btn');
   if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
   try {
@@ -8090,8 +8229,8 @@ async function savePrize() {
     renderCategories();
     closeM('prize-modal');
     toast(isEdit ? '✅ Prize updated!' : '✅ Prize added!');
-    broadcast('DATA_SYNC', { categories, subjects });
-    // Re-open the panel so user can see the result
+    if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
+    
     setTimeout(() => {
       const panel = document.getElementById(`cat-prizes-${cat.id}`);
       const header = panel && panel.previousElementSibling;
@@ -8100,33 +8239,39 @@ async function savePrize() {
       }
     }, 100);
   } finally {
-    isSavingPrize = false;
+    _isSavingPrize = false;
     if (btn) { btn.disabled = false; btn.innerText = 'Save Prize'; }
   }
 }
 
 async function deletePrize(catId, prizeIdx) {
+  if (_isDeletingPrize) return;
   if (!confirm('Delete this prize?')) return;
-  const cat = categories.find(c => String(c.id) === String(catId));
-  if (!cat || !cat.prizes) return;
-  cat.prizes.splice(prizeIdx, 1);
-  const success = await syncEngine.updateCategory(cat.id, cat);
-  if (!success) { toast('❌ Error deleting prize'); return; }
-  syncAll();
-  renderCategories();
-  toast('Prize deleted');
-  broadcast('DATA_SYNC', { categories, subjects });
-  // Re-open the panel
-  setTimeout(() => {
-    const panel = document.getElementById(`cat-prizes-${cat.id}`);
-    const header = panel && panel.previousElementSibling;
-    if (panel && header) togglePrizePanel(`cat-prizes-${cat.id}`, header);
-  }, 120);
+  
+  _isDeletingPrize = true;
+  try {
+    const cat = categories.find(c => String(c.id) === String(catId));
+    if (!cat || !cat.prizes) return;
+    cat.prizes.splice(prizeIdx, 1);
+    const success = await syncEngine.updateCategory(cat.id, cat);
+    if (!success) { toast('❌ Error deleting prize'); return; }
+    syncAll();
+    renderCategories();
+    toast('Prize deleted');
+    if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
+    
+    setTimeout(() => {
+      const panel = document.getElementById(`cat-prizes-${cat.id}`);
+      const header = panel && panel.previousElementSibling;
+      if (panel && header) togglePrizePanel(`cat-prizes-${cat.id}`, header);
+    }, 120);
+  } finally {
+    _isDeletingPrize = false;
+  }
 }
 
 // ── OTHER PRIZES (Event-level) ────────────────
 let editingOtherPrizeIdx = null;
-let isSavingOtherPrize = false;
 
 function getOtherPrizes() {
   const ev = EVENTS.find(e => String(e.id) === String(activeEventId));
@@ -8177,10 +8322,11 @@ function openOtherPrizeModal(idx) {
 }
 
 async function saveOtherPrize() {
-  if (isSavingOtherPrize) return;
+  if (_isSavingOtherPrize) return;
   const title = document.getElementById('opm-title').value.trim();
   if (!title) { toast('Prize title is required!'); return; }
-  isSavingOtherPrize = true;
+  
+  _isSavingOtherPrize = true;
   const btn = document.getElementById('other-prize-modal-save-btn');
   if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
   try {
@@ -8205,21 +8351,28 @@ async function saveOtherPrize() {
     closeM('other-prize-modal');
     toast(isEdit ? '✅ Prize updated!' : '✅ Prize added!');
   } finally {
-    isSavingOtherPrize = false;
+    _isSavingOtherPrize = false;
     if (btn) { btn.disabled = false; btn.innerText = 'Save Prize'; }
   }
 }
 
 async function deleteOtherPrize(idx) {
+  if (_isDeletingOtherPrize) return;
   if (!confirm('Delete this prize?')) return;
-  const ev = EVENTS.find(e => String(e.id) === String(activeEventId));
-  if (!ev || !ev.otherPrizes) return;
-  ev.otherPrizes.splice(idx, 1);
-  const success = await syncEngine.updateEvent(activeEventId, ev);
-  if (!success) { toast('❌ Error deleting prize'); return; }
-  syncAll();
-  renderOtherPrizes();
-  toast('Prize deleted');
+  
+  _isDeletingOtherPrize = true;
+  try {
+    const ev = EVENTS.find(e => String(e.id) === String(activeEventId));
+    if (!ev || !ev.otherPrizes) return;
+    ev.otherPrizes.splice(idx, 1);
+    const success = await syncEngine.updateEvent(activeEventId, ev);
+    if (!success) { toast('❌ Error deleting prize'); return; }
+    syncAll();
+    renderOtherPrizes();
+    toast('Prize deleted');
+  } finally {
+    _isDeletingOtherPrize = false;
+  }
 }
 
 // ── VENUES & DATES ────────────────────────
@@ -8266,57 +8419,95 @@ function renderVenueDates(){
 }
 
 function openVenueModal(id=null){
-  editingVenueId=id;
-  document.getElementById('vm-title').textContent=id?'Edit Venue':'Add Venue';
-  if(id){const v=venues.find(x=>String(x.id)===String(id));
-    document.getElementById('vm-name').value=v.name;
-    document.getElementById('vm-loc').value=v.location;
-    document.getElementById('vm-cap').value=v.capacity;
-    document.getElementById('vm-dates').value=v.dates && v.dates.length > 0 ? v.dates[0] : '';
-  } else { ['vm-name','vm-loc','vm-cap','vm-dates'].forEach(i=>document.getElementById(i).value=''); }
+  editingVenueId = id;
+  document.getElementById('vm-title').textContent = id ? 'Edit Venue' : 'Add Venue';
+  if(id !== null && id !== undefined){
+    const v = venues.find(x => String(x.id) === String(id));
+    if (v) {
+      document.getElementById('vm-name').value = v.name || '';
+      document.getElementById('vm-loc').value = v.location || '';
+      document.getElementById('vm-cap').value = v.capacity !== undefined && v.capacity !== null ? v.capacity : '';
+      document.getElementById('vm-dates').value = v.dates && v.dates.length > 0 ? v.dates[0] : '';
+    }
+  } else {
+    ['vm-name','vm-loc','vm-cap','vm-dates'].forEach(i => document.getElementById(i).value = '');
+  }
   openM('venue-modal');
 }
 
 async function saveVenue() {
-  const name=document.getElementById('vm-name').value.trim();
-  if(!name){toast('Name required!');return;}
-  const loc=document.getElementById('vm-loc').value;
-  const cap=parseInt(document.getElementById('vm-cap').value)||0;
-  const dates=[document.getElementById('vm-dates').value].filter(Boolean);
+  if (_isSavingVenue) return;
+  const name = document.getElementById('vm-name').value.trim();
+  if(!name){ toast('Venue name is required!'); return; }
+  
+  const loc = document.getElementById('vm-loc').value.trim();
+  const cap = parseInt(document.getElementById('vm-cap').value) || 0;
+  const dates = [document.getElementById('vm-dates').value.trim()].filter(Boolean);
 
+  // Duplicate name check
+  const duplicate = venues.find(v =>
+    (String(v.eventId) === String(activeEventId) || !v.eventId) &&
+    v.name.toLowerCase() === name.toLowerCase() &&
+    String(v.id) !== String(editingVenueId)
+  );
+  if (duplicate) {
+    toast(`⚠️ A venue named "${name}" already exists for this event!`);
+    return;
+  }
+
+  const btn = document.querySelector('#venue-modal .btn-amber');
   closeM('venue-modal');
 
-  const actionMsg = editingVenueId ? `Update venue "${name}"?` : `Create venue "${name}"?`;
+  const actionMsg = (editingVenueId !== null && editingVenueId !== undefined) ? `Update venue "${name}"?` : `Create venue "${name}"?`;
 
   showUndoToast(actionMsg, async () => {
-    const obj={name,location:loc,capacity:cap,dates, eventId: activeEventId};
-    if(editingVenueId){
-      const success = await syncEngine.updateVenue(editingVenueId, obj);
-      if (!success) { toast('❌ Error saving venue'); return; }
-      const existing = venues.find(v=>String(v.id)===String(editingVenueId));
-      if(existing) Object.assign(existing, obj);
-    } else {
-      obj.id=Date.now();
-      const success = await syncEngine.createVenue(obj);
-      if (!success) { toast('❌ Error creating venue'); return; }
-      if(!venues.find(v=>String(v.id)===String(obj.id))) venues.push(obj);
+    if (_isSavingVenue) return;
+    _isSavingVenue = true;
+    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+    try {
+      const obj = { name, location: loc, capacity: cap, dates, eventId: activeEventId };
+      if(editingVenueId !== null && editingVenueId !== undefined){
+        const success = await syncEngine.updateVenue(editingVenueId, obj);
+        if (!success) { toast('❌ Error saving venue'); return; }
+        const existing = venues.find(v => String(v.id) === String(editingVenueId));
+        if(existing) Object.assign(existing, obj);
+      } else {
+        obj.id = Date.now();
+        const success = await syncEngine.createVenue(obj);
+        if (!success) { toast('❌ Error creating venue'); return; }
+        if(!venues.find(v => String(v.id) === String(obj.id))) venues.push(obj);
+      }
+      syncAll();
+      renderVenueDates();
+      toast('Venue saved!');
+    } finally {
+      _isSavingVenue = false;
+      if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
     }
-    syncAll();
-    renderVenueDates();
-    toast('Venue saved!');
   });
 }
 
 async function deleteVenue(id) {
-  const v = venues.find(x=>String(x.id)===String(id));
+  if (_isDeletingVenue) return;
+  const v = venues.find(x => String(x.id) === String(id));
   const name = v ? v.name : 'Venue';
-  showUndoToast(`Delete venue "${name}"?`, async () => {
-    const success = await syncEngine.deleteVenue(id);
-    if (!success) { toast('❌ Error deleting venue'); return; }
-    venues = venues.filter(x => String(x.id) !== String(id));
-    syncAll();
-    renderVenueDates();
-    toast('Venue deleted');
+
+  const assignedCount = participants.filter(p => String(p.venueId) === String(id) && (String(p.eventId) === String(activeEventId) || !p.eventId)).length;
+  const warning = assignedCount > 0 ? ` (${assignedCount} participant(s) currently registered at it)` : '';
+
+  showUndoToast(`Delete venue "${name}"${warning}?`, async () => {
+    if (_isDeletingVenue) return;
+    _isDeletingVenue = true;
+    try {
+      const success = await syncEngine.deleteVenue(id);
+      if (!success) { toast('❌ Error deleting venue'); return; }
+      venues = venues.filter(x => String(x.id) !== String(id));
+      syncAll();
+      renderVenueDates();
+      toast('Venue deleted');
+    } finally {
+      _isDeletingVenue = false;
+    }
   });
 }
 
@@ -12288,27 +12479,6 @@ function handleScoreVisToggle(cb) {
   }
 }
 
-
-function handleHostScoreVisToggle(cb) {
-  const isVisible = cb.checked;
-  syncEngine.setData(s => ({ ...s, hostScoresVisible: isVisible }));
-  toast(isVisible ? '🎤 Host scores are now VISIBLE (Plug In)' : '🔇 Host scores are now HIDDEN (Plug Out)');
-}
-
-// Ensure the UI stays in sync if another monitor changes it
-syncEngine.subscribe(state => {
-  if (!state) return;
-  const toggle = document.getElementById('host-score-vis-toggle');
-  const label = document.getElementById('host-score-vis-label');
-  const isVisible = state.hostScoresVisible !== false; // Default true if not set
-  
-  if (toggle && toggle.checked !== isVisible) {
-    toggle.checked = isVisible;
-  }
-  if (label) {
-    label.innerHTML = isVisible ? 'Host Live Ranking: ON 🎤' : 'Host Live Ranking: OFF 🔒';
-  }
-});
 
 function handleHostScoreVisToggle(cb) {
   const isVisible = cb.checked;
