@@ -2493,24 +2493,22 @@ function saveData() {
         window.assetBookings = JSON.parse(localStorage.getItem('fp_asset_bookings')) || [];
 
         window.switchLibSubTab = function(tab) {
-          const bSection = document.getElementById('lib-books-section');
+          currentLibSubTab = tab;
+          const cSection = document.getElementById('lib-catalog-section');
+          const iSection = document.getElementById('lib-issues-section');
           const lSection = document.getElementById('lib-lockers-section');
-          const bBtn = document.getElementById('subtab-books-btn');
+          const cBtn = document.getElementById('subtab-catalog-btn');
+          const iBtn = document.getElementById('subtab-issues-btn');
           const lBtn = document.getElementById('subtab-lockers-btn');
 
-          if (tab === 'books') {
-            if (bSection) bSection.style.display = 'block';
-            if (lSection) lSection.style.display = 'none';
-            if (bBtn) { bBtn.style.background = '#4f46e5'; bBtn.style.color = '#fff'; }
-            if (lBtn) { lBtn.style.background = '#1e293b'; lBtn.style.color = '#94a3b8'; }
-          } else {
-            if (bSection) bSection.style.display = 'none';
-            if (lSection) lSection.style.display = 'block';
-            if (bBtn) { bBtn.style.background = '#1e293b'; bBtn.style.color = '#94a3b8'; }
-            if (lBtn) { lBtn.style.background = '#4f46e5'; lBtn.style.color = '#fff'; }
-          }
-        };
+          if (cSection) cSection.style.display = (tab === 'catalog') ? 'block' : 'none';
+          if (iSection) iSection.style.display = (tab === 'issues') ? 'block' : 'none';
+          if (lSection) lSection.style.display = (tab === 'lockers') ? 'block' : 'none';
 
+          if (cBtn) { cBtn.style.background = (tab === 'catalog') ? '#4f46e5' : '#1e293b'; cBtn.style.color = (tab === 'catalog') ? '#fff' : '#94a3b8'; }
+          if (iBtn) { iBtn.style.background = (tab === 'issues') ? '#4f46e5' : '#1e293b'; iBtn.style.color = (tab === 'issues') ? '#fff' : '#94a3b8'; }
+          if (lBtn) { lBtn.style.background = (tab === 'lockers') ? '#4f46e5' : '#1e293b'; lBtn.style.color = (tab === 'lockers') ? '#fff' : '#94a3b8'; }
+        };
         window.renderAssetsPanel = function() {
           const books = window.clubBooks || [];
           const issues = window.bookIssues || [];
@@ -3611,22 +3609,25 @@ function saveData() {
         </div>
       </div>
 
-      <!-- Section Switcher: Library Books vs Member Lockers -->
-      <div style="display:flex; gap:10px; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:10px;">
-        <button type="button" onclick="switchLibSubTab('books')" id="subtab-books-btn" class="btn" style="background:#4f46e5; color:#fff; font-weight:800; font-size:12px; padding:8px 16px; border-radius:10px;">
-          📚 Library Books &amp; Member Circulation
+      <!-- Section Switcher: Book Catalog vs Member Issues vs Member Lockers -->
+      <div style="display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:12px; flex-wrap:wrap;">
+        <button type="button" onclick="switchLibSubTab('catalog')" id="subtab-catalog-btn" class="btn" style="background:#4f46e5; color:#fff; font-weight:800; font-size:12px; padding:8px 16px; border-radius:10px;">
+          📚 Book Catalog &amp; Copies
+        </button>
+        <button type="button" onclick="switchLibSubTab('issues')" id="subtab-issues-btn" class="btn btn-secondary" style="font-weight:800; font-size:12px; padding:8px 16px; border-radius:10px;">
+          📖 Member Book Issues &amp; Returns
         </button>
         <button type="button" onclick="switchLibSubTab('lockers')" id="subtab-lockers-btn" class="btn btn-secondary" style="font-weight:800; font-size:12px; padding:8px 16px; border-radius:10px;">
           🔒 Member Lockers Grid &amp; Allocation
         </button>
       </div>
 
-      <!-- VIEW SUBSECTION 1: LIBRARY BOOKS & CIRCULATION -->
-      <div id="lib-books-section">
-        <!-- Controls & Search -->
-        <div class="controls-bar" style="margin-bottom:16px;">
-          <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
-            <input type="text" id="lib-book-search" oninput="filterLibraryBooksAndIssues()" placeholder="🔍 Search book title, author, code, member..." class="input-control" style="min-width: 280px;">
+      <!-- 1. BOOK CATALOG SUBSECTION (RED BOX TABLE WITH TOP CONTROLS) -->
+      <div id="lib-catalog-section">
+        <!-- Top Controls Bar: Search + Category Filter + Add Title -->
+        <div class="controls-bar" style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:1;">
+            <input type="text" id="lib-catalog-search" oninput="filterLibraryBooksAndIssues()" placeholder="🔍 Search catalog books by title, author, code..." class="input-control" style="min-width: 280px; flex:1; max-width:420px;">
             
             <select id="lib-book-category-filter" onchange="filterLibraryBooksAndIssues()" class="input-control" style="min-width: 190px;">
               <option value="all">📚 All Book Categories</option>
@@ -3640,26 +3641,72 @@ function saveData() {
               <option value="Sports">🏏 Sports &amp; Fitness</option>
               <option value="Magazine">📰 Monthly Magazine</option>
             </select>
-
-            <select id="lib-issue-status-filter" onchange="filterLibraryBooksAndIssues()" class="input-control" style="min-width: 150px;">
-              <option value="all">📊 All Circulation</option>
-              <option value="issued">📖 Currently Issued</option>
-              <option value="returned">✅ Returned / In Library</option>
-            </select>
           </div>
 
-          <div style="font-size:12px; color:var(--text-muted); font-weight:700;">
-            Showing <strong id="lib-filtered-count" style="color:#fff;">0</strong> records
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="font-size:12px; color:var(--text-muted); font-weight:700;">
+              Showing <strong id="lib-catalog-filtered-count" style="color:#fff;">0</strong> books
+            </div>
+            <button type="button" onclick="openAddBookModal()" class="btn btn-secondary" style="font-size:11px; padding:7px 14px; font-weight:800; background:#1e293b; color:#a5b4fc; border:1px solid rgba(129,140,248,0.4); border-radius:8px;">
+              ➕ + Add Title
+            </button>
           </div>
         </div>
 
-        <!-- Library Catalog & Book Issues Tables -->
-        <div class="table-card" style="margin-bottom:20px;">
-          <div class="table-header" style="background: rgba(15,23,42,0.8); display:flex; justify-content:space-between; align-items:center;">
+        <!-- Full Catalog Table (Direct Red Box View) -->
+        <div class="table-card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Book Code</th>
+                  <th>Title &amp; Author</th>
+                  <th>Category</th>
+                  <th>Total Copies</th>
+                  <th>Available Copies</th>
+                  <th>Borrow Fee</th>
+                  <th style="text-align:right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="lib-catalog-tbody">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. MEMBER BOOK ISSUES & RETURNS SUBSECTION -->
+      <div id="lib-issues-section" style="display:none;">
+        <!-- Controls & Search -->
+        <div class="controls-bar" style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:1;">
+            <input type="text" id="lib-issues-search" oninput="filterLibraryBooksAndIssues()" placeholder="🔍 Search issued member, book title, code, phone..." class="input-control" style="min-width: 280px; flex:1; max-width:400px;">
+            
+            <select id="lib-issue-status-filter" onchange="filterLibraryBooksAndIssues()" class="input-control" style="min-width: 160px;">
+              <option value="all">📊 All Circulation Records</option>
+              <option value="issued">📖 Currently Issued</option>
+              <option value="returned">✅ Returned / Back in Library</option>
+            </select>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="font-size:12px; color:var(--text-muted); font-weight:700;">
+              Showing <strong id="lib-issues-filtered-count" style="color:#fff;">0</strong> records
+            </div>
+            <button type="button" onclick="openIssueBookModal()" class="btn btn-emerald" style="font-size:11px; padding:7px 14px; font-weight:800; border-radius:8px;">
+              📚 + Issue Book to Member
+            </button>
+          </div>
+        </div>
+
+        <!-- Issues Ledger Table -->
+        <div class="table-card">
+          <div class="table-header" style="background: rgba(15,23,42,0.85); display:flex; justify-content:space-between; align-items:center;">
             <h3 style="font-size:14px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
               <span>📖 Member Book Issue &amp; Return Circulation Ledger</span>
             </h3>
-            <span style="font-size:11px; color:#a5b4fc;">Due dates &amp; member issue logs</span>
+            <span style="font-size:11px; color:#a5b4fc;">Due dates &amp; circulation logs</span>
           </div>
           <div class="table-container">
             <table>
@@ -3682,43 +3729,7 @@ function saveData() {
             </table>
           </div>
         </div>
-
-        <!-- Library Book Catalog Inventory -->
-        <div class="table-card">
-          <div class="table-header" style="background: rgba(15,23,42,0.8); display:flex; justify-content:space-between; align-items:center;">
-          <div class="table-header" style="background: rgba(15,23,42,0.85); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-            <h3 style="font-size:14px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
-              <span>📚 Club Library Books Catalog &amp; Copies</span>
-            </h3>
-
-            <!-- RED BOX: CATALOG DEDICATED SEARCH BAR -->
-            <div style="flex:1; max-width:360px; min-width:220px;">
-              <input type="text" id="lib-catalog-search" oninput="filterLibraryBooksAndIssues()" placeholder="🔍 Search catalog by title, author, code..." class="input-control" style="width:100%; font-size:11px; padding:6px 12px; background:#1e293b; border:1px solid rgba(129,140,248,0.4); border-radius:8px; color:#fff;">
-            </div>
-
-            <button type="button" onclick="openAddBookModal()" class="btn btn-secondary" style="font-size:11px; padding:6px 12px; font-weight:700; background:#1e293b; color:#a5b4fc; border:1px solid rgba(129,140,248,0.3);">+ Add Title</button>
-          </div>
-          <div class="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Book Code</th>
-                  <th>Title &amp; Author</th>
-                  <th>Category</th>
-                  <th>Total Copies</th>
-                  <th>Available Copies</th>
-                  <th>Borrow Fee</th>
-                  <th style="text-align:right;">Action</th>
-                </tr>
-              </thead>
-              <tbody id="lib-catalog-tbody">
-                <!-- Rendered via JS -->
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
-
       <!-- VIEW SUBSECTION 2: MEMBER LOCKERS GRID -->
       <div id="lib-lockers-section" style="display:none;">
         <!-- Visual Locker Allocation Grid -->
