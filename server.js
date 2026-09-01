@@ -20,8 +20,19 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files from the Vite build directory (dist folder)
-app.use(express.static(path.join(__dirname, 'dist')));
+// Serve static files from root and dist directory with no-cache headers
+app.use(express.static(__dirname, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
+if (fs.existsSync(path.join(__dirname, 'dist'))) {
+  app.use(express.static(path.join(__dirname, 'dist')));
+}
 
 // MongoDB Configuration
 const mongoUri = process.env.MONGODB_URI || "mongodb+srv://kalikapurnabinsanghaclub_db_user:Sb%40210617@knsdc.ewmcdmb.mongodb.net/knsdc?appName=Knsdc";
@@ -765,7 +776,16 @@ app.get('/api/ws-ping', (req, res) => {
 
 
 app.get(/(.*)/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  const reqPath = req.params[0] || '';
+  const localFile = path.join(__dirname, reqPath);
+  if (reqPath && fs.existsSync(localFile) && fs.statSync(localFile).isFile()) {
+    return res.sendFile(localFile);
+  }
+  const distFile = path.join(__dirname, 'dist', 'index.html');
+  if (fs.existsSync(distFile)) {
+    return res.sendFile(distFile);
+  }
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Use `server.listen` (not `app.listen`) so WebSocket upgrades are handled
