@@ -834,7 +834,7 @@
       }).join('');
     }
 
-    function handleSaveMember(e) {
+    async function handleSaveMember(e) {
       window.handleSaveMember = handleSaveMember;
       e.preventDefault();
       const id = document.getElementById('mem-id').value || ('mem-' + Date.now());
@@ -842,6 +842,7 @@
       const email = document.getElementById('mem-email').value.trim();
       const phone = document.getElementById('mem-phone').value.trim();
       const planId = document.getElementById('mem-plan').value;
+      const plan = plans.find(p => p.id === planId);
       const role = document.getElementById('mem-role').value;
       const customFeeRaw = document.getElementById('mem-custom-fee').value;
       const customFee = customFeeRaw !== '' ? Number(customFeeRaw) : null;
@@ -850,9 +851,22 @@
       const sportActivity = document.getElementById('mem-activity').value.trim();
 
       const memberObj = {
-        id, name, email, phone, planId, role, customFee, joinDate, status: 'active',
+        id, name, email, phone, planId, planName: plan ? plan.name : 'General Member',
+        role, customFee, monthlyFee: customFee !== null ? customFee : (plan ? plan.fee : 200),
+        joinDate, status: 'active',
         customFields: { lockerNumber, sportActivity }
       };
+
+      // Save to MongoDB Cloud Database
+      try {
+        await fetch('/api/finance/members', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(memberObj)
+        });
+      } catch (err) {
+        console.warn('[MongoDB Sync Notice]:', err.message);
+      }
 
       const idx = members.findIndex(x => x.id === id);
       if (idx !== -1) members[idx] = memberObj;
@@ -863,6 +877,7 @@
       renderMembers();
       renderChecklist();
       renderDashboard();
+      alert(`Saved member "${name}" to MongoDB global database!`);
     };
 
     function editMember(id) {
@@ -875,7 +890,7 @@
       document.getElementById('mem-email').value = m.email || '';
       document.getElementById('mem-phone').value = m.phone || '';
       document.getElementById('mem-role').value = m.role || 'Member';
-      document.getElementById('mem-custom-fee').value = m.customFee !== null ? m.customFee : '';
+      document.getElementById('mem-custom-fee').value = m.customFee !== null && m.customFee !== undefined ? m.customFee : '';
       document.getElementById('mem-join-date').value = m.joinDate || '';
       document.getElementById('mem-locker').value = m.customFields?.lockerNumber || '';
       document.getElementById('mem-activity').value = m.customFields?.sportActivity || '';
@@ -886,9 +901,12 @@
       openModal('add-member-modal');
     };
 
-    function deleteMember(id, name) {
+    async function deleteMember(id, name) {
       window.deleteMember = deleteMember;
       if (confirm(`Are you sure you want to delete member "${name}"?`)) {
+        try {
+          await fetch('/api/finance/members/' + id, { method: 'DELETE' });
+        } catch (e) {}
         members = members.filter(x => x.id !== id);
         payments = payments.filter(x => x.memberId !== id);
         saveData();
@@ -1036,7 +1054,7 @@
       openModal('plan-modal');
     };
 
-    function handleSavePlan(e) {
+    async function handleSavePlan(e) {
       window.handleSavePlan = handleSavePlan;
       e.preventDefault();
       const id = document.getElementById('plan-id').value;
@@ -1046,7 +1064,7 @@
       const description = document.getElementById('plan-desc').value.trim();
       const lateFeeDays = Number(document.getElementById('plan-grace').value) || 0;
       const rawLateFine = Number(document.getElementById('plan-late-fine').value) || 0;
-      const lateFeeAmount = Math.min(100, Math.max(0, rawLateFine)); // Configured between 0 and 100
+      const lateFeeAmount = Math.min(100, Math.max(0, rawLateFine));
       const color = document.getElementById('plan-color').value;
 
       // Extract multiple benefits
@@ -1060,6 +1078,17 @@
 
       const planObj = { id, planType, type: planType, name, fee, description, benefits, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
 
+      // Save to MongoDB Cloud Database
+      try {
+        await fetch('/api/finance/plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(planObj)
+        });
+      } catch (err) {
+        console.warn('[MongoDB Plan Sync Notice]:', err.message);
+      }
+
       const idx = plans.findIndex(x => x.id === id);
       if (idx !== -1) plans[idx] = planObj;
       else plans.push(planObj);
@@ -1069,9 +1098,10 @@
       renderPlans();
       renderMembers();
       renderChecklist();
+      alert(`Saved plan "${name}" to MongoDB global database!`);
     };
 
-    function deletePlan(id, name) {
+    async function deletePlan(id, name) {
       window.deletePlan = deletePlan;
       const enrolled = members.filter(m => m.planId === id && m.status === 'active').length;
       if (enrolled > 0) {
@@ -1079,6 +1109,9 @@
         return;
       }
       if (confirm(`Delete plan "${name}"?`)) {
+        try {
+          await fetch('/api/finance/plans/' + id, { method: 'DELETE' });
+        } catch (e) {}
         plans = plans.filter(x => x.id !== id);
         saveData();
         renderPlans();
@@ -1749,21 +1782,42 @@ function saveData() {
           }
         }
 
-        // Pull Big Data Transactions & Receipts from MongoDB Atlas API
+        // ══════════════════════════════════════════════════════════════
+        // PULL MEMBERS, PLANS, PAYMENTS & TRANSACTIONS FROM MONGODB ATLAS
+        // ══════════════════════════════════════════════════════════════
         try {
-          const res = await fetch('/api/finance/transactions');
-          const resData = await res.json();
-          if (resData && resData.data && resData.data.length > 0) {
-            earnings = resData.data.filter(t => t.type === 'earning');
-            spendings = resData.data.filter(t => t.type === 'spending');
-          }
-        } catch(e) {
-          console.warn('[MongoDB Atlas Pull Notice]:', e);
-        }
+          const [memRes, planRes, payRes, txRes] = await Promise.all([
+            fetch('/api/finance/members').then(r => r.json()).catch(() => null),
+            fetch('/api/finance/plans').then(r => r.json()).catch(() => null),
+            fetch('/api/finance/payments').then(r => r.json()).catch(() => null),
+            fetch('/api/finance/transactions').then(r => r.json()).catch(() => null)
+          ]);
 
-        // Re-render currently active view cleanly
-        // ══════════════════════════════════════════
-        // DONATIONS & EVENT SUPPORT MANAGEMENT ENGINE
+          if (memRes && memRes.members && memRes.members.length > 0) {
+            members = memRes.members;
+            localStorage.setItem('fp_members', JSON.stringify(members));
+          }
+          if (planRes && planRes.plans && planRes.plans.length > 0) {
+            plans = planRes.plans;
+            localStorage.setItem('fp_plans', JSON.stringify(plans));
+          }
+          if (payRes && payRes.payments && payRes.payments.length > 0) {
+            payments = payRes.payments;
+            localStorage.setItem('fp_payments', JSON.stringify(payments));
+          }
+          if (txRes && txRes.data && txRes.data.length > 0) {
+            earnings = txRes.data.filter(t => t.type === 'earning');
+            spendings = txRes.data.filter(t => t.type === 'spending');
+          }
+
+          renderDashboard();
+          renderMembers();
+          renderPlans();
+          renderChecklist();
+          renderEarnings();
+        } catch(e) {
+          console.warn('[MongoDB Global Pull Notice]:', e);
+        }
         // ══════════════════════════════════════════
         window.allDonations = [];
 

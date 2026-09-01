@@ -1028,6 +1028,193 @@ app.get("/api/assets/bookings", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ══════════════════════════════════════════════════════════════
+// 👥 MEMBERS DIRECTORY & 🎛️ PLANS & 📋 CHECKLIST MONGODB CLOUD ENGINE
+// ══════════════════════════════════════════════════════════════
+
+const DEFAULT_PLANS = [
+  { id: "plan-std", planType: "fixed", type: "fixed", name: "General Member Plan", fee: 200, description: "Standard membership with sports kits & ground access.", benefits: ["🏏 Sports Ground"], lateFeeDays: 5, lateFeeAmount: 0, color: "#3b82f6", active: true, billingCycle: "monthly" },
+  { id: "plan-vip", planType: "fixed", type: "fixed", name: "Executive Patron Plan", fee: 500, description: "Full club access with dedicated locker & library borrowing.", benefits: ["🔒 Dedicated Locker", "📚 Library Access", "🏏 Sports Ground", "🎟️ Event Passes"], lateFeeDays: 10, lateFeeAmount: 0, color: "#8b5cf6", active: true, billingCycle: "monthly" },
+  { id: "plan-flex", planType: "flexible", type: "flexible", name: "Flexible Supporter Plan", fee: 1000, description: "Customizable contribution up to ₹1,000 per month.", benefits: ["📚 Library Access", "🏏 Sports Ground", "🎟️ Event Passes", "🗳️ Voting Rights"], lateFeeDays: 0, lateFeeAmount: 0, color: "#ec4899", active: true, billingCycle: "monthly" }
+];
+
+const DEFAULT_MEMBERS = [
+  { id: "mem-1", name: "Sourav Ganguly", phone: "9830012345", email: "sourav@knsdc.org", memberType: "Executive Patron", planId: "plan-vip", planName: "Executive Patron Plan", monthlyFee: 500, joiningDate: "2024-01-15", address: "Kalikapur, Kolkata", bloodGroup: "B+", status: "active" },
+  { id: "mem-2", name: "Anirban Bhattacharya", phone: "9831123456", email: "anirban@knsdc.org", memberType: "General Member", planId: "plan-std", planName: "General Member Plan", monthlyFee: 200, joiningDate: "2024-03-01", address: "Santoshpur, Kolkata", bloodGroup: "O+", status: "active" },
+  { id: "mem-3", name: "Debojyoti Mukherjee", phone: "9832234567", email: "debojyoti@knsdc.org", memberType: "Flexible Supporter", planId: "plan-flex", planName: "Flexible Supporter Plan", monthlyFee: 500, joiningDate: "2024-05-10", address: "Garia, Kolkata", bloodGroup: "A+", status: "active" }
+];
+
+async function seedMembersAndPlans() {
+  if (!db) return;
+  try {
+    const planCount = await db.collection("club_plans").countDocuments();
+    if (planCount === 0) {
+      await db.collection("club_plans").insertMany(DEFAULT_PLANS);
+      console.log("[MongoDB] Seeded default membership plans!");
+    }
+    const memberCount = await db.collection("club_members").countDocuments();
+    if (memberCount === 0) {
+      await db.collection("club_members").insertMany(DEFAULT_MEMBERS);
+      console.log("[MongoDB] Seeded default club members!");
+    }
+  } catch (err) {
+    console.error("[MongoDB Seed Members/Plans Error]:", err.message);
+  }
+}
+setTimeout(seedMembersAndPlans, 3500);
+
+// ── 1. MEMBERS API ───────────────────────────────────────────
+// GET: All Members
+app.get("/api/finance/members", async (req, res) => {
+  try {
+    if (db) {
+      const members = await db.collection("club_members").find({}).sort({ name: 1 }).toArray();
+      return res.json({ success: true, count: members.length, members });
+    }
+    res.json({ success: true, count: DEFAULT_MEMBERS.length, members: DEFAULT_MEMBERS });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST / PUT: Add or Update Member in MongoDB
+app.post("/api/finance/members", async (req, res) => {
+  try {
+    const member = req.body;
+    member.id = member.id || ("mem-" + Date.now());
+    member.updatedAt = new Date();
+    if (db) {
+      await db.collection("club_members").updateOne(
+        { id: member.id },
+        { $set: member },
+        { upsert: true }
+      );
+      console.log(`[MongoDB] Upserted member: ${member.name} (${member.id})`);
+    }
+    res.json({ success: true, member });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE: Remove Member from MongoDB
+app.delete("/api/finance/members/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (db) {
+      await db.collection("club_members").deleteOne({ id });
+      console.log(`[MongoDB] Deleted member: ${id}`);
+    }
+    res.json({ success: true, message: `Deleted member ${id}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── 2. PLANS API ─────────────────────────────────────────────
+// GET: All Plans
+app.get("/api/finance/plans", async (req, res) => {
+  try {
+    if (db) {
+      const plans = await db.collection("club_plans").find({}).sort({ fee: 1 }).toArray();
+      return res.json({ success: true, count: plans.length, plans });
+    }
+    res.json({ success: true, count: DEFAULT_PLANS.length, plans: DEFAULT_PLANS });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST / PUT: Add or Update Plan in MongoDB
+app.post("/api/finance/plans", async (req, res) => {
+  try {
+    const plan = req.body;
+    plan.id = plan.id || ("plan-" + Date.now());
+    plan.updatedAt = new Date();
+    if (db) {
+      await db.collection("club_plans").updateOne(
+        { id: plan.id },
+        { $set: plan },
+        { upsert: true }
+      );
+      console.log(`[MongoDB] Upserted plan: ${plan.name} (${plan.id})`);
+    }
+    res.json({ success: true, plan });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE: Remove Plan from MongoDB
+app.delete("/api/finance/plans/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (db) {
+      await db.collection("club_plans").deleteOne({ id });
+      console.log(`[MongoDB] Deleted plan: ${id}`);
+    }
+    res.json({ success: true, message: `Deleted plan ${id}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── 3. MONTHLY FEE CHECKLIST PAYMENTS API ─────────────────────
+// GET: All Payments for a Month or All-Time
+app.get("/api/finance/payments", async (req, res) => {
+  try {
+    const { month } = req.query;
+    let query = {};
+    if (month) query.month = month;
+    if (db) {
+      const payments = await db.collection("fee_payments").find(query).toArray();
+      return res.json({ success: true, count: payments.length, payments });
+    }
+    res.json({ success: true, count: 0, payments: [] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST / PUT: Record Monthly Fee Payment in MongoDB
+app.post("/api/finance/payments", async (req, res) => {
+  try {
+    const p = req.body;
+    p.id = p.id || (`pay-${p.memberId}-${p.month || Date.now()}`);
+    p.updatedAt = new Date();
+    if (db) {
+      await db.collection("fee_payments").updateOne(
+        { id: p.id },
+        { $set: p },
+        { upsert: true }
+      );
+      // If paid, auto record in finance transactions as Income
+      if (p.status === "paid" && (Number(p.paidAmount) || Number(p.amount)) > 0) {
+        await db.collection("finance_transactions").updateOne(
+          { id: `TX-FEE-${p.id}` },
+          {
+            $set: {
+              id: `TX-FEE-${p.id}`,
+              title: `Monthly Fee (${p.month}): ${p.memberName || "Club Member"}`,
+              amount: Number(p.paidAmount) || Number(p.amount) || 0,
+              type: "earning",
+              category: "Membership Fee",
+              paymentMethod: p.paymentMethod || "UPI",
+              refNo: p.invoiceNo || p.id,
+              date: p.paidAt ? p.paidAt.split("T")[0] : new Date().toISOString().split("T")[0],
+              payerOrCustomer: p.memberName || "Club Member",
+              updatedAt: new Date()
+            }
+          },
+          { upsert: true }
+        );
+      }
+    }
+    res.json({ success: true, payment: p });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 // 8. WebSocket Health Check
 app.get('/api/ws-ping', (req, res) => {
   res.json({ status: 'ok', wsClients: wsClients.size, wsPath: '/ws' });
