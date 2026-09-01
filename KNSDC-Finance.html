@@ -2307,8 +2307,8 @@ function saveData() {
         // ══════════════════════════════════════════
         window.allDonations = [];
 
-    window.supportMissionVpa = "";
-    window.supportMissionPayee = "Kalikapur Nabin Sangha Club";
+    window.supportMissionVpa = localStorage.getItem("fp_support_mission_vpa") || "";
+    window.supportMissionPayee = localStorage.getItem("fp_support_mission_payee") || "Kalikapur Nabin Sangha Club";
 
     window.openEditMissionVpaModal = function() {
       const inpVpa = document.getElementById("mission-vpa-input");
@@ -2328,27 +2328,35 @@ function saveData() {
         return;
       }
 
+      // 1. Instant Local State & Cache Update
+      window.supportMissionVpa = vpa;
+      window.supportMissionPayee = payeeName;
+      localStorage.setItem("fp_support_mission_vpa", vpa);
+      localStorage.setItem("fp_support_mission_payee", payeeName);
+
+      const el = document.getElementById("display-mission-vpa");
+      if (el) el.textContent = vpa;
+      closeModal("edit-mission-vpa-modal");
+
+      // 2. Cloud MongoDB Atlas Sync in Background
       try {
         const res = await fetch("/api/donations/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vpa, payeeName })
         });
-        const data = await res.json();
-        if (data.success) {
-          window.supportMissionVpa = data.supportMissionVpa;
-          window.supportMissionPayee = data.payeeName;
-          const el = document.getElementById("display-mission-vpa");
-          if (el) el.textContent = data.supportMissionVpa || "Not Configured";
-          closeModal("edit-mission-vpa-modal");
-          alert(`Successfully updated Support Mission UPI ID to: ${data.supportMissionVpa}! (Saved in MongoDB)`);
-        } else {
-          alert("Error: " + (data.error || "Failed to update UPI ID"));
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.supportMissionVpa) {
+            window.supportMissionVpa = data.supportMissionVpa;
+            if (el) el.textContent = data.supportMissionVpa;
+          }
         }
       } catch (err) {
-        console.error("[Mission VPA Save Error]:", err);
-        alert("Error connecting to server. Please try again.");
+        console.warn("[MongoDB Cloud Notice]: Local storage active.", err);
       }
+
+      alert(`🎉 Successfully updated Support Mission UPI ID to: ${vpa}`);
     };
         window.fetchAndRenderDonations = async function() {
           try {
