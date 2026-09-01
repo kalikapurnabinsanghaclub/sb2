@@ -958,7 +958,7 @@
               <div style="margin-top:10px; font-size:11px; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; display:flex; flex-direction:column; gap:4px;">
                 <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Enrolled:</span> <span style="font-weight:700; color:#fff;">${count} members</span></div>
                 <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Grace Period:</span> <span style="font-weight:700; color:#fbbf24;">${plan.lateFeeDays || 0} days</span></div>
-                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Late Fine:</span> <span style="font-weight:700; color:#34d399;">₹0 (No fine)</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Late Fine (0-100):</span> <span style="font-weight:700; color:${(plan.lateFeeAmount || 0) > 0 ? '#fbbf24' : '#34d399'};">${(plan.lateFeeAmount || 0) > 0 ? ('₹' + plan.lateFeeAmount) : '₹0 (No fine)'}</span></div>
               </div>
             </div>
 
@@ -998,7 +998,7 @@
       document.getElementById('plan-fee').value = p.fee;
       document.getElementById('plan-desc').value = p.description || '';
       document.getElementById('plan-grace').value = p.lateFeeDays !== undefined ? p.lateFeeDays : 0;
-      document.getElementById('plan-late-fine').value = 0;
+      document.getElementById('plan-late-fine').value = Math.min(100, Math.max(0, p.lateFeeAmount !== undefined ? Number(p.lateFeeAmount) : 0));
       document.getElementById('plan-color').value = p.color || '#3b82f6';
       openModal('plan-modal');
     };
@@ -1012,7 +1012,8 @@
       const fee = Number(document.getElementById('plan-fee').value) || 0;
       const description = document.getElementById('plan-desc').value.trim();
       const lateFeeDays = Number(document.getElementById('plan-grace').value) || 0;
-      const lateFeeAmount = 0; // Late fine is 0
+      const rawLateFine = Number(document.getElementById('plan-late-fine').value) || 0;
+      const lateFeeAmount = Math.min(100, Math.max(0, rawLateFine)); // Configured between 0 and 100
       const color = document.getElementById('plan-color').value;
 
       const planObj = { id, planType, type: planType, name, fee, description, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
@@ -3655,8 +3656,9 @@ function saveData() {
             <input type="number" id="plan-grace" min="0" value="0" class="form-input">
           </div>
           <div>
-            <label class="form-label">Late Fine (₹ INR)</label>
-            <input type="number" id="plan-late-fine" min="0" value="0" readonly class="form-input" style="color:#34d399; font-weight:700; background:#131d31;" title="Late fine is disabled (₹0)">
+            <label class="form-label">Late Fine (₹0 - ₹100)</label>
+            <input type="number" id="plan-late-fine" min="0" max="100" value="0" placeholder="0 - 100" class="form-input" style="color:#fbbf24; font-weight:700;">
+            <p style="font-size:10px; color:var(--text-muted); margin-top:3px;">Set between ₹0 to ₹100 (Default: ₹0)</p>
           </div>
         </div>
 
