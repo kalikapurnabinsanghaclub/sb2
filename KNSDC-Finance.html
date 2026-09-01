@@ -1357,6 +1357,46 @@
     };
     // 5. EARNINGS LOGGER RENDER & ACTIONS
     // ══════════════════════════════════════════
+    window.downloadEarningsSheet = function() {
+      const combined = [];
+      earnings.forEach(e => combined.push({ ...e, itemType: 'INCOME' }));
+      spendings.forEach(s => combined.push({ ...s, itemType: 'EXPENSE' }));
+
+      if (combined.length === 0) {
+        alert('No earnings or spendings recorded yet to download.');
+        return;
+      }
+
+      // Sort by date descending
+      combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
+
+      // Create CSV Content with UTF-8 BOM for Microsoft Excel compatibility
+      const headers = ['Transaction Type', 'Entry Title', 'Category', 'Payer / Vendor / Source', 'Date', 'Payment Method', 'Amount (INR)', 'Reference No', 'Attached Bill'];
+      const rows = combined.map(item => [
+        `"${item.itemType || 'INCOME'}"`,
+        `"${(item.title || '').replace(/"/g, '""')}"`,
+        `"${(item.category || '').replace(/"/g, '""')}"`,
+        `"${(item.payerOrCustomer || item.vendorOrRecipient || '-').replace(/"/g, '""')}"`,
+        `"${item.date || ''}"`,
+        `"${(item.paymentMethod || 'cash').toUpperCase()}"`,
+        `"${item.itemType === 'INCOME' ? '+' : '-'}${Number(item.amount) || 0}"`,
+        `"${(item.referenceNo || '').replace(/"/g, '""')}"`,
+        `"${item.receiptPhoto ? 'Attached' : 'None'}"`
+      ]);
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const today = new Date().toISOString().split('T')[0];
+      a.href = url;
+      a.download = `KNSDC_Earnings_Spending_Report_${today}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
     function renderEarnings() {
       const tbody = document.getElementById('earnings-tbody');
       if (!tbody) return;
@@ -1369,10 +1409,10 @@
       const elSpend = document.getElementById('summary-total-spendings');
       const elNet = document.getElementById('summary-net-balance');
 
-      if (elEarn) elEarn.textContent = `Income: +${formatINR(totalEarn)}`;
-      if (elSpend) elSpend.textContent = `Expense: -${formatINR(totalSpend)}`;
+      if (elEarn) elEarn.textContent = `+${formatINR(totalEarn)}`;
+      if (elSpend) elSpend.textContent = `-${formatINR(totalSpend)}`;
       if (elNet) {
-        elNet.textContent = `Net: ${netBal >= 0 ? '+' : ''}${formatINR(netBal)}`;
+        elNet.textContent = `${netBal >= 0 ? '+' : ''}${formatINR(netBal)}`;
         elNet.style.color = netBal >= 0 ? '#34d399' : '#f87171';
       }
 
@@ -3391,7 +3431,11 @@ function saveData() {
           <h1 class="section-title"><span>💵 Club Earnings & Income Logger</span></h1>
           <p class="section-sub">Log revenue from cricket/football tournaments, sponsorships, canteen, jersey sales & donations.</p>
         </div>
-        <div style="display:flex; gap:10px; align-items:center;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <!-- 📥 Download Sheet Button in Red Box position -->
+          <button type="button" onclick="downloadEarningsSheet()" class="btn btn-secondary" style="background:#1e293b; color:#38bdf8; border:1.5px solid rgba(56,189,248,0.45); font-size:12px; font-weight:800; padding:8px 16px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(56,189,248,0.15);" title="Download complete Earnings & Spending ledger as Excel CSV spreadsheet">
+            <span>📥 Download Sheet</span>
+          </button>
           <button type="button" onclick="openModal('add-spending-modal')" class="btn btn-danger" style="background:#dc2626; color:#fff; font-size:12px; font-weight:800; border:none; box-shadow:0 4px 14px rgba(220,38,38,0.35); padding:8px 16px;">
             💸 + Log Spending
           </button>
