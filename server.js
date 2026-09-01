@@ -769,39 +769,213 @@ app.delete('/api/donations/:orderId', async (req, res) => {
   }
 });
 
-// 9. ASSET & LOCKER BOOKINGS ENDPOINTS
-app.get('/api/assets/bookings', async (req, res) => {
+// ══════════════════════════════════════════════════════════════
+// 📚 LIBRARY & 🔒 LOCKERS MONGODB COLLECTIONS & REST API ENGINE
+// ══════════════════════════════════════════════════════════════
+
+// Default Seed Books
+const DEFAULT_LIBRARY_BOOKS = [
+  { id: "bk-1", title: "Higher Secondary Mathematics (Part 1 & 2)", author: "S. N. Dey", code: "MTH-101", category: "Mathematics", totalCopies: 4, fee: 0 },
+  { id: "bk-2", title: "Quantitative Aptitude for Competitive Examinations", author: "Dr. R. S. Aggarwal", code: "CMP-201", category: "Competitive", totalCopies: 5, fee: 0 },
+  { id: "bk-3", title: "WBCS & General Studies Manual", author: "Nitin Singhania", code: "CMP-202", category: "Competitive", totalCopies: 3, fee: 0 },
+  { id: "bk-4", title: "Class 10 Physical Science & Environment (WBBSE)", author: "Dr. Bhuniya & Paul", code: "CLS-10", category: "Class Book", totalCopies: 6, fee: 0 },
+  { id: "bk-5", title: "Class 12 Physics (NCERT / WBCHSE)", author: "Chhaya Prakashani Editorial", code: "CLS-12", category: "Class Book", totalCopies: 4, fee: 0 },
+  { id: "bk-6", title: "Anandamath & Devi Chaudhurani", author: "Bankim Chandra Chattopadhyay", code: "LIT-301", category: "Bengali", totalCopies: 3, fee: 0 },
+  { id: "bk-7", title: "Feluda Samagra (Volume 1 & 2)", author: "Satyajit Ray", code: "LIT-302", category: "Literature", totalCopies: 4, fee: 0 },
+  { id: "bk-8", title: "A Brief History of Time", author: "Stephen Hawking", code: "SCI-401", category: "Science", totalCopies: 2, fee: 0 }
+];
+
+// Auto-seed MongoDB collections on connection
+async function seedLibraryAndLockers() {
+  if (!db) return;
+  try {
+    // 1. Seed Library Books if collection is empty
+    const bookCount = await db.collection("library_books").countDocuments();
+    if (bookCount === 0) {
+      await db.collection("library_books").insertMany(DEFAULT_LIBRARY_BOOKS);
+      console.log("[MongoDB] Seeded default library books catalog!");
+    }
+    // 2. Seed Club Lockers if empty
+    const lockerCount = await db.collection("club_lockers").countDocuments();
+    if (lockerCount === 0) {
+      const defaultLockers = [];
+      for (let i = 1; i <= 20; i++) {
+        const numStr = i < 10 ? `0${i}` : `${i}`;
+        defaultLockers.push({
+          id: `lkr-${numStr}`,
+          name: `Locker #${numStr}`,
+          code: `L-${numStr}`,
+          category: "Locker",
+          defaultFee: 100,
+          defaultDeposit: 0
+        });
+      }
+      await db.collection("club_lockers").insertMany(defaultLockers);
+      console.log("[MongoDB] Seeded 20 default club locker slots!");
+    }
+  } catch (err) {
+    console.error("[MongoDB Seed Error]:", err.message);
+  }
+}
+
+// Call seeder after DB connection
+setTimeout(seedLibraryAndLockers, 3000);
+
+// ── 1. LIBRARY BOOKS API ──────────────────────────────────────
+// GET: All Books in Library Catalog
+app.get("/api/library/books", async (req, res) => {
   try {
     if (db) {
-      const bookings = await db.collection('asset_bookings').find({}).sort({ createdAt: -1 }).toArray();
-      const assets = await db.collection('club_assets').find({}).toArray();
-      return res.json({ success: true, bookings, assets });
+      const books = await db.collection("library_books").find({}).sort({ code: 1 }).toArray();
+      return res.json({ success: true, books });
     }
-    res.json({ success: true, bookings: [], assets: [] });
+    res.json({ success: true, books: DEFAULT_LIBRARY_BOOKS });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.post('/api/assets/bookings', async (req, res) => {
+// POST / PUT: Add or Update Book in Catalog
+app.post("/api/library/books", async (req, res) => {
+  try {
+    const book = req.body;
+    book.id = book.id || ("bk-" + Date.now());
+    book.updatedAt = new Date();
+    if (db) {
+      await db.collection("library_books").updateOne(
+        { id: book.id },
+        { $set: book },
+        { upsert: true }
+      );
+    }
+    res.json({ success: true, book });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE: Remove Book from Catalog
+app.delete("/api/library/books/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (db) {
+      await db.collection("library_books").deleteOne({ id });
+    }
+    res.json({ success: true, message: `Deleted book ${id}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── 2. LIBRARY ISSUES / CIRCULATION API ────────────────────────
+// GET: All Book Issues / Returns
+app.get("/api/library/issues", async (req, res) => {
+  try {
+    if (db) {
+      const issues = await db.collection("library_issues").find({}).sort({ createdAt: -1 }).toArray();
+      return res.json({ success: true, issues });
+    }
+    res.json({ success: true, issues: [] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Issue Book to Member
+app.post("/api/library/issues", async (req, res) => {
+  try {
+    const issue = req.body;
+    issue.id = issue.id || ("ISS-" + Math.floor(1000 + Math.random() * 9000));
+    issue.createdAt = issue.createdAt ? new Date(issue.createdAt) : new Date();
+    issue.status = issue.status || "issued";
+    if (db) {
+      await db.collection("library_issues").insertOne(issue);
+      // If borrow fee > 0, auto record in finance transactions
+      if (Number(issue.fee) > 0) {
+        await db.collection("finance_transactions").insertOne({
+          id: "TX-LIB-" + Date.now(),
+          title: "Library Borrow Fee: " + (issue.bookTitle || "Book"),
+          amount: Number(issue.fee) || 0,
+          type: "income",
+          category: "Library Fee",
+          paymentMethod: "Cash",
+          refNo: issue.id,
+          date: issue.issueDate || new Date().toISOString().split("T")[0],
+          payerOrCustomer: issue.memberName || "Library Reader",
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+    }
+    res.json({ success: true, issue });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT: Return or Update Issue Record
+app.put("/api/library/issues/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const update = req.body;
+    update.updatedAt = new Date();
+    if (db) {
+      await db.collection("library_issues").updateOne({ id }, { $set: update });
+    }
+    res.json({ success: true, id, update });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE: Delete Issue Record
+app.delete("/api/library/issues/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (db) {
+      await db.collection("library_issues").deleteOne({ id });
+    }
+    res.json({ success: true, message: `Deleted book issue ${id}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── 3. MEMBER LOCKERS & ALLOCATION API ────────────────────────
+// GET: All Lockers and Allocations
+app.get("/api/lockers/bookings", async (req, res) => {
+  try {
+    if (db) {
+      const bookings = await db.collection("locker_bookings").find({}).sort({ createdAt: -1 }).toArray();
+      const lockers = await db.collection("club_lockers").find({}).sort({ code: 1 }).toArray();
+      return res.json({ success: true, bookings, lockers });
+    }
+    res.json({ success: true, bookings: [], lockers: [] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Book/Assign Locker to Member
+app.post("/api/lockers/bookings", async (req, res) => {
   try {
     const booking = req.body;
+    booking.id = booking.id || ("LKR-" + Math.floor(1000 + Math.random() * 9000));
     booking.createdAt = booking.createdAt ? new Date(booking.createdAt) : new Date();
-    booking.id = booking.id || ('AB-' + Date.now());
     if (db) {
-      await db.collection('asset_bookings').insertOne(booking);
-      // Auto record rental income in finance transactions
-      if (booking.rentAmount > 0) {
-        await db.collection('finance_transactions').insertOne({
-          id: 'TX-RNT-' + Date.now(),
-          title: 'Asset/Locker Rent: ' + (booking.assetName || 'Locker'),
+      await db.collection("locker_bookings").insertOne(booking);
+      // Auto record rent income in finance transactions
+      if (Number(booking.rentAmount) > 0) {
+        await db.collection("finance_transactions").insertOne({
+          id: "TX-LKR-" + Date.now(),
+          title: "Locker Rent: " + (booking.assetName || "Club Locker"),
           amount: Number(booking.rentAmount) || 0,
-          type: 'income',
-          category: 'Asset / Locker Rent',
-          paymentMethod: booking.paymentMethod || 'UPI',
+          type: "income",
+          category: "Locker Rent",
+          paymentMethod: booking.paymentMethod || "UPI",
           refNo: booking.id,
-          date: new Date().toISOString().split('T')[0],
-          payerOrCustomer: booking.memberName || 'Club Member',
+          date: new Date().toISOString().split("T")[0],
+          payerOrCustomer: booking.memberName || "Club Member",
           createdAt: new Date(),
           updatedAt: new Date()
         });
@@ -809,36 +983,51 @@ app.post('/api/assets/bookings', async (req, res) => {
     }
     res.json({ success: true, booking });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.put('/api/assets/bookings/:id', async (req, res) => {
+// PUT: Release / Update Locker Booking
+app.put("/api/lockers/bookings/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const update = req.body;
     update.updatedAt = new Date();
     if (db) {
-      await db.collection('asset_bookings').updateOne({ id }, { $set: update });
+      await db.collection("locker_bookings").updateOne({ id }, { $set: update });
     }
     res.json({ success: true, id, update });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.delete('/api/assets/bookings/:id', async (req, res) => {
+// DELETE: Delete Locker Booking
+app.delete("/api/lockers/bookings/:id", async (req, res) => {
   try {
     const { id } = req.params;
     if (db) {
-      await db.collection('asset_bookings').deleteOne({ id });
+      await db.collection("locker_bookings").deleteOne({ id });
     }
-    res.json({ success: true, message: `Deleted asset booking ${id}` });
+    res.json({ success: true, message: `Deleted locker booking ${id}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Backward Compatibility Endpoint
+app.get("/api/assets/bookings", async (req, res) => {
+  try {
+    if (db) {
+      const bookings = await db.collection("locker_bookings").find({}).sort({ createdAt: -1 }).toArray();
+      const assets = await db.collection("club_lockers").find({}).toArray();
+      return res.json({ success: true, bookings, assets });
+    }
+    res.json({ success: true, bookings: [], assets: [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 // 8. WebSocket Health Check
 app.get('/api/ws-ping', (req, res) => {
   res.json({ status: 'ok', wsClients: wsClients.size, wsPath: '/ws' });
