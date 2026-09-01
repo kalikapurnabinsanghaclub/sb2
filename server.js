@@ -664,10 +664,105 @@ app.post('/api/donations/submit-utr', async (req, res) => {
   }
 });
 
-// 5. WebSocket Health Check
+// 5. GET ALL DONATIONS (For Finance & Event Management Portals)
+app.get('/api/donations', async (req, res) => {
+  try {
+    let list = [];
+    if (db) {
+      const col = db.collection('donations');
+      list = await col.find({}).sort({ createdAt: -1 }).toArray();
+    } else {
+      list = Array.from(memoryOrders.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+    res.json({ success: true, donations: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. VERIFY / APPROVE DONATION PAYMENT (From Finance Portal)
+app.post('/api/donations/verify', async (req, res) => {
+  try {
+    const { orderId, utr, status = 'COMPLETED' } = req.body;
+    if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+
+    let order = memoryOrders.get(orderId);
+    if (!order && db) {
+      order = await db.collection('donations').findOne({ orderId });
+    }
+
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const newStatus = status;
+    const finalUtr = utr ? utr.trim() : (order.utr || 'VERIFIED');
+    const paidAt = new Date();
+
+    if (memoryOrders.has(orderId)) {
+      const mem = memoryOrders.get(orderId);
+      mem.status = newStatus;
+      mem.utr = finalUtr;
+      mem.paidAt = paidAt;
+    }
+
+    if (db) {
+      await db.collection('donations').updateOne(
+        { orderId },
+        { $set: { status: newStatus, utr: finalUtr, paidAt } },
+        { upsert: true }
+      );
+
+      // Sync into club finance transactions
+      if (newStatus === 'COMPLETED') {
+        await db.collection('finance_transactions').insertOne({
+          id: `TXN-${Date.now()}`,
+          title: `Donation: ${order.donorName} (${order.eventName || 'Mission'})`,
+          amount: Number(order.amount) || 0,
+          type: 'income',
+          category: 'Donations & Sponsorships',
+          paymentMethod: 'UPI',
+          refNo: finalUtr,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+    }
+
+    // Broadcast WebSocket confirmation
+    broadcastPaymentConfirmed(orderId, {
+      amount: order.amount,
+      utr: finalUtr,
+      donorName: order.donorName,
+      eventName: order.eventName,
+      paidAt
+    });
+
+    res.json({ success: true, message: `Order ${orderId} marked as ${newStatus}`, orderId, status: newStatus, utr: finalUtr });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. DELETE DONATION RECORD
+app.delete('/api/donations/:orderId', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    if (db) {
+      await db.collection('donations').deleteOne({ orderId });
+    }
+    if (memoryOrders.has(orderId)) {
+      memoryOrders.delete(orderId);
+    }
+    res.json({ success: true, message: `Deleted donation ${orderId}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8. WebSocket Health Check
 app.get('/api/ws-ping', (req, res) => {
   res.json({ status: 'ok', wsClients: wsClients.size, wsPath: '/ws' });
 });
+
 
 app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));

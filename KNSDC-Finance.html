@@ -148,7 +148,7 @@
     // 1. TOP-LEVEL NAV FUNCTION
     window.nav = function(tabName) {
       console.log('Navigating to:', tabName);
-      var panels = ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'custom-fields'];
+      var panels = ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'custom-fields', 'donations'];
       panels.forEach(function(p) {
         var el = document.getElementById('view-' + p);
         var btn = document.getElementById('tab-' + p);
@@ -165,6 +165,7 @@
         else if (tabName === 'plans' && typeof renderPlans === 'function') renderPlans();
         else if (tabName === 'earnings' && typeof renderEarnings === 'function') renderEarnings();
         else if (tabName === 'custom-fields' && typeof renderCustomFields === 'function') renderCustomFields();
+        else if (tabName === 'donations' && typeof renderDonationsPanel === 'function') renderDonationsPanel();
       } catch(err) {
         console.error('Render error:', err);
       }
@@ -1761,13 +1762,362 @@ function saveData() {
         }
 
         // Re-render currently active view cleanly
-        const activeTab = document.querySelector('.tab-btn.active')?.id?.replace('tab-', '') || 'dashboard';
-        if (activeTab === 'dashboard') renderDashboard();
-        else if (activeTab === 'checklist') renderChecklist();
-        else if (activeTab === 'members') renderMembersDirectory();
-        else if (activeTab === 'plans') renderPlans();
-        else if (activeTab === 'earnings') renderEarnings();
-        else if (activeTab === 'custom-fields') renderCustomFields();
+        // ══════════════════════════════════════════
+        // DONATIONS & EVENT SUPPORT MANAGEMENT ENGINE
+        // ══════════════════════════════════════════
+        window.allDonations = [];
+
+        window.fetchAndRenderDonations = async function() {
+          try {
+            const res = await fetch('/api/donations');
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && Array.isArray(data.donations)) {
+                window.allDonations = data.donations;
+                localStorage.setItem('fp_donations', JSON.stringify(data.donations));
+              }
+            }
+          } catch (e) {
+            console.warn('[Donations Pull]:', e);
+            window.allDonations = JSON.parse(localStorage.getItem('fp_donations') || '[]');
+          }
+          renderDonationsPanel();
+        };
+
+        window.renderDonationsPanel = function() {
+          const donations = window.allDonations || [];
+          
+          // Update tab pill count
+          const pill = document.getElementById('donations-tab-pill');
+          if (pill) pill.textContent = donations.length;
+
+          // 1. Calculate Metrics
+          let totalVerifiedAmount = 0;
+          let verifiedCount = 0;
+          let missionAmount = 0;
+          let missionCount = 0;
+          let eventsAmount = 0;
+          let eventsCount = 0;
+          let pendingAmount = 0;
+          let pendingCount = 0;
+
+          const eventOptionsSet = new Set();
+
+          donations.forEach(d => {
+            const amt = Number(d.amount) || 0;
+            const isCompleted = (d.status === 'COMPLETED' || d.status === 'VERIFIED');
+            const isMission = !d.eventName || d.eventName.toLowerCase().includes('mission') || d.eventName.toLowerCase().includes('general') || d.eventName.toLowerCase().includes('community support');
+
+            if (d.eventName) eventOptionsSet.add(d.eventName);
+
+            if (isCompleted) {
+              totalVerifiedAmount += amt;
+              verifiedCount++;
+              if (isMission) {
+                missionAmount += amt;
+                missionCount++;
+              } else {
+                eventsAmount += amt;
+                eventsCount++;
+              }
+            } else {
+              pendingAmount += amt;
+              pendingCount++;
+            }
+          });
+
+          // 2. Update Stats in DOM
+          const elTotal = document.getElementById('stat-total-donations');
+          if (elTotal) elTotal.textContent = '₹' + totalVerifiedAmount.toLocaleString('en-IN');
+          const elCount = document.getElementById('stat-donations-count');
+          if (elCount) elCount.textContent = `${verifiedCount} verified contribution${verifiedCount === 1 ? '' : 's'}`;
+
+          const elMission = document.getElementById('stat-mission-donations');
+          if (elMission) elMission.textContent = '₹' + missionAmount.toLocaleString('en-IN');
+          const elMCount = document.getElementById('stat-mission-count');
+          if (elMCount) elMCount.textContent = `${missionCount} Supporters`;
+
+          const elEvents = document.getElementById('stat-events-donations');
+          if (elEvents) elEvents.textContent = '₹' + eventsAmount.toLocaleString('en-IN');
+          const elECount = document.getElementById('stat-events-count');
+          if (elECount) elECount.textContent = `${eventsCount} Event Sponsors`;
+
+          const elPending = document.getElementById('stat-pending-donations');
+          if (elPending) elPending.textContent = pendingCount;
+          const elPAmt = document.getElementById('stat-pending-amount');
+          if (elPAmt) elPAmt.textContent = `₹${pendingAmount.toLocaleString('en-IN')} awaiting review`;
+
+          // 3. Populate Event Dropdown Filter
+          const filterSel = document.getElementById('donations-event-filter');
+          if (filterSel) {
+            const currentVal = filterSel.value;
+            let optionsHtml = '<option value="all">🎪 All Events &amp; Campaigns</option><option value="mission">💖 Support Mission (General)</option>';
+            eventOptionsSet.forEach(evName => {
+              if (!evName.toLowerCase().includes('mission')) {
+                optionsHtml += `<option value="${evName}">🎟️ ${evName}</option>`;
+              }
+            });
+            filterSel.innerHTML = optionsHtml;
+            filterSel.value = currentVal || 'all';
+          }
+
+          // 4. Populate Manual Event Modal Dropdown
+          const mdEventSel = document.getElementById('md-event-select');
+          if (mdEventSel) {
+            let mdHtml = '<option value="Kalikapur Nabin Sangha Mission">💖 Kalikapur Nabin Sangha Mission</option>';
+            eventOptionsSet.forEach(evName => {
+              if (!evName.toLowerCase().includes('mission')) {
+                mdHtml += `<option value="${evName}">🎟️ ${evName}</option>`;
+              }
+            });
+            mdEventSel.innerHTML = mdHtml;
+          }
+
+          // 5. Render Table
+          filterDonationsTable();
+        };
+
+        window.filterDonationsTable = function() {
+          const searchVal = (document.getElementById('donations-search')?.value || '').toLowerCase().trim();
+          const eventFilter = document.getElementById('donations-event-filter')?.value || 'all';
+          const statusFilter = document.getElementById('donations-status-filter')?.value || 'all';
+          const donations = window.allDonations || [];
+
+          const filtered = donations.filter(d => {
+            // Search filter
+            if (searchVal) {
+              const name = (d.donorName || '').toLowerCase();
+              const phone = (d.donorPhone || '').toLowerCase();
+              const orderId = (d.orderId || '').toLowerCase();
+              const utr = (d.utr || '').toLowerCase();
+              const evName = (d.eventName || '').toLowerCase();
+              if (!name.includes(searchVal) && !phone.includes(searchVal) && !orderId.includes(searchVal) && !utr.includes(searchVal) && !evName.includes(searchVal)) {
+                return false;
+              }
+            }
+
+            // Event filter
+            if (eventFilter !== 'all') {
+              if (eventFilter === 'mission') {
+                const isMission = !d.eventName || d.eventName.toLowerCase().includes('mission') || d.eventName.toLowerCase().includes('general') || d.eventName.toLowerCase().includes('community support');
+                if (!isMission) return false;
+              } else if (d.eventName !== eventFilter) {
+                return false;
+              }
+            }
+
+            // Status filter
+            if (statusFilter !== 'all') {
+              if (statusFilter === 'COMPLETED' && d.status !== 'COMPLETED' && d.status !== 'VERIFIED') return false;
+              if (statusFilter === 'VERIFYING' && d.status !== 'VERIFYING') return false;
+              if (statusFilter === 'PENDING' && d.status !== 'PENDING') return false;
+            }
+
+            return true;
+          });
+
+          const countEl = document.getElementById('donations-filtered-count');
+          if (countEl) countEl.textContent = filtered.length;
+
+          const tbody = document.getElementById('donations-table-body');
+          if (!tbody) return;
+
+          if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:32px; color:#64748b;">No donations found matching the selected filters.</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = filtered.map(d => {
+            const amt = Number(d.amount) || 0;
+            const dateStr = d.createdAt ? new Date(d.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+            const isMission = !d.eventName || d.eventName.toLowerCase().includes('mission') || d.eventName.toLowerCase().includes('community support');
+            const eventBadge = isMission
+              ? '<span class="badge" style="background:rgba(233,30,140,0.15); color:#ff70ba; border:1px solid rgba(233,30,140,0.3);">💖 Support Mission</span>'
+              : `<span class="badge" style="background:rgba(99,102,241,0.15); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3);">🎟️ ${d.eventName}</span>`;
+
+            let statusBadge = '';
+            if (d.status === 'COMPLETED' || d.status === 'VERIFIED') {
+              statusBadge = '<span class="badge badge-paid">✅ Verified</span>';
+            } else if (d.status === 'VERIFYING') {
+              statusBadge = '<span class="badge badge-pending">⏳ Verifying (UTR)</span>';
+            } else {
+              statusBadge = '<span class="badge badge-overdue">🕒 Pending</span>';
+            }
+
+            const donorDisplay = `
+              <div>
+                <strong style="color:#fff;">${d.donorName || 'Well-wisher'}</strong>
+                ${d.isAnonymous ? '<span style="font-size:9px; background:#334155; color:#94a3b8; padding:1px 4px; border-radius:4px; margin-left:4px;">Anon</span>' : ''}
+                ${d.donorPhone ? `<div style="font-size:11px; color:#94a3b8;">📱 ${d.donorPhone}</div>` : ''}
+              </div>
+            `;
+
+            const utrDisplay = d.utr
+              ? `<span class="font-mono" style="font-size:11px; color:#34d399; font-weight:700;">${d.utr}</span>`
+              : '<span style="font-size:11px; color:#64748b;">Not provided</span>';
+
+            return `
+              <tr>
+                <td><strong class="font-mono" style="color:#818cf8; font-size:12px; cursor:pointer;" title="Click to copy" onclick="navigator.clipboard.writeText('${d.orderId}'); alert('Copied Order ID: ${d.orderId}');">${d.orderId}</strong></td>
+                <td style="color:#94a3b8; font-size:11px;">${dateStr}</td>
+                <td>${eventBadge}</td>
+                <td>${donorDisplay}</td>
+                <td><strong style="color:#34d399; font-size:14px;">₹${amt.toLocaleString('en-IN')}</strong></td>
+                <td>${utrDisplay}</td>
+                <td>${statusBadge}</td>
+                <td style="text-align:right;">
+                  <div style="display:inline-flex; gap:6px;">
+                    <button type="button" onclick="openVerifyDonationModal('${d.orderId}')" class="btn" style="padding:4px 8px; font-size:11px; background:#1e293b; color:#38bdf8; border:1px solid rgba(56,189,248,0.3);" title="Verify / Edit Payment">
+                      ✏️ Verify
+                    </button>
+                    <button type="button" onclick="openSupporterPass('${d.orderId}')" class="btn" style="padding:4px 8px; font-size:11px; background:#1e293b; color:#fbbf24; border:1px solid rgba(251,191,36,0.3);" title="Print Pass / Receipt">
+                      🏆 Pass
+                    </button>
+                    <button type="button" onclick="handleDeleteDonation('${d.orderId}')" class="btn" style="padding:4px 6px; font-size:11px; background:#1e293b; color:#f87171; border:1px solid rgba(239,68,68,0.3);" title="Delete">
+                      🗑️
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('');
+        };
+
+        window.openVerifyDonationModal = function(orderId) {
+          const d = (window.allDonations || []).find(x => x.orderId === orderId);
+          if (!d) return;
+
+          document.getElementById('vd-order-id').value = d.orderId;
+          document.getElementById('vd-donor-name').textContent = d.donorName || 'Well-wisher';
+          document.getElementById('vd-event-name').textContent = d.eventName || 'Mission Support';
+          document.getElementById('vd-amount').textContent = '₹' + (Number(d.amount) || 0).toLocaleString('en-IN');
+          document.getElementById('vd-utr').value = d.utr || '';
+          document.getElementById('vd-status').value = d.status || 'COMPLETED';
+
+          openModal('verify-donation-modal');
+        };
+
+        window.handleSaveDonationVerification = async function(e) {
+          e.preventDefault();
+          const orderId = document.getElementById('vd-order-id').value;
+          const utr = document.getElementById('vd-utr').value.trim();
+          const status = document.getElementById('vd-status').value;
+
+          try {
+            const res = await fetch('/api/donations/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orderId, utr, status })
+            });
+            if (res.ok) {
+              alert(`Donation ${orderId} successfully marked as ${status}!`);
+            }
+          } catch (err) {
+            console.warn('Verify API error:', err);
+          }
+
+          // Local update
+          const item = (window.allDonations || []).find(x => x.orderId === orderId);
+          if (item) {
+            item.status = status;
+            item.utr = utr || item.utr || 'VERIFIED';
+            item.paidAt = new Date();
+          }
+
+          closeModal('verify-donation-modal');
+          renderDonationsPanel();
+        };
+
+        window.openAddManualDonationModal = function() {
+          openModal('add-manual-donation-modal');
+        };
+
+        window.handleSaveManualDonation = async function(e) {
+          e.preventDefault();
+          const donorName = document.getElementById('md-donor-name').value.trim();
+          const amount = parseFloat(document.getElementById('md-amount').value);
+          const donorPhone = document.getElementById('md-phone').value.trim();
+          const eventName = document.getElementById('md-event-select').value;
+          const mode = document.getElementById('md-mode').value;
+          const ref = document.getElementById('md-ref').value.trim();
+
+          const orderId = 'DON-M' + Math.floor(10000 + Math.random() * 90000);
+          const newDoc = {
+            orderId,
+            donorName,
+            donorPhone,
+            amount,
+            eventName,
+            eventId: 'manual',
+            status: 'COMPLETED',
+            utr: ref ? `${mode}: ${ref}` : `${mode}-VERIFIED`,
+            createdAt: new Date(),
+            paidAt: new Date()
+          };
+
+          try {
+            await fetch('/api/donations/create-order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newDoc)
+            });
+            await fetch('/api/donations/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orderId, utr: newDoc.utr, status: 'COMPLETED' })
+            });
+          } catch (err) {}
+
+          if (!window.allDonations) window.allDonations = [];
+          window.allDonations.unshift(newDoc);
+
+          closeModal('add-manual-donation-modal');
+          renderDonationsPanel();
+          alert(`Recorded donation ${orderId} for ₹${amount} from ${donorName}!`);
+        };
+
+        window.handleDeleteDonation = async function(orderId) {
+          if (!confirm(`Are you sure you want to delete donation record ${orderId}?`)) return;
+
+          try {
+            await fetch(`/api/donations/${orderId}`, { method: 'DELETE' });
+          } catch (e) {}
+
+          window.allDonations = (window.allDonations || []).filter(x => x.orderId !== orderId);
+          renderDonationsPanel();
+        };
+
+        window.openSupporterPass = function(orderId) {
+          const d = (window.allDonations || []).find(x => x.orderId === orderId);
+          if (!d) return;
+
+          document.getElementById('sp-donor').textContent = d.donorName || 'Valued Supporter';
+          document.getElementById('sp-event').textContent = d.eventName || 'Kalikapur Nabin Sangha Mission';
+          document.getElementById('sp-order').textContent = d.orderId;
+          document.getElementById('sp-utr').textContent = d.utr || 'VERIFIED';
+          document.getElementById('sp-date').textContent = d.createdAt ? new Date(d.createdAt).toLocaleString('en-IN') : new Date().toLocaleString('en-IN');
+          document.getElementById('sp-amount').textContent = '₹' + (Number(d.amount) || 0).toLocaleString('en-IN');
+
+          openModal('supporter-pass-modal');
+        };
+
+        // Fetch donations during initialization
+        fetchAndRenderDonations();
+
+        const hashTab = (window.location.hash || '').replace('#', '');
+        const queryTab = new URLSearchParams(window.location.search).get('tab');
+        const activeTab = hashTab || queryTab || document.querySelector('.tab-btn.active')?.id?.replace('tab-', '') || 'dashboard';
+        if (typeof window.nav === 'function') {
+          window.nav(activeTab);
+        } else {
+          if (activeTab === 'dashboard') renderDashboard();
+          else if (activeTab === 'checklist') renderChecklist();
+          else if (activeTab === 'members') renderMembersDirectory();
+          else if (activeTab === 'plans') renderPlans();
+          else if (activeTab === 'earnings') renderEarnings();
+          else if (activeTab === 'custom-fields') renderCustomFields();
+          else if (activeTab === 'donations') renderDonationsPanel();
+        }
       }, 400);
     }
 
@@ -2049,6 +2399,137 @@ function saveData() {
       </div>
     </div>
 
+    <!-- 7. DONATIONS & EVENT SUPPORT VIEW -->
+    <div id="view-donations" class="view-panel">
+      
+      <!-- Section Header -->
+      <div class="section-header" style="background: linear-gradient(135deg, rgba(123,45,139,0.2), rgba(233,30,140,0.15)); border: 1px solid rgba(233,30,140,0.3);">
+        <div>
+          <h1 class="section-title" style="color: #fff; display:flex; align-items:center; gap:10px;">
+            <span>💝 Event Collections &amp; Mission Donations</span>
+            <span class="badge" style="background:#E91E8C; color:#fff; font-weight:800; font-size:11px;">0% Fee Direct UPI</span>
+          </h1>
+          <p class="section-sub" style="color: #cbd5e1;">Live tracking of all donor contributions for club community missions and specific cultural events.</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button type="button" onclick="fetchAndRenderDonations()" class="btn btn-secondary" style="font-size:12px; font-weight:800;">
+            🔄 Refresh Live
+          </button>
+          <button type="button" onclick="openAddManualDonationModal()" class="btn btn-primary" style="background: linear-gradient(135deg,#7B2D8B,#E91E8C); border:none; font-size:12px; font-weight:800;">
+            ➕ Record Cash/Manual Donation
+          </button>
+        </div>
+      </div>
+
+      <!-- 4 Stat Summary Cards -->
+      <div class="grid-4" style="margin-bottom: 20px;">
+        <div class="card" style="border-left: 4px solid #10b981; background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label">
+            <span>Total Verified Donations</span>
+            <span style="font-size: 16px;">💰</span>
+          </div>
+          <div class="stat-value" id="stat-total-donations" style="color: #34d399;">₹0</div>
+          <div class="stat-meta">
+            <span id="stat-donations-count">0 successful payments</span>
+            <span style="color:#10b981; font-weight:700;">100% Direct</span>
+          </div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #E91E8C; background: linear-gradient(135deg, rgba(233,30,140,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label">
+            <span>Support Mission Fund</span>
+            <span style="font-size: 16px;">💖</span>
+          </div>
+          <div class="stat-value" id="stat-mission-donations" style="color: #ff70ba;">₹0</div>
+          <div class="stat-meta">
+            <span id="stat-mission-count">0 General Supporters</span>
+            <span style="color:#E91E8C; font-weight:700;">Club Core</span>
+          </div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #818cf8; background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label">
+            <span>Event Specific Support</span>
+            <span style="font-size: 16px;">🎟️</span>
+          </div>
+          <div class="stat-value" id="stat-events-donations" style="color: #a5b4fc;">₹0</div>
+          <div class="stat-meta">
+            <span id="stat-events-count">0 Event Sponsors</span>
+            <span style="color:#818cf8; font-weight:700;">Festivals & Sports</span>
+          </div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #f59e0b; background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label">
+            <span>Pending / Verification Needed</span>
+            <span style="font-size: 16px;">⏳</span>
+          </div>
+          <div class="stat-value" id="stat-pending-donations" style="color: #fbbf24;">0</div>
+          <div class="stat-meta">
+            <span id="stat-pending-amount">₹0 awaiting review</span>
+            <span style="color:#f59e0b; font-weight:700;">Action Required</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls & Filter Bar -->
+      <div class="controls-bar">
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+          <input type="text" id="donations-search" oninput="filterDonationsTable()" placeholder="🔍 Search donor, WhatsApp, Order ID, UTR..." class="input-control" style="min-width: 260px;">
+          
+          <select id="donations-event-filter" onchange="filterDonationsTable()" class="input-control" style="min-width: 180px;">
+            <option value="all">🎪 All Events &amp; Campaigns</option>
+            <option value="mission">💖 Support Mission (General)</option>
+          </select>
+
+          <select id="donations-status-filter" onchange="filterDonationsTable()" class="input-control" style="min-width: 150px;">
+            <option value="all">📊 All Statuses</option>
+            <option value="COMPLETED">✅ Completed / Verified</option>
+            <option value="VERIFYING">⏳ Verifying (UTR Submitted)</option>
+            <option value="PENDING">🕒 Pending Payment</option>
+          </select>
+        </div>
+
+        <div style="font-size:12px; color:var(--text-muted); font-weight:700;">
+          Showing <strong id="donations-filtered-count" style="color:#fff;">0</strong> records
+        </div>
+      </div>
+
+      <!-- Main Donations Table -->
+      <div class="table-card">
+        <div class="table-header" style="background: rgba(15,23,42,0.8);">
+          <h3 style="font-size:14px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
+            <span>📜 Detailed Contributions Ledger</span>
+          </h3>
+          <span style="font-size:11px; color:#94a3b8;">Receiver VPA: <strong style="color:#34d399;">7001865288@nyes</strong></span>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Date &amp; Time</th>
+                <th>Campaign / Event</th>
+                <th>Donor Details</th>
+                <th>Amount</th>
+                <th>UPI UTR / Ref</th>
+                <th>Status</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="donations-table-body">
+              <tr>
+                <td colspan="8" style="text-align:center; padding:32px; color:#64748b;">
+                  Loading donations data...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
     <!-- 6. CUSTOM FIELDS VIEW -->
     <div id="view-custom-fields" class="view-panel">
       <div class="section-header">
@@ -2093,6 +2574,142 @@ function saveData() {
   </main>
 
   <!-- MODALS -->
+
+  <!-- VERIFY / APPROVE DONATION MODAL -->
+  <div id="verify-donation-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title">✅ Verify &amp; Confirm Donation Payment</h3>
+        <button type="button" onclick="closeModal('verify-donation-modal')" class="modal-close">✕</button>
+      </div>
+      <form onsubmit="handleSaveDonationVerification(event)">
+        <input type="hidden" id="vd-order-id">
+
+        <div style="background:#090f1d; padding:14px; border-radius:12px; border:1px solid var(--border); margin-bottom:16px; font-size:13px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="color:var(--text-muted);">Donor Name:</span>
+            <strong id="vd-donor-name" style="color:#fff;">-</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="color:var(--text-muted);">Event / Mission:</span>
+            <strong id="vd-event-name" style="color:#818cf8;">-</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:15px; margin-top:8px; border-top:1px dashed var(--border); padding-top:8px;">
+            <span style="color:var(--text-muted);">Amount:</span>
+            <strong id="vd-amount" style="color:#34d399; font-weight:900;">₹0</strong>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">12-Digit UPI UTR / Reference Number</label>
+          <input type="text" id="vd-utr" placeholder="e.g. 423456789012" maxlength="12" class="form-input">
+          <p style="font-size:11px; color:#64748b; margin-top:4px;">Cross-check with your bank SMS or GPay/PhonePe business transaction.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Verification Status *</label>
+          <select id="vd-status" required class="form-input">
+            <option value="COMPLETED">✅ COMPLETED (Verified &amp; Credited to Treasury)</option>
+            <option value="VERIFYING">⏳ VERIFYING (Awaiting Bank SMS Check)</option>
+            <option value="PENDING">🕒 PENDING (Not Yet Paid)</option>
+          </select>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('verify-donation-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-emerald" style="font-weight:800;">💾 Save &amp; Confirm Verification</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD MANUAL CASH / OFFLINE DONATION MODAL -->
+  <div id="add-manual-donation-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title">➕ Record Manual / Cash Donation</h3>
+        <button type="button" onclick="closeModal('add-manual-donation-modal')" class="modal-close">✕</button>
+      </div>
+      <form onsubmit="handleSaveManualDonation(event)">
+        <div class="form-group">
+          <label class="form-label">Donor Name / Organization *</label>
+          <input type="text" id="md-donor-name" required placeholder="e.g. Amitava Sen / Sen Sweets" class="form-input">
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Amount (₹) *</label>
+            <input type="number" id="md-amount" required min="1" placeholder="e.g. 1000" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">WhatsApp Number</label>
+            <input type="tel" id="md-phone" placeholder="e.g. 9876543210" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Select Campaign / Event *</label>
+          <select id="md-event-select" required class="form-input">
+            <option value="Kalikapur Nabin Sangha Mission">💖 Kalikapur Nabin Sangha Mission</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Payment Mode</label>
+          <select id="md-mode" class="form-input">
+            <option value="Cash">💵 Cash</option>
+            <option value="Direct UPI">⚡ Direct UPI (7001865288@nyes)</option>
+            <option value="Cheque / NEFT">🏦 Cheque / Bank Transfer</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Reference No / Note (Optional)</label>
+          <input type="text" id="md-ref" placeholder="Receipt no or cheque no" class="form-input">
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-manual-donation-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:linear-gradient(135deg,#7B2D8B,#E91E8C); border:none;">💾 Record Donation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SUPPORTER PASS PRINT MODAL -->
+  <div id="supporter-pass-modal" class="modal-overlay print-modal">
+    <div class="modal-box" style="max-width:460px;">
+      <div class="modal-head no-print">
+        <h3 class="modal-title">🏆 Supporter Pass &amp; Receipt</h3>
+        <div style="display:flex; gap:6px;">
+          <button onclick="window.print()" class="btn btn-primary">🖨️ Print Pass</button>
+          <button type="button" onclick="closeModal('supporter-pass-modal')" class="modal-close">✕</button>
+        </div>
+      </div>
+
+      <div style="background:#090f1d; padding:20px; border-radius:16px; border:1px solid var(--border); text-align:center;">
+        <div style="font-size:36px; margin-bottom:8px;">🏆</div>
+        <h2 style="font-size:17px; font-weight:800; color:#fff; margin-bottom:4px;">Kalikapur Nabin Sangha</h2>
+        <div style="font-size:11px; color:#E91E8C; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;">Official Community Supporter Pass</div>
+
+        <div style="background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.15); border-radius:12px; padding:14px; text-align:left; font-size:12px; display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Supporter:</span> <strong id="sp-donor" style="color:#fff;">-</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Event / Fund:</span> <strong id="sp-event" style="color:#818cf8;">-</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Order ID:</span> <span id="sp-order" class="font-mono" style="color:#a5b4fc;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">UTR / Reference:</span> <span id="sp-utr" class="font-mono" style="color:#34d399;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Date:</span> <span id="sp-date" style="color:var(--text-muted);">-</span></div>
+          <div style="display:flex; justify-content:space-between; border-top:1px solid var(--border); padding-top:8px; font-size:14px;">
+            <span style="font-weight:700; color:#fff;">Contribution Amount:</span>
+            <strong id="sp-amount" style="color:#34d399; font-size:18px;">₹0</strong>
+          </div>
+        </div>
+
+        <div style="font-size:10px; color:#64748b; margin-top:14px;">
+          Thank you for strengthening our cultural legacy &amp; community events.
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ADD MEMBER MODAL -->
   <div id="add-member-modal" class="modal-overlay">
