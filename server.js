@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
+import { parsePaymentNotification } from './parsers/smsParser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -397,6 +398,191 @@ app.delete('/api/finance/transactions/:id', async (req, res) => {
     res.json({ status: 'success', message: 'Deleted from MongoDB' });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// ==========================================
+// ZERO-GATEWAY AUTOMATED UPI PAYMENT & DONATION ENGINE
+// ==========================================
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'zero_gateway_secret_key_8849';
+const UPI_VPA = process.env.UPI_VPA || 'kalikapurnabinsangha@sbi';
+const PAYEE_NAME = process.env.PAYEE_NAME || 'Kalikapur Nabin Sangha Club';
+
+const memoryOrders = new Map();
+const processedUtrs = new Set();
+
+// 1. Create Donation Order
+app.post('/api/donations/create-order', async (req, res) => {
+  try {
+    const { amount, donorName, donorPhone, donorEmail, message, eventId, eventName } = req.body;
+    const numAmount = parseFloat(amount);
+
+    if (!numAmount || numAmount <= 0) {
+      return res.status(400).json({ error: 'Valid contribution amount is required' });
+    }
+
+    const orderId = `DON-${Math.floor(100000 + Math.random() * 900000)}`;
+    const orderData = {
+      orderId,
+      amount: numAmount,
+      donorName: donorName || 'Well-wisher',
+      donorPhone: donorPhone || '',
+      donorEmail: donorEmail || '',
+      message: message || '',
+      eventId: eventId || 'general',
+      eventName: eventName || 'Community Support',
+      status: 'PENDING',
+      utr: null,
+      createdAt: new Date(),
+      paidAt: null
+    };
+
+    memoryOrders.set(orderId, orderData);
+
+    if (db) {
+      const col = db.collection('donations');
+      await col.insertOne({ ...orderData });
+    }
+
+    const upiUrl = `upi://pay?pa=${encodeURIComponent(UPI_VPA)}&pn=${encodeURIComponent(PAYEE_NAME)}&am=${numAmount.toFixed(2)}&tn=${orderId}&cu=INR`;
+
+    res.json({
+      success: true,
+      order: orderData,
+      upiUrl,
+      vpa: UPI_VPA,
+      payeeName: PAYEE_NAME
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Real-Time Status Check (Frontend Polling)
+app.get('/api/donations/check-status', async (req, res) => {
+  try {
+    const { orderId } = req.query;
+    if (!orderId) return res.status(400).json({ error: 'Missing orderId' });
+
+    let order = memoryOrders.get(orderId);
+    if (!order && db) {
+      const col = db.collection('donations');
+      order = await col.findOne({ orderId });
+    }
+
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    res.json({
+      orderId: order.orderId,
+      status: order.status,
+      amount: order.amount,
+      utr: order.utr,
+      paidAt: order.paidAt
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Automated Webhook Endpoint (From Android Forwarder)
+app.post('/api/webhook/payment', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid webhook secret' });
+    }
+
+    const { message, sender, title } = req.body;
+    const rawText = `${title || ''} ${message || ''}`.trim();
+    console.log(`[Donation Webhook Alert from ${sender || 'App'}]: "${rawText}"`);
+
+    const parsed = parsePaymentNotification(rawText);
+    if (!parsed.success) {
+      return res.json({ success: false, message: parsed.reason || 'Not a payment confirmation' });
+    }
+
+    if (parsed.utr && parsed.utr !== 'N/A' && processedUtrs.has(parsed.utr)) {
+      return res.json({ success: true, message: 'Transaction already processed' });
+    }
+
+    let matchedOrder = null;
+    if (parsed.orderId && memoryOrders.has(parsed.orderId)) {
+      matchedOrder = memoryOrders.get(parsed.orderId);
+    } else if (db && parsed.orderId) {
+      matchedOrder = await db.collection('donations').findOne({ orderId: parsed.orderId });
+    }
+
+    if (!matchedOrder && parsed.amount) {
+      for (const [, ord] of memoryOrders.entries()) {
+        if (ord.status === 'PENDING' && ord.amount === parsed.amount) {
+          matchedOrder = ord;
+          break;
+        }
+      }
+    }
+
+    if (!matchedOrder) {
+      console.log(`[Unmatched Donation] Rs.${parsed.amount}, UTR: ${parsed.utr}, Order: ${parsed.orderId}`);
+      return res.json({ success: true, message: 'Payment recorded without matching order' });
+    }
+
+    matchedOrder.status = 'COMPLETED';
+    matchedOrder.utr = parsed.utr || 'VERIFIED';
+    matchedOrder.paidAt = new Date();
+
+    if (parsed.utr && parsed.utr !== 'N/A') processedUtrs.add(parsed.utr);
+
+    if (db) {
+      await db.collection('donations').updateOne(
+        { orderId: matchedOrder.orderId },
+        { $set: { status: 'COMPLETED', utr: matchedOrder.utr, paidAt: matchedOrder.paidAt } },
+        { upsert: true }
+      );
+
+      // Auto-sync into club finance transactions!
+      await db.collection('finance_transactions').insertOne({
+        id: `TXN-${Date.now()}`,
+        title: `Donation: ${matchedOrder.donorName} (${matchedOrder.orderId})`,
+        amount: matchedOrder.amount,
+        type: 'income',
+        category: 'Donations & Sponsorships',
+        paymentMethod: 'UPI',
+        refNo: matchedOrder.utr,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+
+    console.log(`[SUCCESS] Donation ${matchedOrder.orderId} verified for Rs.${matchedOrder.amount}!`);
+    res.json({ success: true, message: 'Donation completed successfully', orderId: matchedOrder.orderId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Manual Fallback UTR Submission
+app.post('/api/donations/submit-utr', async (req, res) => {
+  try {
+    const { orderId, utr } = req.body;
+    if (!orderId || !utr || !/^\d{12}$/.test(utr.trim())) {
+      return res.status(400).json({ error: 'Valid 12-digit UPI UTR required' });
+    }
+
+    if (db) {
+      await db.collection('donations').updateOne(
+        { orderId },
+        { $set: { status: 'VERIFYING', utr: utr.trim() } }
+      );
+    }
+    if (memoryOrders.has(orderId)) {
+      const order = memoryOrders.get(orderId);
+      order.status = 'VERIFYING';
+      order.utr = utr.trim();
+    }
+
+    res.json({ success: true, message: 'UTR submitted for verification' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
