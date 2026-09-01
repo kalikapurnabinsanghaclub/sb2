@@ -941,9 +941,9 @@
         const feeLabel = isFlex ? 'Maximum Cap' : 'Monthly Fee';
         const feeValue = isFlex ? `Up to ${formatINR(plan.fee)}` : formatINR(plan.fee);
 
-        const benefits = (Array.isArray(plan.benefits) && plan.benefits.length > 0)
-          ? plan.benefits
-          : ['🔒 Locker Access', '📚 Library Access', '🏏 Sports Ground'];
+        const benefits = Array.isArray(plan.benefits) ? plan.benefits : [];
+        const benefitsBadges = benefits.length > 0 ? benefits.map(b => `<span class="badge" style="background:rgba(99,102,241,0.15); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3); font-size:10px;">${b}</span>`).join(' ') : '<span style="font-size:11px; color:#64748b; font-style:italic;">Standard Plan (No extra perks selected)</span>';
+
 
         const benefitsBadges = benefits.map(b => `<span class="badge" style="background:rgba(99,102,241,0.15); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3); font-size:10px;">${b}</span>`).join(' ');
 
@@ -999,11 +999,11 @@
       document.getElementById('plan-color').value = '#3b82f6';
 
       // Default Checkboxes
-      if (document.getElementById('pb-locker')) document.getElementById('pb-locker').checked = true;
-      if (document.getElementById('pb-library')) document.getElementById('pb-library').checked = true;
-      if (document.getElementById('pb-sports')) document.getElementById('pb-sports').checked = true;
+      if (document.getElementById('pb-locker')) document.getElementById('pb-locker').checked = false;
+      if (document.getElementById('pb-library')) document.getElementById('pb-library').checked = false;
+      if (document.getElementById('pb-sports')) document.getElementById('pb-sports').checked = false;
       if (document.getElementById('pb-gym')) document.getElementById('pb-gym').checked = false;
-      if (document.getElementById('pb-events')) document.getElementById('pb-events').checked = true;
+      if (document.getElementById('pb-events')) document.getElementById('pb-events').checked = false;
       if (document.getElementById('pb-voting')) document.getElementById('pb-voting').checked = false;
 
       openModal('plan-modal');
@@ -2836,11 +2836,25 @@ function saveData() {
         };
 
         window.handleBookMemberSelect = function(memId) {
-          if (!memId || memId === 'custom') return;
+          if (!memId || memId === 'custom') {
+            const curBook = (window.clubBooks || []).find(b => b.id === document.getElementById('ib-book-id')?.value);
+            document.getElementById('ib-fee').value = curBook?.fee || 0;
+            return;
+          }
           const m = members.find(x => x.id === memId);
           if (m) {
             document.getElementById('ib-member-name').value = m.name;
             document.getElementById('ib-member-phone').value = m.phone || '';
+            
+            // Auto-check if member plan includes Library benefit -> fee is 0
+            const p = plans.find(x => x.id === m.planId);
+            const hasLibrary = p && Array.isArray(p.benefits) && p.benefits.some(b => b.includes('Library'));
+            if (hasLibrary) {
+              document.getElementById('ib-fee').value = 0;
+            } else {
+              const curBook = (window.clubBooks || []).find(b => b.id === document.getElementById('ib-book-id')?.value);
+              document.getElementById('ib-fee').value = curBook?.fee || 0;
+            }
           }
         };
 
@@ -2898,6 +2912,27 @@ function saveData() {
           renderAssetsPanel();
         };
 
+        window.handleAssetMemberSelectChange = function(memId) {
+          if (!memId || memId === 'custom') {
+            document.getElementById('ab-rent-amount').value = 100;
+            return;
+          }
+          const m = members.find(x => x.id === memId);
+          if (m) {
+            document.getElementById('ab-member-name').value = m.name;
+            document.getElementById('ab-member-phone').value = m.phone || '';
+            
+            // Auto-check if member plan includes Locker benefit -> rent fee is 0
+            const p = plans.find(x => x.id === m.planId);
+            const hasLocker = p && Array.isArray(p.benefits) && p.benefits.some(b => b.includes('Locker'));
+            if (hasLocker) {
+              document.getElementById('ab-rent-amount').value = 0;
+            } else {
+              document.getElementById('ab-rent-amount').value = 100;
+            }
+          }
+        };
+
         // Locker Allocation Modal Helpers
         window.openAddAssetBookingModal = function(preselectedAssetId) {
           const lockers = (window.clubAssets || []).filter(a => a.category === 'Locker');
@@ -2914,6 +2949,7 @@ function saveData() {
           }
 
           const memSel = document.getElementById('ab-member-id');
+          if (memSel) memSel.onchange = function() { window.handleAssetMemberSelectChange(this.value); };
           if (memSel) {
             let mOpts = '<option value="">-- Select Enrolled Club Member --</option>';
             members.forEach(m => {
