@@ -2307,12 +2307,14 @@ function saveData() {
         // ══════════════════════════════════════════
         window.allDonations = [];
 
-    window.supportMissionVpa = "7001865288@nyes";
+    window.supportMissionVpa = "";
     window.supportMissionPayee = "Kalikapur Nabin Sangha Club";
 
     window.openEditMissionVpaModal = function() {
-      document.getElementById("mission-vpa-input").value = window.supportMissionVpa || "7001865288@nyes";
-      document.getElementById("mission-payee-input").value = window.supportMissionPayee || "Kalikapur Nabin Sangha Club";
+      const inpVpa = document.getElementById("mission-vpa-input");
+      const inpPayee = document.getElementById("mission-payee-input");
+      if (inpVpa) inpVpa.value = window.supportMissionVpa || "";
+      if (inpPayee) inpPayee.value = window.supportMissionPayee || "Kalikapur Nabin Sangha Club";
       openModal("edit-mission-vpa-modal");
     };
 
@@ -2322,7 +2324,7 @@ function saveData() {
       const payeeName = document.getElementById("mission-payee-input").value.trim() || "Kalikapur Nabin Sangha Club";
 
       if (!vpa || !vpa.includes("@")) {
-        alert("Please enter a valid UPI ID (e.g. username@bank).");
+        alert("Please enter a valid UPI ID (e.g. yourname@bank or 9876543210@paytm).");
         return;
       }
 
@@ -2337,15 +2339,17 @@ function saveData() {
           window.supportMissionVpa = data.supportMissionVpa;
           window.supportMissionPayee = data.payeeName;
           const el = document.getElementById("display-mission-vpa");
-          if (el) el.textContent = data.supportMissionVpa;
+          if (el) el.textContent = data.supportMissionVpa || "Not Configured";
           closeModal("edit-mission-vpa-modal");
-          alert(`Updated Support Mission UPI ID to: ${data.supportMissionVpa} (Saved in MongoDB Atlas)`);
+          alert(`Successfully updated Support Mission UPI ID to: ${data.supportMissionVpa}! (Saved in MongoDB)`);
+        } else {
+          alert("Error: " + (data.error || "Failed to update UPI ID"));
         }
       } catch (err) {
-        console.warn("[Mission VPA Save Error]:", err);
+        console.error("[Mission VPA Save Error]:", err);
+        alert("Error connecting to server. Please try again.");
       }
     };
-
         window.fetchAndRenderDonations = async function() {
           try {
             // Fetch Live Support Mission VPA Config from MongoDB
@@ -3824,9 +3828,10 @@ function saveData() {
             <span>📜 Detailed Contributions Ledger</span>
           </h3>
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="font-size:11px; color:var(--text-muted); font-weight:700;">💝 Support Mission UPI VPA:</span>
-            <span id="display-mission-vpa" class="font-mono" style="color:#fbbf24; font-weight:800; background:rgba(251,191,36,0.15); padding:3px 10px; border-radius:8px; border:1px solid rgba(251,191,36,0.35); font-size:12px;">7001865288@nyes</span>
-            <button type="button" onclick="openEditMissionVpaModal()" class="btn btn-secondary" style="padding:4px 10px; font-size:11px; color:#38bdf8; border-color:rgba(56,189,248,0.45); background:rgba(56,189,248,0.12); font-weight:800;" title="Edit Support Mission UPI ID">
+            <span id="display-mission-vpa" class="font-mono" style="color:#fbbf24; font-weight:800; background:rgba(251,191,36,0.15); padding:3px 10px; border-radius:8px; border:1px solid rgba(251,191,36,0.35); font-size:12px;">Not Configured</span>
+            <button type="button" onclick="openEditMissionVpaModal()" class="btn btn-secondary" style="padding:4px 10px; font-size:11px; color:#38bdf8; border-color:rgba(56,189,248,0.45); background:rgba(56,189,248,0.12); font-weight:800; cursor:pointer;" title="Edit Support Mission UPI ID">
               ✏️ Edit UPI VPA
             </button>
           </div>
@@ -5146,6 +5151,35 @@ function saveData() {
         <div class="modal-foot">
           <button type="button" onclick="closeModal('plan-modal')" class="btn btn-secondary">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT SUPPORT MISSION UPI VPA MODAL -->
+  <div id="edit-mission-vpa-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width:460px;">
+      <div class="modal-head">
+        <h3 class="modal-title" style="color:#fbbf24; display:flex; align-items:center; gap:8px;">
+          <span>✏️ Edit Support Mission UPI ID</span>
+        </h3>
+        <button type="button" onclick="closeModal('edit-mission-vpa-modal')" class="modal-close">✕</button>
+      </div>
+      <form onsubmit="handleSaveMissionVpa(event)">
+        <div style="background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.3); border-radius:12px; padding:12px; margin-bottom:16px; font-size:12px; color:#fde68a;">
+          💡 <b>Notice:</b> Set your club's direct UPI ID specifically for the <b>💝 Support Mission [💝 Support & Donate]</b> public campaign QR code & instant mobile UPI payment links.
+        </div>
+        <div class="form-group">
+          <label class="form-label">Support Mission UPI ID (VPA) *</label>
+          <input type="text" id="mission-vpa-input" required placeholder="e.g. yourname@okhdfcbank or 9876543210@paytm" class="form-input font-mono" style="color:#fbbf24; font-weight:800; font-size:14px;">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Payee / Account Name</label>
+          <input type="text" id="mission-payee-input" placeholder="Kalikapur Nabin Sangha Club" class="form-input">
+        </div>
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('edit-mission-vpa-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:#4f46e5; font-weight:800;">💾 Save UPI ID</button>
         </div>
       </form>
     </div>
