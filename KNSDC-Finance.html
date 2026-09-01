@@ -2202,6 +2202,17 @@ function saveData() {
 
     // Portal Bootloader
     function init() {
+      // Immediately populate Support Mission VPA from storage & server
+      if (typeof window.syncMissionVpaUI === "function") window.syncMissionVpaUI();
+      fetch("/api/donations/config").then(r => r.json()).then(data => {
+        if (data && data.success && data.supportMissionVpa) {
+          window.supportMissionVpa = data.supportMissionVpa;
+          window.supportMissionPayee = data.payeeName || "Kalikapur Nabin Sangha Club";
+          localStorage.setItem("fp_support_mission_vpa", data.supportMissionVpa);
+          localStorage.setItem("fp_support_mission_payee", window.supportMissionPayee);
+          if (typeof window.syncMissionVpaUI === "function") window.syncMissionVpaUI();
+        }
+      }).catch(() => {});
       // Load Saved Theme (Light or Dark)
       const savedTheme = localStorage.getItem('fp_theme');
       if (savedTheme === 'light') {
@@ -2309,6 +2320,16 @@ function saveData() {
 
     window.supportMissionVpa = localStorage.getItem("fp_support_mission_vpa") || "";
     window.supportMissionPayee = localStorage.getItem("fp_support_mission_payee") || "Kalikapur Nabin Sangha Club";
+
+    window.syncMissionVpaUI = function() {
+      const vpa = window.supportMissionVpa || localStorage.getItem("fp_support_mission_vpa") || "";
+      const el = document.getElementById("display-mission-vpa");
+      if (el) {
+        el.textContent = vpa || "Not Configured";
+        el.style.color = vpa ? "var(--text)" : "var(--text-muted)";
+      }
+    };
+    setTimeout(window.syncMissionVpaUI, 100);
 
     window.openEditMissionVpaModal = function() {
       const inpVpa = document.getElementById("mission-vpa-input");

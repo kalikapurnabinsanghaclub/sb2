@@ -472,6 +472,9 @@ app.delete('/api/finance/transactions/:id', async (req, res) => {
 // ==========================================
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'zero_gateway_secret_key_8849';
 let currentSupportMissionVpa = process.env.UPI_VPA || '';
+const initState = loadState();
+if (initState.supportMissionVpa) currentSupportMissionVpa = initState.supportMissionVpa;
+if (initState.supportMissionPayee) currentPayeeName = initState.supportMissionPayee;
 let currentPayeeName = process.env.PAYEE_NAME || 'Kalikapur Nabin Sangha Club';
 
 // Load saved Mission VPA from MongoDB on start
@@ -523,6 +526,11 @@ app.post('/api/donations/config', async (req, res) => {
       console.log(`[MongoDB] Updated Support Mission UPI VPA: ${currentSupportMissionVpa}`);
     }
 
+    // Also save to state file for offline resilience
+    const st = loadState();
+    st.supportMissionVpa = currentSupportMissionVpa;
+    st.supportMissionPayee = currentPayeeName;
+    saveState(st);
     res.json({ success: true, supportMissionVpa: currentSupportMissionVpa, payeeName: currentPayeeName });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
