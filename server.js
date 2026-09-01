@@ -769,6 +769,76 @@ app.delete('/api/donations/:orderId', async (req, res) => {
   }
 });
 
+// 9. ASSET & LOCKER BOOKINGS ENDPOINTS
+app.get('/api/assets/bookings', async (req, res) => {
+  try {
+    if (db) {
+      const bookings = await db.collection('asset_bookings').find({}).sort({ createdAt: -1 }).toArray();
+      const assets = await db.collection('club_assets').find({}).toArray();
+      return res.json({ success: true, bookings, assets });
+    }
+    res.json({ success: true, bookings: [], assets: [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/assets/bookings', async (req, res) => {
+  try {
+    const booking = req.body;
+    booking.createdAt = booking.createdAt ? new Date(booking.createdAt) : new Date();
+    booking.id = booking.id || ('AB-' + Date.now());
+    if (db) {
+      await db.collection('asset_bookings').insertOne(booking);
+      // Auto record rental income in finance transactions
+      if (booking.rentAmount > 0) {
+        await db.collection('finance_transactions').insertOne({
+          id: 'TX-RNT-' + Date.now(),
+          title: 'Asset/Locker Rent: ' + (booking.assetName || 'Locker'),
+          amount: Number(booking.rentAmount) || 0,
+          type: 'income',
+          category: 'Asset / Locker Rent',
+          paymentMethod: booking.paymentMethod || 'UPI',
+          refNo: booking.id,
+          date: new Date().toISOString().split('T')[0],
+          payerOrCustomer: booking.memberName || 'Club Member',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+    }
+    res.json({ success: true, booking });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/assets/bookings/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const update = req.body;
+    update.updatedAt = new Date();
+    if (db) {
+      await db.collection('asset_bookings').updateOne({ id }, { $set: update });
+    }
+    res.json({ success: true, id, update });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/assets/bookings/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (db) {
+      await db.collection('asset_bookings').deleteOne({ id });
+    }
+    res.json({ success: true, message: `Deleted asset booking ${id}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 8. WebSocket Health Check
 app.get('/api/ws-ping', (req, res) => {
   res.json({ status: 'ok', wsClients: wsClients.size, wsPath: '/ws' });

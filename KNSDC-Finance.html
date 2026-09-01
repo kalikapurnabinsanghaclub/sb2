@@ -286,7 +286,7 @@
     // 1. TOP-LEVEL NAV FUNCTION
     window.nav = function(tabName) {
       console.log('Navigating to:', tabName);
-      var panels = ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'custom-fields', 'donations'];
+      var panels = ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'assets', 'donations'];
       panels.forEach(function(p) {
         var el = document.getElementById('view-' + p);
         var btn = document.getElementById('tab-' + p);
@@ -302,7 +302,7 @@
         else if (tabName === 'members' && typeof renderMembers === 'function') renderMembers();
         else if (tabName === 'plans' && typeof renderPlans === 'function') renderPlans();
         else if (tabName === 'earnings' && typeof renderEarnings === 'function') renderEarnings();
-        else if (tabName === 'custom-fields' && typeof renderCustomFields === 'function') renderCustomFields();
+        else if (tabName === 'assets' && typeof renderAssetsPanel === 'function') renderAssetsPanel();
         else if (tabName === 'donations' && typeof renderDonationsPanel === 'function') renderDonationsPanel();
         else if (tabName === 'donations' && typeof renderDonationsPanel === 'function') renderDonationsPanel();
       } catch(err) {
@@ -389,7 +389,7 @@
         else if (tabName === 'members') renderMembers();
         else if (tabName === 'plans') renderPlans();
         else if (tabName === 'earnings') renderEarnings();
-        else if (tabName === 'custom-fields') renderCustomFields();
+        else if (tabName === 'assets') renderAssetsPanel();
         else if (tabName === 'donations') renderDonationsPanel();
       } catch(err) {
         console.error('Render error in tab ' + tabName + ':', err);
@@ -2417,6 +2417,390 @@ function saveData() {
           openModal('supporter-pass-modal');
         };
 
+        // ══════════════════════════════════════════
+        // 6. ASSETS & LOCKER BOOKINGS ENGINE
+        // ══════════════════════════════════════════
+        const defaultAssets = [
+          { id: 'ast-l1', name: 'Locker #L-01', category: 'Locker', code: 'L-01', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l2', name: 'Locker #L-02', category: 'Locker', code: 'L-02', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l3', name: 'Locker #L-03', category: 'Locker', code: 'L-03', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l4', name: 'Locker #L-04', category: 'Locker', code: 'L-04', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l5', name: 'Locker #L-05', category: 'Locker', code: 'L-05', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l6', name: 'Locker #L-06', category: 'Locker', code: 'L-06', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l7', name: 'Locker #L-07', category: 'Locker', code: 'L-07', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l8', name: 'Locker #L-08', category: 'Locker', code: 'L-08', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l9', name: 'Locker #L-09', category: 'Locker', code: 'L-09', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-l10', name: 'Locker #L-10', category: 'Locker', code: 'L-10', defaultFee: 100, defaultDeposit: 0 },
+          { id: 'ast-hall', name: 'Club Community Hall & Stage', category: 'Hall', code: 'HALL-1', defaultFee: 2000, defaultDeposit: 500 },
+          { id: 'ast-sound', name: 'Club Sound System & Mic Set', category: 'Electronics', code: 'SND-1', defaultFee: 800, defaultDeposit: 200 },
+          { id: 'ast-cricket', name: 'Club Cricket Team Match Kit', category: 'Sports Gear', code: 'CRK-1', defaultFee: 300, defaultDeposit: 0 }
+        ];
+
+        window.clubAssets = JSON.parse(localStorage.getItem('fp_assets')) || defaultAssets;
+        window.assetBookings = JSON.parse(localStorage.getItem('fp_asset_bookings')) || [];
+
+        window.fetchAssetsAndBookings = async function() {
+          try {
+            const res = await fetch('/api/assets/bookings');
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success) {
+                if (Array.isArray(data.assets) && data.assets.length > 0) {
+                  window.clubAssets = data.assets;
+                  localStorage.setItem('fp_assets', JSON.stringify(data.assets));
+                }
+                if (Array.isArray(data.bookings)) {
+                  window.assetBookings = data.bookings;
+                  localStorage.setItem('fp_asset_bookings', JSON.stringify(data.bookings));
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[Assets Sync]:', e);
+          }
+          renderAssetsPanel();
+        };
+
+        window.renderAssetsPanel = function() {
+          const assets = window.clubAssets || [];
+          const bookings = window.assetBookings || [];
+
+          // 1. Calculate Metrics
+          let activeLockersCount = 0;
+          let totalLockersCount = 0;
+          let activeRentalsCount = 0;
+          let totalRentalRevenue = 0;
+
+          const activeBookingsMap = new Map();
+
+          bookings.forEach(b => {
+            if (b.status === 'active') {
+              activeBookingsMap.set(b.assetId, b);
+              if (b.category === 'Locker') activeLockersCount++;
+              else activeRentalsCount++;
+            }
+            totalRentalRevenue += (Number(b.rentAmount) || 0);
+          });
+
+          assets.forEach(a => {
+            if (a.category === 'Locker') totalLockersCount++;
+          });
+
+          // Update DOM Stats
+          const elActL = document.getElementById('stat-active-lockers');
+          if (elActL) elActL.textContent = activeLockersCount;
+          const elTotL = document.getElementById('stat-total-lockers');
+          if (elTotL) elTotL.textContent = `${totalLockersCount} total lockers`;
+
+          const elActR = document.getElementById('stat-active-rentals');
+          if (elActR) elActR.textContent = activeRentalsCount;
+
+          const elRev = document.getElementById('stat-rental-revenue');
+          if (elRev) elRev.textContent = '₹' + totalRentalRevenue.toLocaleString('en-IN');
+
+          const elBCount = document.getElementById('stat-total-bookings-count');
+          if (elBCount) elBCount.textContent = `${bookings.length} bookings recorded`;
+
+          const elTotAst = document.getElementById('stat-total-assets-count');
+          if (elTotAst) elTotAst.textContent = assets.length;
+
+          // Update Tab Pill
+          const pill = document.getElementById('assets-tab-pill');
+          if (pill) pill.textContent = bookings.filter(x => x.status === 'active').length;
+
+          // 2. Render Visual Locker Grid
+          const lockerGrid = document.getElementById('lockers-visual-grid');
+          if (lockerGrid) {
+            const lockers = assets.filter(a => a.category === 'Locker');
+            lockerGrid.innerHTML = lockers.map(l => {
+              const activeBooking = activeBookingsMap.get(l.id);
+              const isOccupied = !!activeBooking;
+              const bgColor = isOccupied ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)';
+              const borderColor = isOccupied ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)';
+              const statusColor = isOccupied ? '#f87171' : '#34d399';
+              const occupant = isOccupied ? activeBooking.memberName : 'Available (Click to Book)';
+
+              return `
+                <div onclick="${isOccupied ? `alert('Locker ${l.name} is booked by ${activeBooking.memberName} (Phone: ${activeBooking.memberPhone || 'N/A'}) until ${activeBooking.endDate || 'active period'}')` : `openAddAssetBookingModal('${l.id}')`}" 
+                     style="background:${bgColor}; border:1px solid ${borderColor}; border-radius:12px; padding:10px; cursor:pointer; text-align:center; transition:transform 0.15s ease;">
+                  <div style="font-size:16px;">${isOccupied ? '🔒' : '🔓'}</div>
+                  <strong style="font-size:12px; color:#fff; display:block; margin-top:4px;">${l.name}</strong>
+                  <span style="font-size:10px; color:${statusColor}; font-weight:800; display:block; margin-top:2px;">${isOccupied ? 'Occupied' : '● FREE'}</span>
+                  <div style="font-size:9px; color:var(--text-muted); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${occupant}">${occupant}</div>
+                </div>
+              `;
+            }).join('');
+          }
+
+          // 3. Render Bookings Table
+          filterAssetBookings();
+        };
+
+        window.filterAssetBookings = function() {
+          const searchVal = (document.getElementById('assets-search')?.value || '').toLowerCase().trim();
+          const catFilter = document.getElementById('assets-category-filter')?.value || 'all';
+          const statusFilter = document.getElementById('assets-status-filter')?.value || 'all';
+          const bookings = window.assetBookings || [];
+
+          const filtered = bookings.filter(b => {
+            if (searchVal) {
+              const mName = (b.memberName || '').toLowerCase();
+              const phone = (b.memberPhone || '').toLowerCase();
+              const aName = (b.assetName || '').toLowerCase();
+              const bId = (b.id || '').toLowerCase();
+              if (!mName.includes(searchVal) && !phone.includes(searchVal) && !aName.includes(searchVal) && !bId.includes(searchVal)) {
+                return false;
+              }
+            }
+
+            if (catFilter !== 'all' && b.category !== catFilter) return false;
+            if (statusFilter !== 'all' && b.status !== statusFilter) return false;
+            return true;
+          });
+
+          const countEl = document.getElementById('assets-filtered-count');
+          if (countEl) countEl.textContent = filtered.length;
+
+          const tbody = document.getElementById('assets-bookings-tbody');
+          if (!tbody) return;
+
+          if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:32px; color:#64748b;">No asset or locker bookings recorded yet. Click "+ New Booking / Assign Locker" above!</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = filtered.map(b => {
+            const rentAmt = Number(b.rentAmount) || 0;
+            const depAmt = Number(b.depositAmount) || 0;
+            const isAct = b.status === 'active';
+            const statusBadge = isAct
+              ? '<span class="badge badge-paid">🟢 ACTIVE</span>'
+              : '<span class="badge" style="background:#1e293b; color:#94a3b8;">✅ RETURNED</span>';
+
+            const periodStr = (b.startDate ? b.startDate : '-') + ' to ' + (b.endDate ? b.endDate : 'Ongoing');
+
+            return `
+              <tr>
+                <td><strong class="font-mono" style="color:#818cf8; font-size:11px;">${b.id}</strong></td>
+                <td>
+                  <strong style="color:#fff;">${b.assetName || 'Locker'}</strong>
+                  ${b.notes ? `<div style="font-size:10px; color:var(--text-muted);">${b.notes}</div>` : ''}
+                </td>
+                <td><span class="badge badge-blue">${b.category || 'Asset'}</span></td>
+                <td>
+                  <strong style="color:#fff;">${b.memberName || 'Member'}</strong>
+                  ${b.memberPhone ? `<div style="font-size:11px; color:#94a3b8;">📱 ${b.memberPhone}</div>` : ''}
+                </td>
+                <td class="font-mono" style="color:var(--text-dim); font-size:11px;">${periodStr}</td>
+                <td><strong style="color:#34d399; font-size:13px;">₹${rentAmt.toLocaleString('en-IN')}</strong></td>
+                <td style="color:#fbbf24; font-size:11px;">${depAmt > 0 ? ('₹' + depAmt.toLocaleString('en-IN')) : '₹0'}</td>
+                <td>${statusBadge}</td>
+                <td style="text-align:right;">
+                  <div style="display:inline-flex; gap:6px;">
+                    <button type="button" onclick="openAssetReceiptModal('${b.id}')" class="btn" style="padding:4px 8px; font-size:11px; background:#1e293b; color:#fbbf24; border:1px solid rgba(251,191,36,0.3);" title="Print Receipt">
+                      🧾 Receipt
+                    </button>
+                    ${isAct ? `
+                      <button type="button" onclick="handleReturnAssetBooking('${b.id}')" class="btn" style="padding:4px 8px; font-size:11px; background:#1e293b; color:#34d399; border:1px solid rgba(52,211,153,0.3);" title="Mark Returned / Release Slot">
+                        🔄 Release
+                      </button>
+                    ` : ''}
+                    <button type="button" onclick="handleDeleteAssetBooking('${b.id}')" class="btn" style="padding:4px 6px; font-size:11px; background:#1e293b; color:#f87171; border:1px solid rgba(239,68,68,0.3);" title="Delete Record">
+                      🗑️
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('');
+        };
+
+        window.openAddAssetBookingModal = function(preselectedAssetId) {
+          const assets = window.clubAssets || [];
+          const activeBookings = (window.assetBookings || []).filter(x => x.status === 'active');
+          const occupiedAssetIds = new Set(activeBookings.map(b => b.assetId));
+
+          const assetSel = document.getElementById('ab-asset-id');
+          if (assetSel) {
+            assetSel.innerHTML = assets.map(a => {
+              const isOcc = occupiedAssetIds.has(a.id);
+              const occTag = isOcc ? ' (🔴 Occupied)' : ' (🟢 Available)';
+              return `<option value="${a.id}" ${isOcc ? 'disabled' : ''} ${a.id === preselectedAssetId ? 'selected' : ''}>${a.name} — ${a.category}${occTag}</option>`;
+            }).join('');
+          }
+
+          // Populate Members dropdown
+          const memSel = document.getElementById('ab-member-id');
+          if (memSel) {
+            let mOpts = '<option value="">-- Select Enrolled Club Member --</option>';
+            members.forEach(m => {
+              mOpts += `<option value="${m.id}">${m.name} (${m.phone || 'No phone'})</option>`;
+            });
+            mOpts += '<option value="custom">➕ Other / Non-member Walk-in</option>';
+            memSel.innerHTML = mOpts;
+          }
+
+          const targetAsset = assets.find(a => a.id === (preselectedAssetId || assetSel?.value)) || assets[0];
+          if (targetAsset) {
+            document.getElementById('ab-rent-amount').value = targetAsset.defaultFee || 100;
+            document.getElementById('ab-deposit-amount').value = targetAsset.defaultDeposit || 0;
+          }
+
+          document.getElementById('ab-id').value = 'AB-' + Math.floor(10000 + Math.random() * 90000);
+          document.getElementById('ab-start-date').value = new Date().toISOString().split('T')[0];
+          document.getElementById('ab-notes').value = '';
+
+          openModal('add-asset-booking-modal');
+        };
+
+        window.handleAssetSelectChange = function(assetId) {
+          const target = (window.clubAssets || []).find(a => a.id === assetId);
+          if (target) {
+            document.getElementById('ab-rent-amount').value = target.defaultFee || 100;
+            document.getElementById('ab-deposit-amount').value = target.defaultDeposit || 0;
+          }
+        };
+
+        window.handleAssetMemberSelectChange = function(memId) {
+          if (!memId || memId === 'custom') return;
+          const m = members.find(x => x.id === memId);
+          if (m) {
+            document.getElementById('ab-member-name').value = m.name;
+            document.getElementById('ab-member-phone').value = m.phone || '';
+          }
+        };
+
+        window.handleSaveAssetBooking = async function(e) {
+          e.preventDefault();
+          const id = document.getElementById('ab-id').value;
+          const assetId = document.getElementById('ab-asset-id').value;
+          const asset = (window.clubAssets || []).find(a => a.id === assetId);
+          const memberName = document.getElementById('ab-member-name').value.trim();
+          const memberPhone = document.getElementById('ab-member-phone').value.trim();
+          const rentAmount = Number(document.getElementById('ab-rent-amount').value) || 0;
+          const depositAmount = Number(document.getElementById('ab-deposit-amount').value) || 0;
+          const startDate = document.getElementById('ab-start-date').value;
+          const endDate = document.getElementById('ab-end-date').value;
+          const paymentMethod = document.getElementById('ab-payment-method').value;
+          const notes = document.getElementById('ab-notes').value.trim();
+
+          const bookingDoc = {
+            id,
+            assetId,
+            assetName: asset ? asset.name : 'Locker',
+            category: asset ? asset.category : 'Locker',
+            memberName,
+            memberPhone,
+            rentAmount,
+            depositAmount,
+            startDate,
+            endDate,
+            paymentMethod,
+            notes,
+            status: 'active',
+            createdAt: new Date()
+          };
+
+          try {
+            await fetch('/api/assets/bookings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(bookingDoc)
+            });
+          } catch (err) {}
+
+          if (!window.assetBookings) window.assetBookings = [];
+          window.assetBookings.unshift(bookingDoc);
+          localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
+
+          closeModal('add-asset-booking-modal');
+          renderAssetsPanel();
+          alert(`Recorded booking ${id} for ${bookingDoc.assetName} by ${memberName}!`);
+        };
+
+        window.openAddAssetModal = function() {
+          document.getElementById('ast-name').value = '';
+          document.getElementById('ast-code').value = '';
+          document.getElementById('ast-fee').value = 100;
+          document.getElementById('ast-deposit').value = 0;
+          openModal('add-asset-modal');
+        };
+
+        window.handleSaveAsset = function(e) {
+          e.preventDefault();
+          const name = document.getElementById('ast-name').value.trim();
+          const category = document.getElementById('ast-category').value;
+          const code = document.getElementById('ast-code').value.trim() || ('AST-' + Date.now().toString().slice(-4));
+          const defaultFee = Number(document.getElementById('ast-fee').value) || 0;
+          const defaultDeposit = Number(document.getElementById('ast-deposit').value) || 0;
+
+          const newAsset = {
+            id: 'ast-' + Date.now(),
+            name,
+            category,
+            code,
+            defaultFee,
+            defaultDeposit
+          };
+
+          if (!window.clubAssets) window.clubAssets = [];
+          window.clubAssets.push(newAsset);
+          localStorage.setItem('fp_assets', JSON.stringify(window.clubAssets));
+
+          closeModal('add-asset-modal');
+          renderAssetsPanel();
+          alert(`Added new asset "${name}" to club inventory!`);
+        };
+
+        window.handleReturnAssetBooking = async function(bookingId) {
+          if (!confirm(`Mark booking ${bookingId} as returned and release the locker/asset?`)) return;
+
+          const item = (window.assetBookings || []).find(b => b.id === bookingId);
+          if (item) {
+            item.status = 'completed';
+            item.returnedAt = new Date().toISOString().split('T')[0];
+            try {
+              await fetch(`/api/assets/bookings/${bookingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'completed', returnedAt: item.returnedAt })
+              });
+            } catch (e) {}
+            localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
+            renderAssetsPanel();
+          }
+        };
+
+        window.handleDeleteAssetBooking = async function(bookingId) {
+          if (!confirm(`Delete record ${bookingId}?`)) return;
+
+          try {
+            await fetch(`/api/assets/bookings/${bookingId}`, { method: 'DELETE' });
+          } catch (e) {}
+
+          window.assetBookings = (window.assetBookings || []).filter(b => b.id !== bookingId);
+          localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
+          renderAssetsPanel();
+        };
+
+        window.openAssetReceiptModal = function(bookingId) {
+          const b = (window.assetBookings || []).find(x => x.id === bookingId);
+          if (!b) return;
+
+          document.getElementById('ar-id').textContent = b.id;
+          document.getElementById('ar-asset').textContent = b.assetName || 'Locker';
+          document.getElementById('ar-member').textContent = b.memberName || 'Club Member';
+          document.getElementById('ar-phone').textContent = b.memberPhone || 'N/A';
+          document.getElementById('ar-period').textContent = (b.startDate || '-') + ' to ' + (b.endDate || 'Ongoing');
+          document.getElementById('ar-deposit').textContent = '₹' + (Number(b.depositAmount) || 0).toLocaleString('en-IN');
+          document.getElementById('ar-amount').textContent = '₹' + (Number(b.rentAmount) || 0).toLocaleString('en-IN');
+
+          openModal('asset-receipt-modal');
+        };
+
+        // Fetch Assets & Bookings on Initialization
+        fetchAssetsAndBookings();
+
         // Fetch donations during initialization
         fetchAndRenderDonations();
 
@@ -2494,8 +2878,9 @@ function saveData() {
         <button type="button" onclick="nav('earnings')" id="tab-earnings" class="tab-btn">
           <span>💵 Earnings &amp; Spending</span>
         </button>
-        <button type="button" onclick="nav('custom-fields')" id="tab-custom-fields" class="tab-btn">
-          <span>📑 Custom Fields</span>
+        <button type="button" onclick="nav('assets')" id="tab-assets" class="tab-btn" style="border: 1px solid rgba(129,140,248,0.4); background: rgba(99,102,241,0.12); color:#a5b4fc; font-weight:700;">
+          <span>🏢 Assets &amp; Rentals</span>
+          <span class="tab-pill" id="assets-tab-pill" style="background:#4f46e5; color:#fff; font-weight:900;">0</span>
         </button>
         <button type="button" onclick="nav('donations')" id="tab-donations" class="tab-btn" style="border: 1.5px solid #E91E8C !important; background: rgba(233,30,140,0.2) !important; color:#ff70ba !important; font-weight:800;">
           <span>💝 Event &amp; Mission Donations</span>
@@ -2888,45 +3273,129 @@ function saveData() {
 
     </div>
 
-    <!-- 6. CUSTOM FIELDS VIEW -->
-    <div id="view-custom-fields" class="view-panel">
-      <div class="section-header">
+<!-- 6. ASSETS, LOCKER BOOKINGS & RENTALS VIEW -->
+    <div id="view-assets" class="view-panel">
+      <!-- Section Header -->
+      <div class="section-header" style="background: linear-gradient(135deg, rgba(79,70,229,0.18), rgba(99,102,241,0.12), rgba(15,23,42,0.95)); border: 1.5px solid rgba(99,102,241,0.35);">
         <div>
-          <h1 class="section-title"><span>📑 Custom Form Fields Configuration</span></h1>
-          <p class="section-sub">Create and manage custom metadata fields for Member Profiles and Club Transactions.</p>
+          <h1 class="section-title" style="color: #fff; display:flex; align-items:center; gap:10px;">
+            <span>🏢 Club Assets, Lockers &amp; Facility Rentals</span>
+            <span class="badge badge-blue">Member Facility Bookings</span>
+          </h1>
+          <p class="section-sub" style="color: #cbd5e1;">Manage member locker allocations, equipment rent, community hall bookings, and rental revenue.</p>
         </div>
-        <button type="button" onclick="openAddCustomFieldModal()" class="btn btn-primary" style="font-size:12px; font-weight:800;">
-          ➕ Add Custom Field
-        </button>
-      </div>
-
-      <div class="grid-2">
-        <!-- Member Profile Fields Card -->
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3 style="font-size:15px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
-              <span>👤 Member Profile Custom Fields</span>
-            </h3>
-            <span class="badge badge-blue" id="count-member-fields">0 Fields</span>
-          </div>
-          <div id="member-custom-fields-list" style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
-            <!-- Rendered via JS -->
-          </div>
-        </div>
-
-        <!-- Transaction & Spending Fields Card -->
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3 style="font-size:15px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
-              <span>💵 Transaction & Spending Custom Fields</span>
-            </h3>
-            <span class="badge badge-paid" id="count-trans-fields">0 Fields</span>
-          </div>
-          <div id="trans-custom-fields-list" style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
-            <!-- Rendered via JS -->
-          </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button type="button" onclick="openAddAssetModal()" class="btn btn-secondary" style="font-size:12px; font-weight:700;">
+            ⚙️ + Add Asset to Inventory
+          </button>
+          <button type="button" onclick="openAddAssetBookingModal()" class="btn btn-primary" style="background:linear-gradient(135deg,#4f46e5,#7c3aed); font-size:12px; font-weight:800; border:none; box-shadow:0 4px 14px rgba(79,70,229,0.4);">
+            📦 + New Booking / Assign Locker
+          </button>
         </div>
       </div>
+
+      <!-- 4 Stat Summary Cards -->
+      <div class="grid-4" style="margin-bottom: 20px;">
+        <div class="card" style="border-left: 4px solid #3b82f6; background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label"><span>Active Locker Bookings</span> <span>🔒</span></div>
+          <div class="stat-value" id="stat-active-lockers" style="color: #60a5fa;">0</div>
+          <div class="stat-meta"><span id="stat-total-lockers">0 total lockers</span> <span style="color:#60a5fa; font-weight:700;">Club Lockers</span></div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #a855f7; background: linear-gradient(135deg, rgba(168,85,247,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label"><span>Facility &amp; Gear Rentals</span> <span>🎪</span></div>
+          <div class="stat-value" id="stat-active-rentals" style="color: #c084fc;">0</div>
+          <div class="stat-meta"><span>Hall, Stage, Sports Gear</span> <span style="color:#a855f7; font-weight:700;">Active Rent</span></div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #10b981; background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label"><span>Total Rental Revenue</span> <span>💰</span></div>
+          <div class="stat-value" id="stat-rental-revenue" style="color: #34d399;">₹0</div>
+          <div class="stat-meta"><span id="stat-total-bookings-count">0 bookings recorded</span> <span style="color:#10b981; font-weight:700;">Credited</span></div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #f59e0b; background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(15,23,42,0.9));">
+          <div class="stat-label"><span>Total Club Assets</span> <span>📦</span></div>
+          <div class="stat-value" id="stat-total-assets-count" style="color: #fbbf24;">0</div>
+          <div class="stat-meta"><span>Inventory Units</span> <span style="color:#f59e0b; font-weight:700;">KNSDC Assets</span></div>
+        </div>
+      </div>
+
+      <!-- Visual Locker Allocation Grid -->
+      <div class="card" style="margin-bottom: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+          <div>
+            <h3 style="font-size:15px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
+              <span>🔒 Member Lockers Grid (1-Click Booking &amp; Status)</span>
+            </h3>
+            <p style="font-size:11px; color:var(--text-muted);">Click any green available locker to assign it to a member instantly.</p>
+          </div>
+          <div style="display:flex; gap:12px; font-size:11px; font-weight:700;">
+            <span style="display:flex; align-items:center; gap:5px; color:#34d399;"><span style="width:10px; height:10px; border-radius:50%; background:#10b981;"></span> Available</span>
+            <span style="display:flex; align-items:center; gap:5px; color:#f87171;"><span style="width:10px; height:10px; border-radius:50%; background:#ef4444;"></span> Occupied / Booked</span>
+          </div>
+        </div>
+        <div id="lockers-visual-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; max-height:260px; overflow-y:auto; padding:6px 0;">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- Controls & Filter Bar -->
+      <div class="controls-bar">
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+          <input type="text" id="assets-search" oninput="filterAssetBookings()" placeholder="🔍 Search member, locker #, asset, phone..." class="input-control" style="min-width: 260px;">
+          
+          <select id="assets-category-filter" onchange="filterAssetBookings()" class="input-control" style="min-width: 170px;">
+            <option value="all">🎪 All Categories</option>
+            <option value="Locker">🔒 Lockers</option>
+            <option value="Hall">🏛️ Community Hall &amp; Stage</option>
+            <option value="Sports Gear">🏏 Sports Equipment &amp; Kits</option>
+            <option value="Electronics">🔊 Sound, Lights &amp; Tech</option>
+            <option value="Furniture">⛺ Event Tents, Tables &amp; Chairs</option>
+          </select>
+
+          <select id="assets-status-filter" onchange="filterAssetBookings()" class="input-control" style="min-width: 150px;">
+            <option value="all">📊 All Statuses</option>
+            <option value="active">🟢 Active / Occupied</option>
+            <option value="completed">✅ Returned / Released</option>
+          </select>
+        </div>
+
+        <div style="font-size:12px; color:var(--text-muted); font-weight:700;">
+          Showing <strong id="assets-filtered-count" style="color:#fff;">0</strong> records
+        </div>
+      </div>
+
+      <!-- Detailed Bookings Ledger Table -->
+      <div class="table-card">
+        <div class="table-header" style="background: rgba(15,23,42,0.8);">
+          <h3 style="font-size:14px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
+            <span>📜 Member Asset &amp; Locker Bookings Ledger</span>
+          </h3>
+          <span style="font-size:11px; color:#94a3b8;">Automated receipt generation &amp; treasury sync</span>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Booking ID</th>
+                <th>Asset / Locker</th>
+                <th>Category</th>
+                <th>Booked By (Member)</th>
+                <th>Period / Dates</th>
+                <th>Rent Fee (₹)</th>
+                <th>Security Deposit</th>
+                <th>Status</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="assets-bookings-tbody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
 
   </main>
@@ -3200,6 +3669,177 @@ function saveData() {
 
         <div style="font-size:10px; color:#64748b; margin-top:14px;">
           Thank you for strengthening our cultural legacy &amp; community events.
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <!-- ADD / EDIT ASSET BOOKING MODAL -->
+  <div id="add-asset-booking-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title">📦 Member Asset / Locker Booking</h3>
+        <button type="button" onclick="closeModal('add-asset-booking-modal')" class="modal-close">✕</button>
+      </div>
+      <form onsubmit="handleSaveAssetBooking(event)">
+        <input type="hidden" id="ab-id">
+
+        <!-- Select Asset or Locker -->
+        <div class="form-group">
+          <label class="form-label">Select Locker or Club Asset *</label>
+          <select id="ab-asset-id" onchange="handleAssetSelectChange(this.value)" required class="form-input" style="font-weight:700; color:#fff; background:#1e293b;">
+            <!-- Options populated dynamically -->
+          </select>
+        </div>
+
+        <!-- Select Member -->
+        <div class="form-group">
+          <label class="form-label">Club Member (Booked By) *</label>
+          <select id="ab-member-id" onchange="handleAssetMemberSelectChange(this.value)" class="form-input" style="font-weight:700; color:#fff;">
+            <!-- Options populated dynamically -->
+          </select>
+        </div>
+
+        <!-- Custom Member Name & Phone fallback if not in directory -->
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Member / Renter Name *</label>
+            <input type="text" id="ab-member-name" required placeholder="Member name" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">WhatsApp Phone Number</label>
+            <input type="tel" id="ab-member-phone" placeholder="e.g. 7001865288" class="form-input">
+          </div>
+        </div>
+
+        <!-- Rent Amount & Security Deposit -->
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Rent Fee (₹ INR) *</label>
+            <input type="number" id="ab-rent-amount" required min="0" step="1" placeholder="e.g. 100" class="form-input" style="color:#34d399; font-weight:800; font-size:15px;">
+          </div>
+          <div>
+            <label class="form-label">Security Deposit (₹ Refundable)</label>
+            <input type="number" id="ab-deposit-amount" min="0" step="1" value="0" placeholder="0" class="form-input">
+          </div>
+        </div>
+
+        <!-- Booking Dates -->
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Start Date *</label>
+            <input type="date" id="ab-start-date" required class="form-input">
+          </div>
+          <div>
+            <label class="form-label">End / Renewal Date</label>
+            <input type="date" id="ab-end-date" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Payment Method</label>
+          <select id="ab-payment-method" class="form-input">
+            <option value="UPI">⚡ UPI (7001865288@nyes)</option>
+            <option value="Cash">💵 Cash</option>
+            <option value="Cheque / Bank">🏦 Bank Transfer</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Notes / Key Number / Remarks</label>
+          <input type="text" id="ab-notes" placeholder="e.g. Key #12 handed over, ground pitch booking" class="form-input">
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-asset-booking-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:linear-gradient(135deg,#4f46e5,#7c3aed); border:none; font-weight:800;">
+            💾 Confirm &amp; Save Booking
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD ASSET INVENTORY ITEM MODAL -->
+  <div id="add-asset-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 class="modal-title">⚙️ Add Asset / Locker to Inventory</h3>
+        <button type="button" onclick="closeModal('add-asset-modal')" class="modal-close">✕</button>
+      </div>
+      <form onsubmit="handleSaveAsset(event)">
+        <div class="form-group">
+          <label class="form-label">Asset / Locker Name *</label>
+          <input type="text" id="ast-name" required placeholder="e.g. Locker L-05 / Club Sound System / Ground Stage" class="form-input">
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Asset Category *</label>
+            <select id="ast-category" class="form-input" style="font-weight:700; color:#fff;">
+              <option value="Locker">🔒 Locker</option>
+              <option value="Hall">🏛️ Community Hall / Stage</option>
+              <option value="Sports Gear">🏏 Sports Equipment &amp; Kit</option>
+              <option value="Electronics">🔊 Sound, Lights &amp; Tech</option>
+              <option value="Furniture">⛺ Event Tents, Tables &amp; Chairs</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Locker / Unit Code</label>
+            <input type="text" id="ast-code" placeholder="e.g. L-05 / HAL-1" class="form-input">
+          </div>
+        </div>
+
+        <div class="form-row form-group">
+          <div>
+            <label class="form-label">Default Rent Fee (₹)</label>
+            <input type="number" id="ast-fee" min="0" value="100" class="form-input" style="color:#34d399; font-weight:800;">
+          </div>
+          <div>
+            <label class="form-label">Default Security Deposit (₹)</label>
+            <input type="number" id="ast-deposit" min="0" value="0" class="form-input">
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" onclick="closeModal('add-asset-modal')" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="font-weight:800;">💾 Add Asset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ASSET BOOKING RECEIPT PRINT MODAL -->
+  <div id="asset-receipt-modal" class="modal-overlay print-modal">
+    <div class="modal-box" style="max-width:480px;">
+      <div class="modal-head no-print">
+        <h3 class="modal-title">🧾 Locker &amp; Asset Rental Receipt</h3>
+        <div style="display:flex; gap:6px;">
+          <button onclick="window.print()" class="btn btn-primary">🖨️ Print</button>
+          <button type="button" onclick="closeModal('asset-receipt-modal')" class="modal-close">✕</button>
+        </div>
+      </div>
+
+      <div style="background:#090f1d; padding:20px; border-radius:16px; border:1px solid var(--border);">
+        <div style="text-align:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
+            <img src="logo.png" alt="Logo" style="width:34px; height:34px; border-radius:50%; object-fit:cover;">
+            <h2 style="font-size:16px; font-weight:800; color:#fff;">Kalikapur Nabin Sangha (KNSDC)</h2>
+          </div>
+          <div style="font-size:11px; color:#818cf8; font-weight:800; text-transform:uppercase;">Official Locker &amp; Rental Allocation Receipt</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Booking Ref:</span> <span id="ar-id" class="font-mono" style="font-weight:700; color:#818cf8;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Asset / Locker:</span> <strong id="ar-asset" style="color:#fff;">-</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Member:</span> <strong id="ar-member" style="color:#fff;">-</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Contact:</span> <span id="ar-phone" style="color:var(--text-muted);">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Rental Period:</span> <span id="ar-period" style="color:#fff;">-</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Security Deposit:</span> <span id="ar-deposit" style="color:#fbbf24;">₹0</span></div>
+          <div style="display:flex; justify-content:space-between; border-top:1px solid var(--border); padding-top:8px; font-size:14px;">
+            <span style="font-weight:700; color:#fff;">Rent Fee Paid:</span>
+            <strong id="ar-amount" style="color:#34d399; font-size:16px;">₹0</strong>
+          </div>
         </div>
       </div>
     </div>
