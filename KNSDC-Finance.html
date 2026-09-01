@@ -2656,46 +2656,61 @@ function saveData() {
             }
           }
 
-          // 2. Render Catalog Table
+          // 2. Render Catalog Table with Dedicated Search & Edit/Delete Actions (Green Box)
           const catalogTbody = document.getElementById('lib-catalog-tbody');
           if (catalogTbody) {
+            const catSearchVal = (document.getElementById('lib-catalog-search')?.value || searchVal || '').toLowerCase().trim();
             const filteredBooks = books.filter(b => {
-              if (searchVal) {
+              if (catSearchVal) {
                 const bTitle = (b.title || '').toLowerCase();
                 const bAuthor = (b.author || '').toLowerCase();
                 const bCode = (b.code || '').toLowerCase();
-                if (!bTitle.includes(searchVal) && !bAuthor.includes(searchVal) && !bCode.includes(searchVal)) return false;
+                if (!bTitle.includes(catSearchVal) && !bAuthor.includes(catSearchVal) && !bCode.includes(catSearchVal)) return false;
               }
               if (catFilter !== 'all' && b.category !== catFilter) return false;
               return true;
             });
 
-            catalogTbody.innerHTML = filteredBooks.map(b => {
-              const activeIssuedCount = (window.bookIssues || []).filter(x => x.bookId === b.id && x.status === 'issued').length;
-              const totalCopies = Number(b.totalCopies) || 1;
-              const avail = Math.max(0, totalCopies - activeIssuedCount);
-              const availColor = avail > 0 ? '#34d399' : '#f87171';
+            if (filteredBooks.length === 0) {
+              catalogTbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;">No books found matching search. Click "+ Add Title" to add a new book!</td></tr>';
+            } else {
+              catalogTbody.innerHTML = filteredBooks.map(b => {
+                const activeIssuedCount = (window.bookIssues || []).filter(x => x.bookId === b.id && x.status === 'issued').length;
+                const totalCopies = Number(b.totalCopies) || 1;
+                const avail = Math.max(0, totalCopies - activeIssuedCount);
+                const availColor = avail > 0 ? '#34d399' : '#f87171';
 
-              return `
-                <tr>
-                  <td><strong class="font-mono" style="color:#818cf8; font-size:11px;">${b.code || 'BK'}</strong></td>
-                  <td>
-                    <strong style="color:#fff;">${b.title}</strong>
-                    <div style="font-size:11px; color:var(--text-muted);">by ${b.author}</div>
-                  </td>
-                  <td><span class="badge badge-blue">${b.category}</span></td>
-                  <td>${totalCopies} copies</td>
-                  <td><strong style="color:${availColor};">${avail} available</strong></td>
-                  <td>${(b.fee > 0) ? ('₹' + b.fee) : 'Free'}</td>
-                  <td style="text-align:right;">
-                    <button type="button" onclick="openIssueBookModal('${b.id}')" ${avail <= 0 ? 'disabled' : ''} class="btn" style="padding:4px 8px; font-size:11px; background:#4f46e5; color:#fff; border:none;" title="Issue this book">
-                      📖 Issue
-                    </button>
-                  </td>
-                </tr>
-              `;
-            }).join('');
+                return `
+                  <tr>
+                    <td><strong class="font-mono" style="color:#818cf8; font-size:11px;">${b.code || 'BK'}</strong></td>
+                    <td>
+                      <strong style="color:#fff;">${b.title}</strong>
+                      <div style="font-size:11px; color:var(--text-muted);">by ${b.author}</div>
+                    </td>
+                    <td><span class="badge badge-blue">${b.category}</span></td>
+                    <td>${totalCopies} copies</td>
+                    <td><strong style="color:${availColor};">${avail} available</strong></td>
+                    <td>${(b.fee > 0) ? ('₹' + b.fee) : 'Free'}</td>
+                    <!-- GREEN BOX: ACTIONS WITH ISSUE, EDIT, DELETE -->
+                    <td style="text-align:right;">
+                      <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+                        <button type="button" onclick="openIssueBookModal('${b.id}')" ${avail <= 0 ? 'disabled' : ''} class="btn" style="padding:4px 8px; font-size:11px; background:#4f46e5; color:#fff; border:none; font-weight:700;" title="Issue this book to member">
+                          📖 Issue
+                        </button>
+                        <button type="button" onclick="editBook('${b.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px; color:#818cf8; border-color:rgba(129,140,248,0.4);" title="Edit Book Details">
+                          ✏️ Edit
+                        </button>
+                        <button type="button" onclick="deleteBook('${b.id}')" class="btn" style="padding:4px 6px; font-size:11px; background:#1e293b; color:#f87171; border:1px solid rgba(239,68,68,0.3);" title="Delete Book from Catalog">
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('');
+            }
           }
+
         };
 
         window.renderLockerBookingsTable = function() {
@@ -2750,18 +2765,56 @@ function saveData() {
           }).join('');
         };
 
-        // Book Actions
+        // Book Actions: Add, Edit, Delete, Save
         window.openAddBookModal = function() {
+          document.getElementById('bk-modal-title').textContent = '📖 Add New Book to Library Catalog';
+          document.getElementById('bk-id').value = 'bk-' + Date.now();
           document.getElementById('bk-title').value = '';
           document.getElementById('bk-author').value = '';
           document.getElementById('bk-code').value = 'BK-' + Math.floor(100 + Math.random() * 900);
+          document.getElementById('bk-category').value = 'Mathematics';
           document.getElementById('bk-copies').value = 2;
           document.getElementById('bk-fee').value = 0;
           openModal('add-book-modal');
         };
 
+        window.editBook = function(bookId) {
+          const b = (window.clubBooks || []).find(x => x.id === bookId);
+          if (!b) return;
+
+          document.getElementById('bk-modal-title').textContent = `✏️ Edit "${b.title}"`;
+          document.getElementById('bk-id').value = b.id;
+          document.getElementById('bk-title').value = b.title;
+          document.getElementById('bk-author').value = b.author;
+          document.getElementById('bk-code').value = b.code || '';
+          document.getElementById('bk-category').value = b.category || 'Mathematics';
+          document.getElementById('bk-copies').value = b.totalCopies || 1;
+          document.getElementById('bk-fee').value = b.fee || 0;
+
+          openModal('add-book-modal');
+        };
+
+        window.deleteBook = function(bookId) {
+          const b = (window.clubBooks || []).find(x => x.id === bookId);
+          if (!b) return;
+
+          // Check if any copy is currently issued
+          const activeIssued = (window.bookIssues || []).filter(x => x.bookId === bookId && x.status === 'issued');
+          if (activeIssued.length > 0) {
+            alert(`Cannot delete "${b.title}" because ${activeIssued.length} copy(ies) are currently issued to members. Please mark them returned first.`);
+            return;
+          }
+
+          if (confirm(`Delete "${b.title}" (${b.code || 'BK'}) from library catalog?`)) {
+            window.clubBooks = (window.clubBooks || []).filter(x => x.id !== bookId);
+            localStorage.setItem('fp_library_books', JSON.stringify(window.clubBooks));
+            renderAssetsPanel();
+          }
+        };
+
         window.handleSaveBook = function(e) {
           e.preventDefault();
+          const id = document.getElementById('bk-id').value || ('bk-' + Date.now());
           const title = document.getElementById('bk-title').value.trim();
           const author = document.getElementById('bk-author').value.trim();
           const code = document.getElementById('bk-code').value.trim() || ('BK-' + Date.now().toString().slice(-4));
@@ -2769,25 +2822,21 @@ function saveData() {
           const totalCopies = Number(document.getElementById('bk-copies').value) || 1;
           const fee = Number(document.getElementById('bk-fee').value) || 0;
 
-          const newBook = {
-            id: 'bk-' + Date.now(),
-            title,
-            author,
-            code,
-            category,
-            totalCopies,
-            fee
-          };
+          const bookDoc = { id, title, author, code, category, totalCopies, fee };
 
           if (!window.clubBooks) window.clubBooks = [];
-          window.clubBooks.unshift(newBook);
+          const idx = window.clubBooks.findIndex(x => x.id === id);
+          if (idx !== -1) {
+            window.clubBooks[idx] = bookDoc;
+          } else {
+            window.clubBooks.unshift(bookDoc);
+          }
           localStorage.setItem('fp_library_books', JSON.stringify(window.clubBooks));
 
           closeModal('add-book-modal');
           renderAssetsPanel();
-          alert(`Added "${title}" to library catalog!`);
+          alert(`Saved "${title}" in library catalog!`);
         };
-
         window.openIssueBookModal = function(preselectedBookId) {
           const books = window.clubBooks || [];
           const bSel = document.getElementById('ib-book-id');
@@ -3637,10 +3686,17 @@ function saveData() {
         <!-- Library Book Catalog Inventory -->
         <div class="table-card">
           <div class="table-header" style="background: rgba(15,23,42,0.8); display:flex; justify-content:space-between; align-items:center;">
+          <div class="table-header" style="background: rgba(15,23,42,0.85); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
             <h3 style="font-size:14px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
               <span>📚 Club Library Books Catalog &amp; Copies</span>
             </h3>
-            <button onclick="openAddBookModal()" class="btn btn-secondary" style="font-size:11px; padding:4px 10px;">+ Add Title</button>
+
+            <!-- RED BOX: CATALOG DEDICATED SEARCH BAR -->
+            <div style="flex:1; max-width:360px; min-width:220px;">
+              <input type="text" id="lib-catalog-search" oninput="filterLibraryBooksAndIssues()" placeholder="🔍 Search catalog by title, author, code..." class="input-control" style="width:100%; font-size:11px; padding:6px 12px; background:#1e293b; border:1px solid rgba(129,140,248,0.4); border-radius:8px; color:#fff;">
+            </div>
+
+            <button type="button" onclick="openAddBookModal()" class="btn btn-secondary" style="font-size:11px; padding:6px 12px; font-weight:700; background:#1e293b; color:#a5b4fc; border:1px solid rgba(129,140,248,0.3);">+ Add Title</button>
           </div>
           <div class="table-container">
             <table>
@@ -4166,10 +4222,11 @@ function saveData() {
   <div id="add-book-modal" class="modal-overlay">
     <div class="modal-box">
       <div class="modal-head">
-        <h3 class="modal-title">📖 Add New Book to Library Catalog</h3>
+        <h3 class="modal-title" id="bk-modal-title">📖 Add New Book to Library Catalog</h3>
         <button type="button" onclick="closeModal('add-book-modal')" class="modal-close">✕</button>
       </div>
       <form onsubmit="handleSaveBook(event)">
+        <input type="hidden" id="bk-id">
         <div class="form-group">
           <label class="form-label">Book Title *</label>
           <input type="text" id="bk-title" required placeholder="e.g. Anandamath / Cricket Legends of India / Feluda Series" class="form-input">
