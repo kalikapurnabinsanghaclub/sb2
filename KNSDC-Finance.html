@@ -432,7 +432,48 @@
     // ══════════════════════════════════════════
     // 1. DASHBOARD RENDER
     // ══════════════════════════════════════════
+    // ══════════════════════════════════════════
+    // 1. DASHBOARD RENDER & DEDICATED PERIOD FILTER
+    // ══════════════════════════════════════════
+    let dashFilterMode = 'month'; // 'month', 'year', 'all'
+    let dashSelectedMonth = '2026-08';
+    let dashSelectedYear = '2026';
+
+    window.handleDashboardFilterModeChange = function(mode) {
+      dashFilterMode = mode;
+      const monthWrap = document.getElementById('dash-month-wrapper');
+      const yearWrap = document.getElementById('dash-year-wrapper');
+      if (monthWrap) monthWrap.style.display = (mode === 'month') ? 'inline-flex' : 'none';
+      if (yearWrap) yearWrap.style.display = (mode === 'year') ? 'inline-flex' : 'none';
+      renderDashboard();
+    };
+
+    window.handleDashboardMonthChange = function(m) {
+      dashSelectedMonth = m;
+      renderDashboard();
+    };
+
+    window.handleDashboardYearChange = function(y) {
+      dashSelectedYear = y;
+      renderDashboard();
+    };
+
     function renderDashboard() {
+      // 1. Determine active label for dashboard period
+      const periodLabelEl = document.getElementById('dash-period-label');
+      if (periodLabelEl) {
+        if (dashFilterMode === 'month') {
+          const [yr, mo] = (dashSelectedMonth || '2026-08').split('-');
+          const dObj = new Date(parseInt(yr), parseInt(mo) - 1, 1);
+          periodLabelEl.textContent = dObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+        } else if (dashFilterMode === 'year') {
+          periodLabelEl.textContent = 'Year ' + dashSelectedYear;
+        } else {
+          periodLabelEl.textContent = 'All-Time Total';
+        }
+      }
+
+      // 2. Filter payments for dashboard
       let feesCollected = 0;
       let feesExpected = 0;
       let feesPending = 0;
@@ -443,20 +484,47 @@
         if (m.status !== 'active') return;
         const plan = plans.find(p => p.id === m.planId);
         const fee = (m.customFee !== undefined && m.customFee !== null && m.customFee >= 0) ? m.customFee : (plan ? plan.fee : 0);
-        feesExpected += fee;
+        
+        let matchingPayments = [];
+        if (dashFilterMode === 'month') {
+          matchingPayments = payments.filter(p => p.memberId === m.id && p.monthYear === dashSelectedMonth);
+          feesExpected += fee;
+        } else if (dashFilterMode === 'year') {
+          matchingPayments = payments.filter(p => p.memberId === m.id && p.monthYear && p.monthYear.startsWith(dashSelectedYear));
+          feesExpected += (fee * 12);
+        } else {
+          matchingPayments = payments.filter(p => p.memberId === m.id);
+          feesExpected += fee;
+        }
 
-        const pay = payments.find(p => p.memberId === m.id && p.monthYear === activeMonth);
-        if (pay && pay.status === 'paid') {
-          feesCollected += (pay.paidAmount || pay.amount);
+        const paidPay = matchingPayments.find(p => p.status === 'paid');
+        if (paidPay) {
+          matchingPayments.forEach(p => {
+            if (p.status === 'paid') feesCollected += (p.paidAmount || p.amount || 0);
+          });
         } else {
           feesPending += fee;
           pendingCount++;
-          if (pay && pay.status === 'overdue') overdueCount++;
+          const ovd = matchingPayments.find(p => p.status === 'overdue');
+          if (ovd) overdueCount++;
         }
       });
 
-      let totalOtherEarnings = earnings.reduce((sum, e) => sum + (e.amount || 0), 0);
-      let totalClubSpendings = spendings.reduce((sum, s) => sum + (s.amount || 0), 0);
+      // 3. Filter earnings & spendings for dashboard
+      let filteredEarnings = earnings.filter(e => {
+        if (dashFilterMode === 'month') return e.date && e.date.startsWith(dashSelectedMonth);
+        if (dashFilterMode === 'year') return e.date && e.date.startsWith(dashSelectedYear);
+        return true;
+      });
+
+      let filteredSpendings = spendings.filter(s => {
+        if (dashFilterMode === 'month') return s.date && s.date.startsWith(dashSelectedMonth);
+        if (dashFilterMode === 'year') return s.date && s.date.startsWith(dashSelectedYear);
+        return true;
+      });
+
+      let totalOtherEarnings = filteredEarnings.reduce((sum, e) => sum + (e.amount || 0), 0);
+      let totalClubSpendings = filteredSpendings.reduce((sum, s) => sum + (s.amount || 0), 0);
       let netClubTreasury = (feesCollected + totalOtherEarnings) - totalClubSpendings;
       let totalClubRevenue = feesCollected + totalOtherEarnings;
       let collectionRate = feesExpected > 0 ? Math.round((feesCollected / feesExpected) * 100) : 0;
@@ -486,12 +554,73 @@
         elNetTreasury.style.color = netClubTreasury >= 0 ? '#34d399' : '#f87171';
       }
 
-      // Recent Transactions
+      // 4. Calculate Total Donations for Dashboard
+      let totalDonationsAmount = 0;
+      let donationsCount = 0;
+      (window.allDonations || []).forEach(d => {
+        let matchDate = true;
+        if (d.createdAt) {
+          const iso = new Date(d.createdAt).toISOString();
+          if (dashFilterMode === 'month') matchDate = iso.startsWith(dashSelectedMonth);
+          else if (dashFilterMode === 'year') matchDate = iso.startsWith(dashSelectedYear);
+        }
+        if (matchDate && (d.status === 'COMPLETED' || d.status === 'VERIFIED')) {
+          totalDonationsAmount += (Number(d.amount) || 0);
+          donationsCount++;
+        }
+      });
+
+      const dashDonTotal = document.getElementById('dash-live-donations-total');
+      if (dashDonTotal) dashDonTotal.textContent = formatINR(totalDonationsAmount);
+      const dashDonDetail = document.getElementById('dash-live-donations-detail');
+      if (dashDonDetail) dashDonDetail.textContent = `${donationsCount} verified supporter${donationsCount === 1 ? '' : 's'} in selected period`;
+
+      // Update Tab Count Pill
+      const pill = document.getElementById('donations-tab-pill');
+      if (pill) pill.textContent = (window.allDonations || []).length;
+
+      // 5. Recent Transactions
       const tbody = document.getElementById('dash-recent-tbody');
       if (!tbody) return;
 
       let rows = [];
-      earnings.slice(0, 4).forEach(e => {
+
+      // Add filtered donations
+      (window.allDonations || []).forEach(d => {
+        let matchDate = true;
+        if (d.createdAt) {
+          const iso = new Date(d.createdAt).toISOString();
+          if (dashFilterMode === 'month') matchDate = iso.startsWith(dashSelectedMonth);
+          else if (dashFilterMode === 'year') matchDate = iso.startsWith(dashSelectedYear);
+        }
+        if (!matchDate) return;
+
+        const amt = Number(d.amount) || 0;
+        const isMission = !d.eventName || d.eventName.toLowerCase().includes('mission') || d.eventName.toLowerCase().includes('community support');
+        const isVerified = (d.status === 'COMPLETED' || d.status === 'VERIFIED');
+        const badgeColor = isVerified ? 'badge-paid' : (d.status === 'VERIFYING' ? 'badge-pending' : 'badge-overdue');
+        const statusText = isVerified ? 'VERIFIED' : (d.status || 'PENDING');
+        const dateStr = d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : '-';
+
+        rows.push(`
+          <tr>
+            <td><span class="badge" style="background:rgba(233,30,140,0.18); color:#ff70ba; border:1px solid rgba(233,30,140,0.4);">DONATION</span></td>
+            <td style="font-weight:700; color:#fff;">
+              ${d.donorName || 'Well-wisher'} ${d.isAnonymous ? '<span style="font-size:9px; background:#334155; color:#94a3b8; padding:1px 4px; border-radius:4px;">Anon</span>' : ''}
+              ${d.donorPhone ? `<div style="font-size:11px; color:#94a3b8;">📱 ${d.donorPhone}</div>` : ''}
+            </td>
+            <td style="color:${isMission ? '#ff70ba' : '#a5b4fc'}; font-weight:600;">${isMission ? '💖 Support Mission' : '🎟️ ' + d.eventName}</td>
+            <td class="font-mono" style="color:var(--text-dim); font-size:11px;">${dateStr}</td>
+            <td style="font-weight:800; color:#34d399;">+${formatINR(amt)}</td>
+            <td>
+              <span class="badge ${badgeColor}">${statusText}</span>
+              ${d.utr ? `<div class="font-mono" style="font-size:10px; color:#34d399; font-weight:700; margin-top:2px;">${d.utr}</div>` : ''}
+            </td>
+          </tr>
+        `);
+      });
+
+      filteredEarnings.slice(0, 6).forEach(e => {
         rows.push(`
           <tr>
             <td><span class="badge badge-paid">EARNING</span></td>
@@ -504,7 +633,12 @@
         `);
       });
 
-      payments.slice(0, 4).forEach(p => {
+      payments.forEach(p => {
+        let matchDate = true;
+        if (dashFilterMode === 'month') matchDate = (p.monthYear === dashSelectedMonth);
+        else if (dashFilterMode === 'year') matchDate = (p.monthYear && p.monthYear.startsWith(dashSelectedYear));
+
+        if (!matchDate || p.status !== 'paid') return;
         const m = members.find(x => x.id === p.memberId);
         if (!m) return;
         rows.push(`
@@ -512,7 +646,7 @@
             <td><span class="badge badge-blue">MEMBER FEE</span></td>
             <td style="font-weight:700; color:#fff;">${m.name}</td>
             <td style="color:var(--text-muted);">${p.monthYear} Fee</td>
-            <td class="font-mono" style="color:var(--text-dim);">${p.paidAt ? p.paidAt.split('T')[0] : activeMonth}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${p.paidAt ? p.paidAt.split('T')[0] : (p.monthYear || '-')}</td>
             <td style="font-weight:800; color:#34d399;">+${formatINR(p.paidAmount || p.amount)}</td>
             <td><span class="badge badge-paid">PAID</span></td>
           </tr>
@@ -520,12 +654,12 @@
       });
 
       if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">📝 No transactions recorded yet. Click "+ Add Member", "💰 + Log New Earning", or "💸 + Log Spending" to start recording your club finances!</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">📝 No financial transactions recorded for this selected dashboard period.</td></tr>';
       } else {
-        tbody.innerHTML = rows.join('');
+        tbody.innerHTML = rows.slice(0, 15).join('');
       }
+      return;
     }
-
     // ══════════════════════════════════════════
     // 2. CHECKLIST RENDER & ACTIONS
     // ══════════════════════════════════════════
@@ -2355,6 +2489,40 @@ function saveData() {
           <button type="button" onclick="nav('donations')" class="btn" style="background:linear-gradient(135deg,#7B2D8B,#E91E8C); color:#fff; font-weight:800; font-size:12px; padding:9px 16px; border:none; box-shadow:0 4px 14px rgba(233,30,140,0.35); cursor:pointer;">
             📋 View All Donor Details &amp; Verify Payments →
           </button>
+        </div>
+      </div>
+      <!-- DASHBOARD SPECIFIC DATE & YEAR FILTER BAR -->
+      <div class="controls-bar" style="margin-bottom: 20px; background: #0f172a; border: 1px solid rgba(79,70,229,0.35); border-radius: 16px; padding: 12px 18px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span style="font-size: 12px; font-weight: 800; color: #a5b4fc; display: flex; align-items: center; gap: 6px;">
+            <span>📊 Dashboard Period:</span>
+          </span>
+          
+          <!-- Filter Mode: Month vs Full Year vs All-Time -->
+          <select id="dash-filter-mode" onchange="handleDashboardFilterModeChange(this.value)" class="input-control" style="background: #1e293b; border-color: rgba(99,102,241,0.4); font-size: 12px; font-weight: 700; color: #fff; padding: 6px 12px; border-radius: 8px;">
+            <option value="month">📅 By Month &amp; Year</option>
+            <option value="year">🗓️ By Full Year</option>
+            <option value="all">🌐 All-Time Summary</option>
+          </select>
+
+          <!-- Specific Month Input -->
+          <div id="dash-month-wrapper" style="display: inline-flex; align-items: center; gap: 6px;">
+            <input type="month" id="dash-month-select" value="2026-08" onchange="handleDashboardMonthChange(this.value)" class="input-control" style="background: #1e293b; border-color: rgba(52,211,153,0.4); font-size: 12px; font-weight: 700; color: #34d399; padding: 6px 10px; border-radius: 8px;">
+          </div>
+
+          <!-- Specific Year Dropdown -->
+          <div id="dash-year-wrapper" style="display: none; align-items: center; gap: 6px;">
+            <select id="dash-year-select" onchange="handleDashboardYearChange(this.value)" class="input-control" style="background: #1e293b; border-color: rgba(52,211,153,0.4); font-size: 12px; font-weight: 700; color: #34d399; padding: 6px 12px; border-radius: 8px;">
+              <option value="2026" selected>2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+              <option value="2027">2027</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="font-size: 11px; color: var(--text-muted); font-weight: 700;">
+          Filtering dashboard data for: <strong id="dash-period-label" style="color: #34d399;">August 2026</strong>
         </div>
       </div>
       <!-- 4 Stat Cards -->
