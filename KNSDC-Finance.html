@@ -412,16 +412,28 @@
     function populatePlanOptions() {
       const sel = document.getElementById('mem-plan');
       if (!sel) return;
-      sel.innerHTML = plans.map(p => `<option value="${p.id}">${p.name} (${formatINR(p.fee)}/mo)</option>`).join('');
+      sel.innerHTML = plans.map(p => {
+        const isFlex = (p.planType === 'flexible' || p.type === 'flexible');
+        const badgeText = isFlex ? `Up to ${formatINR(p.fee)} (Flexible)` : `${formatINR(p.fee)}/mo (Fixed)`;
+        return `<option value="${p.id}">${p.name} — ${badgeText}</option>`;
+      }).join('');
     }
 
     function handleMemberPlanSelect(planId) {
       const p = plans.find(x => x.id === planId);
       if (p) {
-        document.getElementById('mem-custom-fee').placeholder = `Default: ${formatINR(p.fee)}`;
+        const isFlex = (p.planType === 'flexible' || p.type === 'flexible');
+        const customFeeInput = document.getElementById('mem-custom-fee');
+        if (customFeeInput) {
+          customFeeInput.placeholder = isFlex ? `Enter amount up to ${formatINR(p.fee)}` : `Default: ${formatINR(p.fee)}`;
+          if (isFlex) {
+            customFeeInput.max = p.fee;
+          } else {
+            customFeeInput.removeAttribute('max');
+          }
+        }
       }
     }
-
     function handleMonthChange(m) {
       window.handleMonthChange = handleMonthChange;
       activeMonth = m;
@@ -887,8 +899,24 @@
     };
 
     // ══════════════════════════════════════════
-    // 4. PLANS VIEW RENDER & ACTIONS
     // ══════════════════════════════════════════
+    // 4. PLANS VIEW RENDER & ACTIONS (2 TYPES: FIXED & UP TO X)
+    // ══════════════════════════════════════════
+    window.handlePlanTypeChange = function(type) {
+      const feeLabel = document.getElementById('plan-fee-label');
+      const feeHint = document.getElementById('plan-fee-hint');
+      if (type === 'flexible') {
+        if (feeLabel) feeLabel.textContent = 'Maximum Contribution Cap (₹ INR) *';
+        if (feeHint) {
+          feeHint.textContent = 'Members in this plan can pay any customized amount up to this maximum limit.';
+          feeHint.style.display = 'block';
+        }
+      } else {
+        if (feeLabel) feeLabel.textContent = 'Fixed Monthly Fee (₹ INR) *';
+        if (feeHint) feeHint.style.display = 'none';
+      }
+    };
+
     function renderPlans() {
       const container = document.getElementById('plans-cards-container');
       if (!container) return;
@@ -904,29 +932,38 @@
 
       container.innerHTML = plans.map(plan => {
         const count = members.filter(m => m.planId === plan.id && m.status === 'active').length;
+        const isFlex = (plan.planType === 'flexible' || plan.type === 'flexible');
+        const typeBadge = isFlex
+          ? `<span class="badge" style="background:rgba(233,30,140,0.18); color:#ff70ba; border:1px solid rgba(233,30,140,0.4);">✨ UP TO ₹${(plan.fee || 0).toLocaleString('en-IN')} (FLEXIBLE)</span>`
+          : '<span class="badge" style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.4);">🔒 FIXED AMOUNT</span>';
+
+        const feeLabel = isFlex ? 'Maximum Cap' : 'Monthly Fee';
+        const feeValue = isFlex ? `Up to ${formatINR(plan.fee)}` : formatINR(plan.fee);
+
         return `
           <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; border-top:3px solid ${plan.color || '#3b82f6'};">
             <div>
-              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
                 <h3 style="font-size:16px; font-weight:800; color:#fff;">${plan.name}</h3>
-                <button onclick="deletePlan('${plan.id}', '${plan.name}')" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;">🗑️</button>
+                <button onclick="deletePlan('${plan.id}', '${plan.name}')" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;" title="Delete Plan">🗑️</button>
               </div>
-              <p style="font-size:11px; color:var(--text-muted); margin-top:6px; min-height:32px;">${plan.description || ''}</p>
+              <div style="margin-bottom:8px;">${typeBadge}</div>
+              <p style="font-size:11px; color:var(--text-muted); min-height:28px;">${plan.description || (isFlex ? 'Flexible custom contribution up to the maximum limit.' : 'Standard fixed membership fee tier.')}</p>
 
-              <div style="margin-top:14px; background:#090f1d; padding:12px; border-radius:12px; border:1px solid var(--border);">
-                <span style="font-size:11px; color:var(--text-muted); display:block;">Monthly Fee</span>
-                <span style="font-size:24px; font-weight:900; color:#34d399;">${formatINR(plan.fee)}</span>
+              <div style="margin-top:12px; background:#090f1d; padding:12px; border-radius:12px; border:1px solid var(--border);">
+                <span style="font-size:11px; color:var(--text-muted); display:block;">${feeLabel}</span>
+                <span style="font-size:22px; font-weight:900; color:#34d399;">${feeValue}</span>
               </div>
 
               <div style="margin-top:10px; font-size:11px; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; display:flex; flex-direction:column; gap:4px;">
                 <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Enrolled:</span> <span style="font-weight:700; color:#fff;">${count} members</span></div>
-                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Grace Period:</span> <span style="font-weight:700; color:#fbbf24;">${plan.lateFeeDays || 10} days</span></div>
-                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Late Fine:</span> <span style="font-weight:700; color:#f87171;">${formatINR(plan.lateFeeAmount || 50)}</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Grace Period:</span> <span style="font-weight:700; color:#fbbf24;">${plan.lateFeeDays || 0} days</span></div>
+                <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Late Fine:</span> <span style="font-weight:700; color:#34d399;">₹0 (No fine)</span></div>
               </div>
             </div>
 
             <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
-              <button onclick="editPlan('${plan.id}')" class="btn btn-secondary" style="width:100%;">✏️ Edit Plan</button>
+              <button onclick="editPlan('${plan.id}')" class="btn btn-secondary" style="width:100%; font-weight:700;">✏️ Edit Plan</button>
             </div>
           </div>
         `;
@@ -937,11 +974,13 @@
       window.openAddPlanModal = openAddPlanModal;
       document.getElementById('plan-modal-title').textContent = '➕ Add New Membership Plan';
       document.getElementById('plan-id').value = 'plan-' + Date.now();
+      document.getElementById('plan-type').value = 'fixed';
+      handlePlanTypeChange('fixed');
       document.getElementById('plan-name').value = '';
       document.getElementById('plan-fee').value = 500;
       document.getElementById('plan-desc').value = '';
-      document.getElementById('plan-grace').value = 10;
-      document.getElementById('plan-late-fine').value = 50;
+      document.getElementById('plan-grace').value = 0;
+      document.getElementById('plan-late-fine').value = 0;
       document.getElementById('plan-color').value = '#3b82f6';
       openModal('plan-modal');
     };
@@ -952,11 +991,14 @@
       if (!p) return;
       document.getElementById('plan-modal-title').textContent = `✏️ Edit "${p.name}"`;
       document.getElementById('plan-id').value = p.id;
+      const planType = p.planType || p.type || 'fixed';
+      document.getElementById('plan-type').value = planType;
+      handlePlanTypeChange(planType);
       document.getElementById('plan-name').value = p.name;
       document.getElementById('plan-fee').value = p.fee;
       document.getElementById('plan-desc').value = p.description || '';
-      document.getElementById('plan-grace').value = p.lateFeeDays || 10;
-      document.getElementById('plan-late-fine').value = p.lateFeeAmount || 50;
+      document.getElementById('plan-grace').value = p.lateFeeDays !== undefined ? p.lateFeeDays : 0;
+      document.getElementById('plan-late-fine').value = 0;
       document.getElementById('plan-color').value = p.color || '#3b82f6';
       openModal('plan-modal');
     };
@@ -965,14 +1007,15 @@
       window.handleSavePlan = handleSavePlan;
       e.preventDefault();
       const id = document.getElementById('plan-id').value;
+      const planType = document.getElementById('plan-type').value || 'fixed';
       const name = document.getElementById('plan-name').value.trim();
       const fee = Number(document.getElementById('plan-fee').value) || 0;
       const description = document.getElementById('plan-desc').value.trim();
-      const lateFeeDays = Number(document.getElementById('plan-grace').value) || 10;
-      const lateFeeAmount = Number(document.getElementById('plan-late-fine').value) || 50;
+      const lateFeeDays = Number(document.getElementById('plan-grace').value) || 0;
+      const lateFeeAmount = 0; // Late fine is 0
       const color = document.getElementById('plan-color').value;
 
-      const planObj = { id, name, fee, description, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
+      const planObj = { id, planType, type: planType, name, fee, description, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
 
       const idx = plans.findIndex(x => x.id === id);
       if (idx !== -1) plans[idx] = planObj;
@@ -998,8 +1041,6 @@
         renderPlans();
       }
     };
-
-    // ══════════════════════════════════════════
     // 5. EARNINGS LOGGER RENDER & ACTIONS
     // ══════════════════════════════════════════
     function renderEarnings() {
@@ -3582,29 +3623,40 @@ function saveData() {
 
       <form onsubmit="handleSavePlan(event)">
         <input type="hidden" id="plan-id">
+
+        <!-- Plan Type Selection (Fixed vs Up to X Amount) -->
+        <div class="form-group">
+          <label class="form-label">Plan Type *</label>
+          <select id="plan-type" onchange="handlePlanTypeChange(this.value)" class="form-input" style="font-weight:700; color:#fff; background:#1e293b;">
+            <option value="fixed">🔒 Fixed Amount (e.g. Fixed ₹200 / ₹500 per month)</option>
+            <option value="flexible">✨ Up to X Amount (Flexible / Custom Contribution)</option>
+          </select>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Plan Name *</label>
-          <input type="text" id="plan-name" required placeholder="e.g. Cricket Academy Plan / VIP Member" class="form-input">
+          <input type="text" id="plan-name" required placeholder="e.g. Basic Member / Executive Patron Plan" class="form-input">
         </div>
 
         <div class="form-group">
-          <label class="form-label">Monthly Fee (₹ INR) *</label>
+          <label class="form-label" id="plan-fee-label">Fixed Monthly Fee (₹ INR) *</label>
           <input type="number" id="plan-fee" min="0" step="1" required placeholder="500" class="form-input" style="color:#34d399; font-weight:800; font-size:16px;">
+          <p id="plan-fee-hint" style="font-size:11px; color:#a5b4fc; margin-top:4px; display:none;">Members enrolled in this plan can contribute any custom amount up to this maximum limit.</p>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Description & Perks</label>
-          <textarea id="plan-desc" rows="2" placeholder="Full ground access, gym, coaching..." class="form-input" style="resize:none;"></textarea>
+          <label class="form-label">Description &amp; Perks</label>
+          <textarea id="plan-desc" rows="2" placeholder="Club access, voting rights, facilities..." class="form-input" style="resize:none;"></textarea>
         </div>
 
         <div class="form-row form-group">
           <div>
             <label class="form-label">Grace Period (Days)</label>
-            <input type="number" id="plan-grace" min="0" value="10" class="form-input">
+            <input type="number" id="plan-grace" min="0" value="0" class="form-input">
           </div>
           <div>
             <label class="form-label">Late Fine (₹ INR)</label>
-            <input type="number" id="plan-late-fine" min="0" value="50" class="form-input">
+            <input type="number" id="plan-late-fine" min="0" value="0" readonly class="form-input" style="color:#34d399; font-weight:700; background:#131d31;" title="Late fine is disabled (₹0)">
           </div>
         </div>
 
