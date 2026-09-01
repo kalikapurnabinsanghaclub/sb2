@@ -900,7 +900,8 @@
 
     // ══════════════════════════════════════════
     // ══════════════════════════════════════════
-    // 4. PLANS VIEW RENDER & ACTIONS (2 TYPES: FIXED & UP TO X)
+    // ══════════════════════════════════════════
+    // 4. PLANS VIEW RENDER & ACTIONS (MULTIPLE BENEFITS: LOCKER, LIBRARY, ETC.)
     // ══════════════════════════════════════════
     window.handlePlanTypeChange = function(type) {
       const feeLabel = document.getElementById('plan-fee-label');
@@ -940,6 +941,12 @@
         const feeLabel = isFlex ? 'Maximum Cap' : 'Monthly Fee';
         const feeValue = isFlex ? `Up to ${formatINR(plan.fee)}` : formatINR(plan.fee);
 
+        const benefits = (Array.isArray(plan.benefits) && plan.benefits.length > 0)
+          ? plan.benefits
+          : ['🔒 Locker Access', '📚 Library Access', '🏏 Sports Ground'];
+
+        const benefitsBadges = benefits.map(b => `<span class="badge" style="background:rgba(99,102,241,0.15); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3); font-size:10px;">${b}</span>`).join(' ');
+
         return `
           <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; border-top:3px solid ${plan.color || '#3b82f6'};">
             <div>
@@ -953,6 +960,14 @@
               <div style="margin-top:12px; background:#090f1d; padding:12px; border-radius:12px; border:1px solid var(--border);">
                 <span style="font-size:11px; color:var(--text-muted); display:block;">${feeLabel}</span>
                 <span style="font-size:22px; font-weight:900; color:#34d399;">${feeValue}</span>
+              </div>
+
+              <!-- Included Benefits List -->
+              <div style="margin-top:10px; background:rgba(0,0,0,0.25); padding:10px; border-radius:8px; border:1px dashed rgba(255,255,255,0.08);">
+                <div style="font-size:10px; color:#cbd5e1; font-weight:800; text-transform:uppercase; margin-bottom:6px; letter-spacing:0.5px;">🎁 Included Member Benefits:</div>
+                <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                  ${benefitsBadges}
+                </div>
               </div>
 
               <div style="margin-top:10px; font-size:11px; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; display:flex; flex-direction:column; gap:4px;">
@@ -982,6 +997,15 @@
       document.getElementById('plan-grace').value = 0;
       document.getElementById('plan-late-fine').value = 0;
       document.getElementById('plan-color').value = '#3b82f6';
+
+      // Default Checkboxes
+      if (document.getElementById('pb-locker')) document.getElementById('pb-locker').checked = true;
+      if (document.getElementById('pb-library')) document.getElementById('pb-library').checked = true;
+      if (document.getElementById('pb-sports')) document.getElementById('pb-sports').checked = true;
+      if (document.getElementById('pb-gym')) document.getElementById('pb-gym').checked = false;
+      if (document.getElementById('pb-events')) document.getElementById('pb-events').checked = true;
+      if (document.getElementById('pb-voting')) document.getElementById('pb-voting').checked = false;
+
       openModal('plan-modal');
     };
 
@@ -1000,6 +1024,16 @@
       document.getElementById('plan-grace').value = p.lateFeeDays !== undefined ? p.lateFeeDays : 0;
       document.getElementById('plan-late-fine').value = Math.min(100, Math.max(0, p.lateFeeAmount !== undefined ? Number(p.lateFeeAmount) : 0));
       document.getElementById('plan-color').value = p.color || '#3b82f6';
+
+      // Populate Checkboxes from saved benefits
+      const bList = Array.isArray(p.benefits) ? p.benefits : [];
+      if (document.getElementById('pb-locker')) document.getElementById('pb-locker').checked = bList.some(x => x.includes('Locker'));
+      if (document.getElementById('pb-library')) document.getElementById('pb-library').checked = bList.some(x => x.includes('Library'));
+      if (document.getElementById('pb-sports')) document.getElementById('pb-sports').checked = bList.some(x => x.includes('Sports') || x.includes('Ground'));
+      if (document.getElementById('pb-gym')) document.getElementById('pb-gym').checked = bList.some(x => x.includes('Gym'));
+      if (document.getElementById('pb-events')) document.getElementById('pb-events').checked = bList.some(x => x.includes('Event'));
+      if (document.getElementById('pb-voting')) document.getElementById('pb-voting').checked = bList.some(x => x.includes('Voting'));
+
       openModal('plan-modal');
     };
 
@@ -1016,7 +1050,16 @@
       const lateFeeAmount = Math.min(100, Math.max(0, rawLateFine)); // Configured between 0 and 100
       const color = document.getElementById('plan-color').value;
 
-      const planObj = { id, planType, type: planType, name, fee, description, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
+      // Extract multiple benefits
+      const benefits = [];
+      if (document.getElementById('pb-locker')?.checked) benefits.push('🔒 Dedicated Locker');
+      if (document.getElementById('pb-library')?.checked) benefits.push('📚 Library Access');
+      if (document.getElementById('pb-sports')?.checked) benefits.push('🏏 Sports Ground');
+      if (document.getElementById('pb-gym')?.checked) benefits.push('🏋️ Gym & Fitness');
+      if (document.getElementById('pb-events')?.checked) benefits.push('🎟️ Event Passes');
+      if (document.getElementById('pb-voting')?.checked) benefits.push('🗳️ Voting Rights');
+
+      const planObj = { id, planType, type: planType, name, fee, description, benefits, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
 
       const idx = plans.findIndex(x => x.id === id);
       if (idx !== -1) plans[idx] = planObj;
@@ -4646,6 +4689,40 @@ function saveData() {
         <div class="form-group">
           <label class="form-label">Description &amp; Perks</label>
           <textarea id="plan-desc" rows="2" placeholder="Club access, voting rights, facilities..." class="form-input" style="resize:none;"></textarea>
+        </div>
+
+        <!-- Included Plan Benefits & Privileges (Locker, Library, Sports, etc.) -->
+        <div class="form-group">
+          <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>🎁 Included Plan Benefits &amp; Member Perks</span>
+            <span style="font-size:10px; color:var(--text-muted); font-weight:normal;">Select all that apply</span>
+          </label>
+          <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; background:#090f1d; padding:12px; border-radius:12px; border:1px solid var(--border);">
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#fff; cursor:pointer;">
+              <input type="checkbox" id="pb-locker" style="accent-color:#3b82f6; width:16px; height:16px;">
+              <span>🔒 Locker Access Included</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#fff; cursor:pointer;">
+              <input type="checkbox" id="pb-library" style="accent-color:#818cf8; width:16px; height:16px;">
+              <span>📚 Library Books Access</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#fff; cursor:pointer;">
+              <input type="checkbox" id="pb-sports" style="accent-color:#10b981; width:16px; height:16px;">
+              <span>🏏 Sports Ground &amp; Kits</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#fff; cursor:pointer;">
+              <input type="checkbox" id="pb-gym" style="accent-color:#f59e0b; width:16px; height:16px;">
+              <span>🏋️ Gym &amp; Fitness</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#fff; cursor:pointer;">
+              <input type="checkbox" id="pb-events" style="accent-color:#ec4899; width:16px; height:16px;">
+              <span>🎟️ Event Free Passes</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#fff; cursor:pointer;">
+              <input type="checkbox" id="pb-voting" style="accent-color:#6366f1; width:16px; height:16px;">
+              <span>🗳️ Voting &amp; AGM Rights</span>
+            </label>
+          </div>
         </div>
 
         <div class="form-row form-group">
