@@ -20,7 +20,7 @@
       min-height: 100vh;
       padding: 20px;
     }
-    .app-container { width: 100%; max-width: 440px; }
+    .app-container { width: 100%; max-width: 450px; }
     .card {
       background: #ffffff;
       border-radius: 20px;
@@ -29,7 +29,7 @@
       animation: fadeIn 0.3s ease-in-out;
     }
     .hidden { display: none !important; }
-    .card-header { text-align: center; margin-bottom: 24px; }
+    .card-header { text-align: center; margin-bottom: 20px; }
     .badge {
       display: inline-block;
       background: #dcfce7;
@@ -154,11 +154,19 @@
     .detail-item {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       font-size: 13px;
-      padding: 4px 0;
+      padding: 5px 0;
       color: #475569;
     }
-    .copyable { cursor: pointer; color: #2563eb; font-weight: 600; }
+    .copyable {
+      cursor: pointer;
+      color: #2563eb;
+      font-weight: 600;
+      background: #e0e7ff;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
     .status-box {
       display: flex;
       align-items: center;
@@ -244,7 +252,7 @@
     <div id="payment-card" class="card hidden">
       <div class="card-header">
         <span class="order-ref">Order Reference: <strong id="order-id-display">DON-000000</strong></span>
-        <h3>Scan or Tap to Pay</h3>
+        <h3>Scan with any UPI App</h3>
         <div class="timer-badge">⏱️ Valid for: <span id="timer-display">15:00</span></div>
       </div>
 
@@ -253,30 +261,30 @@
         <!-- Desktop QR Section -->
         <div id="qr-section" class="qr-container">
           <div id="qrcode"></div>
-          <p class="qr-hint">Scan with any UPI App (GPay, PhonePe, Paytm, BHIM, CRED)</p>
+          <p class="qr-hint">Scan from Phone camera using GPay, PhonePe, Paytm, BHIM, or CRED</p>
         </div>
 
         <!-- Mobile 1-Click Intent Button -->
         <div id="mobile-section" class="mobile-container hidden" style="margin-bottom: 15px;">
           <a id="upi-intent-link" href="#" class="btn-primary">
-            ⚡ Pay via UPI App (1-Click)
+            ⚡ Open UPI App (GPay / PhonePe / Paytm)
           </a>
-          <p class="small-hint">Tap to open GPay, PhonePe, Paytm, or BHIM</p>
+          <p class="small-hint">Tap above to pay directly</p>
         </div>
 
-        <!-- Details Box -->
+        <!-- Direct UPI Details Box (For Manual Copy) -->
         <div class="details-box">
           <div class="detail-item">
             <span>Amount:</span>
             <strong>₹<span id="pay-amount-display">0</span></strong>
           </div>
           <div class="detail-item">
-            <span>UPI ID:</span>
-            <span class="copyable" id="vpa-display" onclick="copyText('vpa-display')">kalikapurnabinsangha@sbi 📋</span>
+            <span>UPI ID / VPA:</span>
+            <span class="copyable" id="vpa-display" onclick="copyText('vpa-display')">kalikapurnabinsangha@sbi</span>
           </div>
           <div class="detail-item">
-            <span>Note / Ref:</span>
-            <span class="copyable" id="ref-note-display" onclick="copyText('ref-note-display')">DON-000000 📋</span>
+            <span>Remarks / Note:</span>
+            <span class="copyable" id="ref-note-display" onclick="copyText('ref-note-display')">DON-000000</span>
           </div>
         </div>
 
@@ -369,6 +377,9 @@
       btn.innerText = 'Generating QR...';
       btn.disabled = true;
 
+      const randomId = 'DON-' + Math.floor(100000 + Math.random() * 900000);
+      currentOrderId = randomId;
+
       try {
         const res = await fetch('/api/donations/create-order', {
           method: 'POST',
@@ -376,18 +387,19 @@
           body: JSON.stringify({ amount: currentAmount, donorName, donorEmail })
         });
         const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Could not create order');
-
-        currentOrderId = data.order.orderId;
-        showPaymentScreen(data.order, data.upiUrl, data.vpa);
+        if (data.success) {
+          currentOrderId = data.order.orderId;
+          showPaymentScreen(data.order, data.upiUrl, data.vpa);
+          return;
+        }
       } catch (err) {
-        // Fallback if running standalone without server running
-        const fallbackOrderId = 'DON-' + Math.floor(100000 + Math.random() * 900000);
-        currentOrderId = fallbackOrderId;
-        const vpa = 'kalikapurnabinsangha@sbi';
-        const fallbackUpi = `upi://pay?pa=${vpa}&pn=Kalikapur%20Nabin%20Sangha&am=${currentAmount}&tn=${fallbackOrderId}&cu=INR`;
-        showPaymentScreen({ orderId: fallbackOrderId, amount: currentAmount }, fallbackUpi, vpa);
+        console.warn('Using client fallback UPI generator');
       }
+
+      // NPCI standard URI formatting (Cleaned to avoid 2000 gallery limit errors)
+      const vpa = 'kalikapurnabinsangha@sbi';
+      const cleanUpi = `upi://pay?pa=${vpa}&pn=Kalikapur%20Nabin%20Sangha&am=${currentAmount}&cu=INR&tn=${currentOrderId}`;
+      showPaymentScreen({ orderId: currentOrderId, amount: currentAmount }, cleanUpi, vpa);
     });
 
     function showPaymentScreen(order, upiUrl, vpa) {
@@ -407,14 +419,16 @@
         document.getElementById('qr-section').classList.remove('hidden');
       }
 
+      // Render Clean High-Compatibility QR Code
       const qrContainer = document.getElementById('qrcode');
       qrContainer.innerHTML = '';
       new QRCode(qrContainer, {
         text: upiUrl,
-        width: 200,
-        height: 200,
-        colorDark: '#0f172a',
-        colorLight: '#ffffff'
+        width: 220,
+        height: 220,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.L
       });
 
       startCountdown();
@@ -481,20 +495,14 @@
       }
 
       try {
-        const res = await fetch('/api/donations/submit-utr', {
+        await fetch('/api/donations/submit-utr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId: currentOrderId, utr })
         });
-        const data = await res.json();
-        if (data.success) {
-          showSuccess({ orderId: currentOrderId, amount: currentAmount, utr });
-        } else {
-          showSuccess({ orderId: currentOrderId, amount: currentAmount, utr });
-        }
-      } catch (e) {
-        showSuccess({ orderId: currentOrderId, amount: currentAmount, utr });
-      }
+      } catch (e) {}
+
+      showSuccess({ orderId: currentOrderId, amount: currentAmount, utr });
     });
 
     function copyText(id) {
