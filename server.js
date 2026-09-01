@@ -1,4 +1,6 @@
 import express from 'express';
+import http from 'http';
+import { WebSocketServer } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -10,7 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
+
 
 // Enable JSON body parsing with large limit for Base64 fallback (if needed)
 app.use(express.json({ limit: '10mb' }));
@@ -34,6 +38,57 @@ async function connectDB() {
   }
 }
 connectDB();
+
+// ==========================================
+// WEBSOCKET SERVER — Real-Time Payment Push
+// ==========================================
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+// Registry: orderId → Set of WebSocket clients waiting for that order
+const wsClients = new Map(); // orderId → Set<WebSocket>
+
+wss.on('connection', (ws, req) => {
+  const urlParams = new URL(req.url, `http://${req.headers.host}`);
+  const orderId = urlParams.searchParams.get('orderId');
+
+  if (!orderId) {
+    ws.close(4000, 'Missing orderId');
+    return;
+  }
+
+  console.log(`[WS] Client connected for order: ${orderId}`);
+  if (!wsClients.has(orderId)) wsClients.set(orderId, new Set());
+  wsClients.get(orderId).add(ws);
+
+  ws.on('close', () => {
+    const set = wsClients.get(orderId);
+    if (set) {
+      set.delete(ws);
+      if (set.size === 0) wsClients.delete(orderId);
+    }
+    console.log(`[WS] Client disconnected for order: ${orderId}`);
+  });
+
+  ws.on('error', () => {
+    const set = wsClients.get(orderId);
+    if (set) set.delete(ws);
+  });
+
+  // Send connection-established ack
+  ws.send(JSON.stringify({ type: 'connected', orderId, message: 'Listening for payment confirmation...' }));
+});
+
+// Helper: Broadcast to all clients waiting for a specific orderId
+function broadcastPaymentConfirmed(orderId, payload) {
+  const clients = wsClients.get(orderId);
+  if (clients && clients.size > 0) {
+    const msg = JSON.stringify({ type: 'payment_confirmed', orderId, ...payload });
+    clients.forEach(ws => {
+      if (ws.readyState === 1 /* OPEN */) ws.send(msg);
+    });
+    console.log(`[WS] Broadcasted payment_confirmed to ${clients.size} client(s) for ${orderId}`);
+  }
+}
 
 // Multer in-memory storage configuration
 const storage = multer.memoryStorage();
@@ -505,23 +560,36 @@ app.post('/api/webhook/payment', async (req, res) => {
       return res.json({ success: true, message: 'Transaction already processed' });
     }
 
+    // — Match Order —
+    // Priority 1: Order ID embedded in UPI transaction note (DON-XXXXXX)
     let matchedOrder = null;
     if (parsed.orderId && memoryOrders.has(parsed.orderId)) {
       matchedOrder = memoryOrders.get(parsed.orderId);
     } else if (db && parsed.orderId) {
-      matchedOrder = await db.collection('donations').findOne({ orderId: parsed.orderId });
+      matchedOrder = await db.collection('donations').findOne({ orderId: parsed.orderId, status: 'PENDING' });
+      if (matchedOrder) memoryOrders.set(matchedOrder.orderId, matchedOrder);
     }
 
+    // Priority 2: Amount match within 45-minute window (oldest PENDING first)
     if (!matchedOrder && parsed.amount) {
+      const cutoff = Date.now() - 45 * 60 * 1000;
+      let oldest = null;
       for (const [, ord] of memoryOrders.entries()) {
-        if (ord.status === 'PENDING' && ord.amount === parsed.amount) {
-          matchedOrder = ord;
-          break;
+        const created = new Date(ord.createdAt).getTime();
+        if (ord.status === 'PENDING' && Math.abs(ord.amount - parsed.amount) < 0.01 && created >= cutoff) {
+          if (!oldest || created < new Date(oldest.createdAt).getTime()) oldest = ord;
         }
       }
+      matchedOrder = oldest;
     }
 
     if (!matchedOrder) {
+      // Log unmatched payment for manual review
+      if (db) {
+        await db.collection('unmatched_payments').insertOne({
+          amount: parsed.amount, utr: parsed.utr, rawText, receivedAt: new Date()
+        });
+      }
       console.log(`[Unmatched Donation] Rs.${parsed.amount}, UTR: ${parsed.utr}, Order: ${parsed.orderId}`);
       return res.json({ success: true, message: 'Payment recorded without matching order' });
     }
@@ -554,6 +622,16 @@ app.post('/api/webhook/payment', async (req, res) => {
     }
 
     console.log(`[SUCCESS] Donation ${matchedOrder.orderId} verified for Rs.${matchedOrder.amount}!`);
+
+    // 🚀 Push real-time WebSocket event to donor's browser
+    broadcastPaymentConfirmed(matchedOrder.orderId, {
+      amount: matchedOrder.amount,
+      utr: matchedOrder.utr,
+      donorName: matchedOrder.donorName,
+      eventName: matchedOrder.eventName,
+      paidAt: matchedOrder.paidAt
+    });
+
     res.json({ success: true, message: 'Donation completed successfully', orderId: matchedOrder.orderId });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -586,10 +664,18 @@ app.post('/api/donations/submit-utr', async (req, res) => {
   }
 });
 
+// 5. WebSocket Health Check
+app.get('/api/ws-ping', (req, res) => {
+  res.json({ status: 'ok', wsClients: wsClients.size, wsPath: '/ws' });
+});
+
 app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Use `server.listen` (not `app.listen`) so WebSocket upgrades are handled
+server.listen(PORT, () => {
+  console.log(`[KNSDC] Server + WebSocket running on port ${PORT}`);
+  console.log(`[KNSDC] Webhook endpoint: POST /api/webhook/payment`);
+  console.log(`[KNSDC] WebSocket endpoint: ws://localhost:${PORT}/ws?orderId=DON-XXXXXX`);
 });

@@ -3,6 +3,7 @@
 
 <head>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
   <script>
     window.addEventListener('error', function(e) {
       const div = document.createElement('div');
@@ -3519,6 +3520,9 @@
         </div>
 
       </div>
+
+      <!-- 🔴→🟢 Real-Time Payment Status Indicator -->
+      <div id="ksm-payment-status" style="text-align:center; padding:6px 24px 2px; min-height:28px;"></div>
 
       <!-- Modal Footer -->
       <div style="padding:16px 24px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; gap:12px; flex-shrink:0;">
@@ -11049,8 +11053,131 @@
       targetGoal: 50000,
       raisedAmount: 0,
       upiId: '7001865288@nyes',
-      selectedAmount: 500
+      selectedAmount: 500,
+      orderId: null,
+      wsConnection: null,
+      pollingInterval: null
     };
+
+    // ── WebSocket: connect and listen for payment_confirmed ──
+    function connectPaymentWebSocket(orderId) {
+      // Clean up any previous connection
+      if (currentSupportState.wsConnection) {
+        try { currentSupportState.wsConnection.close(); } catch(e) {}
+        currentSupportState.wsConnection = null;
+      }
+      if (currentSupportState.pollingInterval) {
+        clearInterval(currentSupportState.pollingInterval);
+        currentSupportState.pollingInterval = null;
+      }
+
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${proto}://${location.host}/ws?orderId=${encodeURIComponent(orderId)}`;
+
+      let ws;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch(e) {
+        startPollingFallback(orderId);
+        return;
+      }
+
+      currentSupportState.wsConnection = ws;
+
+      ws.onopen = () => {
+        console.log(`[WS] Connected for order ${orderId}`);
+        setPaymentStatusIndicator('waiting');
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.type === 'payment_confirmed' && data.orderId === orderId) {
+            handleAutoPaymentSuccess(data);
+          }
+        } catch(e) {}
+      };
+
+      ws.onerror = () => {
+        console.warn('[WS] WebSocket error — switching to polling fallback');
+        startPollingFallback(orderId);
+      };
+
+      ws.onclose = () => {
+        console.log('[WS] Connection closed');
+      };
+    }
+
+    function startPollingFallback(orderId) {
+      if (currentSupportState.pollingInterval) return;
+      currentSupportState.pollingInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/donations/check-status?orderId=${encodeURIComponent(orderId)}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.status === 'COMPLETED') {
+            clearInterval(currentSupportState.pollingInterval);
+            currentSupportState.pollingInterval = null;
+            handleAutoPaymentSuccess({ orderId, amount: data.amount, utr: data.utr });
+          }
+        } catch(e) {}
+      }, 3000);
+    }
+
+    function setPaymentStatusIndicator(state) {
+      const el = document.getElementById('ksm-payment-status');
+      if (!el) return;
+      if (state === 'waiting') {
+        el.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px;font-size:0.82rem;color:#f59e0b;font-weight:700;">
+          <span style="width:10px;height:10px;background:#f59e0b;border-radius:50%;animation:pulseDot 1s infinite;display:inline-block;"></span>
+          Waiting for payment confirmation...
+        </span>`;
+      } else if (state === 'confirmed') {
+        el.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px;font-size:0.82rem;color:#10b981;font-weight:700;">
+          <span style="font-size:1rem;">✅</span> Payment Confirmed!
+        </span>`;
+      } else {
+        el.innerHTML = '';
+      }
+    }
+
+    function handleAutoPaymentSuccess(data) {
+      // Close modal & clean up
+      closeDonationForm();
+      if (currentSupportState.wsConnection) {
+        try { currentSupportState.wsConnection.close(); } catch(e) {}
+        currentSupportState.wsConnection = null;
+      }
+      if (currentSupportState.pollingInterval) {
+        clearInterval(currentSupportState.pollingInterval);
+        currentSupportState.pollingInterval = null;
+      }
+
+      // Confetti 🎉
+      if (typeof confetti === 'function') {
+        confetti({ particleCount: 180, spread: 80, origin: { y: 0.55 } });
+        setTimeout(() => confetti({ particleCount: 80, spread: 60, origin: { y: 0.4 } }), 500);
+      }
+
+      // Update local raised amount
+      currentSupportState.raisedAmount = (currentSupportState.raisedAmount || 0) + (Number(data.amount) || currentSupportState.selectedAmount);
+
+      // Show success modal
+      const successModal = document.getElementById('knsdc-support-success-modal');
+      if (successModal) {
+        const amt = Number(data.amount) || currentSupportState.selectedAmount;
+        const el = document.getElementById('ksm-success-amount');
+        if (el) el.textContent = `₹${amt.toLocaleString('en-IN')}`;
+        const evEl = document.getElementById('ksm-success-event');
+        if (evEl) evEl.textContent = currentSupportState.eventName;
+        const nmEl = document.getElementById('ksm-success-name');
+        if (nmEl) nmEl.textContent = document.getElementById('ksm-donor-name')?.value?.trim() || 'Valued Supporter';
+        successModal.style.display = 'flex';
+        successModal.classList.remove('hidden');
+      }
+
+      showToast('🎉 Payment Confirmed!', `₹${(data.amount || currentSupportState.selectedAmount).toLocaleString('en-IN')} received for ${currentSupportState.eventName}`, '💖');
+    }
 
     function openDonationForm(param1, color, eventId = null) {
       const state = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
@@ -11134,7 +11261,35 @@
         modal.style.display = 'flex';
         modal.classList.remove('hidden');
       }
+
+      // 🔌 Create server order + connect WebSocket for auto-detection
+      setPaymentStatusIndicator('');
+      (async () => {
+        try {
+          const res = await fetch('/api/donations/create-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: currentSupportState.selectedAmount,
+              eventId: currentSupportState.eventId || 'general',
+              eventName: currentSupportState.eventName,
+              donorName: 'Valued Supporter'
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.order && data.order.orderId) {
+              currentSupportState.orderId = data.order.orderId;
+              connectPaymentWebSocket(data.order.orderId);
+            }
+          }
+        } catch(e) {
+          // Server not reachable — silent fallback, manual UTR still works
+          console.warn('[Payment] Could not create server order:', e.message);
+        }
+      })();
     }
+
 
     function closeDonationForm() {
       const modal = document.getElementById('knsdc-support-modal');
