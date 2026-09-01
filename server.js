@@ -405,7 +405,7 @@ app.delete('/api/finance/transactions/:id', async (req, res) => {
 // ZERO-GATEWAY AUTOMATED UPI PAYMENT & DONATION ENGINE
 // ==========================================
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'zero_gateway_secret_key_8849';
-const UPI_VPA = process.env.UPI_VPA || 'kalikapurnabinsangha@sbi';
+const UPI_VPA = process.env.UPI_VPA || '7001865288@nyes';
 const PAYEE_NAME = process.env.PAYEE_NAME || 'Kalikapur Nabin Sangha Club';
 
 const memoryOrders = new Map();
