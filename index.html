@@ -2139,8 +2139,7 @@
         <button class="nl" data-section="previous" onclick="navigateTo('previous')">🎬 Our Work</button>
         <button class="nl" data-section="about" onclick="navigateTo('about')">🏛️ About</button>
         <button class="nl" data-section="workshops" onclick="navigateTo('workshops')">🎓 Workshops</button>
-        <button class="nl" data-section="partners" onclick="navigateTo('partners')">🤝 Partners</button>
-        <button class="nl" onclick="openDonationForm('Kalikapur Nabin Sangha Mission', '#10b981')" style="background: linear-gradient(135deg, #10b981, #059669); color: white !important; border-radius: 20px; padding: 8px 16px; font-weight: 800; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">💝 Support & Donate</button>
+        <a href="donations.html" class="nl" style="background: linear-gradient(135deg, #10b981, #059669); color: white !important; border-radius: 20px; padding: 8px 16px; font-weight: 800; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">💝 Support &amp; Donate</a>
         <button class="nl" data-section="contact" onclick="navigateTo('contact')">📞 Contact</button>
         <div class="notif-bell" onclick="navigateTo('notice')" title="Notifications">
           <span>🔔</span>
@@ -11204,116 +11203,16 @@
     }
 
     function openDonationForm(param1, color, eventId = null) {
-      const state = (window.syncEngine && window.syncEngine.getData) ? window.syncEngine.getData() : {};
-      let ev = null;
-
+      let evName = 'Kalikapur Nabin Sangha Mission';
+      let evId = eventId || 'general';
       if (param1 && typeof param1 === 'object') {
-        ev = param1;
-      } else if (param1 && (typeof param1 === 'string' || typeof param1 === 'number')) {
-        const pStr = String(param1);
-        ev = (EVENTS || []).find(e => String(e.id) === pStr) ||
-             (state.events || []).find(e => String(e.id) === pStr);
+        evName = param1.name || param1.title || evName;
+        evId = param1.id || evId;
+      } else if (typeof param1 === 'string') {
+        evName = param1;
       }
-      
-      if (!ev && eventId) {
-        ev = (EVENTS || []).find(e => String(e.id) === String(eventId)) ||
-             (state.events || []).find(e => String(e.id) === String(eventId));
-      }
-
-      if (!ev && param1 && typeof param1 === 'string') {
-        ev = (EVENTS || []).find(e => e.name === param1) ||
-             (state.events || []).find(e => e.name === param1);
-      }
-
-      if (!ev && EVENTS && EVENTS.length > 0) {
-        ev = EVENTS[0];
-      }
-
-      const rs = (ev && ev.roundSchedules) ? ev.roundSchedules : {};
-
-      currentSupportState.eventId = ev ? ev.id : (eventId || (typeof param1 === 'string' ? param1 : null));
-      currentSupportState.eventName = (ev ? ev.name : (typeof param1 === 'string' ? param1 : 'KNSDC Event')) || 'KNSDC Event';
-      currentSupportState.eventColor = (ev ? (ev.col || ev.color) : color) || '#E91E8C';
-      currentSupportState.targetGoal = ev ? (Number(ev.targetGoal) || (rs.targetGoal ? Number(rs.targetGoal) : 50000)) : 50000;
-      currentSupportState.raisedAmount = ev ? (Number(ev.raisedAmount) || (rs.raisedAmount ? Number(rs.raisedAmount) : 0)) : 0;
-      currentSupportState.upiId = '7001865288@nyes';
-      currentSupportState.selectedAmount = 500;
-
-      // Update Modal Header & Title
-      const titleEl = document.getElementById('ksm-event-title');
-      if (titleEl) titleEl.textContent = 'Support ' + currentSupportState.eventName;
-
-      // Update Campaign Progress
-      const progCont = document.getElementById('ksm-progress-container');
-      const raisedText = document.getElementById('ksm-raised-text');
-      const goalText = document.getElementById('ksm-goal-text');
-      const progBar = document.getElementById('ksm-progress-bar');
-      const percentText = document.getElementById('ksm-percent-text');
-
-      if (currentSupportState.targetGoal > 0) {
-        if (progCont) progCont.style.display = 'block';
-        const percent = Math.min(100, Math.round((currentSupportState.raisedAmount / currentSupportState.targetGoal) * 100));
-        if (raisedText) raisedText.textContent = `₹${currentSupportState.raisedAmount.toLocaleString('en-IN')} Raised`;
-        if (goalText) goalText.textContent = `Goal: ₹${currentSupportState.targetGoal.toLocaleString('en-IN')}`;
-        if (progBar) progBar.style.width = `${Math.max(5, percent)}%`;
-        if (percentText) percentText.textContent = `${percent}% funded by community champions & sponsors`;
-      } else if (progCont) {
-        progCont.style.display = 'none';
-      }
-
-      // Reset Inputs
-      const customInput = document.getElementById('ksm-custom-amount');
-      if (customInput) customInput.value = '';
-      const nameInput = document.getElementById('ksm-donor-name');
-      if (nameInput) nameInput.value = '';
-      const phoneInput = document.getElementById('ksm-donor-phone');
-      if (phoneInput) phoneInput.value = '';
-      const emailInput = document.getElementById('ksm-donor-email');
-      if (emailInput) emailInput.value = '';
-      const msgInput = document.getElementById('ksm-donor-message');
-      if (msgInput) msgInput.value = '';
-      const anonCheck = document.getElementById('ksm-is-anonymous');
-      if (anonCheck) anonCheck.checked = false;
-      const refInput = document.getElementById('ksm-upi-ref');
-      if (refInput) refInput.value = '';
-      
-      selectKsmAmount(500);
-
-      // Show Modal
-      const modal = document.getElementById('knsdc-support-modal');
-      if (modal) {
-        modal.style.display = 'flex';
-        modal.classList.remove('hidden');
-      }
-
-      // 🔌 Create server order + connect WebSocket for auto-detection
-      setPaymentStatusIndicator('');
-      (async () => {
-        try {
-          const res = await fetch('/api/donations/create-order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: currentSupportState.selectedAmount,
-              eventId: currentSupportState.eventId || 'general',
-              eventName: currentSupportState.eventName,
-              donorName: 'Valued Supporter'
-            })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.order && data.order.orderId) {
-              currentSupportState.orderId = data.order.orderId;
-              connectPaymentWebSocket(data.order.orderId);
-            }
-          }
-        } catch(e) {
-          // Server not reachable — silent fallback, manual UTR still works
-          console.warn('[Payment] Could not create server order:', e.message);
-        }
-      })();
+      window.location.href = `donations.html?event=${encodeURIComponent(evName)}&eventId=${encodeURIComponent(evId)}`;
     }
-
 
     function closeDonationForm() {
       const modal = document.getElementById('knsdc-support-modal');
