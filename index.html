@@ -11069,6 +11069,24 @@
     // ══════════════════════════════════════════════════════════════
     // KNSDC PRO COMMUNITY EVENT SUPPORT & DONATION ENGINE
     // ══════════════════════════════════════════════════════════════
+    window.globalSupportMissionVpa = '7001865288@nyes';
+    window.globalSupportMissionPayee = 'Kalikapur Nabin Sangha';
+
+    async function loadLiveMissionVpa() {
+      try {
+        const res = await fetch('/api/donations/config');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.supportMissionVpa) {
+            window.globalSupportMissionVpa = data.supportMissionVpa;
+            if (data.payeeName) window.globalSupportMissionPayee = data.payeeName;
+            if (typeof updateKsmQrCode === 'function') updateKsmQrCode();
+          }
+        }
+      } catch(e) {}
+    }
+    loadLiveMissionVpa();
+
     let currentSupportState = {
       eventId: null,
       eventName: 'KNSDC Event',
@@ -11265,7 +11283,7 @@
 
     function updateKsmQrCode() {
       const amt = currentSupportState.selectedAmount || 500;
-      const upiId = '7001865288@nyes';
+      const upiId = (currentSupportState.eventVpa && currentSupportState.eventId !== 'general') ? currentSupportState.eventVpa : (window.globalSupportMissionVpa || '7001865288@nyes');
       const cleanEvName = (currentSupportState.eventName || 'Event').replace(/[^a-zA-Z0-9 ]/g, '').replace(/ +/g, '-').slice(0, 25);
       const note = currentSupportState.orderId ? currentSupportState.orderId : `KNSDC-${cleanEvName}`;
 
@@ -11303,7 +11321,8 @@
     // Opens specific UPI app with amount pre-filled using app-native scheme
     function openUpiApp(app) {
       const amt = (currentSupportState.selectedAmount || 500).toFixed(2);
-      const pa = encodeURIComponent('7001865288@nyes');
+      const liveVpa = (currentSupportState.eventVpa && currentSupportState.eventId !== 'general') ? currentSupportState.eventVpa : (window.globalSupportMissionVpa || '7001865288@nyes');
+      const pa = encodeURIComponent(liveVpa);
       const pn = encodeURIComponent('Kalikapur Nabin Sangha');
       const tn = encodeURIComponent(currentSupportState.orderId || 'KNSDC-Donation');
       const amParam = `am=${amt}&`;

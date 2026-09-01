@@ -471,8 +471,63 @@ app.delete('/api/finance/transactions/:id', async (req, res) => {
 // ZERO-GATEWAY AUTOMATED UPI PAYMENT & DONATION ENGINE
 // ==========================================
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'zero_gateway_secret_key_8849';
-const UPI_VPA = process.env.UPI_VPA || '7001865288@nyes';
-const PAYEE_NAME = process.env.PAYEE_NAME || 'Kalikapur Nabin Sangha Club';
+let currentSupportMissionVpa = process.env.UPI_VPA || '7001865288@nyes';
+let currentPayeeName = process.env.PAYEE_NAME || 'Kalikapur Nabin Sangha Club';
+
+// Load saved Mission VPA from MongoDB on start
+async function loadSavedMissionVpa() {
+  if (!db) return;
+  try {
+    const conf = await db.collection('club_settings').findOne({ key: 'support_mission_vpa' });
+    if (conf && conf.vpa) {
+      currentSupportMissionVpa = conf.vpa;
+      if (conf.payeeName) currentPayeeName = conf.payeeName;
+      console.log(`[MongoDB] Loaded Support Mission UPI VPA: ${currentSupportMissionVpa}`);
+    }
+  } catch(e) {}
+}
+setTimeout(loadSavedMissionVpa, 3000);
+
+// GET: Support Mission Donation Config
+app.get('/api/donations/config', async (req, res) => {
+  try {
+    if (db) {
+      const conf = await db.collection('club_settings').findOne({ key: 'support_mission_vpa' });
+      if (conf && conf.vpa) {
+        currentSupportMissionVpa = conf.vpa;
+        if (conf.payeeName) currentPayeeName = conf.payeeName;
+      }
+    }
+    res.json({ success: true, supportMissionVpa: currentSupportMissionVpa, payeeName: currentPayeeName });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Update Support Mission Donation UPI VPA
+app.post('/api/donations/config', async (req, res) => {
+  try {
+    const { vpa, payeeName } = req.body;
+    if (!vpa || !vpa.includes('@')) {
+      return res.status(400).json({ success: false, error: 'Valid UPI ID (e.g. username@bank) is required' });
+    }
+    currentSupportMissionVpa = vpa.trim();
+    if (payeeName) currentPayeeName = payeeName.trim();
+
+    if (db) {
+      await db.collection('club_settings').updateOne(
+        { key: 'support_mission_vpa' },
+        { $set: { key: 'support_mission_vpa', vpa: currentSupportMissionVpa, payeeName: currentPayeeName, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      console.log(`[MongoDB] Updated Support Mission UPI VPA: ${currentSupportMissionVpa}`);
+    }
+
+    res.json({ success: true, supportMissionVpa: currentSupportMissionVpa, payeeName: currentPayeeName });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 const memoryOrders = new Map();
 const processedUtrs = new Set();
@@ -510,7 +565,9 @@ app.post('/api/donations/create-order', async (req, res) => {
       await col.insertOne({ ...orderData });
     }
 
-    const upiUrl = `upi://pay?pa=${encodeURIComponent(UPI_VPA)}&pn=${encodeURIComponent(PAYEE_NAME)}&am=${numAmount.toFixed(2)}&tn=${orderId}&cu=INR`;
+    const targetVpa = (eventId && eventId !== 'general' && req.body.eventVpa) ? req.body.eventVpa : currentSupportMissionVpa;
+    const targetPayee = req.body.payeeName || currentPayeeName;
+    const upiUrl = `upi://pay?pa=${encodeURIComponent(targetVpa)}&pn=${encodeURIComponent(targetPayee)}&am=${numAmount.toFixed(2)}&tn=${orderId}&cu=INR`;
 
     res.json({
       success: true,

@@ -2307,8 +2307,60 @@ function saveData() {
         // ══════════════════════════════════════════
         window.allDonations = [];
 
+    window.supportMissionVpa = "7001865288@nyes";
+    window.supportMissionPayee = "Kalikapur Nabin Sangha Club";
+
+    window.openEditMissionVpaModal = function() {
+      document.getElementById("mission-vpa-input").value = window.supportMissionVpa || "7001865288@nyes";
+      document.getElementById("mission-payee-input").value = window.supportMissionPayee || "Kalikapur Nabin Sangha Club";
+      openModal("edit-mission-vpa-modal");
+    };
+
+    window.handleSaveMissionVpa = async function(e) {
+      e.preventDefault();
+      const vpa = document.getElementById("mission-vpa-input").value.trim();
+      const payeeName = document.getElementById("mission-payee-input").value.trim() || "Kalikapur Nabin Sangha Club";
+
+      if (!vpa || !vpa.includes("@")) {
+        alert("Please enter a valid UPI ID (e.g. username@bank).");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/donations/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vpa, payeeName })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.supportMissionVpa = data.supportMissionVpa;
+          window.supportMissionPayee = data.payeeName;
+          const el = document.getElementById("display-mission-vpa");
+          if (el) el.textContent = data.supportMissionVpa;
+          closeModal("edit-mission-vpa-modal");
+          alert(`Updated Support Mission UPI ID to: ${data.supportMissionVpa} (Saved in MongoDB Atlas)`);
+        }
+      } catch (err) {
+        console.warn("[Mission VPA Save Error]:", err);
+      }
+    };
+
         window.fetchAndRenderDonations = async function() {
           try {
+            // Fetch Live Support Mission VPA Config from MongoDB
+            try {
+              const confRes = await fetch('/api/donations/config');
+              if (confRes.ok) {
+                const confData = await confRes.json();
+                if (confData.success && confData.supportMissionVpa) {
+                  window.supportMissionVpa = confData.supportMissionVpa;
+                  window.supportMissionPayee = confData.payeeName;
+                  const el = document.getElementById('display-mission-vpa');
+                  if (el) el.textContent = confData.supportMissionVpa;
+                }
+              }
+            } catch(e) {}
             const res = await fetch('/api/donations');
             if (res.ok) {
               const data = await res.json();
@@ -3771,7 +3823,13 @@ function saveData() {
           <h3 style="font-size:14px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
             <span>📜 Detailed Contributions Ledger</span>
           </h3>
-          <span style="font-size:11px; color:#94a3b8;">Receiver VPA: <strong style="color:#34d399;">7001865288@nyes</strong></span>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="font-size:11px; color:var(--text-muted); font-weight:700;">💝 Support Mission UPI VPA:</span>
+            <span id="display-mission-vpa" class="font-mono" style="color:#fbbf24; font-weight:800; background:rgba(251,191,36,0.15); padding:3px 10px; border-radius:8px; border:1px solid rgba(251,191,36,0.35); font-size:12px;">7001865288@nyes</span>
+            <button type="button" onclick="openEditMissionVpaModal()" class="btn btn-secondary" style="padding:4px 10px; font-size:11px; color:#38bdf8; border-color:rgba(56,189,248,0.45); background:rgba(56,189,248,0.12); font-weight:800;" title="Edit Support Mission UPI ID">
+              ✏️ Edit UPI VPA
+            </button>
+          </div>
         </div>
         <div class="table-container">
           <table>
