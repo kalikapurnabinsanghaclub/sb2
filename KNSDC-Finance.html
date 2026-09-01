@@ -2418,9 +2418,19 @@ function saveData() {
         };
 
         // ══════════════════════════════════════════
-        // 6. ASSETS & LOCKER BOOKINGS ENGINE
         // ══════════════════════════════════════════
-        const defaultAssets = [
+        // 6. LIBRARY & LOCKERS MANAGEMENT ENGINE
+        // ══════════════════════════════════════════
+        const defaultBooks = [
+          { id: 'bk-1', title: 'Anandamath', author: 'Bankim Chandra Chattopadhyay', code: 'BK-101', category: 'Bengali', totalCopies: 3, fee: 0 },
+          { id: 'bk-2', title: 'The Complete Adventures of Feluda', author: 'Satyajit Ray', code: 'BK-102', category: 'Literature', totalCopies: 4, fee: 0 },
+          { id: 'bk-3', title: 'Playing It My Way (Autobiography)', author: 'Sachin Tendulkar', code: 'BK-103', category: 'Sports', totalCopies: 2, fee: 0 },
+          { id: 'bk-4', title: 'Gitanjali (Song Offerings)', author: 'Rabindranath Tagore', code: 'BK-104', category: 'Bengali', totalCopies: 3, fee: 0 },
+          { id: 'bk-5', title: 'A Brief History of Time', author: 'Stephen Hawking', code: 'BK-105', category: 'Science', totalCopies: 2, fee: 0 },
+          { id: 'bk-6', title: 'Sports Weekly & Club Chronicles', author: 'KNSDC Editorial', code: 'MAG-01', category: 'Magazine', totalCopies: 5, fee: 0 }
+        ];
+
+        const defaultLockers = [
           { id: 'ast-l1', name: 'Locker #L-01', category: 'Locker', code: 'L-01', defaultFee: 100, defaultDeposit: 0 },
           { id: 'ast-l2', name: 'Locker #L-02', category: 'Locker', code: 'L-02', defaultFee: 100, defaultDeposit: 0 },
           { id: 'ast-l3', name: 'Locker #L-03', category: 'Locker', code: 'L-03', defaultFee: 100, defaultDeposit: 0 },
@@ -2430,90 +2440,84 @@ function saveData() {
           { id: 'ast-l7', name: 'Locker #L-07', category: 'Locker', code: 'L-07', defaultFee: 100, defaultDeposit: 0 },
           { id: 'ast-l8', name: 'Locker #L-08', category: 'Locker', code: 'L-08', defaultFee: 100, defaultDeposit: 0 },
           { id: 'ast-l9', name: 'Locker #L-09', category: 'Locker', code: 'L-09', defaultFee: 100, defaultDeposit: 0 },
-          { id: 'ast-l10', name: 'Locker #L-10', category: 'Locker', code: 'L-10', defaultFee: 100, defaultDeposit: 0 },
-          { id: 'ast-hall', name: 'Club Community Hall & Stage', category: 'Hall', code: 'HALL-1', defaultFee: 2000, defaultDeposit: 500 },
-          { id: 'ast-sound', name: 'Club Sound System & Mic Set', category: 'Electronics', code: 'SND-1', defaultFee: 800, defaultDeposit: 200 },
-          { id: 'ast-cricket', name: 'Club Cricket Team Match Kit', category: 'Sports Gear', code: 'CRK-1', defaultFee: 300, defaultDeposit: 0 }
+          { id: 'ast-l10', name: 'Locker #L-10', category: 'Locker', code: 'L-10', defaultFee: 100, defaultDeposit: 0 }
         ];
 
-        window.clubAssets = JSON.parse(localStorage.getItem('fp_assets')) || defaultAssets;
+        window.clubBooks = JSON.parse(localStorage.getItem('fp_library_books')) || defaultBooks;
+        window.bookIssues = JSON.parse(localStorage.getItem('fp_book_issues')) || [];
+        window.clubAssets = JSON.parse(localStorage.getItem('fp_assets')) || defaultLockers;
         window.assetBookings = JSON.parse(localStorage.getItem('fp_asset_bookings')) || [];
 
-        window.fetchAssetsAndBookings = async function() {
-          try {
-            const res = await fetch('/api/assets/bookings');
-            if (res.ok) {
-              const data = await res.json();
-              if (data.success) {
-                if (Array.isArray(data.assets) && data.assets.length > 0) {
-                  window.clubAssets = data.assets;
-                  localStorage.setItem('fp_assets', JSON.stringify(data.assets));
-                }
-                if (Array.isArray(data.bookings)) {
-                  window.assetBookings = data.bookings;
-                  localStorage.setItem('fp_asset_bookings', JSON.stringify(data.bookings));
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[Assets Sync]:', e);
+        window.switchLibSubTab = function(tab) {
+          const bSection = document.getElementById('lib-books-section');
+          const lSection = document.getElementById('lib-lockers-section');
+          const bBtn = document.getElementById('subtab-books-btn');
+          const lBtn = document.getElementById('subtab-lockers-btn');
+
+          if (tab === 'books') {
+            if (bSection) bSection.style.display = 'block';
+            if (lSection) lSection.style.display = 'none';
+            if (bBtn) { bBtn.style.background = '#4f46e5'; bBtn.style.color = '#fff'; }
+            if (lBtn) { lBtn.style.background = '#1e293b'; lBtn.style.color = '#94a3b8'; }
+          } else {
+            if (bSection) bSection.style.display = 'none';
+            if (lSection) lSection.style.display = 'block';
+            if (bBtn) { bBtn.style.background = '#1e293b'; bBtn.style.color = '#94a3b8'; }
+            if (lBtn) { lBtn.style.background = '#4f46e5'; lBtn.style.color = '#fff'; }
           }
-          renderAssetsPanel();
         };
 
         window.renderAssetsPanel = function() {
-          const assets = window.clubAssets || [];
-          const bookings = window.assetBookings || [];
+          const books = window.clubBooks || [];
+          const issues = window.bookIssues || [];
+          const lockers = (window.clubAssets || []).filter(a => a.category === 'Locker');
+          const lockerBookings = window.assetBookings || [];
 
-          // 1. Calculate Metrics
+          // 1. Calculate Stats
+          const activeIssues = issues.filter(x => x.status === 'issued');
+          const totalBooksCopies = books.reduce((sum, b) => sum + (Number(b.totalCopies) || 1), 0);
+          
           let activeLockersCount = 0;
-          let totalLockersCount = 0;
-          let activeRentalsCount = 0;
-          let totalRentalRevenue = 0;
-
-          const activeBookingsMap = new Map();
-
-          bookings.forEach(b => {
-            if (b.status === 'active') {
-              activeBookingsMap.set(b.assetId, b);
-              if (b.category === 'Locker') activeLockersCount++;
-              else activeRentalsCount++;
+          const activeLockersMap = new Map();
+          lockerBookings.forEach(lb => {
+            if (lb.status === 'active') {
+              activeLockersCount++;
+              activeLockersMap.set(lb.assetId, lb);
             }
-            totalRentalRevenue += (Number(b.rentAmount) || 0);
           });
 
-          assets.forEach(a => {
-            if (a.category === 'Locker') totalLockersCount++;
-          });
+          let totalRevenue = 0;
+          issues.forEach(i => { totalRevenue += (Number(i.fee) || 0); });
+          lockerBookings.forEach(lb => { totalRevenue += (Number(lb.rentAmount) || 0); });
 
-          // Update DOM Stats
+          // Update DOM Elements
+          const elIss = document.getElementById('stat-books-issued');
+          if (elIss) elIss.textContent = activeIssues.length;
+          const elTotB = document.getElementById('stat-total-books-count');
+          if (elTotB) elTotB.textContent = `${totalBooksCopies} total copies`;
+
           const elActL = document.getElementById('stat-active-lockers');
           if (elActL) elActL.textContent = activeLockersCount;
           const elTotL = document.getElementById('stat-total-lockers');
-          if (elTotL) elTotL.textContent = `${totalLockersCount} total lockers`;
-
-          const elActR = document.getElementById('stat-active-rentals');
-          if (elActR) elActR.textContent = activeRentalsCount;
+          if (elTotL) elTotL.textContent = `${lockers.length} total lockers`;
 
           const elRev = document.getElementById('stat-rental-revenue');
-          if (elRev) elRev.textContent = '₹' + totalRentalRevenue.toLocaleString('en-IN');
-
+          if (elRev) elRev.textContent = '₹' + totalRevenue.toLocaleString('en-IN');
           const elBCount = document.getElementById('stat-total-bookings-count');
-          if (elBCount) elBCount.textContent = `${bookings.length} bookings recorded`;
+          if (elBCount) elBCount.textContent = `${issues.length + lockerBookings.length} records`;
 
-          const elTotAst = document.getElementById('stat-total-assets-count');
-          if (elTotAst) elTotAst.textContent = assets.length;
+          const elTotTitles = document.getElementById('stat-total-titles-count');
+          if (elTotTitles) elTotTitles.textContent = books.length;
 
           // Update Tab Pill
           const pill = document.getElementById('assets-tab-pill');
-          if (pill) pill.textContent = bookings.filter(x => x.status === 'active').length;
+          if (pill) pill.textContent = activeIssues.length + activeLockersCount;
 
           // 2. Render Visual Locker Grid
           const lockerGrid = document.getElementById('lockers-visual-grid');
           if (lockerGrid) {
-            const lockers = assets.filter(a => a.category === 'Locker');
             lockerGrid.innerHTML = lockers.map(l => {
-              const activeBooking = activeBookingsMap.get(l.id);
+              const activeBooking = activeLockersMap.get(l.id);
               const isOccupied = !!activeBooking;
               const bgColor = isOccupied ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)';
               const borderColor = isOccupied ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)';
@@ -2521,7 +2525,7 @@ function saveData() {
               const occupant = isOccupied ? activeBooking.memberName : 'Available (Click to Book)';
 
               return `
-                <div onclick="${isOccupied ? `alert('Locker ${l.name} is booked by ${activeBooking.memberName} (Phone: ${activeBooking.memberPhone || 'N/A'}) until ${activeBooking.endDate || 'active period'}')` : `openAddAssetBookingModal('${l.id}')`}" 
+                <div onclick="${isOccupied ? `alert('Locker ' + l.name + ' is booked by ' + activeBooking.memberName + ' (Phone: ' + (activeBooking.memberPhone || 'N/A') + ') until ' + (activeBooking.endDate || 'active period'))` : `openAddAssetBookingModal('${l.id}')`}" 
                      style="background:${bgColor}; border:1px solid ${borderColor}; border-radius:12px; padding:10px; cursor:pointer; text-align:center; transition:transform 0.15s ease;">
                   <div style="font-size:16px;">${isOccupied ? '🔒' : '🔓'}</div>
                   <strong style="font-size:12px; color:#fff; display:block; margin-top:4px;">${l.name}</strong>
@@ -2532,44 +2536,135 @@ function saveData() {
             }).join('');
           }
 
-          // 3. Render Bookings Table
-          filterAssetBookings();
+          // 3. Render Tables
+          filterLibraryBooksAndIssues();
+          renderLockerBookingsTable();
         };
 
-        window.filterAssetBookings = function() {
-          const searchVal = (document.getElementById('assets-search')?.value || '').toLowerCase().trim();
-          const catFilter = document.getElementById('assets-category-filter')?.value || 'all';
-          const statusFilter = document.getElementById('assets-status-filter')?.value || 'all';
-          const bookings = window.assetBookings || [];
+        window.filterLibraryBooksAndIssues = function() {
+          const searchVal = (document.getElementById('lib-book-search')?.value || '').toLowerCase().trim();
+          const catFilter = document.getElementById('lib-book-category-filter')?.value || 'all';
+          const statusFilter = document.getElementById('lib-issue-status-filter')?.value || 'all';
+          const books = window.clubBooks || [];
+          const issues = window.bookIssues || [];
 
-          const filtered = bookings.filter(b => {
+          // Filter Issues
+          const filteredIssues = issues.filter(i => {
             if (searchVal) {
-              const mName = (b.memberName || '').toLowerCase();
-              const phone = (b.memberPhone || '').toLowerCase();
-              const aName = (b.assetName || '').toLowerCase();
-              const bId = (b.id || '').toLowerCase();
-              if (!mName.includes(searchVal) && !phone.includes(searchVal) && !aName.includes(searchVal) && !bId.includes(searchVal)) {
+              const mName = (i.memberName || '').toLowerCase();
+              const bTitle = (i.bookTitle || '').toLowerCase();
+              const bCode = (i.bookCode || '').toLowerCase();
+              const phone = (i.memberPhone || '').toLowerCase();
+              if (!mName.includes(searchVal) && !bTitle.includes(searchVal) && !bCode.includes(searchVal) && !phone.includes(searchVal)) {
                 return false;
               }
             }
-
-            if (catFilter !== 'all' && b.category !== catFilter) return false;
-            if (statusFilter !== 'all' && b.status !== statusFilter) return false;
+            if (catFilter !== 'all' && i.category !== catFilter) return false;
+            if (statusFilter !== 'all' && i.status !== statusFilter) return false;
             return true;
           });
 
-          const countEl = document.getElementById('assets-filtered-count');
-          if (countEl) countEl.textContent = filtered.length;
+          const countEl = document.getElementById('lib-filtered-count');
+          if (countEl) countEl.textContent = filteredIssues.length;
 
-          const tbody = document.getElementById('assets-bookings-tbody');
+          const issuesTbody = document.getElementById('lib-issues-tbody');
+          if (issuesTbody) {
+            if (filteredIssues.length === 0) {
+              issuesTbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:28px; color:#64748b;">No book issues recorded matching filters. Click "+ Issue Book to Member" above!</td></tr>';
+            } else {
+              issuesTbody.innerHTML = filteredIssues.map(i => {
+                const isIssued = i.status === 'issued';
+                const statusBadge = isIssued
+                  ? '<span class="badge badge-pending" style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.4);">📖 ISSUED</span>'
+                  : '<span class="badge badge-paid">✅ RETURNED</span>';
+
+                return `
+                  <tr>
+                    <td><strong class="font-mono" style="color:#818cf8; font-size:11px;">${i.id}</strong></td>
+                    <td>
+                      <strong style="color:#fff;">${i.bookTitle}</strong>
+                      <div class="font-mono" style="font-size:10px; color:var(--text-muted);">${i.bookCode || '-'} · ${i.author || ''}</div>
+                    </td>
+                    <td><span class="badge badge-blue">${i.category || 'General'}</span></td>
+                    <td>
+                      <strong style="color:#fff;">${i.memberName}</strong>
+                      ${i.memberPhone ? `<div style="font-size:11px; color:#94a3b8;">📱 ${i.memberPhone}</div>` : ''}
+                    </td>
+                    <td class="font-mono" style="color:var(--text-dim); font-size:11px;">${i.issueDate || '-'}</td>
+                    <td class="font-mono" style="color:#fbbf24; font-size:11px; font-weight:700;">${i.dueDate || '-'}</td>
+                    <td style="color:#34d399; font-weight:700;">₹${Number(i.fee || 0).toLocaleString('en-IN')}</td>
+                    <td>${statusBadge}</td>
+                    <td style="text-align:right;">
+                      <div style="display:inline-flex; gap:6px;">
+                        ${isIssued ? `
+                          <button type="button" onclick="handleReturnBookIssue('${i.id}')" class="btn" style="padding:4px 8px; font-size:11px; background:#1e293b; color:#34d399; border:1px solid rgba(52,211,153,0.3);" title="Mark Returned">
+                            🔄 Return
+                          </button>
+                        ` : ''}
+                        <button type="button" onclick="handleDeleteBookIssue('${i.id}')" class="btn" style="padding:4px 6px; font-size:11px; background:#1e293b; color:#f87171; border:1px solid rgba(239,68,68,0.3);" title="Delete Record">
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('');
+            }
+          }
+
+          // 2. Render Catalog Table
+          const catalogTbody = document.getElementById('lib-catalog-tbody');
+          if (catalogTbody) {
+            const filteredBooks = books.filter(b => {
+              if (searchVal) {
+                const bTitle = (b.title || '').toLowerCase();
+                const bAuthor = (b.author || '').toLowerCase();
+                const bCode = (b.code || '').toLowerCase();
+                if (!bTitle.includes(searchVal) && !bAuthor.includes(searchVal) && !bCode.includes(searchVal)) return false;
+              }
+              if (catFilter !== 'all' && b.category !== catFilter) return false;
+              return true;
+            });
+
+            catalogTbody.innerHTML = filteredBooks.map(b => {
+              const activeIssuedCount = (window.bookIssues || []).filter(x => x.bookId === b.id && x.status === 'issued').length;
+              const totalCopies = Number(b.totalCopies) || 1;
+              const avail = Math.max(0, totalCopies - activeIssuedCount);
+              const availColor = avail > 0 ? '#34d399' : '#f87171';
+
+              return `
+                <tr>
+                  <td><strong class="font-mono" style="color:#818cf8; font-size:11px;">${b.code || 'BK'}</strong></td>
+                  <td>
+                    <strong style="color:#fff;">${b.title}</strong>
+                    <div style="font-size:11px; color:var(--text-muted);">by ${b.author}</div>
+                  </td>
+                  <td><span class="badge badge-blue">${b.category}</span></td>
+                  <td>${totalCopies} copies</td>
+                  <td><strong style="color:${availColor};">${avail} available</strong></td>
+                  <td>${(b.fee > 0) ? ('₹' + b.fee) : 'Free'}</td>
+                  <td style="text-align:right;">
+                    <button type="button" onclick="openIssueBookModal('${b.id}')" ${avail <= 0 ? 'disabled' : ''} class="btn" style="padding:4px 8px; font-size:11px; background:#4f46e5; color:#fff; border:none;" title="Issue this book">
+                      📖 Issue
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('');
+          }
+        };
+
+        window.renderLockerBookingsTable = function() {
+          const tbody = document.getElementById('lockers-bookings-tbody');
           if (!tbody) return;
+          const bookings = window.assetBookings || [];
 
-          if (filtered.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:32px; color:#64748b;">No asset or locker bookings recorded yet. Click "+ New Booking / Assign Locker" above!</td></tr>';
+          if (bookings.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:28px; color:#64748b;">No locker allocations recorded yet. Click on any green locker above to assign!</td></tr>';
             return;
           }
 
-          tbody.innerHTML = filtered.map(b => {
+          tbody.innerHTML = bookings.map(b => {
             const rentAmt = Number(b.rentAmount) || 0;
             const depAmt = Number(b.depositAmount) || 0;
             const isAct = b.status === 'active';
@@ -2582,11 +2677,7 @@ function saveData() {
             return `
               <tr>
                 <td><strong class="font-mono" style="color:#818cf8; font-size:11px;">${b.id}</strong></td>
-                <td>
-                  <strong style="color:#fff;">${b.assetName || 'Locker'}</strong>
-                  ${b.notes ? `<div style="font-size:10px; color:var(--text-muted);">${b.notes}</div>` : ''}
-                </td>
-                <td><span class="badge badge-blue">${b.category || 'Asset'}</span></td>
+                <td><strong style="color:#fff;">${b.assetName || 'Locker'}</strong></td>
                 <td>
                   <strong style="color:#fff;">${b.memberName || 'Member'}</strong>
                   ${b.memberPhone ? `<div style="font-size:11px; color:#94a3b8;">📱 ${b.memberPhone}</div>` : ''}
@@ -2601,7 +2692,7 @@ function saveData() {
                       🧾 Receipt
                     </button>
                     ${isAct ? `
-                      <button type="button" onclick="handleReturnAssetBooking('${b.id}')" class="btn" style="padding:4px 8px; font-size:11px; background:#1e293b; color:#34d399; border:1px solid rgba(52,211,153,0.3);" title="Mark Returned / Release Slot">
+                      <button type="button" onclick="handleReturnAssetBooking('${b.id}')" class="btn" style="padding:4px 8px; font-size:11px; background:#1e293b; color:#34d399; border:1px solid rgba(52,211,153,0.3);" title="Release Locker">
                         🔄 Release
                       </button>
                     ` : ''}
@@ -2615,62 +2706,188 @@ function saveData() {
           }).join('');
         };
 
+        // Book Actions
+        window.openAddBookModal = function() {
+          document.getElementById('bk-title').value = '';
+          document.getElementById('bk-author').value = '';
+          document.getElementById('bk-code').value = 'BK-' + Math.floor(100 + Math.random() * 900);
+          document.getElementById('bk-copies').value = 2;
+          document.getElementById('bk-fee').value = 0;
+          openModal('add-book-modal');
+        };
+
+        window.handleSaveBook = function(e) {
+          e.preventDefault();
+          const title = document.getElementById('bk-title').value.trim();
+          const author = document.getElementById('bk-author').value.trim();
+          const code = document.getElementById('bk-code').value.trim() || ('BK-' + Date.now().toString().slice(-4));
+          const category = document.getElementById('bk-category').value;
+          const totalCopies = Number(document.getElementById('bk-copies').value) || 1;
+          const fee = Number(document.getElementById('bk-fee').value) || 0;
+
+          const newBook = {
+            id: 'bk-' + Date.now(),
+            title,
+            author,
+            code,
+            category,
+            totalCopies,
+            fee
+          };
+
+          if (!window.clubBooks) window.clubBooks = [];
+          window.clubBooks.unshift(newBook);
+          localStorage.setItem('fp_library_books', JSON.stringify(window.clubBooks));
+
+          closeModal('add-book-modal');
+          renderAssetsPanel();
+          alert(`Added "${title}" to library catalog!`);
+        };
+
+        window.openIssueBookModal = function(preselectedBookId) {
+          const books = window.clubBooks || [];
+          const bSel = document.getElementById('ib-book-id');
+          if (bSel) {
+            bSel.innerHTML = books.map(b => {
+              const activeIssuedCount = (window.bookIssues || []).filter(x => x.bookId === b.id && x.status === 'issued').length;
+              const totalCopies = Number(b.totalCopies) || 1;
+              const avail = Math.max(0, totalCopies - activeIssuedCount);
+              return `<option value="${b.id}" ${avail <= 0 ? 'disabled' : ''} ${b.id === preselectedBookId ? 'selected' : ''}>${b.title} (${b.code}) — ${avail} available</option>`;
+            }).join('');
+          }
+
+          const memSel = document.getElementById('ib-member-id');
+          if (memSel) {
+            let mOpts = '<option value="">-- Select Enrolled Club Member --</option>';
+            members.forEach(m => {
+              mOpts += `<option value="${m.id}">${m.name} (${m.phone || 'No phone'})</option>`;
+            });
+            mOpts += '<option value="custom">➕ Walk-in Reader</option>';
+            memSel.innerHTML = mOpts;
+          }
+
+          document.getElementById('ib-id').value = 'ISS-' + Math.floor(1000 + Math.random() * 9000);
+          const today = new Date().toISOString().split('T')[0];
+          const dueDateObj = new Date();
+          dueDateObj.setDate(dueDateObj.getDate() + 14);
+          const dueStr = dueDateObj.toISOString().split('T')[0];
+
+          document.getElementById('ib-issue-date').value = today;
+          document.getElementById('ib-due-date').value = dueStr;
+
+          const curBook = books.find(b => b.id === (preselectedBookId || bSel?.value)) || books[0];
+          if (curBook) {
+            document.getElementById('ib-fee').value = curBook.fee || 0;
+          }
+
+          openModal('issue-book-modal');
+        };
+
+        window.handleBookIssueSelect = function(bookId) {
+          const b = (window.clubBooks || []).find(x => x.id === bookId);
+          if (b) {
+            document.getElementById('ib-fee').value = b.fee || 0;
+          }
+        };
+
+        window.handleBookMemberSelect = function(memId) {
+          if (!memId || memId === 'custom') return;
+          const m = members.find(x => x.id === memId);
+          if (m) {
+            document.getElementById('ib-member-name').value = m.name;
+            document.getElementById('ib-member-phone').value = m.phone || '';
+          }
+        };
+
+        window.handleSaveBookIssue = function(e) {
+          e.preventDefault();
+          const id = document.getElementById('ib-id').value;
+          const bookId = document.getElementById('ib-book-id').value;
+          const book = (window.clubBooks || []).find(b => b.id === bookId);
+          const memberName = document.getElementById('ib-member-name').value.trim();
+          const memberPhone = document.getElementById('ib-member-phone').value.trim();
+          const issueDate = document.getElementById('ib-issue-date').value;
+          const dueDate = document.getElementById('ib-due-date').value;
+          const fee = Number(document.getElementById('ib-fee').value) || 0;
+
+          const issueDoc = {
+            id,
+            bookId,
+            bookTitle: book ? book.title : 'Library Book',
+            bookCode: book ? book.code : 'BK',
+            author: book ? book.author : '',
+            category: book ? book.category : 'General',
+            memberName,
+            memberPhone,
+            issueDate,
+            dueDate,
+            fee,
+            status: 'issued',
+            createdAt: new Date()
+          };
+
+          if (!window.bookIssues) window.bookIssues = [];
+          window.bookIssues.unshift(issueDoc);
+          localStorage.setItem('fp_book_issues', JSON.stringify(window.bookIssues));
+
+          closeModal('issue-book-modal');
+          renderAssetsPanel();
+          alert(`Issued book "${issueDoc.bookTitle}" to ${memberName}!`);
+        };
+
+        window.handleReturnBookIssue = function(issueId) {
+          if (!confirm(`Confirm return of book issue ${issueId}?`)) return;
+          const item = (window.bookIssues || []).find(x => x.id === issueId);
+          if (item) {
+            item.status = 'returned';
+            item.returnedDate = new Date().toISOString().split('T')[0];
+            localStorage.setItem('fp_book_issues', JSON.stringify(window.bookIssues));
+            renderAssetsPanel();
+          }
+        };
+
+        window.handleDeleteBookIssue = function(issueId) {
+          if (!confirm(`Delete record ${issueId}?`)) return;
+          window.bookIssues = (window.bookIssues || []).filter(x => x.id !== issueId);
+          localStorage.setItem('fp_book_issues', JSON.stringify(window.bookIssues));
+          renderAssetsPanel();
+        };
+
+        // Locker Allocation Modal Helpers
         window.openAddAssetBookingModal = function(preselectedAssetId) {
-          const assets = window.clubAssets || [];
+          const lockers = (window.clubAssets || []).filter(a => a.category === 'Locker');
           const activeBookings = (window.assetBookings || []).filter(x => x.status === 'active');
           const occupiedAssetIds = new Set(activeBookings.map(b => b.assetId));
 
           const assetSel = document.getElementById('ab-asset-id');
           if (assetSel) {
-            assetSel.innerHTML = assets.map(a => {
+            assetSel.innerHTML = lockers.map(a => {
               const isOcc = occupiedAssetIds.has(a.id);
               const occTag = isOcc ? ' (🔴 Occupied)' : ' (🟢 Available)';
-              return `<option value="${a.id}" ${isOcc ? 'disabled' : ''} ${a.id === preselectedAssetId ? 'selected' : ''}>${a.name} — ${a.category}${occTag}</option>`;
+              return `<option value="${a.id}" ${isOcc ? 'disabled' : ''} ${a.id === preselectedAssetId ? 'selected' : ''}>${a.name}${occTag}</option>`;
             }).join('');
           }
 
-          // Populate Members dropdown
           const memSel = document.getElementById('ab-member-id');
           if (memSel) {
             let mOpts = '<option value="">-- Select Enrolled Club Member --</option>';
             members.forEach(m => {
               mOpts += `<option value="${m.id}">${m.name} (${m.phone || 'No phone'})</option>`;
             });
-            mOpts += '<option value="custom">➕ Other / Non-member Walk-in</option>';
+            mOpts += '<option value="custom">➕ Other Member / Walk-in</option>';
             memSel.innerHTML = mOpts;
           }
 
-          const targetAsset = assets.find(a => a.id === (preselectedAssetId || assetSel?.value)) || assets[0];
-          if (targetAsset) {
-            document.getElementById('ab-rent-amount').value = targetAsset.defaultFee || 100;
-            document.getElementById('ab-deposit-amount').value = targetAsset.defaultDeposit || 0;
-          }
-
-          document.getElementById('ab-id').value = 'AB-' + Math.floor(10000 + Math.random() * 90000);
+          document.getElementById('ab-rent-amount').value = 100;
+          document.getElementById('ab-deposit-amount').value = 0;
+          document.getElementById('ab-id').value = 'LCK-' + Math.floor(10000 + Math.random() * 90000);
           document.getElementById('ab-start-date').value = new Date().toISOString().split('T')[0];
           document.getElementById('ab-notes').value = '';
 
           openModal('add-asset-booking-modal');
         };
 
-        window.handleAssetSelectChange = function(assetId) {
-          const target = (window.clubAssets || []).find(a => a.id === assetId);
-          if (target) {
-            document.getElementById('ab-rent-amount').value = target.defaultFee || 100;
-            document.getElementById('ab-deposit-amount').value = target.defaultDeposit || 0;
-          }
-        };
-
-        window.handleAssetMemberSelectChange = function(memId) {
-          if (!memId || memId === 'custom') return;
-          const m = members.find(x => x.id === memId);
-          if (m) {
-            document.getElementById('ab-member-name').value = m.name;
-            document.getElementById('ab-member-phone').value = m.phone || '';
-          }
-        };
-
-        window.handleSaveAssetBooking = async function(e) {
+        window.handleSaveAssetBooking = function(e) {
           e.preventDefault();
           const id = document.getElementById('ab-id').value;
           const assetId = document.getElementById('ab-asset-id').value;
@@ -2688,7 +2905,7 @@ function saveData() {
             id,
             assetId,
             assetName: asset ? asset.name : 'Locker',
-            category: asset ? asset.category : 'Locker',
+            category: 'Locker',
             memberName,
             memberPhone,
             rentAmount,
@@ -2701,83 +2918,28 @@ function saveData() {
             createdAt: new Date()
           };
 
-          try {
-            await fetch('/api/assets/bookings', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(bookingDoc)
-            });
-          } catch (err) {}
-
           if (!window.assetBookings) window.assetBookings = [];
           window.assetBookings.unshift(bookingDoc);
           localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
 
           closeModal('add-asset-booking-modal');
           renderAssetsPanel();
-          alert(`Recorded booking ${id} for ${bookingDoc.assetName} by ${memberName}!`);
+          alert(`Allocated ${bookingDoc.assetName} to ${memberName}!`);
         };
 
-        window.openAddAssetModal = function() {
-          document.getElementById('ast-name').value = '';
-          document.getElementById('ast-code').value = '';
-          document.getElementById('ast-fee').value = 100;
-          document.getElementById('ast-deposit').value = 0;
-          openModal('add-asset-modal');
-        };
-
-        window.handleSaveAsset = function(e) {
-          e.preventDefault();
-          const name = document.getElementById('ast-name').value.trim();
-          const category = document.getElementById('ast-category').value;
-          const code = document.getElementById('ast-code').value.trim() || ('AST-' + Date.now().toString().slice(-4));
-          const defaultFee = Number(document.getElementById('ast-fee').value) || 0;
-          const defaultDeposit = Number(document.getElementById('ast-deposit').value) || 0;
-
-          const newAsset = {
-            id: 'ast-' + Date.now(),
-            name,
-            category,
-            code,
-            defaultFee,
-            defaultDeposit
-          };
-
-          if (!window.clubAssets) window.clubAssets = [];
-          window.clubAssets.push(newAsset);
-          localStorage.setItem('fp_assets', JSON.stringify(window.clubAssets));
-
-          closeModal('add-asset-modal');
-          renderAssetsPanel();
-          alert(`Added new asset "${name}" to club inventory!`);
-        };
-
-        window.handleReturnAssetBooking = async function(bookingId) {
-          if (!confirm(`Mark booking ${bookingId} as returned and release the locker/asset?`)) return;
-
+        window.handleReturnAssetBooking = function(bookingId) {
+          if (!confirm(`Release locker booking ${bookingId}?`)) return;
           const item = (window.assetBookings || []).find(b => b.id === bookingId);
           if (item) {
             item.status = 'completed';
             item.returnedAt = new Date().toISOString().split('T')[0];
-            try {
-              await fetch(`/api/assets/bookings/${bookingId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'completed', returnedAt: item.returnedAt })
-              });
-            } catch (e) {}
             localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
             renderAssetsPanel();
           }
         };
 
-        window.handleDeleteAssetBooking = async function(bookingId) {
+        window.handleDeleteAssetBooking = function(bookingId) {
           if (!confirm(`Delete record ${bookingId}?`)) return;
-
-          try {
-            await fetch(`/api/assets/bookings/${bookingId}`, { method: 'DELETE' });
-          } catch (e) {}
-
           window.assetBookings = (window.assetBookings || []).filter(b => b.id !== bookingId);
           localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
           renderAssetsPanel();
@@ -2797,10 +2959,6 @@ function saveData() {
 
           openModal('asset-receipt-modal');
         };
-
-        // Fetch Assets & Bookings on Initialization
-        fetchAssetsAndBookings();
-
         // Fetch donations during initialization
         fetchAndRenderDonations();
 
