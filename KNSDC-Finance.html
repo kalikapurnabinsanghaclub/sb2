@@ -1357,44 +1357,228 @@
     };
     // 5. EARNINGS LOGGER RENDER & ACTIONS
     // ══════════════════════════════════════════
-    window.downloadEarningsSheet = function() {
+    // ── 1. EXCEL SPREADSHEET EXPORT (.XLS) ───────────────────────
+    window.downloadEarningsExcel = function() {
       const combined = [];
       earnings.forEach(e => combined.push({ ...e, itemType: 'INCOME' }));
       spendings.forEach(s => combined.push({ ...s, itemType: 'EXPENSE' }));
 
       if (combined.length === 0) {
-        alert('No earnings or spendings recorded yet to download.');
+        alert('No earnings or spendings recorded yet to export.');
         return;
       }
 
-      // Sort by date descending
       combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
 
-      // Create CSV Content with UTF-8 BOM for Microsoft Excel compatibility
-      const headers = ['Transaction Type', 'Entry Title', 'Category', 'Payer / Vendor / Source', 'Date', 'Payment Method', 'Amount (INR)', 'Reference No', 'Attached Bill'];
-      const rows = combined.map(item => [
-        `"${item.itemType || 'INCOME'}"`,
-        `"${(item.title || '').replace(/"/g, '""')}"`,
-        `"${(item.category || '').replace(/"/g, '""')}"`,
-        `"${(item.payerOrCustomer || item.vendorOrRecipient || '-').replace(/"/g, '""')}"`,
-        `"${item.date || ''}"`,
-        `"${(item.paymentMethod || 'cash').toUpperCase()}"`,
-        `"${item.itemType === 'INCOME' ? '+' : '-'}${Number(item.amount) || 0}"`,
-        `"${(item.referenceNo || '').replace(/"/g, '""')}"`,
-        `"${item.receiptPhoto ? 'Attached' : 'None'}"`
-      ]);
+      let totalEarn = earnings.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      let totalSpend = spendings.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      let netBal = totalEarn - totalSpend;
 
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      // Build Microsoft Excel XML/HTML Spreadsheet Table
+      let excelTable = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Earnings & Spendings</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+          <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
+          <style>
+            th { background-color: #1e293b; color: #ffffff; font-weight: bold; border: 1px solid #94a3b8; padding: 8px; text-align: left; }
+            td { border: 1px solid #cbd5e1; padding: 6px 8px; font-family: sans-serif; font-size: 11pt; }
+            .income { color: #047857; font-weight: bold; }
+            .expense { color: #b91c1c; font-weight: bold; }
+            .summary-header { background-color: #0f172a; color: #fbbf24; font-size: 14pt; font-weight: bold; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <table>
+            <tr><td colspan="8" class="summary-header" style="padding:14px;">KALIKAPUR NABIN SANGHA (KNSDC) - OFFICIAL FINANCE STATEMENT</td></tr>
+            <tr><td colspan="8" style="text-align:center; font-style:italic; color:#64748b;">Exported on: ${new Date().toLocaleDateString('en-IN')} | Total Income: ₹${totalEarn.toLocaleString('en-IN')} | Total Expense: ₹${totalSpend.toLocaleString('en-IN')} | Net: ₹${netBal.toLocaleString('en-IN')}</td></tr>
+            <tr><td colspan="8"></td></tr>
+            <tr>
+              <th>Type</th>
+              <th>Title / Particulars</th>
+              <th>Category</th>
+              <th>Payer / Source / Recipient</th>
+              <th>Date</th>
+              <th>Payment Method</th>
+              <th>Reference / Voucher No</th>
+              <th>Amount (₹ INR)</th>
+            </tr>
+      `;
+
+      combined.forEach(item => {
+        const isEarn = item.itemType === 'INCOME';
+        const amtClass = isEarn ? 'income' : 'expense';
+        const sign = isEarn ? '+' : '-';
+        excelTable += `
+          <tr>
+            <td class="${amtClass}">${item.itemType}</td>
+            <td>${item.title || '-'}</td>
+            <td>${item.category || 'General'}</td>
+            <td>${item.payerOrCustomer || item.vendorOrRecipient || '-'}</td>
+            <td>${item.date || '-'}</td>
+            <td style="text-transform:uppercase;">${item.paymentMethod || 'Cash'}</td>
+            <td>${item.referenceNo || '-'}</td>
+            <td class="${amtClass}" style="text-align:right;">${sign}₹${(Number(item.amount) || 0).toLocaleString('en-IN')}</td>
+          </tr>
+        `;
+      });
+
+      excelTable += `
+            <tr><td colspan="8"></td></tr>
+            <tr style="font-weight:bold; background-color:#f1f5f9;">
+              <td colspan="7" style="text-align:right;">TOTAL INCOME:</td>
+              <td class="income" style="text-align:right;">+₹${totalEarn.toLocaleString('en-IN')}</td>
+            </tr>
+            <tr style="font-weight:bold; background-color:#f1f5f9;">
+              <td colspan="7" style="text-align:right;">TOTAL EXPENSE / SPENDING:</td>
+              <td class="expense" style="text-align:right;">-₹${totalSpend.toLocaleString('en-IN')}</td>
+            </tr>
+            <tr style="font-weight:bold; background-color:#e2e8f0; font-size:12pt;">
+              <td colspan="7" style="text-align:right;">NET CASH BALANCE:</td>
+              <td style="text-align:right; color:${netBal >= 0 ? '#047857' : '#b91c1c'};">${netBal >= 0 ? '+' : ''}₹${netBal.toLocaleString('en-IN')}</td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob([excelTable], { type: 'application/vnd.ms-excel;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const today = new Date().toISOString().split('T')[0];
       a.href = url;
-      a.download = `KNSDC_Earnings_Spending_Report_${today}.csv`;
+      a.download = `KNSDC_Finance_Ledger_${today}.xls`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    };
+
+    // ── 2. OFFICIAL PDF REPORT STATEMENT ─────────────────────────
+    window.downloadEarningsPDF = function() {
+      const combined = [];
+      earnings.forEach(e => combined.push({ ...e, itemType: 'INCOME' }));
+      spendings.forEach(s => combined.push({ ...s, itemType: 'EXPENSE' }));
+
+      if (combined.length === 0) {
+        alert('No earnings or spendings recorded yet to generate PDF.');
+        return;
+      }
+
+      combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
+
+      let totalEarn = earnings.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      let totalSpend = spendings.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      let netBal = totalEarn - totalSpend;
+      const today = new Date().toLocaleDateString('en-IN');
+
+      const rowsHtml = combined.map((item, idx) => {
+        const isEarn = item.itemType === 'INCOME';
+        return `
+          <tr style="border-bottom:1px solid #e2e8f0; font-size:12px;">
+            <td style="padding:8px 10px;">${idx + 1}</td>
+            <td style="padding:8px 10px; font-weight:700; color:${isEarn ? '#059669' : '#dc2626'};">${item.itemType}</td>
+            <td style="padding:8px 10px; font-weight:700; color:#0f172a;">${item.title || '-'}</td>
+            <td style="padding:8px 10px; color:#475569;">${item.category || 'General'}</td>
+            <td style="padding:8px 10px; color:#475569;">${item.payerOrCustomer || item.vendorOrRecipient || '-'}</td>
+            <td style="padding:8px 10px; font-family:monospace; color:#64748b;">${item.date || '-'}</td>
+            <td style="padding:8px 10px; text-transform:uppercase; color:#64748b;">${item.paymentMethod || 'Cash'}</td>
+            <td style="padding:8px 10px; text-align:right; font-weight:800; color:${isEarn ? '#059669' : '#dc2626'};">${isEarn ? '+' : '-'}₹${(Number(item.amount) || 0).toLocaleString('en-IN')}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const printWindow = window.open('', '_blank', 'width=900,height=750');
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>KNSDC Official Financial Statement &amp; Ledger (${today})</title>
+          <style>
+            body { font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 24px; color: #0f172a; background: #fff; }
+            .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; }
+            .brand-box { display: flex; align-items: center; gap: 12px; }
+            .brand-box img { width: 50px; height: 50px; border-radius: 12px; }
+            .title { font-size: 20px; font-weight: 800; color: #0f172a; margin: 0; }
+            .sub { font-size: 11px; color: #475569; margin-top: 2px; }
+            .meta-box { text-align: right; font-size: 12px; color: #475569; }
+            .summary-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+            .scard { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px 16px; }
+            .scard-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+            .scard-val { font-size: 20px; font-weight: 900; margin-top: 4px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th { background: #0f172a; color: #fff; text-align: left; padding: 10px; font-size: 11px; text-transform: uppercase; font-weight: 800; }
+            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px dashed #cbd5e1; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #64748b; }
+            .sign-box { text-align: center; border-top: 1px solid #0f172a; width: 180px; padding-top: 4px; font-weight: 700; color: #0f172a; }
+            @media print { @page { margin: 12mm; size: A4 portrait; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="brand-box">
+              <img src="${window.location.origin}/logo.png" onerror="this.style.display='none'">
+              <div>
+                <h1 class="title">Kalikapur Nabin Sangha (KNSDC)</h1>
+                <div class="sub">Official Treasury &amp; Financial Ledger Statement</div>
+              </div>
+            </div>
+            <div class="meta-box">
+              <div><strong>Statement Date:</strong> ${today}</div>
+              <div><strong>Total Records:</strong> ${combined.length} Entries</div>
+            </div>
+          </div>
+
+          <div class="summary-cards">
+            <div class="scard" style="border-left:4px solid #10b981;">
+              <div class="scard-label">Total Income / Earnings</div>
+              <div class="scard-val" style="color:#059669;">+₹${totalEarn.toLocaleString('en-IN')}</div>
+            </div>
+            <div class="scard" style="border-left:4px solid #ef4444;">
+              <div class="scard-label">Total Spendings / Expense</div>
+              <div class="scard-val" style="color:#dc2626;">-₹${totalSpend.toLocaleString('en-IN')}</div>
+            </div>
+            <div class="scard" style="border-left:4px solid #4f46e5;">
+              <div class="scard-label">Net Balance</div>
+              <div class="scard-val" style="color:${netBal >= 0 ? '#059669' : '#dc2626'};">${netBal >= 0 ? '+' : ''}₹${netBal.toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Title / Particulars</th>
+                <th>Category</th>
+                <th>Source / Recipient</th>
+                <th>Date</th>
+                <th>Method</th>
+                <th style="text-align:right;">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            <div>
+              <div>Generated from KNSDC Club Official Treasury Portal</div>
+              <div style="font-size:10px; color:#94a3b8; margin-top:2px;">MongoDB Cloud Verified &amp; Encrypted Statement</div>
+            </div>
+            <div class="sign-box">
+              Authorized Treasury Signatory
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          <\/script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
     };
 
     function renderEarnings() {
@@ -3432,9 +3616,13 @@ function saveData() {
           <p class="section-sub">Log revenue from cricket/football tournaments, sponsorships, canteen, jersey sales & donations.</p>
         </div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <!-- 📥 Download Sheet Button in Red Box position -->
-          <button type="button" onclick="downloadEarningsSheet()" class="btn btn-secondary" style="background:#1e293b; color:#38bdf8; border:1.5px solid rgba(56,189,248,0.45); font-size:12px; font-weight:800; padding:8px 16px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(56,189,248,0.15);" title="Download complete Earnings & Spending ledger as Excel CSV spreadsheet">
-            <span>📥 Download Sheet</span>
+          <!-- 📊 Download Excel Button -->
+          <button type="button" onclick="downloadEarningsExcel()" class="btn btn-secondary" style="background:rgba(16,185,129,0.15); color:#10b981; border:1.5px solid rgba(16,185,129,0.4); font-size:12px; font-weight:800; padding:8px 14px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(16,185,129,0.15);" title="Download full Ledger as Microsoft Excel Spreadsheet (.xls)">
+            <span>📊 Download Excel</span>
+          </button>
+          <!-- 📄 Download PDF Button -->
+          <button type="button" onclick="downloadEarningsPDF()" class="btn btn-secondary" style="background:rgba(56,189,248,0.15); color:#0284c7; border:1.5px solid rgba(56,189,248,0.4); font-size:12px; font-weight:800; padding:8px 14px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(56,189,248,0.15);" title="Generate official Financial Statement PDF ready to Save as PDF / Print">
+            <span>📄 Download PDF</span>
           </button>
           <button type="button" onclick="openModal('add-spending-modal')" class="btn btn-danger" style="background:#dc2626; color:#fff; font-size:12px; font-weight:800; border:none; box-shadow:0 4px 14px rgba(220,38,38,0.35); padding:8px 16px;">
             💸 + Log Spending
