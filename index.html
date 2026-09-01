@@ -3478,7 +3478,7 @@
             </div>
           </div>
           <div style="font-size:0.8rem; font-weight:800; color:#475569; margin-bottom:10px;">
-            Paying <span id="ksm-qr-amount-text" style="color:#7B2D8B; font-size:1.1rem; font-weight:900;">₹500</span> to <span id="ksm-upi-id-text" style="color:#1e293b;">kalikapurnabinsangha@sbi</span>
+            Paying <span id="ksm-qr-amount-text" style="color:#7B2D8B; font-size:1.1rem; font-weight:900;">₹500</span> to <span id="ksm-upi-id-text" style="color:#1e293b; font-weight:800; user-select:all; cursor:pointer;" onclick="navigator.clipboard.writeText('7001865288@nyes'); showToast('Copied','UPI ID Copied!','📋');">7001865288@nyes 📋</span>
           </div>
           <!-- Mobile Intent Link -->
           <a id="ksm-upi-intent-link" href="#" class="btn" style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px; border-radius:12px; background:linear-gradient(135deg,#059669,#10b981); color:#fff; font-weight:800; font-size:0.95rem; text-decoration:none; box-shadow:0 4px 15px rgba(16,185,129,0.3);">
@@ -11048,7 +11048,7 @@
       eventColor: '#E91E8C',
       targetGoal: 50000,
       raisedAmount: 0,
-      upiId: 'kalikapurnabinsangha@sbi',
+      upiId: '7001865288@nyes',
       selectedAmount: 500
     };
 
@@ -11085,7 +11085,7 @@
       currentSupportState.eventColor = (ev ? (ev.col || ev.color) : color) || '#E91E8C';
       currentSupportState.targetGoal = ev ? (Number(ev.targetGoal) || (rs.targetGoal ? Number(rs.targetGoal) : 50000)) : 50000;
       currentSupportState.raisedAmount = ev ? (Number(ev.raisedAmount) || (rs.raisedAmount ? Number(rs.raisedAmount) : 0)) : 0;
-      currentSupportState.upiId = (ev && ev.upiId) ? ev.upiId : (rs.upiId || 'kalikapurnabinsangha@sbi');
+      currentSupportState.upiId = '7001865288@nyes';
       currentSupportState.selectedAmount = 500;
 
       // Update Modal Header & Title
@@ -11187,9 +11187,9 @@
 
     function updateKsmQrCode() {
       const amt = currentSupportState.selectedAmount || 500;
-      const upiId = currentSupportState.upiId || 'kalikapurnabinsangha@sbi';
-      const cleanEvName = (currentSupportState.eventName || 'Event').replace(/[^a-zA-Z0-9 ]/g, '').replace(/ +/g, '-').slice(0, 30);
-      const note = `Support-${cleanEvName}`;
+      const upiId = '7001865288@nyes';
+      const cleanEvName = (currentSupportState.eventName || 'Event').replace(/[^a-zA-Z0-9 ]/g, '').replace(/ +/g, '-').slice(0, 25);
+      const note = `DON-${cleanEvName}`;
 
       const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent('Kalikapur Nabin Sangha')}&am=${amt}&cu=INR&tn=${encodeURIComponent(note)}`;
       
@@ -11232,6 +11232,7 @@
       }
 
       const donationRecord = {
+        orderId: `DON-${Math.floor(100000 + Math.random() * 900000)}`,
         eventId: currentSupportState.eventId,
         eventName: currentSupportState.eventName,
         donorName: isAnonymous ? 'Anonymous Well-Wisher' : donorName,
@@ -11245,9 +11246,20 @@
         timestamp: Date.now()
       };
 
+      try {
+        fetch('/api/donations/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(donationRecord)
+        }).catch(() => {});
+      } catch (e) {}
+
       if (window.syncEngine && typeof window.syncEngine.createDonation === 'function') {
         await window.syncEngine.createDonation(donationRecord);
       }
+
+      // Update local event raisedAmount
+      currentSupportState.raisedAmount = (currentSupportState.raisedAmount || 0) + amount;
 
       // Close Form Modal
       closeDonationForm();
@@ -11257,6 +11269,11 @@
         submitBtn.textContent = '✅ I Have Completed Payment';
       }
 
+      // Trigger Confetti Celebration
+      if (typeof confetti === 'function') {
+        confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+      }
+
       // Show Success Modal & WhatsApp Share
       const successModal = document.getElementById('knsdc-support-success-modal');
       if (successModal) {
@@ -11264,7 +11281,6 @@
         document.getElementById('ksm-success-event').textContent = currentSupportState.eventName;
         document.getElementById('ksm-success-name').textContent = isAnonymous ? 'Anonymous Well-Wisher' : donorName;
         
-
         successModal.style.display = 'flex';
         successModal.classList.remove('hidden');
       }
@@ -12264,12 +12280,6 @@
 
     window.downloadReg = downloadReg;
   </script>
-
-  <!-- Floating Donation & Support Button for Mobile & PC -->
-  <a href="donations.html" style="position: fixed; bottom: 24px; right: 20px; z-index: 99999; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff !important; padding: 12px 22px; border-radius: 30px; font-weight: 800; font-size: 0.95rem; text-decoration: none; box-shadow: 0 10px 25px rgba(16,185,129,0.5); display: flex; align-items: center; gap: 8px; border: 2px solid rgba(255,255,255,0.4); animation: float 3s ease-in-out infinite;">
-    <span>💝</span>
-    <span>Support Our Event</span>
-  </a>
 
 </body>
 
