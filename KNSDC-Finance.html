@@ -871,6 +871,27 @@
 console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     window.__finance_loaded = true;
 
+    // Global Toast Notification Helper
+    window.showToast = function(msg, type = 'success') {
+      let toast = document.getElementById('global-finance-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'global-finance-toast';
+        toast.style.cssText = 'position:fixed; bottom:24px; right:24px; z-index:999999; padding:12px 20px; border-radius:12px; font-size:13px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px; box-shadow:0 10px 30px rgba(0,0,0,0.35); transition:all 0.3s cubic-bezier(0.16, 1, 0.3, 1); transform:translateY(100px); opacity:0; pointer-events:none;';
+        document.body.appendChild(toast);
+      }
+      toast.style.background = type === 'error' ? 'linear-gradient(135deg, #dc2626, #b91c1c)' : (type === 'info' ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)' : 'linear-gradient(135deg, #059669, #0d9488)');
+      toast.innerHTML = (type === 'error' ? '⚠️ ' : (type === 'info' ? 'ℹ️ ' : '✓ ')) + msg;
+      toast.style.transform = 'translateY(0)';
+      toast.style.opacity = '1';
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => {
+        toast.style.transform = 'translateY(100px)';
+        toast.style.opacity = '0';
+      }, 3500);
+    };
+
+
     // 0. HIGH-PERFORMANCE NON-BLOCKING NETWORK HELPER
     function safeFetch(url, options = {}, timeoutMs = 800) {
       const controller = new AbortController();
@@ -1010,7 +1031,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               late_fee_days: p.lateFeeDays || 10,
               late_fee_amount: Number(p.lateFeeAmount) || 50
             }));
-            sbClient.from('membership_plans').upsert(pPayload).catch(() => {});
+            await sbClient.from('membership_plans').upsert(pPayload, { onConflict: 'id' });
           }
 
           const activeEarnings = earnings.filter(e => !deletedEarnings.has(e.id));
@@ -1027,7 +1048,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               reference_no: e.referenceNo || '',
               description: e.description || ''
             }));
-            sbClient.from('club_earnings').upsert(ePayload).catch(() => {});
+            await sbClient.from('club_earnings').upsert(ePayload, { onConflict: 'id' });
           }
 
           if (payments.length > 0) {
@@ -1044,7 +1065,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               invoice_no: p.invoiceNo || ('INV-' + p.monthYear.replace('-', '') + '-0001'),
               notes: p.notes || ''
             }));
-            sbClient.from('payment_records').upsert(payPayload).catch(() => {});
+            await sbClient.from('payment_records').upsert(payPayload, { onConflict: 'id' });
           }
 
           updateCloudSyncBadge(true);
@@ -1097,21 +1118,28 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         }
 
         if (resP.data && resP.data.length > 0) {
-          const cloudPlans = resP.data.filter(p => !deletedPlans.has(p.id)).map(p => ({
-            id: p.id,
-            name: p.name,
-            fee: Number(p.fee) || 0,
-            billingCycle: p.billing_cycle || 'monthly',
-            description: p.description || '',
-            color: p.color || '#3b82f6',
-            active: p.active !== false,
-            lateFeeDays: p.late_fee_days || 10,
-            lateFeeAmount: Number(p.late_fee_amount) || 50
-          }));
+          const cloudPlans = resP.data.filter(p => !deletedPlans.has(p.id)).map(p => {
+            const localP = plans.find(x => x.id === p.id);
+            return {
+              id: p.id,
+              name: p.name,
+              fee: Number(p.fee) || 0,
+              billingCycle: p.billing_cycle || 'monthly',
+              description: p.description || '',
+              color: p.color || '#3b82f6',
+              active: p.active !== false,
+              lateFeeDays: p.late_fee_days || 10,
+              lateFeeAmount: Number(p.late_fee_amount) || 50,
+              planType: localP?.planType || (p.name.toLowerCase().includes('flex') ? 'flexible' : 'fixed'),
+              perks: localP?.perks || {}
+            };
+          });
           const cpIds = new Set(cloudPlans.map(x => x.id));
           const localOnlyP = plans.filter(x => !cpIds.has(x.id) && !deletedPlans.has(x.id));
           plans = [...cloudPlans, ...localOnlyP];
           localStorage.setItem('fp_plans', JSON.stringify(plans));
+          renderPlans();
+          populatePlanOptions();
         }
 
         if (resE.data && resE.data.length > 0) {
@@ -1780,6 +1808,15 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       document.getElementById('plan-grace').value = 10;
       document.getElementById('plan-late-fine').value = 50;
       document.getElementById('plan-color').value = '#3b82f6';
+      const ptEl = document.getElementById('plan-type');
+      if (ptEl) {
+        ptEl.value = 'fixed';
+        if (typeof handlePlanTypeChange === 'function') handlePlanTypeChange('fixed');
+      }
+      ['pb-locker', 'pb-library', 'pb-sports', 'pb-gym', 'pb-events', 'pb-voting'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.checked = false;
+      });
       openModal('plan-modal');
     };
 
@@ -1794,11 +1831,24 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       document.getElementById('plan-grace').value = p.lateFeeDays || 10;
       document.getElementById('plan-late-fine').value = p.lateFeeAmount || 50;
       document.getElementById('plan-color').value = p.color || '#3b82f6';
+
+      const ptEl = document.getElementById('plan-type');
+      if (ptEl) {
+        ptEl.value = p.planType || 'fixed';
+        if (typeof handlePlanTypeChange === 'function') handlePlanTypeChange(p.planType || 'fixed');
+      }
+
+      const perks = p.perks || {};
+      ['locker', 'library', 'sports', 'gym', 'events', 'voting'].forEach(key => {
+        const el = document.getElementById('pb-' + key);
+        if (el) el.checked = !!perks[key];
+      });
+
       openModal('plan-modal');
     };
 
-    window.handleSavePlan = function(e) {
-      e.preventDefault();
+    window.handleSavePlan = async function(e) {
+      if (e) e.preventDefault();
       const id = document.getElementById('plan-id').value;
       const name = document.getElementById('plan-name').value.trim();
       const fee = Number(document.getElementById('plan-fee').value) || 0;
@@ -1806,14 +1856,38 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       const lateFeeDays = Number(document.getElementById('plan-grace').value) || 10;
       const lateFeeAmount = Number(document.getElementById('plan-late-fine').value) || 50;
       const color = document.getElementById('plan-color').value;
+      const planType = document.getElementById('plan-type')?.value || 'fixed';
 
-      const planObj = { id, name, fee, description, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
+      const perks = {
+        locker: !!document.getElementById('pb-locker')?.checked,
+        library: !!document.getElementById('pb-library')?.checked,
+        sports: !!document.getElementById('pb-sports')?.checked,
+        gym: !!document.getElementById('pb-gym')?.checked,
+        events: !!document.getElementById('pb-events')?.checked,
+        voting: !!document.getElementById('pb-voting')?.checked
+      };
+
+      const planObj = {
+        id,
+        name,
+        fee,
+        planType,
+        perks,
+        description,
+        lateFeeDays,
+        lateFeeAmount,
+        color,
+        active: true,
+        billingCycle: 'monthly',
+        updatedAt: new Date().toISOString()
+      };
 
       if (deletedPlans.has(id)) {
         deletedPlans.delete(id);
         saveTombstones();
       }
 
+      // 1. Instant local state update
       const idx = plans.findIndex(x => x.id === id);
       if (idx !== -1) plans[idx] = planObj;
       else plans.push(planObj);
@@ -1825,15 +1899,43 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       renderChecklist();
       populatePlanOptions();
 
+      // 2. IMMEDIATE GLOBAL SUPABASE CLOUD SYNC
+      if (sbClient) {
+        updateCloudSyncBadge('syncing');
+        const sbPayload = {
+          id: planObj.id,
+          name: planObj.name,
+          fee: Number(planObj.fee) || 0,
+          billing_cycle: planObj.billingCycle || 'monthly',
+          description: planObj.description || '',
+          color: planObj.color || '#3b82f6',
+          active: true,
+          late_fee_days: planObj.lateFeeDays || 10,
+          late_fee_amount: Number(planObj.lateFeeAmount) || 50
+        };
+
+        try {
+          const { data, error } = await sbClient.from('membership_plans').upsert([sbPayload], { onConflict: 'id' });
+          if (error) {
+            console.error('[Supabase Plan Save Error]:', error);
+            window.showToast('Saved locally, cloud notice: ' + error.message, 'error');
+          } else {
+            console.log('[Supabase Plan Saved Globally]:', planObj.id);
+            updateCloudSyncBadge(true);
+            window.showToast('✓ Plan "' + planObj.name + '" updated globally in cloud database!');
+          }
+        } catch(err) {
+          console.warn('[Plan Sync Catch]:', err);
+          window.showToast('Plan saved locally!', 'info');
+        }
+      } else {
+        window.showToast('Plan saved locally (cloud offline)!', 'info');
+      }
+
       debouncedCloudSync();
-      safeFetch('/api/finance/plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(planObj)
-      });
     };
 
-    window.deletePlan = function(id, name) {
+    window.deletePlan = async function(id, name) {
       const enrolled = members.filter(m => m.planId === id && m.status === 'active' && !deletedMembers.has(m.id)).length;
       if (enrolled > 0) {
         alert(`Cannot delete "${name}" because it has ${enrolled} active member(s) enrolled.`);
@@ -1848,13 +1950,22 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         populatePlanOptions();
 
         if (sbClient) {
-          sbClient.from('membership_plans').delete().eq('id', id).catch(() => {});
+          updateCloudSyncBadge('syncing');
+          try {
+            const { error } = await sbClient.from('membership_plans').delete().eq('id', id);
+            if (error) console.error('[Supabase Plan Delete Error]:', error);
+            else {
+              updateCloudSyncBadge(true);
+              window.showToast('✓ Plan removed globally from cloud database');
+            }
+          } catch(e) {
+            console.warn('[Plan Delete Catch]:', e);
+          }
         }
-        safeFetch('/api/finance/plans/' + id, { method: 'DELETE' });
       }
     };
 
-    // 8. EARNINGS & SPENDINGS LOGGER (ADD, EDIT, DELETE)
+// 8. EARNINGS & SPENDINGS LOGGER (ADD, EDIT, DELETE)
     function renderEarnings() {
       const tbody = document.getElementById('earnings-tbody');
       if (!tbody) return;
@@ -3530,7 +3641,7 @@ window.fetchAndRenderDonations = async function() {
       if (!vpa) { alert('Please enter a UPI ID / VPA'); return; }
       const cfg = { vpa, payee };
       localStorage.setItem('fp_mission_vpa', JSON.stringify(cfg));
-      if (sbClient) sbClient.from('donation_config').upsert([{id:'main', razorpay_key:'', vpa, payee}]).catch(()=>null);
+      if (sbClient) { Promise.resolve(sbClient.from('donation_config').upsert([{id:'main', razorpay_key:'', vpa, payee}], { onConflict: 'id' })).catch(()=>null); }
       closeModal('edit-mission-vpa-modal');
       const el = document.getElementById('mission-vpa-display');
       if (el) el.textContent = vpa;
@@ -3547,7 +3658,7 @@ window.fetchAndRenderDonations = async function() {
       const asset = { id: 'ast-' + Date.now(), name, category: cat || 'Locker', code, fee, deposit: dep, status: 'Available', createdAt: new Date().toISOString() };
       window.clubAssets = [asset, ...(window.clubAssets || [])];
       localStorage.setItem('fp_assets', JSON.stringify(window.clubAssets));
-      if (sbClient) sbClient.from('club_assets').upsert([asset]).catch(()=>null);
+      if (sbClient) { Promise.resolve(sbClient.from('club_assets').upsert([asset], { onConflict: 'id' })).catch(()=>null); }
       closeModal('add-asset-modal');
       if (typeof renderAssetsPanel === 'function') renderAssetsPanel();
       if (typeof showToast === 'function') showToast('Asset added!');
