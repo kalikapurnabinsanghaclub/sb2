@@ -1095,6 +1095,54 @@
 console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     window.__finance_loaded = true;
 
+    // ══════════════════════════════════════════════════════════
+    // 🎁 PLAN BENEFITS & MEMBER PERKS ENGINE
+    // ══════════════════════════════════════════════════════════
+    window.getClubPlans = function() {
+      if (typeof plans !== 'undefined' && Array.isArray(plans) && plans.length > 0) return plans;
+      if (window.plans && Array.isArray(window.plans) && window.plans.length > 0) return window.plans;
+      try {
+        const stored = JSON.parse(localStorage.getItem('fp_plans') || '[]');
+        if (stored && stored.length > 0) return stored;
+      } catch (e) {}
+      return [];
+    };
+
+    window.getClubMembers = function() {
+      if (typeof members !== 'undefined' && Array.isArray(members) && members.length > 0) return members;
+      if (window.members && Array.isArray(window.members) && window.members.length > 0) return window.members;
+      try {
+        const stored = JSON.parse(localStorage.getItem('fp_members') || '[]');
+        if (stored && stored.length > 0) return stored;
+      } catch (e) {}
+      return [];
+    };
+
+    window.isPlanLockerFree = function(planId) {
+      if (!planId) return false;
+      const pList = window.getClubPlans();
+      const p = pList.find(x => x.id === planId);
+      if (!p) return false;
+      if (p.perks && p.perks.locker) return true;
+      if (Array.isArray(p.benefits) && p.benefits.some(b => /locker/i.test(b))) return true;
+      if (p.description && /locker/i.test(p.description)) return true;
+      if (p.name && /executive|vip|patron/i.test(p.name)) return true;
+      return false;
+    };
+
+    window.isPlanLibraryFree = function(planId) {
+      if (!planId) return false;
+      const pList = window.getClubPlans();
+      const p = pList.find(x => x.id === planId);
+      if (!p) return false;
+      if (p.perks && p.perks.library) return true;
+      if (Array.isArray(p.benefits) && p.benefits.some(b => /library/i.test(b))) return true;
+      if (p.description && /library/i.test(p.description)) return true;
+      if (p.name && /executive|vip|patron|supporter|student/i.test(p.name)) return true;
+      return false;
+    };
+
+
     // Global Toast Notification Helper
     window.showToast = function(msg, type = 'success') {
       let toast = document.getElementById('global-finance-toast');
@@ -1142,10 +1190,10 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     // ── DEFAULT PLANS SEED ───────────────────────────────────────────────
     if (plans.length === 0) {
             plans = [
-        { id: 'plan-premium', name: 'Premium Sports & Gym', fee: 140, billingCycle: 'monthly', description: 'All perks plus gym, court bookings, sauna, and pool.', color: '#10b981', active: true, lateFeeDays: 10, lateFeeAmount: 15 },
-        { id: 'plan-vip', name: 'VIP Executive Plan', fee: 260, billingCycle: 'monthly', description: 'Exclusive lounge, guest passes, personal locker, priority bookings.', color: '#8b5cf6', active: true, lateFeeDays: 10, lateFeeAmount: 25 },
-        { id: 'plan-student', name: 'Student & Youth Athlete', fee: 45, billingCycle: 'monthly', description: 'Discounted membership for students under 24 with valid ID.', color: '#f59e0b', active: true, lateFeeDays: 10, lateFeeAmount: 5 },
-        { id: 'plan-supporter', name: 'Flexible Supporter Plan', fee: 1000, billingCycle: 'monthly', planType: 'flexible', description: 'Customizable contribution up to ₹1,000 per month.', color: '#3b82f6', active: true, lateFeeDays: 10, lateFeeAmount: 50 },
+        { id: 'plan-vip', name: 'VIP Executive Plan', fee: 260, billingCycle: 'monthly', description: 'Full club access with dedicated locker & library borrowing.', perks: { locker: true, library: true, sports: true, gym: true, events: true, voting: true }, benefits: ["🔒 Dedicated Locker", "📚 Library Access", "🏏 Sports Ground", "🏋️ Gym & Fitness", "🎟️ Event Free Passes", "🗳️ Voting Rights"], color: '#8b5cf6', active: true, lateFeeDays: 10, lateFeeAmount: 25 },
+        { id: 'plan-premium', name: 'Premium Sports & Gym', fee: 140, billingCycle: 'monthly', description: 'All perks plus gym, court bookings, sauna, and library access.', perks: { locker: false, library: true, sports: true, gym: true, events: true, voting: false }, benefits: ["📚 Library Access", "🏏 Sports Ground", "🏋️ Gym & Fitness", "🎟️ Event Free Passes"], color: '#10b981', active: true, lateFeeDays: 10, lateFeeAmount: 15 },
+        { id: 'plan-student', name: 'Student & Youth Athlete', fee: 45, billingCycle: 'monthly', description: 'Discounted membership for students with library access.', perks: { locker: false, library: true, sports: true, gym: false, events: false, voting: false }, benefits: ["📚 Library Access", "🏏 Sports Kits"], color: '#f59e0b', active: true, lateFeeDays: 10, lateFeeAmount: 5 },
+        { id: 'plan-supporter', name: 'Flexible Supporter Plan', fee: 1000, billingCycle: 'monthly', planType: 'flexible', description: 'Customizable contribution with library borrowing & voting rights.', perks: { locker: false, library: true, sports: true, gym: false, events: true, voting: true }, benefits: ["📚 Library Access", "🏏 Sports Ground", "🎟️ Event Passes", "🗳️ Voting Rights"], color: '#3b82f6', active: true, lateFeeDays: 10, lateFeeAmount: 50 },
       ];
       localStorage.setItem('fp_plans', JSON.stringify(plans));
     }
@@ -2139,6 +2187,29 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
                 </div>
               </div>
 
+              <!-- Included Plan Benefits & Member Perks Pills (UI/UX Pro) -->
+              <div class="plan-perks-row" style="display:flex; flex-wrap:wrap; gap:5px; margin: 10px 0 12px 0;">
+                ${(() => {
+                  const perks = plan.perks || {};
+                  const hasLkr = perks.locker || (Array.isArray(plan.benefits) && plan.benefits.some(b => /locker/i.test(b))) || (plan.description && /locker/i.test(plan.description));
+                  const hasLib = perks.library || (Array.isArray(plan.benefits) && plan.benefits.some(b => /library/i.test(b))) || (plan.description && /library/i.test(plan.description));
+                  const hasSport = perks.sports || (Array.isArray(plan.benefits) && plan.benefits.some(b => /sport/i.test(b)));
+                  const hasGym = perks.gym || (Array.isArray(plan.benefits) && plan.benefits.some(b => /gym/i.test(b)));
+                  const hasEvent = perks.events || (Array.isArray(plan.benefits) && plan.benefits.some(b => /event/i.test(b)));
+                  const hasVote = perks.voting || (Array.isArray(plan.benefits) && plan.benefits.some(b => /voting/i.test(b)));
+
+                  const badges = [];
+                  if (hasLkr) badges.push('<span style="background:rgba(16,185,129,0.14); color:#34d399; border:1px solid rgba(16,185,129,0.3); font-size:11px; padding:2px 7px; border-radius:6px; font-weight:800;">🔒 Free Locker</span>');
+                  if (hasLib) badges.push('<span style="background:rgba(99,102,241,0.14); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3); font-size:11px; padding:2px 7px; border-radius:6px; font-weight:800;">📚 Free Library</span>');
+                  if (hasSport) badges.push('<span style="background:rgba(245,158,11,0.14); color:#fbbf24; border:1px solid rgba(245,158,11,0.3); font-size:11px; padding:2px 7px; border-radius:6px; font-weight:800;">🏏 Sports Kits</span>');
+                  if (hasGym) badges.push('<span style="background:rgba(236,72,153,0.14); color:#f472b6; border:1px solid rgba(236,72,153,0.3); font-size:11px; padding:2px 7px; border-radius:6px; font-weight:800;">🏋️ Gym</span>');
+                  if (hasEvent) badges.push('<span style="background:rgba(139,92,246,0.14); color:#c084fc; border:1px solid rgba(139,92,246,0.3); font-size:11px; padding:2px 7px; border-radius:6px; font-weight:800;">🎟️ Event Passes</span>');
+                  if (hasVote) badges.push('<span style="background:rgba(59,130,246,0.14); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-size:11px; padding:2px 7px; border-radius:6px; font-weight:800;">🗳️ Voting</span>');
+
+                  return badges.length > 0 ? badges.join('') : '<span style="font-size:11px; color:var(--text-muted);">Basic Club Access</span>';
+                })()}
+              </div>
+
               <!-- Clear Metrics & Rules Box -->
               <div class="plan-metrics-box">
                 <div class="plan-metric-item">
@@ -2249,12 +2320,21 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         voting: !!document.getElementById('pb-voting')?.checked
       };
 
+      const benefits = [];
+      if (perks.locker) benefits.push("🔒 Dedicated Locker");
+      if (perks.library) benefits.push("📚 Library Access");
+      if (perks.sports) benefits.push("🏏 Sports Ground & Kits");
+      if (perks.gym) benefits.push("🏋️ Gym & Fitness");
+      if (perks.events) benefits.push("🎟️ Event Free Passes");
+      if (perks.voting) benefits.push("🗳️ Voting & AGM Rights");
+
       const planObj = {
         id,
         name,
         fee,
         planType,
         perks,
+        benefits,
         description,
         lateFeeDays,
         lateFeeAmount,
@@ -4107,6 +4187,107 @@ To release this locker, click "Release" in the table below.')`
           }
         };
 
+                // Library Book Issue Modal & Plan Perk Automation
+        window.openIssueBookModal = function(preselectedBookId) {
+          const books = window.clubBooks || [];
+          const bSel = document.getElementById("ib-book-id");
+          if (bSel) {
+            bSel.innerHTML = books.map(b => {
+              const activeIssues = (window.bookIssues || []).filter(i => i.bookId === b.id && i.status === "issued");
+              const avail = Math.max(0, (Number(b.totalCopies) || 1) - activeIssues.length);
+              return `<option value="${b.id}" ${avail <= 0 ? "disabled" : ""} ${b.id === preselectedBookId ? "selected" : ""}>${b.title} (${b.code || 'BK'}) — ${avail > 0 ? `${avail} Avail` : 'Out of Stock'}</option>`;
+            }).join("");
+            bSel.onchange = function() { window.handleBookIssueSelect(this.value); };
+          }
+
+          const mSel = document.getElementById("ib-member-id");
+          if (mSel) {
+            let mOpts = '<option value="">-- Select Enrolled Club Member --</option>';
+            window.getClubMembers().forEach(m => {
+              const hasFreeLib = window.isPlanLibraryFree(m.planId);
+              const tag = hasFreeLib ? ' [📚 Free Library Plan]' : '';
+              mOpts += `<option value="${m.id}">${m.name} (${m.phone || 'No phone'})${tag}</option>`;
+            });
+            mOpts += '<option value="custom">➕ Walk-in / Guest Reader</option>';
+            mSel.innerHTML = mOpts;
+            mSel.onchange = function() { window.handleBookMemberSelect(this.value); };
+          }
+
+          document.getElementById("ib-id").value = "ISS-" + Math.floor(1000 + Math.random() * 9000);
+          const today = new Date().toISOString().split("T")[0];
+          document.getElementById("ib-issue-date").value = today;
+          
+          const retDate = new Date();
+          retDate.setDate(retDate.getDate() + 14);
+          document.getElementById("ib-due-date").value = retDate.toISOString().split("T")[0];
+
+          const selBook = books.find(b => b.id === (preselectedBookId || bSel?.value));
+          document.getElementById("ib-fee").value = selBook ? (Number(selBook.fee) || 0) : 0;
+          
+          const notice = document.getElementById("ib-plan-perk-notice");
+          if (notice) notice.style.display = "none";
+
+          openModal("issue-book-modal");
+        };
+
+        window.handleBookIssueSelect = function(bookId) {
+          const memId = document.getElementById("ib-member-id")?.value;
+          if (memId && memId !== "custom") {
+            const mList = window.getClubMembers();
+          const m = mList.find(x => x.id === memId);
+            if (m && window.isPlanLibraryFree(m.planId)) {
+              document.getElementById("ib-fee").value = 0;
+              return;
+            }
+          }
+          const book = (window.clubBooks || []).find(b => b.id === bookId);
+          document.getElementById("ib-fee").value = book ? (Number(book.fee) || 0) : 0;
+        };
+
+        window.handleBookMemberSelect = function(memId) {
+          const notice = document.getElementById("ib-plan-perk-notice");
+          if (!memId || memId === "custom") {
+            if (notice) notice.style.display = "none";
+            const bookId = document.getElementById("ib-book-id")?.value;
+            const book = (window.clubBooks || []).find(b => b.id === bookId);
+            document.getElementById("ib-fee").value = book ? (Number(book.fee) || 0) : 0;
+            return;
+          }
+          const mList = window.getClubMembers();
+          const m = mList.find(x => x.id === memId);
+          if (m) {
+            document.getElementById("ib-member-name").value = m.name;
+            document.getElementById("ib-member-phone").value = m.phone || "";
+            
+            const hasFreeLib = window.isPlanLibraryFree(m.planId);
+            const p = window.getClubPlans().find(x => x.id === m.planId);
+            const planName = p ? p.name : (m.planName || "Member Plan");
+
+            if (hasFreeLib) {
+              document.getElementById("ib-fee").value = 0;
+              if (notice) {
+                notice.style.display = "block";
+                notice.style.background = "rgba(16, 185, 129, 0.15)";
+                notice.style.border = "1px solid #10b981";
+                notice.style.color = "#34d399";
+                notice.innerHTML = `🎁 <strong>Plan Benefit Active:</strong> Free Library Access included in <em>${planName}</em>. Borrow fee waived (₹0)!`;
+              }
+            } else {
+              const bookId = document.getElementById("ib-book-id")?.value;
+              const book = (window.clubBooks || []).find(b => b.id === bookId);
+              const standardFee = book ? (Number(book.fee) || 20) : 20;
+              document.getElementById("ib-fee").value = standardFee;
+              if (notice) {
+                notice.style.display = "block";
+                notice.style.background = "rgba(100, 116, 139, 0.12)";
+                notice.style.border = "1px solid rgba(100, 116, 139, 0.3)";
+                notice.style.color = "var(--text-muted)";
+                notice.innerHTML = `ℹ️ <em>${planName}</em> does not include Free Library Borrowing. Standard fee ₹${standardFee} applies.`;
+              }
+            }
+          }
+        };
+
         window.handleSaveBookIssue = async function(e) {
           if (e) e.preventDefault();
           const id = document.getElementById("ib-id").value || ("ISS-" + Math.floor(1000 + Math.random() * 9000));
@@ -4250,23 +4431,42 @@ To release this locker, click "Release" in the table below.')`
         };
 
         // Locker Allocation Modal Helpers & MongoDB Sync
-        window.handleAssetMemberSelectChange = function(memId) {
+                window.handleAssetMemberSelectChange = function(memId) {
+          const notice = document.getElementById("ab-plan-perk-notice");
           if (!memId || memId === "custom") {
+            if (notice) notice.style.display = "none";
             document.getElementById("ab-rent-amount").value = 100;
             return;
           }
-          const m = members.find(x => x.id === memId);
+          const mList = window.getClubMembers();
+          const m = mList.find(x => x.id === memId);
           if (m) {
             document.getElementById("ab-member-name").value = m.name;
             document.getElementById("ab-member-phone").value = m.phone || "";
             
-            // Auto-check if member plan includes Locker benefit -> rent fee is 0
-            const p = plans.find(x => x.id === m.planId);
-            const hasLocker = p && Array.isArray(p.benefits) && p.benefits.some(b => b.includes("Locker"));
-            if (hasLocker) {
+            const hasFreeLocker = window.isPlanLockerFree(m.planId);
+            const p = window.getClubPlans().find(x => x.id === m.planId);
+            const planName = p ? p.name : (m.planName || "Enrolled Plan");
+
+            if (hasFreeLocker) {
               document.getElementById("ab-rent-amount").value = 0;
+              document.getElementById("ab-deposit-amount").value = 0;
+              if (notice) {
+                notice.style.display = "block";
+                notice.style.background = "rgba(16, 185, 129, 0.15)";
+                notice.style.border = "1px solid #10b981";
+                notice.style.color = "#34d399";
+                notice.innerHTML = `🎁 <strong>Plan Benefit Active:</strong> Free Locker Access included in <em>${planName}</em>. Monthly rent waived (₹0)!`;
+              }
             } else {
               document.getElementById("ab-rent-amount").value = 100;
+              if (notice) {
+                notice.style.display = "block";
+                notice.style.background = "rgba(100, 116, 139, 0.12)";
+                notice.style.border = "1px solid rgba(100, 116, 139, 0.3)";
+                notice.style.color = "var(--text-muted)";
+                notice.innerHTML = `ℹ️ <em>${planName}</em> does not include Free Locker. Standard rent ₹100/mo applies.`;
+              }
             }
           }
         };
@@ -4284,8 +4484,10 @@ To release this locker, click "Release" in the table below.')`
           const memSel = document.getElementById("ab-member-id");
           if (memSel) {
             let mOpts = '<option value="">-- Select Enrolled Club Member --</option>';
-            members.forEach(m => {
-              mOpts += `<option value="${m.id}">${m.name} (${m.phone || "No phone"})</option>`;
+            window.getClubMembers().forEach(m => {
+              const hasFreeLocker = window.isPlanLockerFree(m.planId);
+              const tag = hasFreeLocker ? ' [🔒 Free Locker Plan]' : '';
+              mOpts += `<option value="${m.id}">${m.name} (${m.phone || "No phone"})${tag}</option>`;
             });
             mOpts += '<option value="custom">➕ Walk-in / Guest</option>';
             memSel.innerHTML = mOpts;
@@ -4297,6 +4499,9 @@ To release this locker, click "Release" in the table below.')`
           document.getElementById("ab-start-date").value = today;
           document.getElementById("ab-rent-amount").value = 100;
           document.getElementById("ab-deposit-amount").value = 0;
+
+          const notice = document.getElementById("ab-plan-perk-notice");
+          if (notice) notice.style.display = "none";
 
           openModal("add-asset-booking-modal");
         };
@@ -5577,6 +5782,7 @@ To release this locker, click "Release" in the table below.')`
           <select id="ab-member-id" onchange="handleAssetMemberSelectChange(this.value)" class="form-input" style="font-weight:700; color:#fff;">
             <!-- Options populated dynamically -->
           </select>
+          <div id="ab-plan-perk-notice" style="display:none; margin-top:8px; padding:10px 14px; border-radius:10px; font-size:12px; font-weight:700;"></div>
         </div>
 
         <!-- Custom Member Name & Phone fallback if not in directory -->
@@ -5808,6 +6014,7 @@ To release this locker, click "Release" in the table below.')`
           <select id="ib-member-id" onchange="handleBookMemberSelect(this.value)" class="form-input" style="font-weight:700; color:#fff;">
             <!-- Populated dynamically -->
           </select>
+          <div id="ib-plan-perk-notice" style="display:none; margin-top:8px; padding:10px 14px; border-radius:10px; font-size:12px; font-weight:700;"></div>
         </div>
 
         <div class="form-row form-group">
