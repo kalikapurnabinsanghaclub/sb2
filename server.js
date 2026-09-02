@@ -868,8 +868,8 @@ async function seedLibraryAndLockers() {
         const numStr = i < 10 ? `0${i}` : `${i}`;
         defaultLockers.push({
           id: `lkr-${numStr}`,
-          name: `Locker #${numStr}`,
-          code: `L-${numStr}`,
+          name: `Locker LK-${numStr}`,
+          code: `LK-${numStr}`,
           category: "Locker",
           defaultFee: 100,
           defaultDeposit: 0

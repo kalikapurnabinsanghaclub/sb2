@@ -3454,12 +3454,31 @@ window.fetchAndRenderDonations = async function() {
         const defaultLockers = [];
         for (let i = 1; i <= 20; i++) {
           const numStr = i < 10 ? `0${i}` : `${i}`;
-          defaultLockers.push({ id: `ast-l${i}`, name: `Locker #${numStr}`, category: "Locker", code: `L-${numStr}`, defaultFee: 100, defaultDeposit: 0 });
+          defaultLockers.push({ id: `ast-lk${numStr}`, name: `Locker LK-${numStr}`, category: "Locker", code: `LK-${numStr}`, defaultFee: 100, defaultDeposit: 0 });
         }
 
         window.clubBooks = JSON.parse(localStorage.getItem("fp_library_books")) || defaultBooks;
         window.bookIssues = JSON.parse(localStorage.getItem("fp_book_issues")) || [];
-        window.clubAssets = JSON.parse(localStorage.getItem("fp_assets")) || defaultLockers;
+        
+        // Ensure LK-01 to LK-20 naming is actively applied to cached assets
+        let savedAssets = JSON.parse(localStorage.getItem("fp_assets"));
+        if (!savedAssets || !savedAssets.some(a => (a.code || '').startsWith('LK-'))) {
+          savedAssets = defaultLockers;
+          localStorage.setItem("fp_assets", JSON.stringify(defaultLockers));
+        } else {
+          // Normalize existing records to LK-01 to LK-20 format
+          savedAssets = savedAssets.map((a, idx) => {
+            const numStr = (idx + 1) < 10 ? `0${idx + 1}` : `${idx + 1}`;
+            return {
+              ...a,
+              id: a.id || `ast-lk${numStr}`,
+              name: `Locker LK-${numStr}`,
+              code: `LK-${numStr}`
+            };
+          });
+          localStorage.setItem("fp_assets", JSON.stringify(savedAssets));
+        }
+        window.clubAssets = savedAssets;
         window.assetBookings = JSON.parse(localStorage.getItem("fp_asset_bookings")) || [];
 
         // Async fetch from Supabase (replaces MongoDB /api/ calls)
