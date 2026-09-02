@@ -488,12 +488,296 @@
     }
   </style>
 <script>
-    console.log('STARTING FINANCE SCRIPT...');
+console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     window.__finance_loaded = true;
 
-    // 1. TOP-LEVEL NAV FUNCTION
+    // 0. HIGH-PERFORMANCE NON-BLOCKING NETWORK HELPER
+    function safeFetch(url, options = {}, timeoutMs = 800) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(timer))
+        .catch(() => null);
+    }
+
+    // 1. LIVE SUPABASE CLIENT
+    const SUPABASE_URL = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
+    let supabase = null;
+    try {
+      if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      }
+    } catch(e) {
+      console.warn('Supabase init notice:', e);
+    }
+
+    // 2. STATE & PERMANENT TOMBSTONES
+    let plans = JSON.parse(localStorage.getItem('fp_plans') || '[]');
+    let members = JSON.parse(localStorage.getItem('fp_members') || '[]');
+    let payments = JSON.parse(localStorage.getItem('fp_payments') || '[]');
+    let earnings = JSON.parse(localStorage.getItem('fp_earnings') || '[]');
+    let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
+    let customFields = JSON.parse(localStorage.getItem('fp_custom_fields') || '[]');
+    let earningsFilter = 'all';
+    let activeMonth = '2026-08';
+
+    let deletedMembers = new Set(JSON.parse(localStorage.getItem('fp_deleted_members') || '[]'));
+    let deletedPlans = new Set(JSON.parse(localStorage.getItem('fp_deleted_plans') || '[]'));
+    let deletedEarnings = new Set(JSON.parse(localStorage.getItem('fp_deleted_earnings') || '[]'));
+    let deletedSpendings = new Set(JSON.parse(localStorage.getItem('fp_deleted_spendings') || '[]'));
+    let deletedBooks = new Set(JSON.parse(localStorage.getItem('fp_deleted_books') || '[]'));
+    let deletedBookIssues = new Set(JSON.parse(localStorage.getItem('fp_deleted_book_issues') || '[]'));
+    let deletedAssetBookings = new Set(JSON.parse(localStorage.getItem('fp_deleted_asset_bookings') || '[]'));
+    let deletedDonations = new Set(JSON.parse(localStorage.getItem('fp_deleted_donations') || '[]'));
+
+    function saveTombstones() {
+      localStorage.setItem('fp_deleted_members', JSON.stringify([...deletedMembers]));
+      localStorage.setItem('fp_deleted_plans', JSON.stringify([...deletedPlans]));
+      localStorage.setItem('fp_deleted_earnings', JSON.stringify([...deletedEarnings]));
+      localStorage.setItem('fp_deleted_spendings', JSON.stringify([...deletedSpendings]));
+      localStorage.setItem('fp_deleted_books', JSON.stringify([...deletedBooks]));
+      localStorage.setItem('fp_deleted_book_issues', JSON.stringify([...deletedBookIssues]));
+      localStorage.setItem('fp_deleted_asset_bookings', JSON.stringify([...deletedAssetBookings]));
+      localStorage.setItem('fp_deleted_donations', JSON.stringify([...deletedDonations]));
+    }
+
+    function formatINR(val) {
+      return '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
+    function updateCloudSyncBadge(status) {
+      const dot = document.getElementById("cloud-sync-dot");
+      const ind = document.getElementById("cloud-sync-status-indicator");
+      if (dot && ind) {
+        if (status === "syncing") {
+          dot.style.background = "#f59e0b";
+          dot.style.boxShadow = "0 0 8px #f59e0b";
+          ind.style.borderColor = "rgba(245,158,11,0.3)";
+        } else {
+          dot.style.background = "#10b981";
+          dot.style.boxShadow = "0 0 8px #10b981";
+          ind.style.borderColor = "rgba(16,185,129,0.3)";
+        }
+      }
+    }
+
+    function saveDataLocally() {
+      localStorage.setItem('fp_plans', JSON.stringify(plans));
+      localStorage.setItem('fp_members', JSON.stringify(members));
+      localStorage.setItem('fp_payments', JSON.stringify(payments));
+      localStorage.setItem('fp_earnings', JSON.stringify(earnings));
+      localStorage.setItem('fp_spendings', JSON.stringify(spendings));
+      localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
+      if (window.clubBooks) localStorage.setItem('fp_library_books', JSON.stringify(window.clubBooks));
+      if (window.bookIssues) localStorage.setItem('fp_book_issues', JSON.stringify(window.bookIssues));
+      if (window.clubAssets) localStorage.setItem('fp_assets', JSON.stringify(window.clubAssets));
+      if (window.assetBookings) localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
+      if (window.allDonations) localStorage.setItem('fp_donations', JSON.stringify(window.allDonations));
+    }
+
+    let syncTimer = null;
+    function debouncedCloudSync() {
+      if (!supabase) return;
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(async () => {
+        try {
+          updateCloudSyncBadge('syncing');
+
+          const activeMembers = members.filter(m => !deletedMembers.has(m.id));
+          if (activeMembers.length > 0) {
+            const mPayload = activeMembers.map(m => ({
+              id: m.id,
+              name: m.name,
+              email: m.email || (m.id + '@knsdc.club'),
+              phone: m.phone || '',
+              plan_id: m.planId || null,
+              custom_fee: m.customFee !== null ? Number(m.customFee) : null,
+              join_date: m.joinDate || new Date().toISOString().split('T')[0],
+              status: m.status || 'active',
+              custom_fields: { ...(m.customFields || {}), role: m.role || 'Member' }
+            }));
+            supabase.from('members').upsert(mPayload.map(x => ({ ...x, role: x.custom_fields.role })))
+              .then(({ error }) => {
+                if (error && error.message && error.message.includes("'role'")) {
+                  return supabase.from('members').upsert(mPayload);
+                }
+              }).catch(() => {});
+          }
+
+          const activePlans = plans.filter(p => !deletedPlans.has(p.id));
+          if (activePlans.length > 0) {
+            const pPayload = activePlans.map(p => ({
+              id: p.id,
+              name: p.name,
+              fee: Number(p.fee) || 0,
+              billing_cycle: p.billingCycle || 'monthly',
+              description: p.description || '',
+              color: p.color || '#3b82f6',
+              active: p.active !== false,
+              late_fee_days: p.lateFeeDays || 10,
+              late_fee_amount: Number(p.lateFeeAmount) || 50
+            }));
+            supabase.from('membership_plans').upsert(pPayload).catch(() => {});
+          }
+
+          const activeEarnings = earnings.filter(e => !deletedEarnings.has(e.id));
+          if (activeEarnings.length > 0) {
+            const validCats = ['events', 'merchandise', 'sponsorship', 'donations', 'canteen_bar', 'tournament', 'guest_fees', 'other'];
+            const ePayload = activeEarnings.map(e => ({
+              id: e.id,
+              title: e.title,
+              category: validCats.includes(e.category) ? e.category : 'other',
+              amount: Number(e.amount) || 0,
+              date: e.date || new Date().toISOString().split('T')[0],
+              payment_method: e.paymentMethod || 'cash',
+              payer_or_customer: e.payerOrCustomer || '',
+              reference_no: e.referenceNo || '',
+              description: e.description || ''
+            }));
+            supabase.from('club_earnings').upsert(ePayload).catch(() => {});
+          }
+
+          if (payments.length > 0) {
+            const payPayload = payments.filter(p => !deletedMembers.has(p.memberId)).map(p => ({
+              id: p.id,
+              member_id: p.memberId,
+              plan_id: p.planId || null,
+              month_year: p.monthYear,
+              amount: Number(p.amount) || 0,
+              paid_amount: Number(p.paidAmount) || 0,
+              status: p.status || 'paid',
+              payment_method: p.paymentMethod || 'cash',
+              paid_at: p.paidAt || null,
+              invoice_no: p.invoiceNo || ('INV-' + p.monthYear.replace('-', '') + '-0001'),
+              notes: p.notes || ''
+            }));
+            supabase.from('payment_records').upsert(payPayload).catch(() => {});
+          }
+
+          updateCloudSyncBadge(true);
+        } catch(e) {
+          console.warn('[Cloud Sync Notice]:', e);
+          updateCloudSyncBadge(true);
+        }
+      }, 800);
+    }
+
+    function saveData() {
+      saveDataLocally();
+      debouncedCloudSync();
+    }
+    window.saveData = saveData;
+    window.debouncedCloudSync = debouncedCloudSync;
+
+    window.pushFinanceCloudSync = async function() {
+      saveData();
+    };
+
+    window.pullFinanceCloudSync = async function(manual = false) {
+      if (!supabase) return;
+      try {
+        updateCloudSyncBadge("syncing");
+        const [resM, resP, resE, resPay] = await Promise.all([
+          supabase.from('members').select('*'),
+          supabase.from('membership_plans').select('*'),
+          supabase.from('club_earnings').select('*'),
+          supabase.from('payment_records').select('*')
+        ]);
+
+        if (resM.data && resM.data.length > 0) {
+          const cloudMembers = resM.data.filter(m => !deletedMembers.has(m.id)).map(m => ({
+            id: m.id,
+            name: m.name,
+            email: m.email || '',
+            phone: m.phone || '',
+            planId: m.plan_id,
+            role: m.role || (m.custom_fields && m.custom_fields.role) || 'Member',
+            customFee: m.custom_fee !== null ? Number(m.custom_fee) : null,
+            joinDate: m.join_date,
+            status: m.status || 'active',
+            customFields: m.custom_fields || {}
+          }));
+          const cIds = new Set(cloudMembers.map(x => x.id));
+          const localOnly = members.filter(x => !cIds.has(x.id) && !deletedMembers.has(x.id));
+          members = [...cloudMembers, ...localOnly];
+          localStorage.setItem('fp_members', JSON.stringify(members));
+        }
+
+        if (resP.data && resP.data.length > 0) {
+          const cloudPlans = resP.data.filter(p => !deletedPlans.has(p.id)).map(p => ({
+            id: p.id,
+            name: p.name,
+            fee: Number(p.fee) || 0,
+            billingCycle: p.billing_cycle || 'monthly',
+            description: p.description || '',
+            color: p.color || '#3b82f6',
+            active: p.active !== false,
+            lateFeeDays: p.late_fee_days || 10,
+            lateFeeAmount: Number(p.late_fee_amount) || 50
+          }));
+          const cpIds = new Set(cloudPlans.map(x => x.id));
+          const localOnlyP = plans.filter(x => !cpIds.has(x.id) && !deletedPlans.has(x.id));
+          plans = [...cloudPlans, ...localOnlyP];
+          localStorage.setItem('fp_plans', JSON.stringify(plans));
+        }
+
+        if (resE.data && resE.data.length > 0) {
+          const cloudEarnings = resE.data.filter(e => !deletedEarnings.has(e.id)).map(e => ({
+            id: e.id,
+            title: e.title,
+            category: e.category,
+            amount: Number(e.amount) || 0,
+            date: e.date,
+            paymentMethod: e.payment_method,
+            payerOrCustomer: e.payerOrCustomer,
+            referenceNo: e.reference_no,
+            description: e.description
+          }));
+          const ceIds = new Set(cloudEarnings.map(x => x.id));
+          const localOnlyE = earnings.filter(x => !ceIds.has(x.id) && !deletedEarnings.has(x.id));
+          earnings = [...cloudEarnings, ...localOnlyE];
+          localStorage.setItem('fp_earnings', JSON.stringify(earnings));
+        }
+
+        if (resPay.data && resPay.data.length > 0) {
+          const cloudPay = resPay.data.filter(p => !deletedMembers.has(p.member_id)).map(p => ({
+            id: p.id,
+            memberId: p.member_id,
+            planId: p.plan_id,
+            monthYear: p.month_year,
+            amount: Number(p.amount) || 0,
+            paidAmount: Number(p.paid_amount) || 0,
+            status: p.status || 'paid',
+            paymentMethod: p.payment_method || 'cash',
+            paidAt: p.paid_at,
+            invoiceNo: p.invoice_no,
+            notes: p.notes
+          }));
+          const cpayIds = new Set(cloudPay.map(x => x.id));
+          const localOnlyPay = payments.filter(x => !cpayIds.has(x.id));
+          payments = [...cloudPay, ...localOnlyPay];
+          localStorage.setItem('fp_payments', JSON.stringify(payments));
+        }
+
+        updateCloudSyncBadge(true);
+        if (manual) {
+          renderDashboard();
+          renderChecklist();
+          renderMembers();
+          renderPlans();
+          renderEarnings();
+          alert("✅ Global Cloud Sync refreshed! All members, plans, checklist fees & records are up to date.");
+        }
+      } catch(e) {
+        console.warn('[Cloud Pull Notice]:', e);
+        updateCloudSyncBadge(true);
+      }
+    };
+
+    // 3. NAVIGATION & VIEW SWITCHING (ZERO-LAG)
     window.nav = function(tabName) {
-      console.log('Navigating to:', tabName);
+      console.log('Navigating to tab:', tabName);
       var panels = ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'assets', 'donations'];
       panels.forEach(function(p) {
         var el = document.getElementById('view-' + p);
@@ -505,13 +789,12 @@
         }
       });
       try {
-        if (tabName === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
-        else if (tabName === 'checklist' && typeof renderChecklist === 'function') renderChecklist();
-        else if (tabName === 'members' && typeof renderMembers === 'function') renderMembers();
-        else if (tabName === 'plans' && typeof renderPlans === 'function') renderPlans();
-        else if (tabName === 'earnings' && typeof renderEarnings === 'function') renderEarnings();
+        if (tabName === 'dashboard') renderDashboard();
+        else if (tabName === 'checklist') renderChecklist();
+        else if (tabName === 'members') renderMembers();
+        else if (tabName === 'plans') renderPlans();
+        else if (tabName === 'earnings') renderEarnings();
         else if (tabName === 'assets' && typeof renderAssetsPanel === 'function') renderAssetsPanel();
-        else if (tabName === 'donations' && typeof renderDonationsPanel === 'function') renderDonationsPanel();
         else if (tabName === 'donations' && typeof renderDonationsPanel === 'function') renderDonationsPanel();
       } catch(err) {
         console.error('Render error:', err);
@@ -524,7 +807,7 @@
         el.classList.add('active');
         el.style.display = 'flex';
       }
-      if (id === 'add-member-modal' && typeof populatePlanOptions === 'function') populatePlanOptions();
+      if (id === 'add-member-modal') populatePlanOptions();
     };
 
     window.closeModal = function(id) {
@@ -533,356 +816,39 @@
         el.classList.remove('active');
         el.style.display = 'none';
       }
-    };
-
-    try {
-
-
-    // ══════════════════════════════════════════════════════════════
-    // 🌐 UNIVERSAL CROSS-DEVICE CLOUD DATABASE ENGINE (PC, TABLET, MOBILE)
-    // ══════════════════════════════════════════════════════════════
-    const SUPABASE_REST_URL = "https://mmbtfbxxnprtzpzdklot.supabase.co/rest/v1";
-    const SUPABASE_API_KEY = "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA";
-    const FINANCE_SYNC_ROW_ID = "knsdc_finance_sync";
-    let lastCloudSyncTimestamp = null;
-    let isSyncing = false;
-
-    function updateCloudSyncBadge(status, text) {
-      const dot = document.getElementById("cloud-sync-dot");
-      const ind = document.getElementById("cloud-sync-status-indicator");
-      if (dot && ind) {
-        if (status === "syncing") {
-          dot.style.background = "#f59e0b";
-          dot.style.boxShadow = "0 0 8px #f59e0b";
-        } else if (status === true) {
-          dot.style.background = "#10b981";
-          dot.style.boxShadow = "0 0 8px #10b981";
-          ind.style.borderColor = "rgba(16,185,129,0.3)";
-        } else {
-          dot.style.background = "#ef4444";
-          dot.style.boxShadow = "0 0 8px #ef4444";
-          ind.style.borderColor = "rgba(239,68,68,0.3)";
-        }
+      if (id === 'add-member-modal') {
+        document.getElementById('mem-id').value = '';
+      } else if (id === 'add-earning-modal') {
+        if (document.getElementById('earn-id')) document.getElementById('earn-id').value = '';
+        if (document.getElementById('earn-modal-title')) document.getElementById('earn-modal-title').textContent = '💰 Log New Club Earning';
+      } else if (id === 'add-spending-modal') {
+        if (document.getElementById('spend-id')) document.getElementById('spend-id').value = '';
+        if (document.getElementById('spend-modal-title')) document.getElementById('spend-modal-title').textContent = '💸 Log Club Spending / Expense';
       }
-    }
-
-    window.pullFinanceCloudSync = async function(manual = false) {
-      if (isSyncing) return;
-      isSyncing = true;
-      updateCloudSyncBadge("syncing");
-      try {
-        const res = await fetch(`${SUPABASE_REST_URL}/sync_state?id=eq.${FINANCE_SYNC_ROW_ID}&select=*`, {
-          headers: {
-            "apikey": SUPABASE_API_KEY,
-            "Authorization": `Bearer ${SUPABASE_API_KEY}`
-          }
-        });
-        if (res.ok) {
-          const rows = await res.json();
-          if (Array.isArray(rows) && rows.length > 0 && rows[0].payload) {
-            const cloud = rows[0].payload;
-            const cloudTime = cloud.updatedAt || rows[0].last_updated;
-
-            // Only update if newer or manual force
-            if (manual || !lastCloudSyncTimestamp || cloudTime !== lastCloudSyncTimestamp) {
-              lastCloudSyncTimestamp = cloudTime;
-              console.log("[Global Cloud Sync] Received updated state from cloud database!");
-
-              if (Array.isArray(cloud.members)) {
-                members = cloud.members;
-                localStorage.setItem("fp_members", JSON.stringify(members));
-              }
-              if (Array.isArray(cloud.plans)) {
-                plans = cloud.plans;
-                localStorage.setItem("fp_plans", JSON.stringify(plans));
-              }
-              if (Array.isArray(cloud.payments)) {
-                payments = cloud.payments;
-                localStorage.setItem("fp_payments", JSON.stringify(payments));
-              }
-              if (Array.isArray(cloud.earnings)) {
-                earnings = cloud.earnings;
-                localStorage.setItem("fp_earnings", JSON.stringify(earnings));
-              }
-              if (Array.isArray(cloud.spendings)) {
-                spendings = cloud.spendings;
-                localStorage.setItem("fp_spendings", JSON.stringify(spendings));
-              }
-              // Library & Lockers (Guarantees deleted books stay deleted on all devices)
-              if (Array.isArray(cloud.books)) {
-                window.clubBooks = cloud.books;
-                localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
-              }
-              if (Array.isArray(cloud.bookIssues)) {
-                window.bookIssues = cloud.bookIssues;
-                localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
-              }
-              if (Array.isArray(cloud.lockers)) {
-                window.clubAssets = cloud.lockers;
-                localStorage.setItem("fp_assets", JSON.stringify(window.clubAssets));
-              }
-              if (Array.isArray(cloud.lockerBookings)) {
-                window.assetBookings = cloud.lockerBookings;
-                localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
-              }
-              if (cloud.supportMissionVpa) {
-                window.supportMissionVpa = cloud.supportMissionVpa;
-                window.supportMissionPayee = cloud.supportMissionPayee || "Kalikapur Nabin Sangha Club";
-                localStorage.setItem("fp_support_mission_vpa", cloud.supportMissionVpa);
-                localStorage.setItem("fp_support_mission_payee", window.supportMissionPayee);
-                if (typeof window.syncMissionVpaUI === "function") window.syncMissionVpaUI();
-              }
-
-              // Re-render UI
-              renderDashboard();
-              renderMembers();
-              renderPlans();
-              renderChecklist();
-              renderEarnings();
-              if (typeof renderBooksCatalog === "function") renderBooksCatalog();
-              if (typeof renderBookIssuesTable === "function") renderBookIssuesTable();
-              if (typeof renderLockersGrid === "function") renderLockersGrid();
-              if (typeof renderLockerBookingsTable === "function") renderLockerBookingsTable();
-            }
-            updateCloudSyncBadge(true);
-            if (manual) alert("✅ Global Cloud Sync refreshed! All members, plans, checklist fees & books are up to date.");
-          } else {
-            // First time seeding from local
-            await window.pushFinanceCloudSync();
-          }
-        }
-      } catch(err) {
-        console.warn("[Global Cloud Sync Pull Error]:", err);
-        updateCloudSyncBadge(false);
-      } finally {
-        isSyncing = false;
-      }
-    };
-
-    window.pushFinanceCloudSync = async function() {
-      updateCloudSyncBadge("syncing");
-      const now = new Date().toISOString();
-      lastCloudSyncTimestamp = now;
-
-      // 1. Instant local cache
-      localStorage.setItem("fp_plans", JSON.stringify(plans));
-      localStorage.setItem("fp_members", JSON.stringify(members));
-      localStorage.setItem("fp_payments", JSON.stringify(payments));
-      localStorage.setItem("fp_earnings", JSON.stringify(earnings));
-      localStorage.setItem("fp_spendings", JSON.stringify(spendings));
-      if (window.clubBooks) localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
-      if (window.bookIssues) localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
-      if (window.clubAssets) localStorage.setItem("fp_assets", JSON.stringify(window.clubAssets));
-      if (window.assetBookings) localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
-
-      const payload = {
-        members: members || [],
-        plans: plans || [],
-        payments: payments || [],
-        earnings: earnings || [],
-        spendings: spendings || [],
-        books: window.clubBooks || [],
-        bookIssues: window.bookIssues || [],
-        lockers: window.clubAssets || [],
-        lockerBookings: window.assetBookings || [],
-        customFields: customFields || [],
-        supportMissionVpa: window.supportMissionVpa || "",
-        supportMissionPayee: window.supportMissionPayee || "Kalikapur Nabin Sangha Club",
-        updatedAt: now
-      };
-
-      // 2. Global Cloud Sync to Supabase sync_state
-      try {
-        const res = await fetch(`${SUPABASE_REST_URL}/sync_state`, {
-          method: "POST",
-          headers: {
-            "apikey": SUPABASE_API_KEY,
-            "Authorization": `Bearer ${SUPABASE_API_KEY}`,
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates"
-          },
-          body: JSON.stringify({
-            id: FINANCE_SYNC_ROW_ID,
-            payload: payload
-          })
-        });
-        if (res.ok) {
-          updateCloudSyncBadge(true);
-          console.log("[Global Cloud Sync] Pushed state to cloud database successfully!");
-        } else {
-          updateCloudSyncBadge(false);
-        }
-      } catch(err) {
-        console.warn("[Global Cloud Push Network Error]:", err);
-        updateCloudSyncBadge(false);
-      }
-    };
-
-    // Start Auto-Sync Poller every 6 seconds
-    setInterval(() => {
-      if (typeof window.pullFinanceCloudSync === "function") {
-        window.pullFinanceCloudSync(false);
-      }
-    }, 6000);
-
-    // 1. Live Supabase Client
-    const SUPABASE_URL = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
-    let supabase = null;
-    try {
-      if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      }
-    } catch(e) {
-      console.warn('Supabase initialization notice:', e);
-    }
-
-    // 2. Clean Database-Driven State (Zero Mock Data)
-    let plans = JSON.parse(localStorage.getItem('fp_plans') || '[]');
-    let members = JSON.parse(localStorage.getItem('fp_members') || '[]');
-    let payments = JSON.parse(localStorage.getItem('fp_payments') || '[]');
-    let earnings = JSON.parse(localStorage.getItem('fp_earnings') || '[]');
-    let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
-    let earningsFilter = 'all';
-
-    let activeMonth = '2026-08';
-
-    // Currency Formatter (₹ INR)
-    function formatINR(val) {
-      return '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-    }
-
-    // Navigation & Tab Switcher (identical to Admin panel)
-    function nav(tabName) {
-      console.log('Navigating to tab:', tabName);
-      window.nav = nav;
-
-      // 1. Deactivate all buttons & hide all panels
-      document.querySelectorAll('.tab-btn').forEach(function(btn) {
-        btn.classList.remove('active');
-      });
-
-      document.querySelectorAll('.view-panel').forEach(function(panel) {
-        panel.classList.remove('active');
-        panel.style.display = 'none';
-      });
-
-      // 2. Activate target button & target panel
-      const activeBtn = document.getElementById('tab-' + tabName);
-      const activePanel = document.getElementById('view-' + tabName);
-
-      if (activeBtn) activeBtn.classList.add('active');
-      if (activePanel) {
-        activePanel.classList.add('active');
-        activePanel.style.display = 'block';
-      }
-
-      // 3. Render contents
-      try {
-        if (tabName === 'dashboard') renderDashboard();
-        else if (tabName === 'checklist') renderChecklist();
-        else if (tabName === 'members') renderMembers();
-        else if (tabName === 'plans') renderPlans();
-        else if (tabName === 'earnings') renderEarnings();
-        else if (tabName === 'assets') renderAssetsPanel();
-        else if (tabName === 'donations') renderDonationsPanel();
-      } catch(err) {
-        console.error('Render error in tab ' + tabName + ':', err);
-      }
-    };
-    // Modal Control
-    function openModal(id) {
-      window.openModal = openModal;
-      const el = document.getElementById(id);
-      if (el) el.classList.add('active');
-      if (id === 'add-member-modal') populatePlanOptions();
-    };
-
-    function closeModal(id) {
-      window.closeModal = closeModal;
-      const el = document.getElementById(id);
-      if (el) el.classList.remove('active');
     };
 
     function populatePlanOptions() {
       const sel = document.getElementById('mem-plan');
       if (!sel) return;
-      sel.innerHTML = plans.map(p => {
-        const isFlex = (p.planType === 'flexible' || p.type === 'flexible');
-        const badgeText = isFlex ? `Up to ${formatINR(p.fee)} (Flexible)` : `${formatINR(p.fee)}/mo (Fixed)`;
-        return `<option value="${p.id}">${p.name} — ${badgeText}</option>`;
-      }).join('');
+      sel.innerHTML = plans.map(p => `<option value="${p.id}">${p.name} (${formatINR(p.fee)}/mo)</option>`).join('');
     }
 
-    function handleMemberPlanSelect(planId) {
+    window.handleMemberPlanSelect = function(planId) {
       const p = plans.find(x => x.id === planId);
       if (p) {
-        const isFlex = (p.planType === 'flexible' || p.type === 'flexible');
-        const customFeeInput = document.getElementById('mem-custom-fee');
-        if (customFeeInput) {
-          customFeeInput.placeholder = isFlex ? `Enter amount up to ${formatINR(p.fee)}` : `Default: ${formatINR(p.fee)}`;
-          if (isFlex) {
-            customFeeInput.max = p.fee;
-          } else {
-            customFeeInput.removeAttribute('max');
-          }
-        }
+        const el = document.getElementById('mem-custom-fee');
+        if (el) el.placeholder = `Default: ${formatINR(p.fee)}`;
       }
-    }
-    function handleMonthChange(m) {
-      window.handleMonthChange = handleMonthChange;
+    };
+
+    window.handleMonthChange = function(m) {
       activeMonth = m;
       renderDashboard();
       renderChecklist();
     };
 
-    // ══════════════════════════════════════════
-    // 1. DASHBOARD RENDER
-    // ══════════════════════════════════════════
-    // ══════════════════════════════════════════
-    // 1. DASHBOARD RENDER & DEDICATED PERIOD FILTER
-    // ══════════════════════════════════════════
-    let dashFilterMode = 'month'; // 'month', 'year', 'all'
-    let dashSelectedMonth = '2026-08';
-    let dashSelectedYear = '2026';
-
-    window.handleDashboardFilterModeChange = function(mode) {
-      dashFilterMode = mode;
-      const monthWrap = document.getElementById('dash-month-wrapper');
-      const yearWrap = document.getElementById('dash-year-wrapper');
-      if (monthWrap) monthWrap.style.display = (mode === 'month') ? 'inline-flex' : 'none';
-      if (yearWrap) yearWrap.style.display = (mode === 'year') ? 'inline-flex' : 'none';
-      renderDashboard();
-    };
-
-    window.handleDashboardMonthChange = function(m) {
-      dashSelectedMonth = m;
-      renderDashboard();
-    };
-
-    window.handleDashboardYearChange = function(y) {
-      dashSelectedYear = y;
-      renderDashboard();
-    };
-
+    // 4. DASHBOARD RENDER
     function renderDashboard() {
-      // 1. Determine active label for dashboard period
-      const periodLabelEl = document.getElementById('dash-period-label');
-      if (periodLabelEl) {
-        if (dashFilterMode === 'month') {
-          const [yr, mo] = (dashSelectedMonth || '2026-08').split('-');
-          const dObj = new Date(parseInt(yr), parseInt(mo) - 1, 1);
-          periodLabelEl.textContent = dObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-        } else if (dashFilterMode === 'year') {
-          periodLabelEl.textContent = 'Year ' + dashSelectedYear;
-        } else {
-          periodLabelEl.textContent = 'All-Time Total';
-        }
-      }
-
-      // 2. Filter payments for dashboard
       let feesCollected = 0;
       let feesExpected = 0;
       let feesPending = 0;
@@ -890,50 +856,23 @@
       let overdueCount = 0;
 
       members.forEach(m => {
-        if (m.status !== 'active') return;
+        if (m.status !== 'active' || deletedMembers.has(m.id)) return;
         const plan = plans.find(p => p.id === m.planId);
         const fee = (m.customFee !== undefined && m.customFee !== null && m.customFee >= 0) ? m.customFee : (plan ? plan.fee : 0);
-        
-        let matchingPayments = [];
-        if (dashFilterMode === 'month') {
-          matchingPayments = payments.filter(p => p.memberId === m.id && p.monthYear === dashSelectedMonth);
-          feesExpected += fee;
-        } else if (dashFilterMode === 'year') {
-          matchingPayments = payments.filter(p => p.memberId === m.id && p.monthYear && p.monthYear.startsWith(dashSelectedYear));
-          feesExpected += (fee * 12);
-        } else {
-          matchingPayments = payments.filter(p => p.memberId === m.id);
-          feesExpected += fee;
-        }
+        feesExpected += fee;
 
-        const paidPay = matchingPayments.find(p => p.status === 'paid');
-        if (paidPay) {
-          matchingPayments.forEach(p => {
-            if (p.status === 'paid') feesCollected += (p.paidAmount || p.amount || 0);
-          });
+        const pay = payments.find(p => p.memberId === m.id && p.monthYear === activeMonth);
+        if (pay && pay.status === 'paid') {
+          feesCollected += (pay.paidAmount || pay.amount);
         } else {
           feesPending += fee;
           pendingCount++;
-          const ovd = matchingPayments.find(p => p.status === 'overdue');
-          if (ovd) overdueCount++;
+          if (pay && pay.status === 'overdue') overdueCount++;
         }
       });
 
-      // 3. Filter earnings & spendings for dashboard
-      let filteredEarnings = earnings.filter(e => {
-        if (dashFilterMode === 'month') return e.date && e.date.startsWith(dashSelectedMonth);
-        if (dashFilterMode === 'year') return e.date && e.date.startsWith(dashSelectedYear);
-        return true;
-      });
-
-      let filteredSpendings = spendings.filter(s => {
-        if (dashFilterMode === 'month') return s.date && s.date.startsWith(dashSelectedMonth);
-        if (dashFilterMode === 'year') return s.date && s.date.startsWith(dashSelectedYear);
-        return true;
-      });
-
-      let totalOtherEarnings = filteredEarnings.reduce((sum, e) => sum + (e.amount || 0), 0);
-      let totalClubSpendings = filteredSpendings.reduce((sum, s) => sum + (s.amount || 0), 0);
+      let totalOtherEarnings = earnings.filter(e => !deletedEarnings.has(e.id)).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      let totalClubSpendings = spendings.filter(s => !deletedSpendings.has(s.id)).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
       let netClubTreasury = (feesCollected + totalOtherEarnings) - totalClubSpendings;
       let totalClubRevenue = feesCollected + totalOtherEarnings;
       let collectionRate = feesExpected > 0 ? Math.round((feesCollected / feesExpected) * 100) : 0;
@@ -955,6 +894,7 @@
       if (elPenCnt) elPenCnt.textContent = `${pendingCount} members pending`;
       if (elOvdCnt) elOvdCnt.textContent = `${overdueCount} overdue`;
       if (elOth) elOth.textContent = formatINR(totalOtherEarnings);
+
       const elSpend = document.getElementById('dash-total-spending');
       const elNetTreasury = document.getElementById('dash-net-treasury');
       if (elSpend) elSpend.textContent = '-' + formatINR(totalClubSpendings);
@@ -963,73 +903,11 @@
         elNetTreasury.style.color = netClubTreasury >= 0 ? '#34d399' : '#f87171';
       }
 
-      // 4. Calculate Total Donations for Dashboard
-      let totalDonationsAmount = 0;
-      let donationsCount = 0;
-      (window.allDonations || []).forEach(d => {
-        let matchDate = true;
-        if (d.createdAt) {
-          const iso = new Date(d.createdAt).toISOString();
-          if (dashFilterMode === 'month') matchDate = iso.startsWith(dashSelectedMonth);
-          else if (dashFilterMode === 'year') matchDate = iso.startsWith(dashSelectedYear);
-        }
-        if (matchDate && (d.status === 'COMPLETED' || d.status === 'VERIFIED')) {
-          totalDonationsAmount += (Number(d.amount) || 0);
-          donationsCount++;
-        }
-      });
-
-      const dashDonTotal = document.getElementById('dash-live-donations-total');
-      if (dashDonTotal) dashDonTotal.textContent = formatINR(totalDonationsAmount);
-      const dashDonDetail = document.getElementById('dash-live-donations-detail');
-      if (dashDonDetail) dashDonDetail.textContent = `${donationsCount} verified supporter${donationsCount === 1 ? '' : 's'} in selected period`;
-
-      // Update Tab Count Pill
-      const pill = document.getElementById('donations-tab-pill');
-      if (pill) pill.textContent = (window.allDonations || []).length;
-
-      // 5. Recent Transactions
       const tbody = document.getElementById('dash-recent-tbody');
       if (!tbody) return;
 
       let rows = [];
-
-      // Add filtered donations
-      (window.allDonations || []).forEach(d => {
-        let matchDate = true;
-        if (d.createdAt) {
-          const iso = new Date(d.createdAt).toISOString();
-          if (dashFilterMode === 'month') matchDate = iso.startsWith(dashSelectedMonth);
-          else if (dashFilterMode === 'year') matchDate = iso.startsWith(dashSelectedYear);
-        }
-        if (!matchDate) return;
-
-        const amt = Number(d.amount) || 0;
-        const isMission = !d.eventName || d.eventName.toLowerCase().includes('mission') || d.eventName.toLowerCase().includes('community support');
-        const isVerified = (d.status === 'COMPLETED' || d.status === 'VERIFIED');
-        const badgeColor = isVerified ? 'badge-paid' : (d.status === 'VERIFYING' ? 'badge-pending' : 'badge-overdue');
-        const statusText = isVerified ? 'VERIFIED' : (d.status || 'PENDING');
-        const dateStr = d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : '-';
-
-        rows.push(`
-          <tr>
-            <td><span class="badge" style="background:rgba(233,30,140,0.18); color:#ff70ba; border:1px solid rgba(233,30,140,0.4);">DONATION</span></td>
-            <td style="font-weight:700; color:#fff;">
-              ${d.donorName || 'Well-wisher'} ${d.isAnonymous ? '<span style="font-size:9px; background:#334155; color:#94a3b8; padding:1px 4px; border-radius:4px;">Anon</span>' : ''}
-              ${d.donorPhone ? `<div style="font-size:11px; color:#94a3b8;">📱 ${d.donorPhone}</div>` : ''}
-            </td>
-            <td style="color:${isMission ? '#ff70ba' : '#a5b4fc'}; font-weight:600;">${isMission ? '💖 Support Mission' : '🎟️ ' + d.eventName}</td>
-            <td class="font-mono" style="color:var(--text-dim); font-size:11px;">${dateStr}</td>
-            <td style="font-weight:800; color:#34d399;">+${formatINR(amt)}</td>
-            <td>
-              <span class="badge ${badgeColor}">${statusText}</span>
-              ${d.utr ? `<div class="font-mono" style="font-size:10px; color:#34d399; font-weight:700; margin-top:2px;">${d.utr}</div>` : ''}
-            </td>
-          </tr>
-        `);
-      });
-
-      filteredEarnings.slice(0, 6).forEach(e => {
+      earnings.filter(e => !deletedEarnings.has(e.id)).slice(0, 4).forEach(e => {
         rows.push(`
           <tr>
             <td><span class="badge badge-paid">EARNING</span></td>
@@ -1042,12 +920,7 @@
         `);
       });
 
-      payments.forEach(p => {
-        let matchDate = true;
-        if (dashFilterMode === 'month') matchDate = (p.monthYear === dashSelectedMonth);
-        else if (dashFilterMode === 'year') matchDate = (p.monthYear && p.monthYear.startsWith(dashSelectedYear));
-
-        if (!matchDate || p.status !== 'paid') return;
+      payments.filter(p => !deletedMembers.has(p.memberId)).slice(0, 4).forEach(p => {
         const m = members.find(x => x.id === p.memberId);
         if (!m) return;
         rows.push(`
@@ -1055,7 +928,7 @@
             <td><span class="badge badge-blue">MEMBER FEE</span></td>
             <td style="font-weight:700; color:#fff;">${m.name}</td>
             <td style="color:var(--text-muted);">${p.monthYear} Fee</td>
-            <td class="font-mono" style="color:var(--text-dim);">${p.paidAt ? p.paidAt.split('T')[0] : (p.monthYear || '-')}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${p.paidAt ? p.paidAt.split('T')[0] : activeMonth}</td>
             <td style="font-weight:800; color:#34d399;">+${formatINR(p.paidAmount || p.amount)}</td>
             <td><span class="badge badge-paid">PAID</span></td>
           </tr>
@@ -1063,22 +936,20 @@
       });
 
       if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">📝 No financial transactions recorded for this selected dashboard period.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">📝 No transactions recorded yet. Click "+ Add Member", "💰 + Log New Earning", or "💸 + Log Spending" to start recording your club finances!</td></tr>';
       } else {
-        tbody.innerHTML = rows.slice(0, 15).join('');
+        tbody.innerHTML = rows.join('');
       }
-      return;
     }
-    // ══════════════════════════════════════════
-    // 2. CHECKLIST RENDER & ACTIONS
-    // ══════════════════════════════════════════
+
+    // 5. CHECKLIST MATRIX & PAYMENT ACTIONS
     function renderChecklist() {
       const tbody = document.getElementById('checklist-tbody');
       if (!tbody) return;
 
       const q = (document.getElementById('checklist-search')?.value || '').toLowerCase();
       const filtered = members.filter(m => {
-        if (m.status !== 'active') return false;
+        if (m.status !== 'active' || deletedMembers.has(m.id)) return false;
         if (q && !m.name.toLowerCase().includes(q) && !(m.role||'').toLowerCase().includes(q) && !(m.phone||'').includes(q)) return false;
         return true;
       });
@@ -1114,7 +985,7 @@
               <div style="font-weight:700; color:#fff; font-size:13px;">${m.name}</div>
               <div style="font-size:11px; color:var(--text-dim);">${m.phone || m.email || ''}</div>
             </td>
-            <td>${getRoleBadge(m.role)}</td>
+            <td><span class="badge badge-blue">${m.role || 'Member'}</span></td>
             <td style="font-weight:600; color:#fff;">${plan ? plan.name : 'Standard'}</td>
             <td style="font-weight:800; color:#34d399; font-size:13px;">${formatINR(fee)}</td>
             <td>${statusBadge}</td>
@@ -1125,8 +996,7 @@
       }).join('');
     }
 
-    function markPaymentPaid(memberId, mStr, method) {
-      window.markPaymentPaid = markPaymentPaid;
+    window.markPaymentPaid = function(memberId, mStr, method) {
       const m = members.find(x => x.id === memberId);
       if (!m) return;
       const plan = plans.find(p => p.id === m.planId);
@@ -1156,8 +1026,7 @@
       renderDashboard();
     };
 
-    function viewReceipt(memberId, mStr) {
-      window.viewReceipt = viewReceipt;
+    window.viewReceipt = function(memberId, mStr) {
       const m = members.find(x => x.id === memberId);
       const p = payments.find(x => x.memberId === memberId && x.monthYear === mStr);
       if (!m || !p) return;
@@ -1175,29 +1044,15 @@
       openModal('receipt-modal');
     };
 
-    // ══════════════════════════════════════════
-    // 3. MEMBERS DIRECTORY RENDER & ACTIONS
-    // ══════════════════════════════════════════
-    function getRoleBadge(role) {
-      role = role || 'Member';
-      if (role === 'Club Body') return `<span class="badge" style="background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.4); font-weight:800;">🔴 Club Body</span>`;
-      if (role === 'Executive Member') return `<span class="badge" style="background:rgba(168,85,247,0.18); color:#c084fc; border:1px solid rgba(168,85,247,0.4); font-weight:800;">🟣 Executive Member</span>`;
-      if (role === 'Committee') return `<span class="badge" style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.4); font-weight:800;">🟢 Committee</span>`;
-      if (role === 'Handler + Controller' || role === 'Handler & Controller') return `<span class="badge" style="background:linear-gradient(135deg, rgba(249,115,22,0.25), rgba(14,165,233,0.25)); color:#38bdf8; border:1px solid rgba(14,165,233,0.5); font-weight:800;">🟠 Handler + 🛡️ Controller</span>`;
-      if (role === 'Controller') return `<span class="badge" style="background:rgba(14,165,233,0.18); color:#38bdf8; border:1px solid rgba(14,165,233,0.4); font-weight:800;">🛡️ Controller</span>`;
-      if (role === 'Handler') return `<span class="badge" style="background:rgba(249,115,22,0.18); color:#fb923c; border:1px solid rgba(249,115,22,0.4); font-weight:800;">🟠 Handler</span>`;
-      if (role === 'Athlete / Student') return `<span class="badge" style="background:rgba(234,179,8,0.18); color:#facc15; border:1px solid rgba(234,179,8,0.4); font-weight:800;">🟡 Athlete / Student</span>`;
-      if (role === 'Volunteer / Coach') return `<span class="badge" style="background:rgba(20,184,166,0.18); color:#2dd4bf; border:1px solid rgba(20,184,166,0.4); font-weight:800;">🟢 Volunteer / Coach</span>`;
-      return `<span class="badge" style="background:rgba(99,102,241,0.18); color:#818cf8; border:1px solid rgba(99,102,241,0.4); font-weight:800;">🔵 ${role}</span>`;
-    }
-
+    // 6. MEMBERS DIRECTORY (ADD, EDIT, DELETE)
     function renderMembers() {
       const container = document.getElementById('members-cards-container');
       if (!container) return;
 
       const q = (document.getElementById('members-search')?.value || '').toLowerCase();
       const filtered = members.filter(m => {
-        if (q && !m.name.toLowerCase().includes(q) && !(m.role||'').toLowerCase().includes(q) && !(m.email||'').toLowerCase().includes(q)) return false;
+        if (deletedMembers.has(m.id)) return false;
+        if (q && !m.name.toLowerCase().includes(q) && !(m.role||'').toLowerCase().includes(q) && !(m.email||'').toLowerCase().includes(q) && !(m.phone||'').includes(q)) return false;
         return true;
       });
 
@@ -1220,7 +1075,7 @@
                   </div>
                   <div>
                     <h3 style="font-size:15px; font-weight:800; color:#fff;">${m.name}</h3>
-                    ${getRoleBadge(m.role)}
+                    <span class="badge badge-paid">${m.role || 'Member'}</span>
                   </div>
                 </div>
                 <span class="badge badge-blue">${(m.status || 'active').toUpperCase()}</span>
@@ -1237,587 +1092,296 @@
 
             <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; gap:8px;">
               <button onclick="editMember('${m.id}')" class="btn btn-secondary" style="flex:1;">✏️ Edit</button>
-              <button onclick="deleteMember('${m.id}', '${m.name}')" class="btn btn-danger" style="padding:8px 12px;">🗑️</button>
+              <button onclick="deleteMember('${m.id}', '${m.name.replace(/'/g, "\\'")}')" class="btn btn-danger" style="padding:8px 12px;">🗑️</button>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    async function handleSaveMember(e) {
-      window.handleSaveMember = handleSaveMember;
+    window.handleSaveMember = function(e) {
       e.preventDefault();
       const id = document.getElementById('mem-id').value || ('mem-' + Date.now());
       const name = document.getElementById('mem-name').value.trim();
-      const email = document.getElementById('mem-email').value.trim();
+      let email = document.getElementById('mem-email').value.trim();
       const phone = document.getElementById('mem-phone').value.trim();
       const planId = document.getElementById('mem-plan').value;
-      const plan = plans.find(p => p.id === planId);
-      const role = document.getElementById('mem-role').value;
+      const role = document.getElementById('mem-role').value || 'Member';
       const customFeeRaw = document.getElementById('mem-custom-fee').value;
       const customFee = customFeeRaw !== '' ? Number(customFeeRaw) : null;
       const joinDate = document.getElementById('mem-join-date').value || new Date().toISOString().split('T')[0];
       const lockerNumber = document.getElementById('mem-locker').value.trim();
       const sportActivity = document.getElementById('mem-activity').value.trim();
 
+      if (!email) email = `${id}@knsdc.club`;
+
       const memberObj = {
-        id, name, email, phone, planId, planName: plan ? plan.name : 'General Member',
-        role, customFee, monthlyFee: customFee !== null ? customFee : (plan ? plan.fee : 200),
-        joinDate, status: 'active',
-        customFields: { lockerNumber, sportActivity }
+        id, name, email, phone, planId, role, customFee, joinDate, status: 'active',
+        customFields: { lockerNumber, sportActivity, role }
       };
 
-      // Save to MongoDB Cloud Database
-      try {
-        await fetch('/api/finance/members', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(memberObj)
-        });
-      } catch (err) {
-        console.warn('[MongoDB Sync Notice]:', err.message);
+      if (deletedMembers.has(id)) {
+        deletedMembers.delete(id);
+        saveTombstones();
       }
 
       const idx = members.findIndex(x => x.id === id);
       if (idx !== -1) members[idx] = memberObj;
       else members.unshift(memberObj);
 
-      saveData();
+      saveDataLocally();
       closeModal('add-member-modal');
       renderMembers();
       renderChecklist();
       renderDashboard();
-      alert(`Saved member "${name}" to MongoDB global database!`);
+
+      debouncedCloudSync();
+      safeFetch('/api/finance/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(memberObj)
+      });
     };
 
-    function editMember(id) {
-      window.editMember = editMember;
+    window.editMember = function(id) {
       const m = members.find(x => x.id === id);
       if (!m) return;
       document.getElementById('add-member-title').textContent = `✏️ Edit "${m.name}"`;
       document.getElementById('mem-id').value = m.id;
       document.getElementById('mem-name').value = m.name;
-      document.getElementById('mem-email').value = m.email || '';
+      document.getElementById('mem-email').value = (m.email && !m.email.endsWith('@knsdc.club')) ? m.email : '';
       document.getElementById('mem-phone').value = m.phone || '';
       document.getElementById('mem-role').value = m.role || 'Member';
-      document.getElementById('mem-custom-fee').value = m.customFee !== null && m.customFee !== undefined ? m.customFee : '';
+      document.getElementById('mem-custom-fee').value = (m.customFee !== null && m.customFee !== undefined) ? m.customFee : '';
       document.getElementById('mem-join-date').value = m.joinDate || '';
       document.getElementById('mem-locker').value = m.customFields?.lockerNumber || '';
       document.getElementById('mem-activity').value = m.customFields?.sportActivity || '';
 
       populatePlanOptions();
       document.getElementById('mem-plan').value = m.planId;
-
       openModal('add-member-modal');
     };
 
-    async function deleteMember(id, name) {
-      window.deleteMember = deleteMember;
+    window.deleteMember = function(id, name) {
       if (confirm(`Are you sure you want to delete member "${name}"?`)) {
-        try {
-          await fetch('/api/finance/members/' + id, { method: 'DELETE' });
-        } catch (e) {}
         members = members.filter(x => x.id !== id);
         payments = payments.filter(x => x.memberId !== id);
-        saveData();
+        deletedMembers.add(id);
+        saveTombstones();
+        saveDataLocally();
         renderMembers();
         renderChecklist();
         renderDashboard();
-      }
-    };
 
-    // ══════════════════════════════════════════
-    // ══════════════════════════════════════════
-    // ══════════════════════════════════════════
-    // 4. PLANS VIEW RENDER & ACTIONS (MULTIPLE BENEFITS: LOCKER, LIBRARY, ETC.)
-    // ══════════════════════════════════════════
-    window.handlePlanTypeChange = function(type) {
-      const feeLabel = document.getElementById('plan-fee-label');
-      const feeHint = document.getElementById('plan-fee-hint');
-      if (type === 'flexible') {
-        if (feeLabel) feeLabel.textContent = 'Maximum Contribution Cap (₹ INR) *';
-        if (feeHint) {
-          feeHint.textContent = 'Members in this plan can pay any customized amount up to this maximum limit.';
-          feeHint.style.display = 'block';
+        if (supabase) {
+          supabase.from('members').delete().eq('id', id).catch(() => {});
+          supabase.from('payment_records').delete().eq('member_id', id).catch(() => {});
         }
-      } else {
-        if (feeLabel) feeLabel.textContent = 'Fixed Monthly Fee (₹ INR) *';
-        if (feeHint) feeHint.style.display = 'none';
+        safeFetch('/api/finance/members/' + id, { method: 'DELETE' });
       }
     };
 
+    // 7. PLANS VIEW (ADD, EDIT, DELETE)
     function renderPlans() {
       const container = document.getElementById('plans-cards-container');
       if (!container) return;
 
-      if (!plans || plans.length === 0) {
+      const activePlans = plans.filter(p => !deletedPlans.has(p.id));
+      if (activePlans.length === 0) {
         container.innerHTML = `
-          <div style="grid-column: 1 / -1; text-align:center; padding:40px; background:var(--card); border-radius:18px; border:2px dashed var(--border); color:var(--text-muted); font-size:14px;">
-            🎛️ No membership plans created yet. Click "<b>+ Add New Plan</b>" above to configure your club membership tiers in ₹ INR!
+          <div style="grid-column:1/-1; text-align:center; padding:48px; background:var(--card); border:1px solid var(--border); border-radius:18px;">
+            <div style="font-size:32px; margin-bottom:12px;">📋</div>
+            <h4 style="font-size:16px; font-weight:800; color:#fff;">No Membership Plans Found</h4>
+            <p style="color:var(--text-muted); font-size:13px; margin:8px 0 20px 0;">Create custom membership tiers with specific monthly fees and grace periods.</p>
+            <button onclick="openAddPlanModal()" class="btn btn-primary">+ Create First Plan</button>
           </div>
         `;
         return;
       }
 
-      container.innerHTML = plans.map(plan => {
-        const count = members.filter(m => m.planId === plan.id && m.status === 'active').length;
-        const isFlex = (plan.planType === 'flexible' || plan.type === 'flexible');
-        const ribbonColor = plan.color || '#3b82f6';
-        
-        const typeBadge = isFlex
-          ? `<span class="badge" style="background:rgba(233,30,140,0.15); color:#ec4899; border:1px solid rgba(233,30,140,0.35); font-weight:800;">✨ UP TO ₹${(plan.fee || 0).toLocaleString('en-IN')} (FLEXIBLE)</span>`
-          : '<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.35); font-weight:800;">🔒 FIXED AMOUNT</span>';
-
-        const feeLabel = isFlex ? 'Maximum Contribution Cap' : 'Monthly Membership Fee';
-        const feeValue = isFlex ? `Up to ${formatINR(plan.fee)}` : formatINR(plan.fee);
-
-        const benefits = Array.isArray(plan.benefits) ? plan.benefits : [];
-        const benefitsBadges = benefits.length > 0 
-          ? benefits.map(b => `<span class="badge plan-benefit-tag" style="background:rgba(99,102,241,0.15); color:#818cf8; border:1px solid rgba(99,102,241,0.3); font-size:11px; padding:3px 8px; border-radius:6px;">${b}</span>`).join(' ')
-          : '<span style="font-size:11px; color:var(--text-dim); font-style:italic;">Standard Plan (No extra perks selected)</span>';
-
-        const fineText = (plan.lateFeeAmount || 0) > 0 ? ('₹' + plan.lateFeeAmount) : '₹0 (No fine)';
-        const fineColor = (plan.lateFeeAmount || 0) > 0 ? '#f59e0b' : '#10b981';
+      container.innerHTML = activePlans.map(plan => {
+        const count = members.filter(m => m.planId === plan.id && m.status === 'active' && !deletedMembers.has(m.id)).length;
+        const totalEstMonthly = count * (plan.fee || 0);
 
         return `
-          <div class="card plan-card" style="display:flex; flex-direction:column; justify-content:space-between; position:relative; overflow:hidden; padding-top:0;">
-            <!-- Vibrant Top Color Ribbon -->
-            <div style="height:8px; width:calc(100% + 40px); margin:0 -20px 16px -20px; background:${ribbonColor}; box-shadow:0 3px 12px ${ribbonColor}55;"></div>
-
+          <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; border-top:4px solid ${plan.color || '#3b82f6'};">
             <div>
-              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <span style="width:10px; height:10px; border-radius:50%; background:${ribbonColor}; display:inline-block; box-shadow:0 0 8px ${ribbonColor};"></span>
-                  <h3 style="font-size:17px; font-weight:800; color:var(--text); letter-spacing:-0.3px;">${plan.name}</h3>
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                  <h3 style="font-size:16px; font-weight:800; color:#fff;">${plan.name}</h3>
+                  <span class="badge badge-blue" style="margin-top:4px;">${(plan.billingCycle || 'monthly').toUpperCase()}</span>
                 </div>
-                <button type="button" onclick="deletePlan('${plan.id}', '${plan.name}')" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer; font-size:15px; padding:2px 6px; border-radius:6px; transition:color 0.15s;" title="Delete Plan" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--text-dim)'">🗑️</button>
-              </div>
-
-              <div style="margin-bottom:10px;">${typeBadge}</div>
-              <p style="font-size:12px; color:var(--text-muted); line-height:1.4; min-height:34px;">${plan.description || (isFlex ? 'Flexible custom contribution up to the maximum limit.' : 'Standard fixed membership fee tier.')}</p>
-
-              <!-- Pricing Box -->
-              <div class="plan-fee-box" style="margin-top:14px; background:#090f1d; padding:14px 16px; border-radius:14px; border:1px solid var(--border);">
-                <span class="plan-fee-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block;">${feeLabel}</span>
-                <span class="plan-fee-val" style="font-size:24px; font-weight:900; color:#10b981; letter-spacing:-0.5px;">${feeValue}</span>
-              </div>
-
-              <!-- Included Benefits List -->
-              <div class="plan-benefits-box" style="margin-top:12px; background:rgba(0,0,0,0.2); padding:12px 14px; border-radius:12px; border:1px dashed rgba(255,255,255,0.1);">
-                <div class="plan-benefits-title" style="font-size:10px; color:#cbd5e1; font-weight:800; text-transform:uppercase; margin-bottom:8px; letter-spacing:0.5px; display:flex; align-items:center; gap:5px;">
-                  <span>🎁 INCLUDED MEMBER BENEFITS:</span>
-                </div>
-                <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                  ${benefitsBadges}
+                <div style="display:flex; gap:6px;">
+                  <button type="button" onclick="editPlan('${plan.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;">✏️</button>
+                  <button type="button" onclick="deletePlan('${plan.id}', '${plan.name.replace(/'/g, "\\'")}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>
                 </div>
               </div>
+              <p style="font-size:12px; color:var(--text-muted); margin-top:8px; min-height:36px;">${plan.description || ''}</p>
 
-              <!-- Meta Statistics -->
-              <div class="plan-stats-box" style="margin-top:12px; font-size:12px; background:rgba(0,0,0,0.18); padding:12px 14px; border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; gap:6px;">
-                <div style="display:flex; justify-content:space-between;"><span class="plan-stat-label" style="color:var(--text-muted);">Enrolled Members:</span> <span class="plan-stat-val" style="font-weight:800; color:var(--text);">${count} active</span></div>
-                <div style="display:flex; justify-content:space-between;"><span class="plan-stat-label" style="color:var(--text-muted);">Grace Period:</span> <span class="plan-stat-val" style="font-weight:800; color:#f59e0b;">${plan.lateFeeDays || 0} days</span></div>
-                <div style="display:flex; justify-content:space-between;"><span class="plan-stat-label" style="color:var(--text-muted);">Late Fine (0–100):</span> <span class="plan-stat-val" style="font-weight:800; color:${fineColor};">${fineText}</span></div>
+              <div style="margin-top:16px; background:#090f1d; padding:14px; border-radius:12px; border:1px solid var(--border);">
+                <span style="font-size:11px; color:var(--text-muted); display:block; font-weight:600;">Monthly Fee</span>
+                <span style="font-size:24px; font-weight:900; color:#34d399;">${formatINR(plan.fee)}</span>
+              </div>
+
+              <div style="margin-top:12px; font-size:12px; color:var(--text-muted); display:flex; flex-direction:column; gap:6px; background:rgba(0,0,0,0.2); padding:10px; border-radius:10px; border:1px solid var(--border);">
+                <div style="display:flex; justify-content:space-between;"><span>Enrolled Members:</span> <span style="font-weight:700; color:#fff;">${count}</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Est. Revenue:</span> <span style="font-weight:800; color:#34d399;">${formatINR(totalEstMonthly)}</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Late Fine Rule:</span> <span style="color:var(--text-muted);">After ${plan.lateFeeDays || 10}d (+${formatINR(plan.lateFeeAmount || 50)})</span></div>
               </div>
             </div>
 
-            <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
-              <button type="button" onclick="editPlan('${plan.id}')" class="btn btn-secondary" style="width:100%; font-weight:800; padding:10px; font-size:13px; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:6px;">
-                <span>✏️ Edit Plan</span>
-              </button>
+            <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border); display:flex; gap:8px;">
+              <button type="button" onclick="editPlan('${plan.id}')" class="btn btn-secondary" style="flex:1;">Edit Settings</button>
             </div>
           </div>
         `;
       }).join('');
     }
-    function openAddPlanModal() {
-      window.openAddPlanModal = openAddPlanModal;
+
+    window.openAddPlanModal = function() {
       document.getElementById('plan-modal-title').textContent = '➕ Add New Membership Plan';
       document.getElementById('plan-id').value = 'plan-' + Date.now();
-      document.getElementById('plan-type').value = 'fixed';
-      handlePlanTypeChange('fixed');
       document.getElementById('plan-name').value = '';
       document.getElementById('plan-fee').value = 500;
       document.getElementById('plan-desc').value = '';
-      document.getElementById('plan-grace').value = 0;
-      document.getElementById('plan-late-fine').value = 0;
+      document.getElementById('plan-grace').value = 10;
+      document.getElementById('plan-late-fine').value = 50;
       document.getElementById('plan-color').value = '#3b82f6';
-
-      // Default Checkboxes
-      if (document.getElementById('pb-locker')) document.getElementById('pb-locker').checked = false;
-      if (document.getElementById('pb-library')) document.getElementById('pb-library').checked = false;
-      if (document.getElementById('pb-sports')) document.getElementById('pb-sports').checked = false;
-      if (document.getElementById('pb-gym')) document.getElementById('pb-gym').checked = false;
-      if (document.getElementById('pb-events')) document.getElementById('pb-events').checked = false;
-      if (document.getElementById('pb-voting')) document.getElementById('pb-voting').checked = false;
-
       openModal('plan-modal');
     };
 
-    function editPlan(id) {
-      window.editPlan = editPlan;
+    window.editPlan = function(id) {
       const p = plans.find(x => x.id === id);
       if (!p) return;
       document.getElementById('plan-modal-title').textContent = `✏️ Edit "${p.name}"`;
       document.getElementById('plan-id').value = p.id;
-      const planType = p.planType || p.type || 'fixed';
-      document.getElementById('plan-type').value = planType;
-      handlePlanTypeChange(planType);
       document.getElementById('plan-name').value = p.name;
       document.getElementById('plan-fee').value = p.fee;
       document.getElementById('plan-desc').value = p.description || '';
-      document.getElementById('plan-grace').value = p.lateFeeDays !== undefined ? p.lateFeeDays : 0;
-      document.getElementById('plan-late-fine').value = Math.min(100, Math.max(0, p.lateFeeAmount !== undefined ? Number(p.lateFeeAmount) : 0));
+      document.getElementById('plan-grace').value = p.lateFeeDays || 10;
+      document.getElementById('plan-late-fine').value = p.lateFeeAmount || 50;
       document.getElementById('plan-color').value = p.color || '#3b82f6';
-
-      // Populate Checkboxes from saved benefits
-      const bList = Array.isArray(p.benefits) ? p.benefits : [];
-      if (document.getElementById('pb-locker')) document.getElementById('pb-locker').checked = bList.some(x => x.includes('Locker'));
-      if (document.getElementById('pb-library')) document.getElementById('pb-library').checked = bList.some(x => x.includes('Library'));
-      if (document.getElementById('pb-sports')) document.getElementById('pb-sports').checked = bList.some(x => x.includes('Sports') || x.includes('Ground'));
-      if (document.getElementById('pb-gym')) document.getElementById('pb-gym').checked = bList.some(x => x.includes('Gym'));
-      if (document.getElementById('pb-events')) document.getElementById('pb-events').checked = bList.some(x => x.includes('Event'));
-      if (document.getElementById('pb-voting')) document.getElementById('pb-voting').checked = bList.some(x => x.includes('Voting'));
-
       openModal('plan-modal');
     };
 
-    async function handleSavePlan(e) {
-      window.handleSavePlan = handleSavePlan;
+    window.handleSavePlan = function(e) {
       e.preventDefault();
       const id = document.getElementById('plan-id').value;
-      const planType = document.getElementById('plan-type').value || 'fixed';
       const name = document.getElementById('plan-name').value.trim();
       const fee = Number(document.getElementById('plan-fee').value) || 0;
       const description = document.getElementById('plan-desc').value.trim();
-      const lateFeeDays = Number(document.getElementById('plan-grace').value) || 0;
-      const rawLateFine = Number(document.getElementById('plan-late-fine').value) || 0;
-      const lateFeeAmount = Math.min(100, Math.max(0, rawLateFine));
+      const lateFeeDays = Number(document.getElementById('plan-grace').value) || 10;
+      const lateFeeAmount = Number(document.getElementById('plan-late-fine').value) || 50;
       const color = document.getElementById('plan-color').value;
 
-      // Extract multiple benefits
-      const benefits = [];
-      if (document.getElementById('pb-locker')?.checked) benefits.push('🔒 Dedicated Locker');
-      if (document.getElementById('pb-library')?.checked) benefits.push('📚 Library Access');
-      if (document.getElementById('pb-sports')?.checked) benefits.push('🏏 Sports Ground');
-      if (document.getElementById('pb-gym')?.checked) benefits.push('🏋️ Gym & Fitness');
-      if (document.getElementById('pb-events')?.checked) benefits.push('🎟️ Event Passes');
-      if (document.getElementById('pb-voting')?.checked) benefits.push('🗳️ Voting Rights');
+      const planObj = { id, name, fee, description, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
 
-      const planObj = { id, planType, type: planType, name, fee, description, benefits, lateFeeDays, lateFeeAmount, color, active: true, billingCycle: 'monthly' };
-
-      // Save to MongoDB Cloud Database
-      try {
-        await fetch('/api/finance/plans', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(planObj)
-        });
-      } catch (err) {
-        console.warn('[MongoDB Plan Sync Notice]:', err.message);
+      if (deletedPlans.has(id)) {
+        deletedPlans.delete(id);
+        saveTombstones();
       }
 
       const idx = plans.findIndex(x => x.id === id);
       if (idx !== -1) plans[idx] = planObj;
       else plans.push(planObj);
 
-      saveData();
+      saveDataLocally();
       closeModal('plan-modal');
       renderPlans();
       renderMembers();
       renderChecklist();
-      alert(`Saved plan "${name}" to MongoDB global database!`);
+      populatePlanOptions();
+
+      debouncedCloudSync();
+      safeFetch('/api/finance/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(planObj)
+      });
     };
 
-    async function deletePlan(id, name) {
-      window.deletePlan = deletePlan;
-      const enrolled = members.filter(m => m.planId === id && m.status === 'active').length;
+    window.deletePlan = function(id, name) {
+      const enrolled = members.filter(m => m.planId === id && m.status === 'active' && !deletedMembers.has(m.id)).length;
       if (enrolled > 0) {
         alert(`Cannot delete "${name}" because it has ${enrolled} active member(s) enrolled.`);
         return;
       }
       if (confirm(`Delete plan "${name}"?`)) {
-        try {
-          await fetch('/api/finance/plans/' + id, { method: 'DELETE' });
-        } catch (e) {}
         plans = plans.filter(x => x.id !== id);
-        saveData();
+        deletedPlans.add(id);
+        saveTombstones();
+        saveDataLocally();
         renderPlans();
+        populatePlanOptions();
+
+        if (supabase) {
+          supabase.from('membership_plans').delete().eq('id', id).catch(() => {});
+        }
+        safeFetch('/api/finance/plans/' + id, { method: 'DELETE' });
       }
     };
-    // 5. EARNINGS LOGGER RENDER & ACTIONS
-    // ══════════════════════════════════════════
-    // ── 1. EXCEL SPREADSHEET EXPORT (.XLS) ───────────────────────
-    window.downloadEarningsExcel = function() {
-      const combined = [];
-      earnings.forEach(e => combined.push({ ...e, itemType: 'INCOME' }));
-      spendings.forEach(s => combined.push({ ...s, itemType: 'EXPENSE' }));
 
-      if (combined.length === 0) {
-        alert('No earnings or spendings recorded yet to export.');
-        return;
-      }
-
-      combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
-
-      let totalEarn = earnings.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-      let totalSpend = spendings.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-      let netBal = totalEarn - totalSpend;
-
-      // Build Microsoft Excel XML/HTML Spreadsheet Table
-      let excelTable = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Earnings & Spendings</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-          <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
-          <style>
-            th { background-color: #1e293b; color: #ffffff; font-weight: bold; border: 1px solid #94a3b8; padding: 8px; text-align: left; }
-            td { border: 1px solid #cbd5e1; padding: 6px 8px; font-family: sans-serif; font-size: 11pt; }
-            .income { color: #047857; font-weight: bold; }
-            .expense { color: #b91c1c; font-weight: bold; }
-            .summary-header { background-color: #0f172a; color: #fbbf24; font-size: 14pt; font-weight: bold; text-align: center; }
-          </style>
-        </head>
-        <body>
-          <table>
-            <tr><td colspan="8" class="summary-header" style="padding:14px;">KALIKAPUR NABIN SANGHA (KNSDC) - OFFICIAL FINANCE STATEMENT</td></tr>
-            <tr><td colspan="8" style="text-align:center; font-style:italic; color:#64748b;">Exported on: ${new Date().toLocaleDateString('en-IN')} | Total Income: ₹${totalEarn.toLocaleString('en-IN')} | Total Expense: ₹${totalSpend.toLocaleString('en-IN')} | Net: ₹${netBal.toLocaleString('en-IN')}</td></tr>
-            <tr><td colspan="8"></td></tr>
-            <tr>
-              <th>Type</th>
-              <th>Title / Particulars</th>
-              <th>Category</th>
-              <th>Payer / Source / Recipient</th>
-              <th>Date</th>
-              <th>Payment Method</th>
-              <th>Reference / Voucher No</th>
-              <th>Amount (₹ INR)</th>
-            </tr>
-      `;
-
-      combined.forEach(item => {
-        const isEarn = item.itemType === 'INCOME';
-        const amtClass = isEarn ? 'income' : 'expense';
-        const sign = isEarn ? '+' : '-';
-        excelTable += `
-          <tr>
-            <td class="${amtClass}">${item.itemType}</td>
-            <td>${item.title || '-'}</td>
-            <td>${item.category || 'General'}</td>
-            <td>${item.payerOrCustomer || item.vendorOrRecipient || '-'}</td>
-            <td>${item.date || '-'}</td>
-            <td style="text-transform:uppercase;">${item.paymentMethod || 'Cash'}</td>
-            <td>${item.referenceNo || '-'}</td>
-            <td class="${amtClass}" style="text-align:right;">${sign}₹${(Number(item.amount) || 0).toLocaleString('en-IN')}</td>
-          </tr>
-        `;
-      });
-
-      excelTable += `
-            <tr><td colspan="8"></td></tr>
-            <tr style="font-weight:bold; background-color:#f1f5f9;">
-              <td colspan="7" style="text-align:right;">TOTAL INCOME:</td>
-              <td class="income" style="text-align:right;">+₹${totalEarn.toLocaleString('en-IN')}</td>
-            </tr>
-            <tr style="font-weight:bold; background-color:#f1f5f9;">
-              <td colspan="7" style="text-align:right;">TOTAL EXPENSE / SPENDING:</td>
-              <td class="expense" style="text-align:right;">-₹${totalSpend.toLocaleString('en-IN')}</td>
-            </tr>
-            <tr style="font-weight:bold; background-color:#e2e8f0; font-size:12pt;">
-              <td colspan="7" style="text-align:right;">NET CASH BALANCE:</td>
-              <td style="text-align:right; color:${netBal >= 0 ? '#047857' : '#b91c1c'};">${netBal >= 0 ? '+' : ''}₹${netBal.toLocaleString('en-IN')}</td>
-            </tr>
-          </table>
-        </body>
-        </html>
-      `;
-
-      const blob = new Blob([excelTable], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const today = new Date().toISOString().split('T')[0];
-      a.href = url;
-      a.download = `KNSDC_Finance_Ledger_${today}.xls`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    };
-
-    // ── 2. OFFICIAL PDF REPORT STATEMENT ─────────────────────────
-    window.downloadEarningsPDF = function() {
-      const combined = [];
-      earnings.forEach(e => combined.push({ ...e, itemType: 'INCOME' }));
-      spendings.forEach(s => combined.push({ ...s, itemType: 'EXPENSE' }));
-
-      if (combined.length === 0) {
-        alert('No earnings or spendings recorded yet to generate PDF.');
-        return;
-      }
-
-      combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
-
-      let totalEarn = earnings.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-      let totalSpend = spendings.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-      let netBal = totalEarn - totalSpend;
-      const today = new Date().toLocaleDateString('en-IN');
-
-      const rowsHtml = combined.map((item, idx) => {
-        const isEarn = item.itemType === 'INCOME';
-        return `
-          <tr style="border-bottom:1px solid #e2e8f0; font-size:12px;">
-            <td style="padding:8px 10px;">${idx + 1}</td>
-            <td style="padding:8px 10px; font-weight:700; color:${isEarn ? '#059669' : '#dc2626'};">${item.itemType}</td>
-            <td style="padding:8px 10px; font-weight:700; color:#0f172a;">${item.title || '-'}</td>
-            <td style="padding:8px 10px; color:#475569;">${item.category || 'General'}</td>
-            <td style="padding:8px 10px; color:#475569;">${item.payerOrCustomer || item.vendorOrRecipient || '-'}</td>
-            <td style="padding:8px 10px; font-family:monospace; color:#64748b;">${item.date || '-'}</td>
-            <td style="padding:8px 10px; text-transform:uppercase; color:#64748b;">${item.paymentMethod || 'Cash'}</td>
-            <td style="padding:8px 10px; text-align:right; font-weight:800; color:${isEarn ? '#059669' : '#dc2626'};">${isEarn ? '+' : '-'}₹${(Number(item.amount) || 0).toLocaleString('en-IN')}</td>
-          </tr>
-        `;
-      }).join('');
-
-      const printWindow = window.open('', '_blank', 'width=900,height=750');
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>KNSDC Official Financial Statement &amp; Ledger (${today})</title>
-          <style>
-            body { font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 24px; color: #0f172a; background: #fff; }
-            .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; }
-            .brand-box { display: flex; align-items: center; gap: 12px; }
-            .brand-box img { width: 50px; height: 50px; border-radius: 12px; }
-            .title { font-size: 20px; font-weight: 800; color: #0f172a; margin: 0; }
-            .sub { font-size: 11px; color: #475569; margin-top: 2px; }
-            .meta-box { text-align: right; font-size: 12px; color: #475569; }
-            .summary-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-            .scard { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px 16px; }
-            .scard-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
-            .scard-val { font-size: 20px; font-weight: 900; margin-top: 4px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th { background: #0f172a; color: #fff; text-align: left; padding: 10px; font-size: 11px; text-transform: uppercase; font-weight: 800; }
-            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px dashed #cbd5e1; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #64748b; }
-            .sign-box { text-align: center; border-top: 1px solid #0f172a; width: 180px; padding-top: 4px; font-weight: 700; color: #0f172a; }
-            @media print { @page { margin: 12mm; size: A4 portrait; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="brand-box">
-              <img src="${window.location.origin}/logo.png" onerror="this.style.display='none'">
-              <div>
-                <h1 class="title">Kalikapur Nabin Sangha (KNSDC)</h1>
-                <div class="sub">Official Treasury &amp; Financial Ledger Statement</div>
-              </div>
-            </div>
-            <div class="meta-box">
-              <div><strong>Statement Date:</strong> ${today}</div>
-              <div><strong>Total Records:</strong> ${combined.length} Entries</div>
-            </div>
-          </div>
-
-          <div class="summary-cards">
-            <div class="scard" style="border-left:4px solid #10b981;">
-              <div class="scard-label">Total Income / Earnings</div>
-              <div class="scard-val" style="color:#059669;">+₹${totalEarn.toLocaleString('en-IN')}</div>
-            </div>
-            <div class="scard" style="border-left:4px solid #ef4444;">
-              <div class="scard-label">Total Spendings / Expense</div>
-              <div class="scard-val" style="color:#dc2626;">-₹${totalSpend.toLocaleString('en-IN')}</div>
-            </div>
-            <div class="scard" style="border-left:4px solid #4f46e5;">
-              <div class="scard-label">Net Balance</div>
-              <div class="scard-val" style="color:${netBal >= 0 ? '#059669' : '#dc2626'};">${netBal >= 0 ? '+' : ''}₹${netBal.toLocaleString('en-IN')}</div>
-            </div>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Type</th>
-                <th>Title / Particulars</th>
-                <th>Category</th>
-                <th>Source / Recipient</th>
-                <th>Date</th>
-                <th>Method</th>
-                <th style="text-align:right;">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-
-          <div class="footer">
-            <div>
-              <div>Generated from KNSDC Club Official Treasury Portal</div>
-              <div style="font-size:10px; color:#94a3b8; margin-top:2px;">MongoDB Cloud Verified &amp; Encrypted Statement</div>
-            </div>
-            <div class="sign-box">
-              Authorized Treasury Signatory
-            </div>
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          <\/script>
-        </body>
-        </html>
-      `);
-      printWindow.document.close();
-    };
-
+    // 8. EARNINGS & SPENDINGS LOGGER (ADD, EDIT, DELETE)
     function renderEarnings() {
       const tbody = document.getElementById('earnings-tbody');
       if (!tbody) return;
 
-      let totalEarn = earnings.reduce((sum, e) => sum + (e.amount || 0), 0);
-      let totalSpend = spendings.reduce((sum, s) => sum + (s.amount || 0), 0);
-      let netBal = totalEarn - totalSpend;
+      const activeEarn = earnings.filter(e => !deletedEarnings.has(e.id));
+      const activeSpend = spendings.filter(s => !deletedSpendings.has(s.id));
 
-      const elEarn = document.getElementById('summary-total-earnings');
-      const elSpend = document.getElementById('summary-total-spendings');
-      const elNet = document.getElementById('summary-net-balance');
+      let totalEarn = activeEarn.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      let totalSpend = activeSpend.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      let netBalance = totalEarn - totalSpend;
 
-      if (elEarn) elEarn.textContent = `+${formatINR(totalEarn)}`;
-      if (elSpend) elSpend.textContent = `-${formatINR(totalSpend)}`;
-      if (elNet) {
-        elNet.textContent = `${netBal >= 0 ? '+' : ''}${formatINR(netBal)}`;
-        elNet.style.color = netBal >= 0 ? '#34d399' : '#f87171';
+      const elTotal = document.getElementById('earnings-total');
+      const elSpendingTotal = document.getElementById('spendings-total');
+      const elNetTotal = document.getElementById('net-earnings-total');
+
+      if (elTotal) elTotal.textContent = formatINR(totalEarn);
+      if (elSpendingTotal) elSpendingTotal.textContent = formatINR(totalSpend);
+      if (elNetTotal) {
+        elNetTotal.textContent = (netBalance >= 0 ? '+' : '') + formatINR(netBalance);
+        elNetTotal.style.color = netBalance >= 0 ? '#34d399' : '#f87171';
       }
 
-      let combined = [];
-      if (earningsFilter === 'all' || earningsFilter === 'earning') {
-        earnings.forEach(e => combined.push({ ...e, itemType: 'earning' }));
-      }
-      if (earningsFilter === 'all' || earningsFilter === 'spending') {
-        spendings.forEach(s => combined.push({ ...s, itemType: 'spending' }));
+      let items = [];
+      if (earningsFilter === 'all') {
+        items = [
+          ...activeEarn.map(e => ({ ...e, _type: 'earning' })),
+          ...activeSpend.map(s => ({ ...s, _type: 'spending' }))
+        ];
+      } else if (earningsFilter === 'earning') {
+        items = activeEarn.map(e => ({ ...e, _type: 'earning' }));
+      } else if (earningsFilter === 'spending') {
+        items = activeSpend.map(s => ({ ...s, _type: 'spending' }));
       }
 
-      // Sort by date descending
-      combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
+      items.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-      if (combined.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">💵 No earnings or spendings recorded yet. Click "💰 + Log New Earning" or "💸 + Log Spending" above!</td></tr>';
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">💸 No transactions logged yet. Click "+ Log Club Earning" or "💸 + Log Spending Expense" above!</td></tr>';
         return;
       }
 
-      tbody.innerHTML = combined.map(item => {
-        const isEarn = item.itemType === 'earning';
+      tbody.innerHTML = items.map(item => {
+        const isEarn = item._type === 'earning';
         const badge = isEarn
-          ? '<span class="badge badge-paid">🟢 INCOME</span>'
-          : '<span class="badge badge-overdue" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);">🔴 SPENDING</span>';
-        
+          ? '<span class="badge badge-paid">EARNING</span>'
+          : '<span class="badge badge-overdue">SPENDING</span>';
+
         const amountDisplay = isEarn
           ? `<span style="font-weight:900; color:#34d399; font-size:13px;">+${formatINR(item.amount)}</span>`
           : `<span style="font-weight:900; color:#f87171; font-size:13px;">-${formatINR(item.amount)}</span>`;
 
-        const deleteAction = isEarn
-          ? `<button type="button" onclick="deleteEarning('${item.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>`
-          : `<button type="button" onclick="deleteSpending('${item.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">🗑️</button>`;
+        const actionButtons = isEarn
+          ? `<div style="display:flex; gap:4px; justify-content:flex-end;">
+               <button type="button" onclick="editEarning('${item.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" title="Edit Earning">✏️</button>
+               <button type="button" onclick="deleteEarning('${item.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;" title="Delete Earning">🗑️</button>
+             </div>`
+          : `<div style="display:flex; gap:4px; justify-content:flex-end;">
+               <button type="button" onclick="editSpending('${item.id}')" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" title="Edit Spending">✏️</button>
+               <button type="button" onclick="deleteSpending('${item.id}')" class="btn btn-danger" style="padding:4px 8px; font-size:11px;" title="Delete Spending">🗑️</button>
+             </div>`;
 
         const receiptBadge = item.receiptPhoto
           ? `<button type="button" onclick="previewReceiptModal('${item.receiptPhoto}', '${item.title.replace(/'/g, "\\'")}')" class="btn btn-secondary" style="padding:2px 8px; font-size:10px; color:#818cf8; border-color:rgba(129,140,248,0.4); margin-left:6px;" title="View Attached Bill Photo">📎 View Bill</button>`
@@ -1837,15 +1401,47 @@
             <td class="font-mono" style="color:var(--text-dim);">${item.date}</td>
             <td class="font-mono" style="color:var(--text-muted); text-transform:uppercase;">${item.paymentMethod || 'cash'}</td>
             <td>${amountDisplay}</td>
-            <td style="text-align:right;">${deleteAction}</td>
+            <td style="text-align:right;">${actionButtons}</td>
           </tr>
         `;
       }).join('');
     }
 
-    function handleSaveEarning(e) {
-      window.handleSaveEarning = handleSaveEarning;
+    window.setEarningsFilter = function(filterType) {
+      earningsFilter = filterType;
+      ['all', 'earning', 'spending'].forEach(function(f) {
+        var btn = document.getElementById('filter-' + f);
+        if (btn) {
+          if (f === filterType) {
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-primary');
+          } else {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-secondary');
+          }
+        }
+      });
+      renderEarnings();
+    };
+
+    window.editEarning = function(id) {
+      const e = earnings.find(x => x.id === id);
+      if (!e) return;
+      if (document.getElementById('earn-modal-title')) document.getElementById('earn-modal-title').textContent = `✏️ Edit "${e.title}"`;
+      if (document.getElementById('earn-id')) document.getElementById('earn-id').value = e.id;
+      document.getElementById('earn-title').value = e.title;
+      document.getElementById('earn-amount').value = e.amount;
+      document.getElementById('earn-category').value = e.category;
+      document.getElementById('earn-method').value = e.paymentMethod || 'cash';
+      document.getElementById('earn-date').value = e.date || '';
+      document.getElementById('earn-payer').value = e.payerOrCustomer || '';
+      document.getElementById('earn-ref').value = e.referenceNo || '';
+      openModal('add-earning-modal');
+    };
+
+    window.handleSaveEarning = function(e) {
       e.preventDefault();
+      const id = document.getElementById('earn-id')?.value || ('earn-' + Date.now());
       const title = document.getElementById('earn-title').value.trim();
       const amount = Number(document.getElementById('earn-amount').value) || 0;
       const category = document.getElementById('earn-category').value;
@@ -1854,31 +1450,146 @@
       const payerOrCustomer = document.getElementById('earn-payer').value.trim();
       const referenceNo = document.getElementById('earn-ref').value.trim() || ('REC-' + Date.now().toString().slice(-6));
 
-      const earningObj = { id: 'earn-' + Date.now(), title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo, type: 'earning' };
+      const earningObj = { id, title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo };
 
-      earnings.unshift(earningObj);
-      syncToMongoDB(earningObj);
-      saveData();
+      if (deletedEarnings.has(id)) {
+        deletedEarnings.delete(id);
+        saveTombstones();
+      }
+
+      const idx = earnings.findIndex(x => x.id === id);
+      if (idx !== -1) earnings[idx] = earningObj;
+      else earnings.unshift(earningObj);
+
+      saveDataLocally();
       closeModal('add-earning-modal');
+      renderEarnings();
+      renderDashboard();
+
+      debouncedCloudSync();
+      safeFetch('/api/finance/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(earningObj)
+      });
+    };
+
+    window.deleteEarning = function(id) {
+      if (confirm('Delete this earning entry?')) {
+        earnings = earnings.filter(x => x.id !== id);
+        deletedEarnings.add(id);
+        saveTombstones();
+        saveDataLocally();
+        renderEarnings();
+        renderDashboard();
+
+        if (supabase) {
+          supabase.from('club_earnings').delete().eq('id', id).catch(() => {});
+        }
+        safeFetch('/api/finance/transactions/' + id, { method: 'DELETE' });
+      }
+    };
+
+    window.editSpending = function(id) {
+      const s = spendings.find(x => x.id === id);
+      if (!s) return;
+      if (document.getElementById('spend-modal-title')) document.getElementById('spend-modal-title').textContent = `✏️ Edit "${s.title}"`;
+      if (document.getElementById('spend-id')) document.getElementById('spend-id').value = s.id;
+      document.getElementById('spend-title').value = s.title;
+      document.getElementById('spend-amount').value = s.amount;
+      document.getElementById('spend-category').value = s.category;
+      document.getElementById('spend-method').value = s.paymentMethod || 'cash';
+      document.getElementById('spend-date').value = s.date || '';
+      document.getElementById('spend-vendor').value = s.vendorOrRecipient || '';
+      document.getElementById('spend-ref').value = s.referenceNo || '';
+      document.getElementById('spend-desc').value = s.description || '';
+      if (s.receiptPhoto) {
+        document.getElementById('spend-receipt-img').value = s.receiptPhoto;
+        document.getElementById('spend-img-preview').src = s.receiptPhoto;
+        document.getElementById('spend-img-name').textContent = 'Attached_Receipt.jpg';
+        document.getElementById('spend-img-preview-box').style.display = 'flex';
+      } else {
+        removeAttachedReceipt();
+      }
+      openModal('add-spending-modal');
+    };
+
+    window.handleSaveSpending = function(e) {
+      e.preventDefault();
+      const id = document.getElementById('spend-id')?.value || ('spend-' + Date.now());
+      const title = document.getElementById('spend-title').value.trim();
+      const amount = Number(document.getElementById('spend-amount').value) || 0;
+      const category = document.getElementById('spend-category').value;
+      const paymentMethod = document.getElementById('spend-method').value;
+      const date = document.getElementById('spend-date').value || new Date().toISOString().split('T')[0];
+      const vendorOrRecipient = document.getElementById('spend-vendor').value.trim();
+      const referenceNo = document.getElementById('spend-ref').value.trim() || ('EXP-' + Date.now().toString().slice(-6));
+      const description = document.getElementById('spend-desc').value.trim();
+      const receiptPhoto = document.getElementById('spend-receipt-img')?.value || '';
+
+      const spendingObj = {
+        id, title, amount, category, paymentMethod, date, vendorOrRecipient, referenceNo, description,
+        receiptPhoto, type: 'spending'
+      };
+
+      if (deletedSpendings.has(id)) {
+        deletedSpendings.delete(id);
+        saveTombstones();
+      }
+
+      removeAttachedReceipt();
+
+      const idx = spendings.findIndex(x => x.id === id);
+      if (idx !== -1) spendings[idx] = spendingObj;
+      else spendings.unshift(spendingObj);
+
+      saveDataLocally();
+      closeModal('add-spending-modal');
       renderEarnings();
       renderDashboard();
     };
 
-    function deleteEarning(id) {
-      window.deleteEarning = deleteEarning;
-      if (confirm('Delete this earning income entry?')) {
-        earnings = earnings.filter(x => x.id !== id);
-        deleteFromMongoDB(id);
-        saveData();
+    window.deleteSpending = function(id) {
+      if (confirm('Delete this spending expense entry?')) {
+        spendings = spendings.filter(x => x.id !== id);
+        deletedSpendings.add(id);
+        saveTombstones();
+        saveDataLocally();
         renderEarnings();
         renderDashboard();
       }
     };
 
-    
-    // ══════════════════════════════════════════
-    // RECEIPT CAMERA & FILE ATTACHMENT LOGIC
-    // ══════════════════════════════════════════
+    // EXCEL & PDF EXPORTS
+    window.downloadEarningsExcel = function() {
+      const combined = [];
+      earnings.filter(e => !deletedEarnings.has(e.id)).forEach(e => combined.push({ ...e, itemType: 'INCOME' }));
+      spendings.filter(s => !deletedSpendings.has(s.id)).forEach(s => combined.push({ ...s, itemType: 'EXPENSE' }));
+
+      if (combined.length === 0) {
+        alert('No earnings or spendings recorded yet to export.');
+        return;
+      }
+      combined.sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
+
+      let html = '<table border="1"><tr><th>Type</th><th>Title</th><th>Category</th><th>Payer/Vendor</th><th>Date</th><th>Method</th><th>Amount</th></tr>';
+      combined.forEach(r => {
+        html += `<tr><td>${r.itemType}</td><td>${r.title}</td><td>${r.category}</td><td>${r.payerOrCustomer||r.vendorOrRecipient||'-'}</td><td>${r.date}</td><td>${r.paymentMethod||'cash'}</td><td>${r.amount}</td></tr>`;
+      });
+      html += '</table>';
+
+      const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `KNSDC_Finance_Report_${new Date().toISOString().split('T')[0]}.xls`;
+      a.click();
+    };
+
+    window.downloadEarningsPDF = function() {
+      window.print();
+    };
+
+    // 9. RECEIPT CAMERA & FILE ATTACHMENT LOGIC
     let webcamStream = null;
 
     window.handleReceiptFileSelect = function(e) {
@@ -1887,7 +1598,6 @@
 
       const reader = new FileReader();
       reader.onload = function(evt) {
-        // Compress image using canvas
         const img = new Image();
         img.onload = function() {
           const canvas = document.createElement('canvas');
@@ -1920,9 +1630,12 @@
     };
 
     window.removeAttachedReceipt = function() {
-      document.getElementById('spend-receipt-img').value = '';
-      document.getElementById('spend-img-preview').src = '';
-      document.getElementById('spend-img-preview-box').style.display = 'none';
+      const imgVal = document.getElementById('spend-receipt-img');
+      const imgPrev = document.getElementById('spend-img-preview');
+      const prevBox = document.getElementById('spend-img-preview-box');
+      if (imgVal) imgVal.value = '';
+      if (imgPrev) imgPrev.src = '';
+      if (prevBox) prevBox.style.display = 'none';
       if (document.getElementById('spend-file-input')) document.getElementById('spend-file-input').value = '';
       if (document.getElementById('spend-camera-input')) document.getElementById('spend-camera-input').value = '';
     };
@@ -1930,59 +1643,64 @@
     window.startLiveCamera = async function() {
       openModal('webcam-modal');
       const video = document.getElementById('webcam-video');
+      const errorMsg = document.getElementById('webcam-error-msg');
+      if (errorMsg) errorMsg.style.display = 'none';
+
       try {
         webcamStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }
         });
-        video.srcObject = webcamStream;
+        if (video) {
+          video.srcObject = webcamStream;
+          video.play();
+        }
       } catch(err) {
-        console.warn('Webcam fallback:', err);
-        alert('Could not access webcam directly. Please use the "📷 Camera Capture" or "📁 Upload Photo" button.');
-        closeModal('webcam-modal');
+        console.warn('[Camera Access Error]:', err);
+        if (errorMsg) {
+          errorMsg.textContent = 'Unable to access camera: ' + err.message + '. Please upload receipt photo from file instead.';
+          errorMsg.style.display = 'block';
+        }
       }
     };
 
     window.stopLiveCamera = function() {
       if (webcamStream) {
-        webcamStream.getTracks().forEach(t => t.stop());
+        webcamStream.getTracks().forEach(track => track.stop());
         webcamStream = null;
       }
-      const video = document.getElementById('webcam-video');
-      if (video) video.srcObject = null;
       closeModal('webcam-modal');
     };
 
     window.captureWebcamPhoto = function() {
       const video = document.getElementById('webcam-video');
-      const canvas = document.getElementById('webcam-canvas');
-      if (!video || !canvas) return;
+      if (!video) return;
 
+      const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const base64Img = canvas.toDataURL('image/jpeg', 0.85);
 
-      document.getElementById('spend-receipt-img').value = base64Img;
-      document.getElementById('spend-img-preview').src = base64Img;
-      document.getElementById('spend-img-name').textContent = 'Webcam_Receipt_' + Date.now().toString().slice(-4) + '.jpg';
+      const capturedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+      document.getElementById('spend-receipt-img').value = capturedBase64;
+      document.getElementById('spend-img-preview').src = capturedBase64;
+      document.getElementById('spend-img-name').textContent = 'Camera_Receipt_' + Date.now().toString().slice(-4) + '.jpg';
       document.getElementById('spend-img-preview-box').style.display = 'flex';
 
       stopLiveCamera();
     };
 
-    window.previewReceiptModal = function(src, title) {
-      if (!src) return;
-      document.getElementById('lightbox-img').src = src;
-      document.getElementById('lightbox-title').textContent = title ? `🧾 ${title} (Bill Photo)` : '🧾 Attached Bill / Receipt Photo';
-      openModal('lightbox-modal');
+    window.previewReceiptModal = function(imgSrc, title) {
+      const lb = document.getElementById('lightbox-modal');
+      const img = document.getElementById('lightbox-img');
+      const cap = document.getElementById('lightbox-caption');
+      if (img) img.src = imgSrc;
+      if (cap) cap.textContent = title || 'Transaction Receipt Photo';
+      if (lb) openModal('lightbox-modal');
     };
 
-    
-    // ══════════════════════════════════════════
-    // AUTHENTICATION, LOGIN DETAILS & LOGOUT
-    // ══════════════════════════════════════════
+    // 10. STAFF SESSION & LOGOUT
     function loadStaffSessionDetails() {
       try {
         const storedUser = localStorage.getItem('kns_user') || 
@@ -1992,55 +1710,32 @@
                            'Finance Officer';
 
         const storedRole = localStorage.getItem('kns_role') || 'FINANCE';
-        
-        let displayName = storedUser;
-        if (typeof storedUser === 'string' && storedUser.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(storedUser);
-            displayName = parsed.name || parsed.username || parsed.email || 'Finance Officer';
-          } catch(e) {}
+
+        const nameEl = document.getElementById('top-staff-name');
+        const roleEl = document.getElementById('top-staff-role');
+        const avatarEl = document.getElementById('top-staff-avatar');
+
+        if (nameEl) nameEl.textContent = storedUser;
+        if (roleEl) roleEl.textContent = 'ROLE: ' + storedRole.toUpperCase();
+        if (avatarEl) {
+          avatarEl.textContent = storedUser.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'FN';
         }
 
-        const initials = displayName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'FN';
+        const mUser = document.getElementById('modal-session-user');
+        const mRole = document.getElementById('modal-session-role');
+        const mTime = document.getElementById('modal-session-time');
+        const mStatus = document.getElementById('modal-session-status');
 
-        // Update Topbar
-        const topName = document.getElementById('top-staff-name');
-        const topRole = document.getElementById('top-staff-role');
-        const topAvatar = document.getElementById('top-staff-avatar');
+        if (mUser) mUser.textContent = storedUser;
+        if (mRole) mRole.textContent = storedRole.toUpperCase() + ' (Treasury & Finance Management)';
+        if (mTime) mTime.textContent = new Date().toLocaleTimeString() + ', ' + new Date().toLocaleDateString();
+        if (mStatus) mStatus.textContent = '🟢 Active & Authorized';
 
-        if (topName) topName.textContent = displayName;
-        if (topRole) topRole.textContent = `ROLE: ${storedRole.toUpperCase()}`;
-        if (topAvatar) topAvatar.textContent = initials;
-
-        // Update Modal
-        const modName = document.getElementById('modal-staff-name');
-        const modRole = document.getElementById('modal-staff-role');
-        const modAvatar = document.getElementById('modal-staff-avatar');
-        const modTime = document.getElementById('modal-session-time');
-
-        if (modName) modName.textContent = displayName;
-        if (modRole) modRole.textContent = `ROLE: ${storedRole.toUpperCase()}`;
-        if (modAvatar) modAvatar.textContent = initials;
-        if (modTime) modTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + new Date().toLocaleDateString('en-IN') + ')';
-      } catch(err) {
-        console.warn('Session load notice:', err);
-      }
+      } catch(e) {}
     }
 
-    window.toggleFinanceTheme = function() {
-      const isLight = document.body.classList.toggle('light-theme');
-      localStorage.setItem('fp_theme', isLight ? 'light' : 'dark');
-      const btn = document.getElementById('theme-toggle-btn');
-      if (btn) {
-        btn.innerHTML = isLight ? '<span>🌙 Dark Mode</span>' : '<span>☀️ Light Mode</span>';
-        btn.style.color = isLight ? '#4f46e5' : '#fbbf24';
-        btn.style.background = isLight ? 'rgba(79,70,229,0.1)' : 'rgba(251,191,36,0.1)';
-        btn.style.borderColor = isLight ? 'rgba(79,70,229,0.3)' : 'rgba(251,191,36,0.3)';
-      }
-    };
-
     window.handleLogout = function() {
-      if (confirm('Are you sure you want to log out of the Club Finance Portal?')) {
+      if (confirm('Are you sure you want to end this finance session and logout?')) {
         try {
           localStorage.removeItem('kns_user');
           localStorage.removeItem('kns_role');
@@ -2048,22 +1743,21 @@
           localStorage.removeItem('knsdc_user');
           localStorage.removeItem('kns_username');
         } catch(e) {}
-
-        // Smooth fadeout redirect
-        document.body.style.transition = 'opacity 0.4s ease';
-        document.body.style.opacity = '0';
-        setTimeout(() => {
-          window.location.href = 'index.html';
-        }, 400);
+        alert('Session terminated. Redirecting to Club Management Portal...');
+        window.location.href = 'KNSDC-Admin.html';
       }
     };
 
-    
-    // ══════════════════════════════════════════
-    // CUSTOM FIELDS ENGINE & LOGIC
-    // ══════════════════════════════════════════
-    let customFields = JSON.parse(localStorage.getItem('fp_custom_fields') || '[]');
+    window.toggleFinanceTheme = function() {
+      const isLight = document.body.classList.toggle('light-theme');
+      localStorage.setItem('fp_theme', isLight ? 'light' : 'dark');
+      const btn = document.getElementById('theme-toggle-btn');
+      if (btn) {
+        btn.innerHTML = isLight ? '<span>🌙 Dark Mode</span>' : '<span>☀️ Light Mode</span>';
+      }
+    };
 
+    // 11. CUSTOM FIELDS ENGINE
     function renderCustomFields() {
       const memberList = document.getElementById('member-custom-fields-list');
       const transList = document.getElementById('trans-custom-fields-list');
@@ -2175,7 +1869,6 @@
       else customFields.push(cfObj);
 
       localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
-      if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
       closeModal('custom-field-modal');
       renderCustomFields();
     };
@@ -2184,358 +1877,15 @@
       if (confirm(`Delete custom field "${label}"?`)) {
         customFields = customFields.filter(x => x.id !== id);
         localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
-      if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
         renderCustomFields();
       }
     };
 
-    window.setEarningsFilter = function(filterType) {
-      earningsFilter = filterType;
-      ['all', 'earning', 'spending'].forEach(function(f) {
-        var btn = document.getElementById('filter-' + f);
-        if (btn) {
-          if (f === filterType) {
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-primary');
-          } else {
-            btn.classList.remove('btn-primary');
-            btn.classList.add('btn-secondary');
-          }
-        }
-      });
-      renderEarnings();
-    };
-
-    window.handleSaveSpending = function(e) {
-      e.preventDefault();
-      const title = document.getElementById('spend-title').value.trim();
-      const amount = Number(document.getElementById('spend-amount').value) || 0;
-      const category = document.getElementById('spend-category').value;
-      const paymentMethod = document.getElementById('spend-method').value;
-      const date = document.getElementById('spend-date').value || new Date().toISOString().split('T')[0];
-      const vendorOrRecipient = document.getElementById('spend-vendor').value.trim();
-      const referenceNo = document.getElementById('spend-ref').value.trim() || ('EXP-' + Date.now().toString().slice(-6));
-      const description = document.getElementById('spend-desc').value.trim();
-
-      const receiptPhoto = document.getElementById('spend-receipt-img')?.value || '';
-
-      const spendingObj = {
-        id: 'spend-' + Date.now(),
-        title, amount, category, paymentMethod, date, vendorOrRecipient, referenceNo, description,
-        receiptPhoto,
-        type: 'spending'
-      };
-
-      removeAttachedReceipt();
-
-      spendings.unshift(spendingObj);
-      syncToMongoDB(spendingObj);
-      saveData();
-      closeModal('add-spending-modal');
-      renderEarnings();
-      renderDashboard();
-    };
-
-    window.deleteSpending = function(id) {
-      if (confirm('Delete this spending expense entry?')) {
-        spendings = spendings.filter(x => x.id !== id);
-        deleteFromMongoDB(id);
-        saveData();
-        renderEarnings();
-        renderDashboard();
-      }
-    };
-
-
-    // ══════════════════════════════════════════
-    // PERSISTENCE & CLOUD SYNC
-    // ══════════════════════════════════════════
-    
-    
-    // ══════════════════════════════════════════════════════════════════
-    // HYBRID DATA LAYER: BIG DATA IN MONGODB, STRUCTURED IN SUPABASE
-    // ══════════════════════════════════════════════════════════════════
-
-    // 1. Push Big Data (Heavy Transaction & Receipt Photos) to MongoDB Atlas
-    async function syncToMongoDB(transactionObj) {
-      try {
-        let payload = { ...transactionObj };
-        // If image is a large base64, upload to MongoDB Binary Store
-        if (payload.receiptPhoto && payload.receiptPhoto.startsWith('data:image')) {
-          try {
-            const uploadRes = await fetch('/api/finance/receipt-upload', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                imageBase64: payload.receiptPhoto,
-                filename: (payload.title || 'receipt').replace(/[^a-zA-Z0-9]/g, '_') + '.jpg'
-              })
-            });
-            const data = await uploadRes.json();
-            if (data.photoUrl) payload.receiptPhoto = data.photoUrl;
-          } catch(e) {
-            console.warn('[MongoDB Image Upload Notice]:', e.message);
-          }
-        }
-
-        await fetch('/api/finance/transactions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        console.log('[MongoDB Atlas] Saved transaction & receipt image:', payload.title);
-      } catch(err) {
-        console.warn('[MongoDB Atlas Sync]: Local fallback active.');
-      }
-    }
-
-    async function deleteFromMongoDB(id) {
-      try {
-        await fetch('/api/finance/transactions/' + id, { method: 'DELETE' });
-        console.log('[MongoDB Atlas] Deleted transaction:', id);
-      } catch(e) {}
-    }
-
-    // 2. Push Core Relational Data (Members, Plans, Payments) to Supabase
-    async function syncToSupabase() {
-      if (!supabase) return;
-      try {
-        if (members.length > 0) {
-          const payload = members.map(m => ({
-            id: m.id, name: m.name, email: m.email, phone: m.phone,
-            plan_id: m.planId, role: m.role, custom_fee: m.customFee,
-            join_date: m.joinDate, status: m.status, custom_fields: m.customFields || {}
-          }));
-          await supabase.from('members').upsert(payload);
-        }
-        if (plans.length > 0) {
-          const pPayload = plans.map(p => ({
-            id: p.id, name: p.name, fee: p.fee, billing_cycle: p.billingCycle,
-            description: p.description, color: p.color, active: p.active,
-            late_fee_days: p.lateFeeDays, late_fee_amount: p.lateFeeAmount
-          }));
-          await supabase.from('membership_plans').upsert(pPayload);
-        }
-        if (payments.length > 0) {
-          const payPayload = payments.map(p => ({
-            id: p.id, member_id: p.memberId, plan_id: p.planId, month_year: p.monthYear,
-            amount: p.amount, paid_amount: p.paidAmount, status: p.status, payment_method: p.paymentMethod,
-            paid_at: p.paidAt, invoice_no: p.invoiceNo, notes: p.notes
-          }));
-          await supabase.from('payment_records').upsert(payPayload);
-        }
-      } catch(err) {
-        console.warn('[Supabase Sync Notice]:', err);
-      }
-    }
-
-    function saveData() {
-      if (typeof window.pushFinanceCloudSync === "function") {
-        window.pushFinanceCloudSync();
-      }
-    }
-    window.nav = nav;
-    window.openModal = openModal;
-    window.closeModal = closeModal;
-    window.markPaymentPaid = markPaymentPaid;
-    window.viewReceipt = viewReceipt;
-    window.handleSaveMember = handleSaveMember;
-    window.editMember = editMember;
-    window.deleteMember = deleteMember;
-    window.openAddPlanModal = openAddPlanModal;
-    window.editPlan = editPlan;
-    window.handleSavePlan = handleSavePlan;
-    window.deletePlan = deletePlan;
-    window.handleSaveEarning = handleSaveEarning;
-    window.deleteEarning = deleteEarning;
-    window.handleMonthChange = handleMonthChange;
-
-    // Portal Bootloader
-    function init() {
-      window.pullFinanceCloudSync(false);
-      // Immediately populate Support Mission VPA from storage & server
-      if (typeof window.syncMissionVpaUI === "function") window.syncMissionVpaUI();
-      fetch("/api/donations/config").then(r => r.json()).then(data => {
-        if (data && data.success && data.supportMissionVpa) {
-          window.supportMissionVpa = data.supportMissionVpa;
-          window.supportMissionPayee = data.payeeName || "Kalikapur Nabin Sangha Club";
-          localStorage.setItem("fp_support_mission_vpa", data.supportMissionVpa);
-          localStorage.setItem("fp_support_mission_payee", window.supportMissionPayee);
-          if (typeof window.syncMissionVpaUI === "function") window.syncMissionVpaUI();
-        }
-      }).catch(() => {});
-      // Load Saved Theme (Light or Dark)
-      const savedTheme = localStorage.getItem('fp_theme');
-      if (savedTheme === 'light') {
-        document.body.classList.add('light-theme');
-        const btn = document.getElementById('theme-toggle-btn');
-        if (btn) {
-          btn.innerHTML = '<span>🌙 Dark Mode</span>';
-          btn.style.color = '#4f46e5';
-          btn.style.background = 'rgba(79,70,229,0.1)';
-          btn.style.borderColor = 'rgba(79,70,229,0.3)';
-        }
-      }
-      console.log('KNSDC Finance Portal Initializing...');
-      nav('dashboard');
-      loadStaffSessionDetails();
-
-      // Bind click listeners directly to all navigation tabs
-      ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'custom-fields'].forEach(function(t) {
-        var btn = document.getElementById('tab-' + t);
-        if (btn) {
-          btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            nav(t);
-          });
-        }
-      });
-
-      // Background Data Pull: Supabase (Structured) & MongoDB Atlas (Big Data)
-      setTimeout(async () => {
-        if (supabase) {
-          try {
-            const { data: dbPlans } = await supabase.from('membership_plans').select('*');
-            if (dbPlans && dbPlans.length > 0) {
-              plans = dbPlans.map(p => ({
-                id: p.id, name: p.name, fee: Number(p.fee) || 0,
-                billingCycle: p.billing_cycle || 'monthly', description: p.description || '',
-                color: p.color || '#3b82f6', active: p.active !== false,
-                lateFeeDays: p.late_fee_days || 10, lateFeeAmount: Number(p.late_fee_amount) || 50
-              }));
-            }
-
-            const { data: dbMembers } = await supabase.from('members').select('*');
-            if (dbMembers && dbMembers.length > 0) {
-              members = dbMembers.map(m => ({
-                id: m.id, name: m.name, email: m.email || '', phone: m.phone || '',
-                planId: m.plan_id, role: m.role || 'Member',
-                customFee: m.custom_fee !== null ? Number(m.custom_fee) : null,
-                joinDate: m.join_date, status: m.status || 'active',
-                customFields: m.custom_fields || {}
-              }));
-            }
-
-            const { data: dbPayments } = await supabase.from('payment_records').select('*');
-            if (dbPayments && dbPayments.length > 0) {
-              payments = dbPayments.map(p => ({
-                id: p.id, memberId: p.member_id, planId: p.plan_id, monthYear: p.month_year,
-                amount: Number(p.amount) || 0, paidAmount: Number(p.paid_amount) || 0,
-                status: p.status || 'paid', paymentMethod: p.payment_method || 'cash',
-                paidAt: p.paid_at, invoiceNo: p.invoice_no, notes: p.notes
-              }));
-            }
-          } catch(e) {
-            console.warn('[Supabase Pull Notice]:', e);
-          }
-        }
-
-        // ══════════════════════════════════════════════════════════════
-        // PULL MEMBERS, PLANS, PAYMENTS & TRANSACTIONS FROM MONGODB ATLAS
-        // ══════════════════════════════════════════════════════════════
-        try {
-          const [memRes, planRes, payRes, txRes] = await Promise.all([
-            fetch('/api/finance/members').then(r => r.json()).catch(() => null),
-            fetch('/api/finance/plans').then(r => r.json()).catch(() => null),
-            fetch('/api/finance/payments').then(r => r.json()).catch(() => null),
-            fetch('/api/finance/transactions').then(r => r.json()).catch(() => null)
-          ]);
-
-          if (memRes && memRes.members && memRes.members.length > 0) {
-            members = memRes.members;
-            localStorage.setItem('fp_members', JSON.stringify(members));
-          }
-          if (planRes && planRes.plans && planRes.plans.length > 0) {
-            plans = planRes.plans;
-            localStorage.setItem('fp_plans', JSON.stringify(plans));
-          }
-          if (payRes && payRes.payments && payRes.payments.length > 0) {
-            payments = payRes.payments;
-            localStorage.setItem('fp_payments', JSON.stringify(payments));
-          }
-          if (txRes && txRes.data && txRes.data.length > 0) {
-            earnings = txRes.data.filter(t => t.type === 'earning');
-            spendings = txRes.data.filter(t => t.type === 'spending');
-          }
-
-          renderDashboard();
-          renderMembers();
-          renderPlans();
-          renderChecklist();
-          renderEarnings();
-        } catch(e) {
-          console.warn('[MongoDB Global Pull Notice]:', e);
-        }
-        // ══════════════════════════════════════════
-        window.allDonations = [];
-
-    window.supportMissionVpa = localStorage.getItem("fp_support_mission_vpa") || "";
-    window.supportMissionPayee = localStorage.getItem("fp_support_mission_payee") || "Kalikapur Nabin Sangha Club";
-
-    window.syncMissionVpaUI = function() {
-      const vpa = window.supportMissionVpa || localStorage.getItem("fp_support_mission_vpa") || "";
-      const el = document.getElementById("display-mission-vpa");
-      if (el) {
-        el.textContent = vpa || "Not Configured";
-        el.style.color = vpa ? "var(--text)" : "var(--text-muted)";
-      }
-    };
-    setTimeout(window.syncMissionVpaUI, 100);
-
-    window.openEditMissionVpaModal = function() {
-      const inpVpa = document.getElementById("mission-vpa-input");
-      const inpPayee = document.getElementById("mission-payee-input");
-      if (inpVpa) inpVpa.value = window.supportMissionVpa || "";
-      if (inpPayee) inpPayee.value = window.supportMissionPayee || "Kalikapur Nabin Sangha Club";
-      openModal("edit-mission-vpa-modal");
-    };
-
-    window.handleSaveMissionVpa = async function(e) {
-      e.preventDefault();
-      const vpa = document.getElementById("mission-vpa-input").value.trim();
-      const payeeName = document.getElementById("mission-payee-input").value.trim() || "Kalikapur Nabin Sangha Club";
-
-      if (!vpa || !vpa.includes("@")) {
-        alert("Please enter a valid UPI ID (e.g. yourname@bank or 9876543210@paytm).");
-        return;
-      }
-
-      // 1. Instant Local State & Cache Update
-      window.supportMissionVpa = vpa;
-      window.supportMissionPayee = payeeName;
-      localStorage.setItem("fp_support_mission_vpa", vpa);
-      localStorage.setItem("fp_support_mission_payee", payeeName);
-
-      const el = document.getElementById("display-mission-vpa");
-      if (el) el.textContent = vpa;
-      closeModal("edit-mission-vpa-modal");
-      if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
-
-      // 2. Cloud MongoDB Atlas Sync in Background
-      try {
-        const res = await fetch("/api/donations/config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ vpa, payeeName })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.supportMissionVpa) {
-            window.supportMissionVpa = data.supportMissionVpa;
-            if (el) el.textContent = data.supportMissionVpa;
-          }
-        }
-      } catch (err) {
-        console.warn("[MongoDB Cloud Notice]: Local storage active.", err);
-      }
-
-      alert(`🎉 Successfully updated Support Mission UPI ID to: ${vpa}`);
-    };
-        window.fetchAndRenderDonations = async function() {
+window.fetchAndRenderDonations = async function() {
           try {
             // Fetch Live Support Mission VPA Config from MongoDB
             try {
-              const confRes = await fetch('/api/donations/config');
+              const confRes = await safeFetch('/api/donations/config');
               if (confRes.ok) {
                 const confData = await confRes.json();
                 if (confData.success && confData.supportMissionVpa) {
@@ -2546,7 +1896,7 @@
                 }
               }
             } catch(e) {}
-            const res = await fetch('/api/donations');
+            const res = await safeFetch('/api/donations');
             if (res.ok) {
               const data = await res.json();
               if (data.success && Array.isArray(data.donations)) {
@@ -2781,7 +2131,7 @@
           const status = document.getElementById('vd-status').value;
 
           try {
-            const res = await fetch('/api/donations/verify', {
+            const res = await safeFetch('/api/donations/verify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ orderId, utr, status })
@@ -2833,12 +2183,12 @@
           };
 
           try {
-            await fetch('/api/donations/create-order', {
+            await safeFetch('/api/donations/create-order', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(newDoc)
             });
-            await fetch('/api/donations/verify', {
+            await safeFetch('/api/donations/verify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ orderId, utr: newDoc.utr, status: 'COMPLETED' })
@@ -2857,7 +2207,7 @@
           if (!confirm(`Are you sure you want to delete donation record ${orderId}?`)) return;
 
           try {
-            await fetch(`/api/donations/${orderId}`, { method: 'DELETE' });
+            await safeFetch(`/api/donations/${orderId}`, { method: 'DELETE' });
           } catch (e) {}
 
           window.allDonations = (window.allDonations || []).filter(x => x.orderId !== orderId);
@@ -2909,9 +2259,9 @@
         async function loadMongoDBLibraryData() {
           try {
             const [bRes, iRes, lRes] = await Promise.all([
-              fetch("/api/library/books").then(r => r.json()).catch(() => null),
-              fetch("/api/library/issues").then(r => r.json()).catch(() => null),
-              fetch("/api/lockers/bookings").then(r => r.json()).catch(() => null)
+              safeFetch("/api/library/books").then(r => r.json()).catch(() => null),
+              safeFetch("/api/library/issues").then(r => r.json()).catch(() => null),
+              safeFetch("/api/lockers/bookings").then(r => r.json()).catch(() => null)
             ]);
             if (bRes && bRes.books && bRes.books.length > 0) {
               window.clubBooks = bRes.books;
@@ -2929,7 +2279,7 @@
               if (lRes.bookings) {
                 window.assetBookings = lRes.bookings;
                 localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
               }
             }
             renderAssetsPanel();
@@ -3250,7 +2600,7 @@
 
           if (confirm(`Delete "${b.title}" (${b.code || "BK"}) from library catalog?`)) {
             try {
-              await fetch(`/api/library/books/${bookId}`, { method: "DELETE" });
+              await safeFetch(`/api/library/books/${bookId}`, { method: "DELETE" });
             } catch (e) {}
             window.clubBooks = (window.clubBooks || []).filter(x => x.id !== bookId);
             localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
@@ -3272,7 +2622,7 @@
 
           // Save to MongoDB
           try {
-            await fetch("/api/library/books", {
+            await safeFetch("/api/library/books", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(bookDoc)
@@ -3391,7 +2741,7 @@
 
           // Save to MongoDB
           try {
-            await fetch("/api/library/issues", {
+            await safeFetch("/api/library/issues", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(issueDoc)
@@ -3414,14 +2764,14 @@
             item.status = "returned";
             item.returnedDate = new Date().toISOString().split("T")[0];
             try {
-              await fetch(`/api/library/issues/${issueId}`, {
+              await safeFetch(`/api/library/issues/${issueId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ status: "returned", returnedDate: item.returnedDate })
               });
             } catch (e) {}
             localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
-            if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+            if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
             renderAssetsPanel();
           }
         };
@@ -3429,11 +2779,11 @@
         window.handleDeleteBookIssue = async function(issueId) {
           if (!confirm(`Delete book issue record ${issueId}?`)) return;
           try {
-            await fetch(`/api/library/issues/${issueId}`, { method: "DELETE" });
+            await safeFetch(`/api/library/issues/${issueId}`, { method: "DELETE" });
           } catch (e) {}
           window.bookIssues = (window.bookIssues || []).filter(x => x.id !== issueId);
           localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
-          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
           renderAssetsPanel();
         };
 
@@ -3523,7 +2873,7 @@
 
           // Save to MongoDB
           try {
-            await fetch("/api/lockers/bookings", {
+            await safeFetch("/api/lockers/bookings", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(bookingDoc)
@@ -3533,7 +2883,7 @@
           if (!window.assetBookings) window.assetBookings = [];
           window.assetBookings.unshift(bookingDoc);
           localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
 
           closeModal("add-asset-booking-modal");
           renderAssetsPanel();
@@ -3547,14 +2897,14 @@
             booking.status = "returned";
             booking.endDate = new Date().toISOString().split("T")[0];
             try {
-              await fetch(`/api/lockers/bookings/${bookingId}`, {
+              await safeFetch(`/api/lockers/bookings/${bookingId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ status: "returned", endDate: booking.endDate })
               });
             } catch (e) {}
             localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
             renderAssetsPanel();
           }
         };
@@ -3562,11 +2912,11 @@
         window.handleDeleteAssetBooking = async function(bookingId) {
           if (!confirm(`Delete locker booking record ${bookingId}?`)) return;
           try {
-            await fetch(`/api/lockers/bookings/${bookingId}`, { method: "DELETE" });
+            await safeFetch(`/api/lockers/bookings/${bookingId}`, { method: "DELETE" });
           } catch (e) {}
           window.assetBookings = (window.assetBookings || []).filter(b => b.id !== bookingId);
           localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
           renderAssetsPanel();
         };
 
@@ -3582,34 +2932,52 @@
           if (document.getElementById("ar-amount")) document.getElementById("ar-amount").textContent = "₹" + (Number(b.rentAmount) || 0).toLocaleString("en-IN");
           openModal("asset-receipt-modal");
         };
-        // Fetch donations during initialization
-        fetchAndRenderDonations();
 
-        const hashTab = (window.location.hash || '').replace('#', '');
-        const queryTab = new URLSearchParams(window.location.search).get('tab');
-        const activeTab = hashTab || queryTab || document.querySelector('.tab-btn.active')?.id?.replace('tab-', '') || 'dashboard';
-        if (typeof window.nav === 'function') {
-          window.nav(activeTab);
-        } else {
-          if (activeTab === 'dashboard') renderDashboard();
-          else if (activeTab === 'checklist') renderChecklist();
-          else if (activeTab === 'members') renderMembersDirectory();
-          else if (activeTab === 'plans') renderPlans();
-          else if (activeTab === 'earnings') renderEarnings();
-          else if (activeTab === 'custom-fields') renderCustomFields();
-          else if (activeTab === 'donations') renderDonationsPanel();
+// ══════════════════════════════════════════════════════════════════
+    // 12. PORTAL BOOTLOADER (INSTANT START & SAFE BACKGROUND PULL)
+    // ══════════════════════════════════════════════════════════════════
+    function init() {
+      console.log('KNSDC Finance Portal Initializing...');
+      loadStaffSessionDetails();
+
+      // Bind nav tabs
+      ['dashboard', 'checklist', 'members', 'plans', 'earnings', 'assets', 'donations', 'custom-fields'].forEach(function(t) {
+        var btn = document.getElementById('tab-' + t);
+        if (btn) {
+          btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            nav(t);
+          });
         }
-      }, 400);
+      });
+
+      // Load saved theme
+      const savedTheme = localStorage.getItem('fp_theme');
+      if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        const btn = document.getElementById('theme-toggle-btn');
+        if (btn) btn.innerHTML = '<span>🌙 Dark Mode</span>';
+      }
+
+      // Initial instant render from local cache
+      const hashTab = (window.location.hash || '').replace('#', '');
+      const queryTab = new URLSearchParams(window.location.search).get('tab');
+      const activeTab = hashTab || queryTab || 'dashboard';
+      nav(activeTab);
+
+      // Background Non-blocking pull from Supabase & Cloud
+      setTimeout(() => {
+        pullFinanceCloudSync(false);
+        if (typeof window.fetchAndRenderDonations === 'function') {
+          window.fetchAndRenderDonations();
+        }
+      }, 300);
     }
 
     if (document.readyState === 'loading') {
       window.addEventListener('DOMContentLoaded', init);
     } else {
       init();
-    }
-
-    } catch(err) {
-      console.error('FATAL FINANCE ERROR:', err);
     }
 </script>
 </head>
