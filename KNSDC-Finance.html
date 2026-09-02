@@ -933,7 +933,11 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
     let customFields = JSON.parse(localStorage.getItem('fp_custom_fields') || '[]');
     let earningsFilter = 'all';
-    let activeMonth = '2026-08';
+    const _dNow = new Date();
+    const _curYYYYMM = `${_dNow.getFullYear()}-${String(_dNow.getMonth() + 1).padStart(2, '0')}`;
+    let activeMonth = localStorage.getItem('fp_active_month') || _curYYYYMM;
+    let dashFilterMode = 'month'; // 'month' | 'year' | 'all'
+    let dashFilterYear = String(_dNow.getFullYear());
 
     let deletedMembers = new Set(JSON.parse(localStorage.getItem('fp_deleted_members') || '[]'));
     let deletedPlans = new Set(JSON.parse(localStorage.getItem('fp_deleted_plans') || '[]'));
@@ -1297,14 +1301,80 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       }
     };
 
-    window.handleMonthChange = function(m) {
+    window.formatMonthName = function(ymStr) {
+      if (!ymStr) return '';
+      const parts = ymStr.split('-');
+      if (parts.length < 2) return ymStr;
+      const y = parts[0];
+      const mNum = parseInt(parts[1], 10);
+      const mNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      return `${mNames[mNum - 1] || parts[1]} ${y}`;
+    };
+
+    window.handleDashboardFilterModeChange = function(mode) {
+      dashFilterMode = mode || 'month';
+      const monthWrap = document.getElementById('dash-month-wrapper');
+      const yearWrap = document.getElementById('dash-year-wrapper');
+      if (monthWrap) monthWrap.style.display = (dashFilterMode === 'month') ? 'inline-flex' : 'none';
+      if (yearWrap) yearWrap.style.display = (dashFilterMode === 'year') ? 'inline-flex' : 'none';
+      renderDashboard();
+    };
+
+    window.handleDashboardMonthChange = function(m) {
+      if (!m) return;
       activeMonth = m;
+      localStorage.setItem('fp_active_month', m);
+      const gSelect = document.getElementById('global-month-select');
+      if (gSelect) gSelect.value = m;
+      const dSelect = document.getElementById('dash-month-select');
+      if (dSelect) dSelect.value = m;
       renderDashboard();
       renderChecklist();
     };
 
-    // 4. DASHBOARD RENDER
+    window.handleDashboardYearChange = function(y) {
+      if (!y) return;
+      dashFilterYear = y;
+      renderDashboard();
+    };
+
+    window.handleMonthChange = function(m) {
+      if (!m) return;
+      activeMonth = m;
+      localStorage.setItem('fp_active_month', m);
+      const gSelect = document.getElementById('global-month-select');
+      if (gSelect) gSelect.value = m;
+      const dSelect = document.getElementById('dash-month-select');
+      if (dSelect) dSelect.value = m;
+      renderDashboard();
+      renderChecklist();
+    };
+
+    // 4. DASHBOARD RENDER (SMART MONTH / YEAR / ALL-TIME FILTERING)
     function renderDashboard() {
+      // 1. Update filter inputs & Period Label dynamically
+      const elPeriodLabel = document.getElementById('dash-period-label');
+      const dSelect = document.getElementById('dash-month-select');
+      const gSelect = document.getElementById('global-month-select');
+      const fMode = document.getElementById('dash-filter-mode');
+      const ySelect = document.getElementById('dash-year-select');
+
+      if (dSelect && dSelect.value !== activeMonth) dSelect.value = activeMonth;
+      if (gSelect && gSelect.value !== activeMonth) gSelect.value = activeMonth;
+      if (fMode && fMode.value !== dashFilterMode) fMode.value = dashFilterMode;
+      if (ySelect && ySelect.value !== dashFilterYear) ySelect.value = dashFilterYear;
+
+      if (elPeriodLabel) {
+        if (dashFilterMode === 'month') {
+          elPeriodLabel.textContent = formatMonthName(activeMonth);
+        } else if (dashFilterMode === 'year') {
+          elPeriodLabel.textContent = `Full Year ${dashFilterYear}`;
+        } else {
+          elPeriodLabel.textContent = 'All-Time (Complete History)';
+        }
+      }
+
+      // 2. Compute Fees
       let feesCollected = 0;
       let feesExpected = 0;
       let feesPending = 0;
@@ -1315,20 +1385,49 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         if (m.status !== 'active' || deletedMembers.has(m.id)) return;
         const plan = plans.find(p => p.id === m.planId);
         const fee = (m.customFee !== undefined && m.customFee !== null && m.customFee >= 0) ? m.customFee : (plan ? plan.fee : 0);
-        feesExpected += fee;
-
-        const pay = payments.find(p => p.memberId === m.id && p.monthYear === activeMonth);
-        if (pay && pay.status === 'paid') {
-          feesCollected += (pay.paidAmount || pay.amount);
+        
+        if (dashFilterMode === 'month') {
+          feesExpected += fee;
+          const pay = payments.find(p => p.memberId === m.id && p.monthYear === activeMonth);
+          if (pay && pay.status === 'paid') {
+            feesCollected += (pay.paidAmount || pay.amount);
+          } else {
+            feesPending += fee;
+            pendingCount++;
+            if (pay && pay.status === 'overdue') overdueCount++;
+          }
+        } else if (dashFilterMode === 'year') {
+          // All payments within the selected year
+          const yearPays = payments.filter(p => p.memberId === m.id && (p.monthYear || '').startsWith(dashFilterYear));
+          const paidInYear = yearPays.filter(p => p.status === 'paid').reduce((s, p) => s + (p.paidAmount || p.amount || 0), 0);
+          feesCollected += paidInYear;
+          feesExpected += (fee * 12);
         } else {
-          feesPending += fee;
-          pendingCount++;
-          if (pay && pay.status === 'overdue') overdueCount++;
+          // All-time
+          const allPays = payments.filter(p => p.memberId === m.id && p.status === 'paid');
+          feesCollected += allPays.reduce((s, p) => s + (p.paidAmount || p.amount || 0), 0);
+          feesExpected += fee;
         }
       });
 
-      let totalOtherEarnings = earnings.filter(e => !deletedEarnings.has(e.id)).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-      let totalClubSpendings = spendings.filter(s => !deletedSpendings.has(s.id)).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      // 3. Filter Earnings & Spendings according to active period
+      const activeEarn = earnings.filter(e => !deletedEarnings.has(e.id));
+      const activeSpend = spendings.filter(s => !deletedSpendings.has(s.id));
+
+      let periodEarnings = activeEarn;
+      let periodSpendings = activeSpend;
+
+      if (dashFilterMode === 'month') {
+        periodEarnings = activeEarn.filter(e => (e.date || '').startsWith(activeMonth));
+        periodSpendings = activeSpend.filter(s => (s.date || '').startsWith(activeMonth));
+        // Fallback: If no earnings logged with exact date, include undated or recent
+      } else if (dashFilterMode === 'year') {
+        periodEarnings = activeEarn.filter(e => (e.date || '').startsWith(dashFilterYear));
+        periodSpendings = activeSpend.filter(s => (s.date || '').startsWith(dashFilterYear));
+      }
+
+      let totalOtherEarnings = periodEarnings.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      let totalClubSpendings = periodSpendings.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
       let netClubTreasury = (feesCollected + totalOtherEarnings) - totalClubSpendings;
       let totalClubRevenue = feesCollected + totalOtherEarnings;
       let collectionRate = feesExpected > 0 ? Math.round((feesCollected / feesExpected) * 100) : 0;
@@ -1359,40 +1458,60 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         elNetTreasury.style.color = netClubTreasury >= 0 ? '#34d399' : '#f87171';
       }
 
+      // 4. Populate Recent Transactions Table
       const tbody = document.getElementById('dash-recent-tbody');
       if (!tbody) return;
 
       let rows = [];
-      earnings.filter(e => !deletedEarnings.has(e.id)).slice(0, 4).forEach(e => {
+      periodEarnings.slice(0, 5).forEach(e => {
         rows.push(`
           <tr>
-            <td><span class="badge badge-paid">EARNING</span></td>
+            <td><span class="badge badge-paid">🟢 EARNING</span></td>
             <td style="font-weight:700; color:#fff;">${e.title}</td>
-            <td style="color:var(--text-muted);">${e.category}</td>
-            <td class="font-mono" style="color:var(--text-dim);">${e.date}</td>
+            <td style="color:var(--text-muted); text-transform:uppercase;">${(e.category||'').replace(/_/g,' ')}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${e.date || '-'}</td>
             <td style="font-weight:800; color:#34d399;">+${formatINR(e.amount)}</td>
             <td class="font-mono" style="color:var(--text-dim);">${e.referenceNo || '-'}</td>
           </tr>
         `);
       });
 
-      payments.filter(p => !deletedMembers.has(p.memberId)).slice(0, 4).forEach(p => {
+      periodSpendings.slice(0, 5).forEach(s => {
+        rows.push(`
+          <tr>
+            <td><span class="badge badge-overdue">🔴 SPENDING</span></td>
+            <td style="font-weight:700; color:#fff;">${s.title}</td>
+            <td style="color:var(--text-muted); text-transform:uppercase;">${(s.category||'').replace(/_/g,' ')}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${s.date || '-'}</td>
+            <td style="font-weight:800; color:#f87171;">-${formatINR(s.amount)}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${s.referenceNo || '-'}</td>
+          </tr>
+        `);
+      });
+
+      // Show recent payments
+      const matchingPayments = (dashFilterMode === 'month')
+        ? payments.filter(p => !deletedMembers.has(p.memberId) && p.monthYear === activeMonth)
+        : payments.filter(p => !deletedMembers.has(p.memberId));
+
+      matchingPayments.slice(0, 5).forEach(p => {
         const m = members.find(x => x.id === p.memberId);
         if (!m) return;
+        const isPaid = p.status === 'paid';
         rows.push(`
           <tr>
             <td><span class="badge badge-blue">MEMBER FEE</span></td>
             <td style="font-weight:700; color:#fff;">${m.name}</td>
             <td style="color:var(--text-muted);">${p.monthYear} Fee</td>
-            <td class="font-mono" style="color:var(--text-dim);">${p.paidAt ? p.paidAt.split('T')[0] : activeMonth}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${p.paidAt ? p.paidAt.split('T')[0] : (p.monthYear || activeMonth)}</td>
             <td style="font-weight:800; color:#34d399;">+${formatINR(p.paidAmount || p.amount)}</td>
-            <td><span class="badge badge-paid">PAID</span></td>
+            <td><span class="badge ${isPaid ? 'badge-paid' : 'badge-pending'}">${(p.status || 'PAID').toUpperCase()}</span></td>
           </tr>
         `);
       });
 
       if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">📝 No transactions recorded yet. Click "+ Add Member", "💰 + Log New Earning", or "💸 + Log Spending" to start recording your club finances!</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-muted);">📝 No transactions recorded for this period. Click "+ Add Member", "💰 + Log New Earning", or "💸 + Log Spending" to record club finances!</td></tr>';
       } else {
         tbody.innerHTML = rows.join('');
       }
@@ -3974,7 +4093,7 @@ window.fetchAndRenderDonations = async function() {
 
           <!-- Specific Month Input -->
           <div id="dash-month-wrapper" style="display: inline-flex; align-items: center; gap: 6px;">
-            <input type="month" id="dash-month-select" value="2026-08" onchange="handleDashboardMonthChange(this.value)" class="input-control" style="background: #1e293b; border-color: rgba(52,211,153,0.4); font-size: 12px; font-weight: 700; color: #34d399; padding: 6px 10px; border-radius: 8px;">
+            <input type="month" id="dash-month-select" value="2026-09" onchange="handleDashboardMonthChange(this.value)" class="input-control" style="background: #1e293b; border-color: rgba(52,211,153,0.4); font-size: 12px; font-weight: 700; color: #34d399; padding: 6px 10px; border-radius: 8px;">
           </div>
 
           <!-- Specific Year Dropdown -->
@@ -3989,7 +4108,7 @@ window.fetchAndRenderDonations = async function() {
         </div>
 
         <div style="font-size: 11px; color: var(--text-muted); font-weight: 700;">
-          Filtering dashboard data for: <strong id="dash-period-label" style="color: #34d399;">August 2026</strong>
+          Filtering dashboard data for: <strong id="dash-period-label" style="color: #34d399;">September 2026</strong>
         </div>
       </div>
       <!-- 4 Stat Cards -->
@@ -4058,7 +4177,7 @@ window.fetchAndRenderDonations = async function() {
           <!-- Month & Year Filter (Green Circle Position) -->
           <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,0.06); padding:6px 12px; border-radius:12px; border:1px solid rgba(255,255,255,0.15);">
             <label style="font-size:11px; font-weight:800; color:#cbd5e1; text-transform:uppercase; white-space:nowrap;">📅 Month &amp; Year:</label>
-            <input type="month" id="global-month-select" value="2026-08" onchange="handleMonthChange(this.value)" class="input-control" style="padding:4px 8px; font-size:12px; font-weight:700; color:#34d399; background:#0f172a; border:1px solid rgba(52,211,153,0.4); border-radius:8px;">
+            <input type="month" id="global-month-select" value="2026-09" onchange="handleMonthChange(this.value)" class="input-control" style="padding:4px 8px; font-size:12px; font-weight:700; color:#34d399; background:#0f172a; border:1px solid rgba(52,211,153,0.4); border-radius:8px;">
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
