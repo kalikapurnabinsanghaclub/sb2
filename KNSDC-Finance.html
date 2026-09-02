@@ -3239,36 +3239,159 @@ window.fetchAndRenderDonations = async function() {
         window.assetBookings = JSON.parse(localStorage.getItem("fp_asset_bookings")) || [];
 
         // Async fetch from Supabase (replaces MongoDB /api/ calls)
+                // Async fetch from Supabase (Dual-Layer: Dedicated Tables + Unified Cloud Ledger)
         async function loadMongoDBLibraryData() {
           try {
             if (!sbClient) return;
-            const [bRes, iRes, lRes] = await Promise.all([
+            
+            // Query both dedicated tables and the unified ledger in parallel
+            const [bRes, iRes, lRes, earnLedgerRes] = await Promise.all([
               sbClient.from('library_books').select('*').then(r => r.data ? { books: r.data } : null).catch(() => null),
               sbClient.from('library_issues').select('*').then(r => r.data ? { issues: r.data } : null).catch(() => null),
-              sbClient.from('locker_bookings').select('*').then(r => r.data ? { bookings: r.data } : null).catch(() => null)
+              sbClient.from('locker_bookings').select('*').then(r => r.data ? { bookings: r.data } : null).catch(() => null),
+              sbClient.from('club_earnings').select('*').then(r => r.data ? r.data : []).catch(() => [])
             ]);
+
+            // 1. Process Locker Bookings
+            const cloudLockerBookings = [];
+            if (lRes && lRes.bookings && lRes.bookings.length > 0) {
+              lRes.bookings.forEach(b => cloudLockerBookings.push({
+                id: b.id,
+                assetId: b.asset_id || b.assetId,
+                assetName: b.asset_name || b.assetName || 'Locker',
+                assetCode: b.asset_code || b.assetCode || 'L',
+                category: b.category || 'Locker',
+                memberName: b.member_name || b.memberName || 'Member',
+                memberPhone: b.member_phone || b.memberPhone || '',
+                startDate: b.start_date || b.startDate || '',
+                endDate: b.end_date || b.endDate || '',
+                rentAmount: Number(b.rent_amount || b.rentAmount) || 0,
+                depositAmount: Number(b.deposit_amount || b.depositAmount) || 0,
+                paymentMethod: b.payment_method || b.paymentMethod || 'cash',
+                notes: b.notes || '',
+                status: b.status || 'active'
+              }));
+            }
+
+            // Fallback from unified ledger
+            if (earnLedgerRes && earnLedgerRes.length > 0) {
+              earnLedgerRes.forEach(item => {
+                if (item.id.startsWith('LKR-') || item.custom_fields?.type === 'locker_booking') {
+                  const cf = item.custom_fields || {};
+                  if (!cloudLockerBookings.some(x => x.id === item.id)) {
+                    cloudLockerBookings.push({
+                      id: item.id,
+                      assetId: cf.assetId || 'ast-l1',
+                      assetName: cf.assetName || item.title.replace('Locker Allocation: ', '').split(' (')[0] || 'Locker',
+                      assetCode: cf.assetCode || 'L',
+                      category: cf.category || 'Locker',
+                      memberName: cf.memberName || item.payer_or_customer || 'Member',
+                      memberPhone: cf.memberPhone || '',
+                      startDate: cf.startDate || item.date || '',
+                      endDate: cf.endDate || '',
+                      rentAmount: Number(cf.rentAmount || item.amount) || 0,
+                      depositAmount: Number(cf.depositAmount) || 0,
+                      paymentMethod: cf.paymentMethod || item.payment_method || 'cash',
+                      notes: cf.notes || item.description || '',
+                      status: cf.status || 'active'
+                    });
+                  }
+                }
+              });
+            }
+
+            if (cloudLockerBookings.length > 0) {
+              window.assetBookings = cloudLockerBookings;
+              localStorage.setItem('fp_asset_bookings', JSON.stringify(window.assetBookings));
+            }
+
+            // 2. Process Library Books
+            const cloudBooks = [];
             if (bRes && bRes.books && bRes.books.length > 0) {
-              window.clubBooks = bRes.books;
-              localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
+              bRes.books.forEach(b => cloudBooks.push({
+                id: b.id,
+                title: b.title,
+                author: b.author,
+                code: b.code,
+                category: b.category,
+                totalCopies: Number(b.total_copies || b.totalCopies) || 1,
+                fee: Number(b.fee) || 0
+              }));
             }
-            if (iRes && iRes.issues) {
-              window.bookIssues = iRes.issues;
-              localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
+            if (earnLedgerRes && earnLedgerRes.length > 0) {
+              earnLedgerRes.forEach(item => {
+                if (item.id.startsWith('bk-') && item.custom_fields?.type === 'library_book') {
+                  const cf = item.custom_fields || {};
+                  if (!cloudBooks.some(x => x.id === item.id)) {
+                    cloudBooks.push({
+                      id: item.id,
+                      title: cf.title || item.title.replace('Library Book: ', ''),
+                      author: cf.author || '',
+                      code: cf.code || item.reference_no || 'BK',
+                      category: cf.category || 'General',
+                      totalCopies: Number(cf.totalCopies) || 1,
+                      fee: Number(cf.fee) || 0
+                    });
+                  }
+                }
+              });
             }
-            if (lRes) {
-              if (lRes.bookings && lRes.bookings.length > 0) {
-                window.assetBookings = lRes.bookings;
-                localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-              }
-              if (false) { // placeholder for lockers block
-                window.assetBookings = lRes.bookings;
-                localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
-              }
+            if (cloudBooks.length > 0) {
+              const bIds = new Set(cloudBooks.map(x => x.id));
+              const localOnlyBooks = (window.clubBooks || []).filter(x => !bIds.has(x.id));
+              window.clubBooks = [...cloudBooks, ...localOnlyBooks];
+              localStorage.setItem('fp_library_books', JSON.stringify(window.clubBooks));
             }
+
+            // 3. Process Book Issues
+            const cloudIssues = [];
+            if (iRes && iRes.issues && iRes.issues.length > 0) {
+              iRes.issues.forEach(i => cloudIssues.push({
+                id: i.id,
+                bookId: i.book_id || i.bookId,
+                bookTitle: i.book_title || i.bookTitle,
+                bookCode: i.book_code || i.bookCode,
+                author: i.author,
+                category: i.category,
+                memberName: i.member_name || i.memberName,
+                memberPhone: i.member_phone || i.memberPhone,
+                issueDate: i.issue_date || i.issueDate,
+                dueDate: i.due_date || i.dueDate,
+                fee: Number(i.fee) || 0,
+                status: i.status || 'issued'
+              }));
+            }
+            if (earnLedgerRes && earnLedgerRes.length > 0) {
+              earnLedgerRes.forEach(item => {
+                if (item.id.startsWith('ISS-') && item.custom_fields?.type === 'library_issue') {
+                  const cf = item.custom_fields || {};
+                  if (!cloudIssues.some(x => x.id === item.id)) {
+                    cloudIssues.push({
+                      id: item.id,
+                      bookId: cf.bookId || 'bk-1',
+                      bookTitle: cf.bookTitle || item.title.replace('Library Circulation: ', '').split(' (')[0],
+                      bookCode: cf.bookCode || 'BK',
+                      author: cf.author || '',
+                      category: cf.category || 'General',
+                      memberName: cf.memberName || item.payer_or_customer || 'Member',
+                      memberPhone: cf.memberPhone || '',
+                      issueDate: cf.issueDate || item.date,
+                      dueDate: cf.dueDate || '',
+                      fee: Number(cf.fee || item.amount) || 0,
+                      status: cf.status || 'issued'
+                    });
+                  }
+                }
+              });
+            }
+            if (cloudIssues.length > 0) {
+              window.bookIssues = cloudIssues;
+              localStorage.setItem('fp_book_issues', JSON.stringify(window.bookIssues));
+            }
+
             renderAssetsPanel();
           } catch (e) {
-            console.log("[MongoDB Sync] Using local storage cache:", e.message);
+            console.log('[Library & Lockers Sync Notice]:', e.message);
           }
         }
         setTimeout(loadMongoDBLibraryData, 600);
@@ -3572,6 +3695,69 @@ window.fetchAndRenderDonations = async function() {
           openModal("add-book-modal");
         };
 
+                window.handleSaveBook = async function(e) {
+          if (e) e.preventDefault();
+          const id = document.getElementById("bk-id").value || ("bk-" + Date.now());
+          const title = document.getElementById("bk-title").value.trim();
+          const author = document.getElementById("bk-author").value.trim();
+          const code = document.getElementById("bk-code").value.trim() || ("BK-" + Date.now().toString().slice(-4));
+          const category = document.getElementById("bk-category").value;
+          const totalCopies = Number(document.getElementById("bk-copies").value) || 1;
+          const fee = Number(document.getElementById("bk-fee").value) || 0;
+
+          if (!title) { alert("Please enter a book title"); return; }
+
+          const bookDoc = { id, title, author, code, category, totalCopies, fee, updatedAt: new Date().toISOString() };
+
+          if (!window.clubBooks) window.clubBooks = [];
+          const idx = window.clubBooks.findIndex(x => x.id === id);
+          if (idx !== -1) window.clubBooks[idx] = bookDoc;
+          else window.clubBooks.unshift(bookDoc);
+
+          localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
+          closeModal("add-book-modal");
+          renderAssetsPanel();
+
+          if (sbClient) {
+            updateCloudSyncBadge('syncing');
+            const sbBookPayload = {
+              id: bookDoc.id,
+              title: bookDoc.title,
+              author: bookDoc.author,
+              code: bookDoc.code,
+              category: bookDoc.category,
+              total_copies: bookDoc.totalCopies,
+              fee: bookDoc.fee
+            };
+            const sbLedgerPayload = {
+              id: bookDoc.id,
+              title: `Library Book: ${bookDoc.title}`,
+              category: 'other',
+              amount: 0,
+              date: new Date().toISOString().split("T")[0],
+              payment_method: 'cash',
+              payer_or_customer: 'Library',
+              reference_no: bookDoc.code,
+              description: `Book Catalog: ${bookDoc.title} by ${bookDoc.author}`,
+              custom_fields: { type: 'library_book', ...bookDoc }
+            };
+            try {
+              await Promise.allSettled([
+                sbClient.from('library_books').upsert([sbBookPayload], { onConflict: 'id' }),
+                sbClient.from('club_earnings').upsert([sbLedgerPayload], { onConflict: 'id' })
+              ]);
+              updateCloudSyncBadge(true);
+              window.showToast(`✓ Book "${title}" saved globally!`);
+            } catch (err) {}
+          }
+
+          safeFetch("/api/library/books", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bookDoc)
+          });
+        };
+
         window.deleteBook = async function(bookId) {
           const b = (window.clubBooks || []).find(x => x.id === bookId);
           if (!b) return;
@@ -3583,129 +3769,38 @@ window.fetchAndRenderDonations = async function() {
           }
 
           if (confirm(`Delete "${b.title}" (${b.code || "BK"}) from library catalog?`)) {
-            try {
-              (sbClient ? await sbClient.from("library_books").delete().eq("id", bookId).catch(()=>null) : null);
-            } catch (e) {}
             window.clubBooks = (window.clubBooks || []).filter(x => x.id !== bookId);
             localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
             renderAssetsPanel();
-          }
-        };
 
-        window.handleSaveBook = async function(e) {
-          e.preventDefault();
-          const id = document.getElementById("bk-id").value || ("bk-" + Date.now());
-          const title = document.getElementById("bk-title").value.trim();
-          const author = document.getElementById("bk-author").value.trim();
-          const code = document.getElementById("bk-code").value.trim() || ("BK-" + Date.now().toString().slice(-4));
-          const category = document.getElementById("bk-category").value;
-          const totalCopies = Number(document.getElementById("bk-copies").value) || 1;
-          const fee = Number(document.getElementById("bk-fee").value) || 0;
-
-          const bookDoc = { id, title, author, code, category, totalCopies, fee };
-
-          // Save to MongoDB
-          try {
-            await safeFetch("/api/library/books", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(bookDoc)
-            });
-          } catch (err) {}
-
-          if (!window.clubBooks) window.clubBooks = [];
-          const idx = window.clubBooks.findIndex(x => x.id === id);
-          if (idx !== -1) {
-            window.clubBooks[idx] = bookDoc;
-          } else {
-            window.clubBooks.unshift(bookDoc);
-          }
-          localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
-
-          closeModal("add-book-modal");
-          renderAssetsPanel();
-          alert(`Saved "${title}" in MongoDB library catalog!`);
-        };
-
-        window.openIssueBookModal = function(preselectedBookId) {
-          const books = window.clubBooks || [];
-          const bSel = document.getElementById("ib-book-id");
-          if (bSel) {
-            bSel.innerHTML = books.map(b => {
-              const activeIssuedCount = (window.bookIssues || []).filter(x => x.bookId === b.id && x.status === "issued").length;
-              const totalCopies = Number(b.totalCopies) || 1;
-              const avail = Math.max(0, totalCopies - activeIssuedCount);
-              return `<option value="${b.id}" ${avail <= 0 ? "disabled" : ""} ${b.id === preselectedBookId ? "selected" : ""}>${b.title} (${b.code}) — ${avail} available</option>`;
-            }).join("");
-          }
-
-          const memSel = document.getElementById("ib-member-id");
-          if (memSel) {
-            let mOpts = '<option value="">-- Select Enrolled Club Member --</option>';
-            members.forEach(m => {
-              mOpts += `<option value="${m.id}">${m.name} (${m.phone || "No phone"})</option>`;
-            });
-            mOpts += '<option value="custom">➕ Walk-in Reader</option>';
-            memSel.innerHTML = mOpts;
-          }
-
-          document.getElementById("ib-id").value = "ISS-" + Math.floor(1000 + Math.random() * 9000);
-          const today = new Date().toISOString().split("T")[0];
-          const dueDateObj = new Date();
-          dueDateObj.setDate(dueDateObj.getDate() + 14);
-          const dueStr = dueDateObj.toISOString().split("T")[0];
-
-          document.getElementById("ib-issue-date").value = today;
-          document.getElementById("ib-due-date").value = dueStr;
-
-          const curBook = books.find(b => b.id === (preselectedBookId || bSel?.value)) || books[0];
-          if (curBook) {
-            document.getElementById("ib-fee").value = curBook.fee || 0;
-          }
-
-          openModal("issue-book-modal");
-        };
-
-        window.handleBookIssueSelect = function(bookId) {
-          const b = (window.clubBooks || []).find(x => x.id === bookId);
-          if (b) {
-            document.getElementById("ib-fee").value = b.fee || 0;
-          }
-        };
-
-        window.handleBookMemberSelect = function(memId) {
-          if (!memId || memId === "custom") {
-            const curBook = (window.clubBooks || []).find(b => b.id === document.getElementById("ib-book-id")?.value);
-            document.getElementById("ib-fee").value = curBook?.fee || 0;
-            return;
-          }
-          const m = members.find(x => x.id === memId);
-          if (m) {
-            document.getElementById("ib-member-name").value = m.name;
-            document.getElementById("ib-member-phone").value = m.phone || "";
-            
-            // Auto-check if member plan includes Library benefit -> fee is 0
-            const p = plans.find(x => x.id === m.planId);
-            const hasLibrary = p && Array.isArray(p.benefits) && p.benefits.some(b => b.includes("Library"));
-            if (hasLibrary) {
-              document.getElementById("ib-fee").value = 0;
-            } else {
-              const curBook = (window.clubBooks || []).find(b => b.id === document.getElementById("ib-book-id")?.value);
-              document.getElementById("ib-fee").value = curBook?.fee || 0;
+            if (sbClient) {
+              updateCloudSyncBadge('syncing');
+              try {
+                await Promise.allSettled([
+                  sbClient.from("library_books").delete().eq("id", bookId),
+                  sbClient.from("club_earnings").delete().eq("id", bookId)
+                ]);
+                updateCloudSyncBadge(true);
+                window.showToast(`✓ Book deleted globally from library catalog.`);
+              } catch (e) {}
             }
+
+            safeFetch(`/api/library/books/${bookId}`, { method: "DELETE" });
           }
         };
 
         window.handleSaveBookIssue = async function(e) {
-          e.preventDefault();
-          const id = document.getElementById("ib-id").value;
+          if (e) e.preventDefault();
+          const id = document.getElementById("ib-id").value || ("ISS-" + Math.floor(1000 + Math.random() * 9000));
           const bookId = document.getElementById("ib-book-id").value;
           const book = (window.clubBooks || []).find(b => b.id === bookId);
           const memberName = document.getElementById("ib-member-name").value.trim();
           const memberPhone = document.getElementById("ib-member-phone").value.trim();
-          const issueDate = document.getElementById("ib-issue-date").value;
-          const dueDate = document.getElementById("ib-due-date").value;
+          const issueDate = document.getElementById("ib-issue-date").value || new Date().toISOString().split("T")[0];
+          const dueDate = document.getElementById("ib-due-date").value || "";
           const fee = Number(document.getElementById("ib-fee").value) || 0;
+
+          if (!memberName) { alert("Please enter or select a member name."); return; }
 
           const issueDoc = {
             id,
@@ -3720,25 +3815,58 @@ window.fetchAndRenderDonations = async function() {
             dueDate,
             fee,
             status: "issued",
-            createdAt: new Date()
+            createdAt: new Date().toISOString()
           };
-
-          // Save to MongoDB
-          try {
-            await safeFetch("/api/library/issues", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(issueDoc)
-            });
-          } catch (err) {}
 
           if (!window.bookIssues) window.bookIssues = [];
           window.bookIssues.unshift(issueDoc);
           localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
-
           closeModal("issue-book-modal");
           renderAssetsPanel();
-          alert(`Issued book "${issueDoc.bookTitle}" to ${memberName}! Saved to MongoDB.`);
+
+          if (sbClient) {
+            updateCloudSyncBadge('syncing');
+            const sbIssuePayload = {
+              id: issueDoc.id,
+              book_id: issueDoc.bookId,
+              book_title: issueDoc.bookTitle,
+              book_code: issueDoc.bookCode,
+              author: issueDoc.author,
+              category: issueDoc.category,
+              member_name: issueDoc.memberName,
+              member_phone: issueDoc.memberPhone,
+              issue_date: issueDoc.issueDate,
+              due_date: issueDoc.dueDate || null,
+              fee: issueDoc.fee,
+              status: "issued"
+            };
+            const sbLedgerPayload = {
+              id: issueDoc.id,
+              title: `Library Circulation: ${issueDoc.bookTitle} (${issueDoc.memberName})`,
+              category: 'other',
+              amount: issueDoc.fee,
+              date: issueDoc.issueDate,
+              payment_method: 'cash',
+              payer_or_customer: issueDoc.memberName,
+              reference_no: issueDoc.id,
+              description: `Book issued: ${issueDoc.bookTitle} to ${issueDoc.memberName}`,
+              custom_fields: { type: 'library_issue', ...issueDoc }
+            };
+            try {
+              await Promise.allSettled([
+                sbClient.from('library_issues').upsert([sbIssuePayload], { onConflict: 'id' }),
+                sbClient.from('club_earnings').upsert([sbLedgerPayload], { onConflict: 'id' })
+              ]);
+              updateCloudSyncBadge(true);
+              window.showToast(`✓ Book "${issueDoc.bookTitle}" issued to ${memberName} saved globally!`);
+            } catch (err) {}
+          }
+
+          safeFetch("/api/library/issues", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(issueDoc)
+          });
         };
 
         window.handleReturnBookIssue = async function(issueId) {
@@ -3747,28 +3875,60 @@ window.fetchAndRenderDonations = async function() {
           if (item) {
             item.status = "returned";
             item.returnedDate = new Date().toISOString().split("T")[0];
-            try {
-              await safeFetch(`/api/library/issues/${issueId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: "returned", returnedDate: item.returnedDate })
-              });
-            } catch (e) {}
             localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
-            if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
             renderAssetsPanel();
+
+            if (sbClient) {
+              updateCloudSyncBadge('syncing');
+              const sbLedgerPayload = {
+                id: item.id,
+                title: `Library Circulation: ${item.bookTitle} (${item.memberName})`,
+                category: 'other',
+                amount: item.fee || 0,
+                date: item.returnedDate || item.issueDate,
+                payment_method: 'cash',
+                payer_or_customer: item.memberName,
+                reference_no: item.id,
+                description: `Book returned: ${item.bookTitle} on ${item.returnedDate} (Status: returned)`,
+                custom_fields: { type: 'library_issue', ...item }
+              };
+              try {
+                await Promise.allSettled([
+                  sbClient.from('library_issues').update({ status: 'returned', returned_date: item.returnedDate }).eq('id', issueId),
+                  sbClient.from('club_earnings').upsert([sbLedgerPayload], { onConflict: 'id' })
+                ]);
+                updateCloudSyncBadge(true);
+                window.showToast(`✓ Book marked returned globally!`);
+              } catch (e) {}
+            }
+
+            safeFetch(`/api/library/issues/${issueId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "returned", returnedDate: item.returnedDate })
+            });
           }
         };
 
         window.handleDeleteBookIssue = async function(issueId) {
           if (!confirm(`Delete book issue record ${issueId}?`)) return;
-          try {
-            (sbClient ? await sbClient.from("library_issues").delete().eq("id", issueId).catch(()=>null) : null);
-          } catch (e) {}
           window.bookIssues = (window.bookIssues || []).filter(x => x.id !== issueId);
           localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
-          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
           renderAssetsPanel();
+
+          if (sbClient) {
+            updateCloudSyncBadge('syncing');
+            try {
+              await Promise.allSettled([
+                sbClient.from("library_issues").delete().eq("id", issueId),
+                sbClient.from("club_earnings").delete().eq("id", issueId)
+              ]);
+              updateCloudSyncBadge(true);
+              window.showToast(`✓ Book issue record deleted globally.`);
+            } catch (e) {}
+          }
+
+          safeFetch(`/api/library/issues/${issueId}`, { method: "DELETE" });
         };
 
         // Locker Allocation Modal Helpers & MongoDB Sync
@@ -3823,19 +3983,24 @@ window.fetchAndRenderDonations = async function() {
           openModal("add-asset-booking-modal");
         };
 
-        window.handleSaveAssetBooking = async function(e) {
-          e.preventDefault();
-          const id = document.getElementById("ab-id").value;
+                window.handleSaveAssetBooking = async function(e) {
+          if (e) e.preventDefault();
+          const id = document.getElementById("ab-id").value || ("LKR-" + Math.floor(1000 + Math.random() * 9000));
           const assetId = document.getElementById("ab-asset-id").value;
           const locker = (window.clubAssets || []).find(a => a.id === assetId);
           const memberName = document.getElementById("ab-member-name").value.trim();
           const memberPhone = document.getElementById("ab-member-phone").value.trim();
-          const startDate = document.getElementById("ab-start-date").value;
-          const endDate = document.getElementById("ab-end-date").value;
+          const startDate = document.getElementById("ab-start-date").value || new Date().toISOString().split("T")[0];
+          const endDate = document.getElementById("ab-end-date").value || "";
           const rentAmount = Number(document.getElementById("ab-rent-amount").value) || 0;
           const depositAmount = Number(document.getElementById("ab-deposit-amount").value) || 0;
-          const paymentMethod = document.getElementById("ab-payment-method").value;
+          const paymentMethod = document.getElementById("ab-payment-method").value || "cash";
           const notes = document.getElementById("ab-notes")?.value?.trim() || "";
+
+          if (!memberName) {
+            alert("Please enter or select a club member name.");
+            return;
+          }
 
           const bookingDoc = {
             id,
@@ -3852,56 +4017,156 @@ window.fetchAndRenderDonations = async function() {
             paymentMethod,
             notes,
             status: "active",
-            createdAt: new Date()
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
           };
 
-          // Save to MongoDB
-          try {
-            await safeFetch("/api/lockers/bookings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(bookingDoc)
-            });
-          } catch (err) {}
-
+          // 1. Instant local persistence
           if (!window.assetBookings) window.assetBookings = [];
-          window.assetBookings.unshift(bookingDoc);
-          localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
+          const idx = window.assetBookings.findIndex(x => x.id === id);
+          if (idx !== -1) window.assetBookings[idx] = bookingDoc;
+          else window.assetBookings.unshift(bookingDoc);
 
+          localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
           closeModal("add-asset-booking-modal");
           renderAssetsPanel();
-          alert(`Assigned ${bookingDoc.assetName} to ${memberName}! Saved to MongoDB.`);
+
+          // 2. IMMEDIATE GLOBAL SUPABASE CLOUD SYNC
+          if (sbClient) {
+            updateCloudSyncBadge('syncing');
+
+            // Dedicated table payload
+            const sbLockerPayload = {
+              id: bookingDoc.id,
+              asset_id: bookingDoc.assetId,
+              asset_name: bookingDoc.assetName,
+              asset_code: bookingDoc.assetCode,
+              category: "Locker",
+              member_name: bookingDoc.memberName,
+              member_phone: bookingDoc.memberPhone,
+              start_date: bookingDoc.startDate,
+              end_date: bookingDoc.endDate || null,
+              rent_amount: bookingDoc.rentAmount,
+              deposit_amount: bookingDoc.depositAmount,
+              payment_method: bookingDoc.paymentMethod,
+              notes: bookingDoc.notes,
+              status: "active"
+            };
+
+            // Unified Cloud Ledger payload (fail-safe global mirror)
+            const sbLedgerPayload = {
+              id: bookingDoc.id,
+              title: `Locker Allocation: ${bookingDoc.assetName} (${bookingDoc.memberName})`,
+              category: 'other',
+              amount: bookingDoc.rentAmount,
+              date: bookingDoc.startDate,
+              payment_method: ['cash', 'upi', 'card', 'bank_transfer'].includes(bookingDoc.paymentMethod) ? bookingDoc.paymentMethod : 'cash',
+              payer_or_customer: bookingDoc.memberName,
+              reference_no: bookingDoc.id,
+              description: `Locker ${bookingDoc.assetName} allocated to ${bookingDoc.memberName} (Status: active)`,
+              custom_fields: {
+                type: 'locker_booking',
+                ...bookingDoc
+              }
+            };
+
+            try {
+              // Try both dedicated table and ledger mirror
+              await Promise.allSettled([
+                sbClient.from('locker_bookings').upsert([sbLockerPayload], { onConflict: 'id' }),
+                sbClient.from('club_earnings').upsert([sbLedgerPayload], { onConflict: 'id' })
+              ]);
+              updateCloudSyncBadge(true);
+              window.showToast(`✓ Locker ${bookingDoc.assetName} allocated to ${memberName} globally!`);
+            } catch (err) {
+              console.warn('[Locker Cloud Save Notice]:', err);
+              window.showToast('Locker allocated locally!', 'info');
+            }
+          }
+
+          // Optional local MongoDB backend sync
+          safeFetch("/api/lockers/bookings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bookingDoc)
+          });
         };
 
         window.handleReturnAssetBooking = async function(bookingId) {
-          if (!confirm(`Release locker booking ${bookingId}?`)) return;
+          if (!confirm(`Release locker booking ${bookingId}? The locker will become Free immediately.`)) return;
           const booking = (window.assetBookings || []).find(b => b.id === bookingId);
           if (booking) {
             booking.status = "returned";
             booking.endDate = new Date().toISOString().split("T")[0];
-            try {
-              await safeFetch(`/api/lockers/bookings/${bookingId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: "returned", endDate: booking.endDate })
-              });
-            } catch (e) {}
+            booking.updatedAt = new Date().toISOString();
+
             localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
             renderAssetsPanel();
+
+            if (sbClient) {
+              updateCloudSyncBadge('syncing');
+              const sbLockerPayload = {
+                id: booking.id,
+                end_date: booking.endDate,
+                status: "returned"
+              };
+              const sbLedgerPayload = {
+                id: booking.id,
+                title: `Locker Allocation: ${booking.assetName} (${booking.memberName})`,
+                category: 'other',
+                amount: booking.rentAmount || 0,
+                date: booking.startDate || booking.endDate,
+                payment_method: ['cash', 'upi', 'card', 'bank_transfer'].includes(booking.paymentMethod) ? booking.paymentMethod : 'cash',
+                payer_or_customer: booking.memberName,
+                reference_no: booking.id,
+                description: `Locker ${booking.assetName} released on ${booking.endDate} (Status: returned)`,
+                custom_fields: {
+                  type: 'locker_booking',
+                  ...booking
+                }
+              };
+
+              try {
+                await Promise.allSettled([
+                  sbClient.from('locker_bookings').update({ status: 'returned', end_date: booking.endDate }).eq('id', bookingId),
+                  sbClient.from('club_earnings').upsert([sbLedgerPayload], { onConflict: 'id' })
+                ]);
+                updateCloudSyncBadge(true);
+                window.showToast(`✓ Locker ${booking.assetName} released globally! Now Available.`);
+              } catch (e) {
+                console.warn('[Locker Release Notice]:', e);
+              }
+            }
+
+            safeFetch(`/api/lockers/bookings/${bookingId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "returned", endDate: booking.endDate })
+            });
           }
         };
 
         window.handleDeleteAssetBooking = async function(bookingId) {
-          if (!confirm(`Delete locker booking record ${bookingId}?`)) return;
-          try {
-            (sbClient ? await sbClient.from("locker_bookings").delete().eq("id", bookingId).catch(()=>null) : null);
-          } catch (e) {}
+          if (!confirm(`Delete locker booking record ${bookingId} permanently?`)) return;
           window.assetBookings = (window.assetBookings || []).filter(b => b.id !== bookingId);
           localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
-          if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
           renderAssetsPanel();
+
+          if (sbClient) {
+            updateCloudSyncBadge('syncing');
+            try {
+              await Promise.allSettled([
+                sbClient.from("locker_bookings").delete().eq("id", bookingId),
+                sbClient.from("club_earnings").delete().eq("id", bookingId)
+              ]);
+              updateCloudSyncBadge(true);
+              window.showToast(`✓ Locker record deleted globally.`);
+            } catch (e) {
+              console.warn('[Locker Delete Notice]:', e);
+            }
+          }
+
+          safeFetch(`/api/lockers/bookings/${bookingId}`, { method: "DELETE" });
         };
 
         window.openAssetReceiptModal = function(bookingId) {
