@@ -538,6 +538,195 @@
     try {
 
 
+    // ══════════════════════════════════════════════════════════════
+    // 🌐 UNIVERSAL CROSS-DEVICE CLOUD DATABASE ENGINE (PC, TABLET, MOBILE)
+    // ══════════════════════════════════════════════════════════════
+    const SUPABASE_REST_URL = "https://mmbtfbxxnprtzpzdklot.supabase.co/rest/v1";
+    const SUPABASE_API_KEY = "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA";
+    const FINANCE_SYNC_ROW_ID = "knsdc_finance_sync";
+    let lastCloudSyncTimestamp = null;
+    let isSyncing = false;
+
+    function updateCloudSyncBadge(status, text) {
+      const dot = document.getElementById("cloud-sync-dot");
+      const ind = document.getElementById("cloud-sync-status-indicator");
+      if (dot && ind) {
+        if (status === "syncing") {
+          dot.style.background = "#f59e0b";
+          dot.style.boxShadow = "0 0 8px #f59e0b";
+        } else if (status === true) {
+          dot.style.background = "#10b981";
+          dot.style.boxShadow = "0 0 8px #10b981";
+          ind.style.borderColor = "rgba(16,185,129,0.3)";
+        } else {
+          dot.style.background = "#ef4444";
+          dot.style.boxShadow = "0 0 8px #ef4444";
+          ind.style.borderColor = "rgba(239,68,68,0.3)";
+        }
+      }
+    }
+
+    window.pullFinanceCloudSync = async function(manual = false) {
+      if (isSyncing) return;
+      isSyncing = true;
+      updateCloudSyncBadge("syncing");
+      try {
+        const res = await fetch(`${SUPABASE_REST_URL}/sync_state?id=eq.${FINANCE_SYNC_ROW_ID}&select=*`, {
+          headers: {
+            "apikey": SUPABASE_API_KEY,
+            "Authorization": `Bearer ${SUPABASE_API_KEY}`
+          }
+        });
+        if (res.ok) {
+          const rows = await res.json();
+          if (Array.isArray(rows) && rows.length > 0 && rows[0].payload) {
+            const cloud = rows[0].payload;
+            const cloudTime = cloud.updatedAt || rows[0].last_updated;
+
+            // Only update if newer or manual force
+            if (manual || !lastCloudSyncTimestamp || cloudTime !== lastCloudSyncTimestamp) {
+              lastCloudSyncTimestamp = cloudTime;
+              console.log("[Global Cloud Sync] Received updated state from cloud database!");
+
+              if (Array.isArray(cloud.members)) {
+                members = cloud.members;
+                localStorage.setItem("fp_members", JSON.stringify(members));
+              }
+              if (Array.isArray(cloud.plans)) {
+                plans = cloud.plans;
+                localStorage.setItem("fp_plans", JSON.stringify(plans));
+              }
+              if (Array.isArray(cloud.payments)) {
+                payments = cloud.payments;
+                localStorage.setItem("fp_payments", JSON.stringify(payments));
+              }
+              if (Array.isArray(cloud.earnings)) {
+                earnings = cloud.earnings;
+                localStorage.setItem("fp_earnings", JSON.stringify(earnings));
+              }
+              if (Array.isArray(cloud.spendings)) {
+                spendings = cloud.spendings;
+                localStorage.setItem("fp_spendings", JSON.stringify(spendings));
+              }
+              // Library & Lockers (Guarantees deleted books stay deleted on all devices)
+              if (Array.isArray(cloud.books)) {
+                window.clubBooks = cloud.books;
+                localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
+              }
+              if (Array.isArray(cloud.bookIssues)) {
+                window.bookIssues = cloud.bookIssues;
+                localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
+              }
+              if (Array.isArray(cloud.lockers)) {
+                window.clubAssets = cloud.lockers;
+                localStorage.setItem("fp_assets", JSON.stringify(window.clubAssets));
+              }
+              if (Array.isArray(cloud.lockerBookings)) {
+                window.assetBookings = cloud.lockerBookings;
+                localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
+          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+              }
+              if (cloud.supportMissionVpa) {
+                window.supportMissionVpa = cloud.supportMissionVpa;
+                window.supportMissionPayee = cloud.supportMissionPayee || "Kalikapur Nabin Sangha Club";
+                localStorage.setItem("fp_support_mission_vpa", cloud.supportMissionVpa);
+                localStorage.setItem("fp_support_mission_payee", window.supportMissionPayee);
+                if (typeof window.syncMissionVpaUI === "function") window.syncMissionVpaUI();
+              }
+
+              // Re-render UI
+              renderDashboard();
+              renderMembers();
+              renderPlans();
+              renderChecklist();
+              renderEarnings();
+              if (typeof renderBooksCatalog === "function") renderBooksCatalog();
+              if (typeof renderBookIssuesTable === "function") renderBookIssuesTable();
+              if (typeof renderLockersGrid === "function") renderLockersGrid();
+              if (typeof renderLockerBookingsTable === "function") renderLockerBookingsTable();
+            }
+            updateCloudSyncBadge(true);
+            if (manual) alert("✅ Global Cloud Sync refreshed! All members, plans, checklist fees & books are up to date.");
+          } else {
+            // First time seeding from local
+            await window.pushFinanceCloudSync();
+          }
+        }
+      } catch(err) {
+        console.warn("[Global Cloud Sync Pull Error]:", err);
+        updateCloudSyncBadge(false);
+      } finally {
+        isSyncing = false;
+      }
+    };
+
+    window.pushFinanceCloudSync = async function() {
+      updateCloudSyncBadge("syncing");
+      const now = new Date().toISOString();
+      lastCloudSyncTimestamp = now;
+
+      // 1. Instant local cache
+      localStorage.setItem("fp_plans", JSON.stringify(plans));
+      localStorage.setItem("fp_members", JSON.stringify(members));
+      localStorage.setItem("fp_payments", JSON.stringify(payments));
+      localStorage.setItem("fp_earnings", JSON.stringify(earnings));
+      localStorage.setItem("fp_spendings", JSON.stringify(spendings));
+      if (window.clubBooks) localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
+      if (window.bookIssues) localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
+      if (window.clubAssets) localStorage.setItem("fp_assets", JSON.stringify(window.clubAssets));
+      if (window.assetBookings) localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
+          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
+
+      const payload = {
+        members: members || [],
+        plans: plans || [],
+        payments: payments || [],
+        earnings: earnings || [],
+        spendings: spendings || [],
+        books: window.clubBooks || [],
+        bookIssues: window.bookIssues || [],
+        lockers: window.clubAssets || [],
+        lockerBookings: window.assetBookings || [],
+        customFields: customFields || [],
+        supportMissionVpa: window.supportMissionVpa || "",
+        supportMissionPayee: window.supportMissionPayee || "Kalikapur Nabin Sangha Club",
+        updatedAt: now
+      };
+
+      // 2. Global Cloud Sync to Supabase sync_state
+      try {
+        const res = await fetch(`${SUPABASE_REST_URL}/sync_state`, {
+          method: "POST",
+          headers: {
+            "apikey": SUPABASE_API_KEY,
+            "Authorization": `Bearer ${SUPABASE_API_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates"
+          },
+          body: JSON.stringify({
+            id: FINANCE_SYNC_ROW_ID,
+            payload: payload
+          })
+        });
+        if (res.ok) {
+          updateCloudSyncBadge(true);
+          console.log("[Global Cloud Sync] Pushed state to cloud database successfully!");
+        } else {
+          updateCloudSyncBadge(false);
+        }
+      } catch(err) {
+        console.warn("[Global Cloud Push Network Error]:", err);
+        updateCloudSyncBadge(false);
+      }
+    };
+
+    // Start Auto-Sync Poller every 6 seconds
+    setInterval(() => {
+      if (typeof window.pullFinanceCloudSync === "function") {
+        window.pullFinanceCloudSync(false);
+      }
+    }, 6000);
+
     // 1. Live Supabase Client
     const SUPABASE_URL = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
@@ -1986,6 +2175,7 @@
       else customFields.push(cfObj);
 
       localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
+      if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
       closeModal('custom-field-modal');
       renderCustomFields();
     };
@@ -1994,6 +2184,7 @@
       if (confirm(`Delete custom field "${label}"?`)) {
         customFields = customFields.filter(x => x.id !== id);
         localStorage.setItem('fp_custom_fields', JSON.stringify(customFields));
+      if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
         renderCustomFields();
       }
     };
@@ -2138,52 +2329,11 @@
       }
     }
 
-function saveData() {
-      localStorage.setItem('fp_plans', JSON.stringify(plans));
-      localStorage.setItem('fp_members', JSON.stringify(members));
-      localStorage.setItem('fp_payments', JSON.stringify(payments));
-      localStorage.setItem('fp_earnings', JSON.stringify(earnings));
-      localStorage.setItem('fp_spendings', JSON.stringify(spendings));
-
-      // Background Supabase Push
-      if (supabase) {
-        if (members.length > 0) {
-          const payload = members.map(m => ({
-            id: m.id, name: m.name, email: m.email, phone: m.phone,
-            plan_id: m.planId, role: m.role, custom_fee: m.customFee,
-            join_date: m.joinDate, status: m.status, custom_fields: m.customFields || {}
-          }));
-          supabase.from('members').upsert(payload).then(() => {});
-        }
-        if (plans.length > 0) {
-          const pPayload = plans.map(p => ({
-            id: p.id, name: p.name, fee: p.fee, billing_cycle: p.billingCycle,
-            description: p.description, color: p.color, active: p.active,
-            late_fee_days: p.lateFeeDays, late_fee_amount: p.lateFeeAmount
-          }));
-          supabase.from('membership_plans').upsert(pPayload).then(() => {});
-        }
-        if (earnings.length > 0) {
-          const ePayload = earnings.map(e => ({
-            id: e.id, title: e.title, category: e.category, amount: e.amount,
-            date: e.date, payment_method: e.paymentMethod, payer_or_customer: e.payerOrCustomer,
-            reference_no: e.referenceNo, description: e.description
-          }));
-          supabase.from('club_earnings').upsert(ePayload).then(() => {});
-        }
-        if (payments.length > 0) {
-          const payPayload = payments.map(p => ({
-            id: p.id, member_id: p.memberId, plan_id: p.planId, month_year: p.monthYear,
-            amount: p.amount, paid_amount: p.paidAmount, status: p.status, payment_method: p.paymentMethod,
-            paid_at: p.paidAt, invoice_no: p.invoiceNo, notes: p.notes
-          }));
-          supabase.from('payment_records').upsert(payPayload).then(() => {});
-        }
+    function saveData() {
+      if (typeof window.pushFinanceCloudSync === "function") {
+        window.pushFinanceCloudSync();
       }
     }
-
-    
-    // Global function exposures
     window.nav = nav;
     window.openModal = openModal;
     window.closeModal = closeModal;
@@ -2202,6 +2352,7 @@ function saveData() {
 
     // Portal Bootloader
     function init() {
+      window.pullFinanceCloudSync(false);
       // Immediately populate Support Mission VPA from storage & server
       if (typeof window.syncMissionVpaUI === "function") window.syncMissionVpaUI();
       fetch("/api/donations/config").then(r => r.json()).then(data => {
@@ -2358,6 +2509,7 @@ function saveData() {
       const el = document.getElementById("display-mission-vpa");
       if (el) el.textContent = vpa;
       closeModal("edit-mission-vpa-modal");
+      if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
 
       // 2. Cloud MongoDB Atlas Sync in Background
       try {
@@ -2777,6 +2929,7 @@ function saveData() {
               if (lRes.bookings) {
                 window.assetBookings = lRes.bookings;
                 localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
+          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
               }
             }
             renderAssetsPanel();
@@ -3268,6 +3421,7 @@ function saveData() {
               });
             } catch (e) {}
             localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
+            if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
             renderAssetsPanel();
           }
         };
@@ -3279,6 +3433,7 @@ function saveData() {
           } catch (e) {}
           window.bookIssues = (window.bookIssues || []).filter(x => x.id !== issueId);
           localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
+          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
           renderAssetsPanel();
         };
 
@@ -3378,6 +3533,7 @@ function saveData() {
           if (!window.assetBookings) window.assetBookings = [];
           window.assetBookings.unshift(bookingDoc);
           localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
+          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
 
           closeModal("add-asset-booking-modal");
           renderAssetsPanel();
@@ -3398,6 +3554,7 @@ function saveData() {
               });
             } catch (e) {}
             localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
+          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
             renderAssetsPanel();
           }
         };
@@ -3409,6 +3566,7 @@ function saveData() {
           } catch (e) {}
           window.assetBookings = (window.assetBookings || []).filter(b => b.id !== bookingId);
           localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
+          if (typeof window.pushFinanceCloudSync === "function") window.pushFinanceCloudSync();
           renderAssetsPanel();
         };
 
@@ -3479,6 +3637,11 @@ function saveData() {
         <!-- Top Actions Bar -->
         <div class="top-actions" style="display:flex; align-items:center; gap:8px;">
           <!-- Theme Mode Switcher -->
+        <!-- Global Multi-Device Cloud Sync Badge -->
+        <div id="cloud-sync-status-indicator" title="Connected to Global Cloud Database (Synced across PC, Tablet & Mobile)" style="font-size:11px; font-weight:800; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#10b981; cursor:pointer;" onclick="pullFinanceCloudSync(true)">
+          <span>☁️ Global Cloud Sync</span>
+          <span id="cloud-sync-dot" style="width:7px; height:7px; border-radius:50%; background:#10b981; box-shadow:0 0 8px #10b981;"></span>
+        </div>
           <button type="button" onclick="toggleFinanceTheme()" id="theme-toggle-btn" class="btn btn-secondary" style="color:#fbbf24; border:1px solid rgba(251,191,36,0.3); background:rgba(251,191,36,0.1); padding:7px 12px; font-size:11px; font-weight:700;" title="Toggle Light / Dark Theme">
             <span>☀️ Light Mode</span>
           </button>
