@@ -1028,8 +1028,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               description: p.description || '',
               color: p.color || '#3b82f6',
               active: p.active !== false,
-              late_fee_days: p.lateFeeDays || 10,
-              late_fee_amount: Number(p.lateFeeAmount) || 50
+              late_fee_days: (p.lateFeeDays !== undefined && p.lateFeeDays !== null) ? Number(p.lateFeeDays) : 10,
+              late_fee_amount: (p.lateFeeAmount !== undefined && p.lateFeeAmount !== null) ? Number(p.lateFeeAmount) : 0
             }));
             await sbClient.from('membership_plans').upsert(pPayload, { onConflict: 'id' });
           }
@@ -1128,8 +1128,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               description: p.description || '',
               color: p.color || '#3b82f6',
               active: p.active !== false,
-              lateFeeDays: p.late_fee_days || 10,
-              lateFeeAmount: Number(p.late_fee_amount) || 50,
+              lateFeeDays: (p.late_fee_days !== undefined && p.late_fee_days !== null) ? Number(p.late_fee_days) : 10,
+              lateFeeAmount: (p.late_fee_amount !== undefined && p.late_fee_amount !== null) ? Number(p.late_fee_amount) : 0,
               planType: localP?.planType || (p.name.toLowerCase().includes('flex') ? 'flexible' : 'fixed'),
               perks: localP?.perks || {}
             };
@@ -1781,7 +1781,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                     Late Fine Rule:
                   </span>
-                  <span class="plan-metric-val-fine">After ${plan.lateFeeDays || 10}d (+${formatINR(plan.lateFeeAmount || 50)})</span>
+                  <span class="plan-metric-val-fine">${(plan.lateFeeAmount && plan.lateFeeAmount > 0) ? `After ${plan.lateFeeDays || 10}d (+${formatINR(plan.lateFeeAmount)})` : `Grace: ${plan.lateFeeDays || 10}d (No Fine)`}</span>
                 </div>
               </div>
             </div>
@@ -1806,7 +1806,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       document.getElementById('plan-fee').value = 500;
       document.getElementById('plan-desc').value = '';
       document.getElementById('plan-grace').value = 10;
-      document.getElementById('plan-late-fine').value = 50;
+      document.getElementById('plan-late-fine').value = 0;
       document.getElementById('plan-color').value = '#3b82f6';
       const ptEl = document.getElementById('plan-type');
       if (ptEl) {
@@ -1828,8 +1828,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       document.getElementById('plan-name').value = p.name;
       document.getElementById('plan-fee').value = p.fee;
       document.getElementById('plan-desc').value = p.description || '';
-      document.getElementById('plan-grace').value = p.lateFeeDays || 10;
-      document.getElementById('plan-late-fine').value = p.lateFeeAmount || 50;
+      document.getElementById('plan-grace').value = (p.lateFeeDays !== undefined && p.lateFeeDays !== null) ? p.lateFeeDays : 10;
+      document.getElementById('plan-late-fine').value = (p.lateFeeAmount !== undefined && p.lateFeeAmount !== null) ? p.lateFeeAmount : 0;
       document.getElementById('plan-color').value = p.color || '#3b82f6';
 
       const ptEl = document.getElementById('plan-type');
@@ -1853,8 +1853,11 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       const name = document.getElementById('plan-name').value.trim();
       const fee = Number(document.getElementById('plan-fee').value) || 0;
       const description = document.getElementById('plan-desc').value.trim();
-      const lateFeeDays = Number(document.getElementById('plan-grace').value) || 10;
-      const lateFeeAmount = Number(document.getElementById('plan-late-fine').value) || 50;
+      const lateFeeDaysRaw = document.getElementById('plan-grace')?.value;
+      const lateFeeDays = (lateFeeDaysRaw !== undefined && lateFeeDaysRaw !== '' && !isNaN(lateFeeDaysRaw)) ? Math.max(0, parseInt(lateFeeDaysRaw, 10)) : 10;
+
+      const lateFeeAmountRaw = document.getElementById('plan-late-fine')?.value;
+      const lateFeeAmount = (lateFeeAmountRaw !== undefined && lateFeeAmountRaw !== '' && !isNaN(lateFeeAmountRaw)) ? Math.max(0, parseFloat(lateFeeAmountRaw)) : 0;
       const color = document.getElementById('plan-color').value;
       const planType = document.getElementById('plan-type')?.value || 'fixed';
 
@@ -1910,8 +1913,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
           description: planObj.description || '',
           color: planObj.color || '#3b82f6',
           active: true,
-          late_fee_days: planObj.lateFeeDays || 10,
-          late_fee_amount: Number(planObj.lateFeeAmount) || 50
+          late_fee_days: planObj.lateFeeDays !== undefined ? planObj.lateFeeDays : 10,
+          late_fee_amount: planObj.lateFeeAmount !== undefined ? Number(planObj.lateFeeAmount) : 0
         };
 
         try {
@@ -5396,9 +5399,9 @@ window.fetchAndRenderDonations = async function() {
             <input type="number" id="plan-grace" min="0" value="0" class="form-input">
           </div>
           <div>
-            <label class="form-label">Late Fine (₹0 - ₹100)</label>
-            <input type="number" id="plan-late-fine" min="0" max="100" value="0" placeholder="0 - 100" class="form-input" style="color:#fbbf24; font-weight:700;">
-            <p style="font-size:10px; color:var(--text-muted); margin-top:3px;">Set between ₹0 to ₹100 (Default: ₹0)</p>
+            <label class="form-label">Late Fine Penalty (₹ INR)</label>
+            <input type="number" id="plan-late-fine" min="0" max="10000" step="1" value="0" placeholder="0 = No fine" class="form-input" style="color:#fbbf24; font-weight:800; font-size:14px;">
+            <p style="font-size:10px; color:var(--text-muted); margin-top:3px;">Set penalty amount (e.g. 0, 15, 25, 50, 100+). 0 = No fine.</p>
           </div>
         </div>
 
