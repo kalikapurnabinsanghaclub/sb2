@@ -503,10 +503,10 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     // 1. LIVE SUPABASE CLIENT
     const SUPABASE_URL = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
-    let supabase = null;
+    let sbClient = null;
     try {
       if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       }
     } catch(e) {
       console.warn('Supabase init notice:', e);
@@ -514,6 +514,18 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
 
     // 2. STATE & PERMANENT TOMBSTONES
     let plans = JSON.parse(localStorage.getItem('fp_plans') || '[]');
+    // ── DEFAULT PLANS SEED ───────────────────────────────────────────────
+    if (plans.length === 0) {
+      plans = [
+        { id: 'plan-standard', name: 'Standard', fee: 500, duration: 12, description: 'Standard Membership' },
+        { id: 'plan-premium',  name: 'Premium',  fee: 1000, duration: 12, description: 'Premium Membership' },
+        { id: 'plan-student',  name: 'Student',  fee: 250,  duration: 12, description: 'Student Membership' },
+        { id: 'plan-vip',      name: 'VIP',      fee: 2000, duration: 12, description: 'VIP Membership' },
+      ];
+      localStorage.setItem('fp_plans', JSON.stringify(plans));
+    }
+    // ── END DEFAULT PLANS ────────────────────────────────────────────────
+
     let members = JSON.parse(localStorage.getItem('fp_members') || '[]');
     let payments = JSON.parse(localStorage.getItem('fp_payments') || '[]');
     let earnings = JSON.parse(localStorage.getItem('fp_earnings') || '[]');
@@ -578,7 +590,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
 
     let syncTimer = null;
     function debouncedCloudSync() {
-      if (!supabase) return;
+      if (!sbClient) return;
       if (syncTimer) clearTimeout(syncTimer);
       syncTimer = setTimeout(async () => {
         try {
@@ -597,10 +609,10 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               status: m.status || 'active',
               custom_fields: { ...(m.customFields || {}), role: m.role || 'Member' }
             }));
-            supabase.from('members').upsert(mPayload.map(x => ({ ...x, role: x.custom_fields.role })))
+            sbClient.from('members').upsert(mPayload.map(x => ({ ...x, role: x.custom_fields.role })))
               .then(({ error }) => {
                 if (error && error.message && error.message.includes("'role'")) {
-                  return supabase.from('members').upsert(mPayload);
+                  return sbClient.from('members').upsert(mPayload);
                 }
               }).catch(() => {});
           }
@@ -618,7 +630,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               late_fee_days: p.lateFeeDays || 10,
               late_fee_amount: Number(p.lateFeeAmount) || 50
             }));
-            supabase.from('membership_plans').upsert(pPayload).catch(() => {});
+            sbClient.from('membership_plans').upsert(pPayload).catch(() => {});
           }
 
           const activeEarnings = earnings.filter(e => !deletedEarnings.has(e.id));
@@ -635,7 +647,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               reference_no: e.referenceNo || '',
               description: e.description || ''
             }));
-            supabase.from('club_earnings').upsert(ePayload).catch(() => {});
+            sbClient.from('club_earnings').upsert(ePayload).catch(() => {});
           }
 
           if (payments.length > 0) {
@@ -652,7 +664,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
               invoice_no: p.invoiceNo || ('INV-' + p.monthYear.replace('-', '') + '-0001'),
               notes: p.notes || ''
             }));
-            supabase.from('payment_records').upsert(payPayload).catch(() => {});
+            sbClient.from('payment_records').upsert(payPayload).catch(() => {});
           }
 
           updateCloudSyncBadge(true);
@@ -675,14 +687,14 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     };
 
     window.pullFinanceCloudSync = async function(manual = false) {
-      if (!supabase) return;
+      if (!sbClient) return;
       try {
         updateCloudSyncBadge("syncing");
         const [resM, resP, resE, resPay] = await Promise.all([
-          supabase.from('members').select('*'),
-          supabase.from('membership_plans').select('*'),
-          supabase.from('club_earnings').select('*'),
-          supabase.from('payment_records').select('*')
+          sbClient.from('members').select('*'),
+          sbClient.from('membership_plans').select('*'),
+          sbClient.from('club_earnings').select('*'),
+          sbClient.from('payment_records').select('*')
         ]);
 
         if (resM.data && resM.data.length > 0) {
@@ -1173,9 +1185,9 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         renderChecklist();
         renderDashboard();
 
-        if (supabase) {
-          supabase.from('members').delete().eq('id', id).catch(() => {});
-          supabase.from('payment_records').delete().eq('member_id', id).catch(() => {});
+        if (sbClient) {
+          sbClient.from('members').delete().eq('id', id).catch(() => {});
+          sbClient.from('payment_records').delete().eq('member_id', id).catch(() => {});
         }
         safeFetch('/api/finance/members/' + id, { method: 'DELETE' });
       }
@@ -1314,8 +1326,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         renderPlans();
         populatePlanOptions();
 
-        if (supabase) {
-          supabase.from('membership_plans').delete().eq('id', id).catch(() => {});
+        if (sbClient) {
+          sbClient.from('membership_plans').delete().eq('id', id).catch(() => {});
         }
         safeFetch('/api/finance/plans/' + id, { method: 'DELETE' });
       }
@@ -1483,8 +1495,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         renderEarnings();
         renderDashboard();
 
-        if (supabase) {
-          supabase.from('club_earnings').delete().eq('id', id).catch(() => {});
+        if (sbClient) {
+          sbClient.from('club_earnings').delete().eq('id', id).catch(() => {});
         }
         safeFetch('/api/finance/transactions/' + id, { method: 'DELETE' });
       }
@@ -1885,7 +1897,7 @@ window.fetchAndRenderDonations = async function() {
           try {
             // Fetch Live Support Mission VPA Config from MongoDB
             try {
-              const confRes = await safeFetch('/api/donations/config');
+              const confRes = sbClient ? await sbClient.from('donation_config').select('*').limit(1).then(r => r.data?.[0] ? {razorpay_key_id: r.data[0].razorpay_key} : null).catch(()=>null) : null;
               if (confRes.ok) {
                 const confData = await confRes.json();
                 if (confData.success && confData.supportMissionVpa) {
@@ -1896,7 +1908,7 @@ window.fetchAndRenderDonations = async function() {
                 }
               }
             } catch(e) {}
-            const res = await safeFetch('/api/donations');
+            const res = sbClient ? await sbClient.from('donations').select('*').order('created_at',{ascending:false}).then(r => r.data ? {donations: r.data} : null).catch(()=>null) : null;
             if (res.ok) {
               const data = await res.json();
               if (data.success && Array.isArray(data.donations)) {
@@ -2255,13 +2267,14 @@ window.fetchAndRenderDonations = async function() {
         window.clubAssets = JSON.parse(localStorage.getItem("fp_assets")) || defaultLockers;
         window.assetBookings = JSON.parse(localStorage.getItem("fp_asset_bookings")) || [];
 
-        // Async fetch from MongoDB Server
+        // Async fetch from Supabase (replaces MongoDB /api/ calls)
         async function loadMongoDBLibraryData() {
           try {
+            if (!sbClient) return;
             const [bRes, iRes, lRes] = await Promise.all([
-              safeFetch("/api/library/books").then(r => r.json()).catch(() => null),
-              safeFetch("/api/library/issues").then(r => r.json()).catch(() => null),
-              safeFetch("/api/lockers/bookings").then(r => r.json()).catch(() => null)
+              sbClient.from('library_books').select('*').then(r => r.data ? { books: r.data } : null).catch(() => null),
+              sbClient.from('library_issues').select('*').then(r => r.data ? { issues: r.data } : null).catch(() => null),
+              sbClient.from('locker_bookings').select('*').then(r => r.data ? { bookings: r.data } : null).catch(() => null)
             ]);
             if (bRes && bRes.books && bRes.books.length > 0) {
               window.clubBooks = bRes.books;
@@ -2272,11 +2285,11 @@ window.fetchAndRenderDonations = async function() {
               localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
             }
             if (lRes) {
-              if (lRes.lockers && lRes.lockers.length > 0) {
-                window.clubAssets = lRes.lockers;
-                localStorage.setItem("fp_assets", JSON.stringify(window.clubAssets));
+              if (lRes.bookings && lRes.bookings.length > 0) {
+                window.assetBookings = lRes.bookings;
+                localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
               }
-              if (lRes.bookings) {
+              if (false) { // placeholder for lockers block
                 window.assetBookings = lRes.bookings;
                 localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
           if (typeof window.debouncedCloudSync === "function") window.debouncedCloudSync();
@@ -2600,7 +2613,7 @@ window.fetchAndRenderDonations = async function() {
 
           if (confirm(`Delete "${b.title}" (${b.code || "BK"}) from library catalog?`)) {
             try {
-              await safeFetch(`/api/library/books/${bookId}`, { method: "DELETE" });
+              (sbClient ? await sbClient.from("library_books").delete().eq("id", bookId).catch(()=>null) : null);
             } catch (e) {}
             window.clubBooks = (window.clubBooks || []).filter(x => x.id !== bookId);
             localStorage.setItem("fp_library_books", JSON.stringify(window.clubBooks));
@@ -2779,7 +2792,7 @@ window.fetchAndRenderDonations = async function() {
         window.handleDeleteBookIssue = async function(issueId) {
           if (!confirm(`Delete book issue record ${issueId}?`)) return;
           try {
-            await safeFetch(`/api/library/issues/${issueId}`, { method: "DELETE" });
+            (sbClient ? await sbClient.from("library_issues").delete().eq("id", issueId).catch(()=>null) : null);
           } catch (e) {}
           window.bookIssues = (window.bookIssues || []).filter(x => x.id !== issueId);
           localStorage.setItem("fp_book_issues", JSON.stringify(window.bookIssues));
@@ -2912,7 +2925,7 @@ window.fetchAndRenderDonations = async function() {
         window.handleDeleteAssetBooking = async function(bookingId) {
           if (!confirm(`Delete locker booking record ${bookingId}?`)) return;
           try {
-            await safeFetch(`/api/lockers/bookings/${bookingId}`, { method: "DELETE" });
+            (sbClient ? await sbClient.from("locker_bookings").delete().eq("id", bookingId).catch(()=>null) : null);
           } catch (e) {}
           window.assetBookings = (window.assetBookings || []).filter(b => b.id !== bookingId);
           localStorage.setItem("fp_asset_bookings", JSON.stringify(window.assetBookings));
@@ -2979,6 +2992,46 @@ window.fetchAndRenderDonations = async function() {
     } else {
       init();
     }
+
+    // ── MISSING HANDLERS ─────────────────────────────────────────────────
+    window.openEditMissionVpaModal = function() {
+      const cfg = JSON.parse(localStorage.getItem('fp_mission_vpa') || '{}');
+      const el = document.getElementById('mission-vpa-input');
+      const elp = document.getElementById('mission-vpa-payee');
+      if (el) el.value = cfg.vpa || '';
+      if (elp) elp.value = cfg.payee || '';
+      openModal('edit-mission-vpa-modal');
+    };
+    window.handleSaveMissionVpa = function(e) {
+      if (e) e.preventDefault();
+      const vpa = (document.getElementById('mission-vpa-input')?.value || '').trim();
+      const payee = (document.getElementById('mission-vpa-payee')?.value || '').trim();
+      if (!vpa) { alert('Please enter a UPI ID / VPA'); return; }
+      const cfg = { vpa, payee };
+      localStorage.setItem('fp_mission_vpa', JSON.stringify(cfg));
+      if (sbClient) sbClient.from('donation_config').upsert([{id:'main', razorpay_key:'', vpa, payee}]).catch(()=>null);
+      closeModal('edit-mission-vpa-modal');
+      const el = document.getElementById('mission-vpa-display');
+      if (el) el.textContent = vpa;
+      if (typeof showToast === 'function') showToast('UPI/VPA saved!');
+    };
+    window.handleSaveAsset = function(e) {
+      if (e) e.preventDefault();
+      const name = (document.getElementById('ast-name')?.value || '').trim();
+      const cat  = (document.getElementById('ast-category')?.value || '').trim();
+      const code = (document.getElementById('ast-code')?.value || '').trim();
+      const fee  = parseFloat(document.getElementById('ast-fee')?.value || 0);
+      const dep  = parseFloat(document.getElementById('ast-deposit')?.value || 0);
+      if (!name) { alert('Asset name required'); return; }
+      const asset = { id: 'ast-' + Date.now(), name, category: cat || 'Locker', code, fee, deposit: dep, status: 'Available', createdAt: new Date().toISOString() };
+      window.clubAssets = [asset, ...(window.clubAssets || [])];
+      localStorage.setItem('fp_assets', JSON.stringify(window.clubAssets));
+      if (sbClient) sbClient.from('club_assets').upsert([asset]).catch(()=>null);
+      closeModal('add-asset-modal');
+      if (typeof renderAssetsPanel === 'function') renderAssetsPanel();
+      if (typeof showToast === 'function') showToast('Asset added!');
+    };
+    // ── END MISSING HANDLERS ─────────────────────────────────────────────
 </script>
 </head>
 <body>
