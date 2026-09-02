@@ -1143,21 +1143,57 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         }
 
         if (resE.data && resE.data.length > 0) {
-          const cloudEarnings = resE.data.filter(e => !deletedEarnings.has(e.id)).map(e => ({
-            id: e.id,
-            title: e.title,
-            category: e.category,
-            amount: Number(e.amount) || 0,
-            date: e.date,
-            paymentMethod: e.payment_method,
-            payerOrCustomer: e.payerOrCustomer,
-            referenceNo: e.reference_no,
-            description: e.description
-          }));
+          const cloudEarnings = [];
+          const cloudSpendings = [];
+
+          resE.data.forEach(item => {
+            const isSpend = item.id.startsWith('spend-') || item.custom_fields?.type === 'spending';
+            if (isSpend) {
+              if (!deletedSpendings.has(item.id)) {
+                cloudSpendings.push({
+                  id: item.id,
+                  title: item.title,
+                  category: item.custom_fields?.spendCategory || item.category || 'utilities',
+                  amount: Number(item.amount) || 0,
+                  date: item.date,
+                  paymentMethod: item.payment_method || 'cash',
+                  vendorOrRecipient: item.payer_or_customer || item.custom_fields?.vendor || '',
+                  referenceNo: item.reference_no || '',
+                  description: item.description || '',
+                  receiptPhoto: item.custom_fields?.receiptPhoto || '',
+                  type: 'spending'
+                });
+              }
+            } else {
+              if (!deletedEarnings.has(item.id)) {
+                cloudEarnings.push({
+                  id: item.id,
+                  title: item.title,
+                  category: item.custom_fields?.originalCategory || item.category || 'other',
+                  amount: Number(item.amount) || 0,
+                  date: item.date,
+                  paymentMethod: item.payment_method || 'cash',
+                  payerOrCustomer: item.payer_or_customer || '',
+                  referenceNo: item.reference_no || '',
+                  description: item.description || '',
+                  type: 'earning'
+                });
+              }
+            }
+          });
+
           const ceIds = new Set(cloudEarnings.map(x => x.id));
           const localOnlyE = earnings.filter(x => !ceIds.has(x.id) && !deletedEarnings.has(x.id));
           earnings = [...cloudEarnings, ...localOnlyE];
           localStorage.setItem('fp_earnings', JSON.stringify(earnings));
+
+          const csIds = new Set(cloudSpendings.map(x => x.id));
+          const localOnlyS = spendings.filter(x => !csIds.has(x.id) && !deletedSpendings.has(x.id));
+          spendings = [...cloudSpendings, ...localOnlyS];
+          localStorage.setItem('fp_spendings', JSON.stringify(spendings));
+
+          renderEarnings();
+          renderDashboard();
         }
 
         if (resPay.data && resPay.data.length > 0) {
@@ -1968,7 +2004,9 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       }
     };
 
-// 8. EARNINGS & SPENDINGS LOGGER (ADD, EDIT, DELETE)
+// 8. EARNINGS & SPENDINGS LOGGER (ARCHITECTURE & DB DESIGN: UNIFIED CLOUD LEDGER)
+    const VALID_POSTGRES_EARN_CATS = ['events', 'merchandise', 'sponsorship', 'donations', 'canteen_bar', 'tournament', 'guest_fees', 'other'];
+
     function renderEarnings() {
       const tbody = document.getElementById('earnings-tbody');
       if (!tbody) return;
@@ -1980,17 +2018,33 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       let totalSpend = activeSpend.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
       let netBalance = totalEarn - totalSpend;
 
-      const elTotal = document.getElementById('earnings-total');
-      const elSpendingTotal = document.getElementById('spendings-total');
-      const elNetTotal = document.getElementById('net-earnings-total');
+      // Update Summary Bar (Both ID variants for resilience)
+      const elEarnA = document.getElementById('summary-total-earnings');
+      const elEarnB = document.getElementById('earnings-total');
+      const elSpendA = document.getElementById('summary-total-spendings');
+      const elSpendB = document.getElementById('spendings-total');
+      const elNetA = document.getElementById('summary-net-balance');
+      const elNetB = document.getElementById('net-earnings-total');
 
-      if (elTotal) elTotal.textContent = formatINR(totalEarn);
-      if (elSpendingTotal) elSpendingTotal.textContent = formatINR(totalSpend);
-      if (elNetTotal) {
-        elNetTotal.textContent = (netBalance >= 0 ? '+' : '') + formatINR(netBalance);
-        elNetTotal.style.color = netBalance >= 0 ? '#34d399' : '#f87171';
+      if (elEarnA) elEarnA.textContent = '+' + formatINR(totalEarn);
+      if (elEarnB) elEarnB.textContent = '+' + formatINR(totalEarn);
+
+      if (elSpendA) elSpendA.textContent = '-' + formatINR(totalSpend);
+      if (elSpendB) elSpendB.textContent = '-' + formatINR(totalSpend);
+
+      const netFormatted = (netBalance >= 0 ? '+' : '-') + formatINR(Math.abs(netBalance));
+      const netColor = netBalance >= 0 ? '#34d399' : '#f87171';
+
+      if (elNetA) {
+        elNetA.textContent = netFormatted;
+        elNetA.style.color = netColor;
+      }
+      if (elNetB) {
+        elNetB.textContent = netFormatted;
+        elNetB.style.color = netColor;
       }
 
+      // Filtered items
       let items = [];
       if (earningsFilter === 'all') {
         items = [
@@ -2006,19 +2060,19 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       items.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
       if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">💸 No transactions logged yet. Click "+ Log Club Earning" or "💸 + Log Spending Expense" above!</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:48px; color:var(--text-muted); font-size:13px;"><div style="font-size:28px; margin-bottom:8px;">💸</div>No transactions logged yet.<br>Click <b>"+ Log New Earning"</b> or <b>"💸 + Log Spending"</b> above to record your first entry!</td></tr>';
         return;
       }
 
       tbody.innerHTML = items.map(item => {
         const isEarn = item._type === 'earning';
         const badge = isEarn
-          ? '<span class="badge badge-paid">EARNING</span>'
-          : '<span class="badge badge-overdue">SPENDING</span>';
+          ? '<span class="badge badge-paid" style="font-weight:900; letter-spacing:0.5px;">🟢 EARNING</span>'
+          : '<span class="badge badge-overdue" style="font-weight:900; letter-spacing:0.5px;">🔴 SPENDING</span>';
 
         const amountDisplay = isEarn
-          ? `<span style="font-weight:900; color:#34d399; font-size:13px;">+${formatINR(item.amount)}</span>`
-          : `<span style="font-weight:900; color:#f87171; font-size:13px;">-${formatINR(item.amount)}</span>`;
+          ? `<span style="font-weight:900; color:#34d399; font-size:13.5px; font-family:'JetBrains Mono',monospace;">+${formatINR(item.amount)}</span>`
+          : `<span style="font-weight:900; color:#f87171; font-size:13.5px; font-family:'JetBrains Mono',monospace;">-${formatINR(item.amount)}</span>`;
 
         const actionButtons = isEarn
           ? `<div style="display:flex; gap:4px; justify-content:flex-end;">
@@ -2031,8 +2085,10 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
              </div>`;
 
         const receiptBadge = item.receiptPhoto
-          ? `<button type="button" onclick="previewReceiptModal('${item.receiptPhoto}', '${item.title.replace(/'/g, "\\'")}')" class="btn btn-secondary" style="padding:2px 8px; font-size:10px; color:#818cf8; border-color:rgba(129,140,248,0.4); margin-left:6px;" title="View Attached Bill Photo">📎 View Bill</button>`
+          ? `<button type="button" onclick="previewReceiptModal('${item.receiptPhoto}', '${(item.title||'').replace(/'/g, "\'")}')" class="btn btn-secondary" style="padding:2px 8px; font-size:10px; color:#818cf8; border-color:rgba(129,140,248,0.4); margin-left:6px;" title="View Attached Bill Photo">📎 View Bill</button>`
           : '';
+
+        const catDisplay = item.category ? item.category.replace(/_/g, ' ').toUpperCase() : 'GENERAL';
 
         return `
           <tr>
@@ -2043,9 +2099,9 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
                 ${receiptBadge}
               </div>
             </td>
-            <td><span class="badge badge-blue">${item.category}</span></td>
-            <td style="color:#fff;">${item.payerOrCustomer || item.vendorOrRecipient || '-'}</td>
-            <td class="font-mono" style="color:var(--text-dim);">${item.date}</td>
+            <td><span class="badge badge-blue">${catDisplay}</span></td>
+            <td style="color:#fff; font-weight:600;">${item.payerOrCustomer || item.vendorOrRecipient || '-'}</td>
+            <td class="font-mono" style="color:var(--text-dim);">${item.date || '-'}</td>
             <td class="font-mono" style="color:var(--text-muted); text-transform:uppercase;">${item.paymentMethod || 'cash'}</td>
             <td>${amountDisplay}</td>
             <td style="text-align:right;">${actionButtons}</td>
@@ -2057,18 +2113,49 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     window.setEarningsFilter = function(filterType) {
       earningsFilter = filterType;
       ['all', 'earning', 'spending'].forEach(function(f) {
-        var btn = document.getElementById('filter-' + f);
-        if (btn) {
-          if (f === filterType) {
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-primary');
-          } else {
-            btn.classList.remove('btn-primary');
-            btn.classList.add('btn-secondary');
+        var btnA = document.getElementById('filter-btn-' + f);
+        var btnB = document.getElementById('filter-' + f);
+        [btnA, btnB].forEach(btn => {
+          if (btn) {
+            if (f === filterType) {
+              btn.classList.remove('btn-secondary');
+              btn.classList.add('btn-primary', 'active');
+            } else {
+              btn.classList.remove('btn-primary', 'active');
+              btn.classList.add('btn-secondary');
+            }
           }
-        }
+        });
       });
       renderEarnings();
+    };
+
+    window.openAddEarningModal = function() {
+      if (document.getElementById('earn-modal-title')) document.getElementById('earn-modal-title').textContent = '💰 Log New Club Earning';
+      if (document.getElementById('earn-id')) document.getElementById('earn-id').value = 'earn-' + Date.now();
+      document.getElementById('earn-title').value = '';
+      document.getElementById('earn-amount').value = '';
+      document.getElementById('earn-category').value = 'tournament';
+      document.getElementById('earn-method').value = 'cash';
+      document.getElementById('earn-date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('earn-payer').value = '';
+      document.getElementById('earn-ref').value = 'REC-' + Date.now().toString().slice(-6);
+      openModal('add-earning-modal');
+    };
+
+    window.openAddSpendingModal = function() {
+      if (document.getElementById('spend-modal-title')) document.getElementById('spend-modal-title').textContent = '💸 Log Club Spending / Expense';
+      if (document.getElementById('spend-id')) document.getElementById('spend-id').value = 'spend-' + Date.now();
+      document.getElementById('spend-title').value = '';
+      document.getElementById('spend-amount').value = '';
+      document.getElementById('spend-category').value = 'utilities';
+      document.getElementById('spend-method').value = 'cash';
+      document.getElementById('spend-date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('spend-vendor').value = '';
+      document.getElementById('spend-ref').value = 'EXP-' + Date.now().toString().slice(-6);
+      document.getElementById('spend-desc').value = '';
+      removeAttachedReceipt();
+      openModal('add-spending-modal');
     };
 
     window.editEarning = function(id) {
@@ -2078,7 +2165,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       if (document.getElementById('earn-id')) document.getElementById('earn-id').value = e.id;
       document.getElementById('earn-title').value = e.title;
       document.getElementById('earn-amount').value = e.amount;
-      document.getElementById('earn-category').value = e.category;
+      document.getElementById('earn-category').value = e.category || 'tournament';
       document.getElementById('earn-method').value = e.paymentMethod || 'cash';
       document.getElementById('earn-date').value = e.date || '';
       document.getElementById('earn-payer').value = e.payerOrCustomer || '';
@@ -2086,8 +2173,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       openModal('add-earning-modal');
     };
 
-    window.handleSaveEarning = function(e) {
-      e.preventDefault();
+    window.handleSaveEarning = async function(e) {
+      if (e) e.preventDefault();
       const id = document.getElementById('earn-id')?.value || ('earn-' + Date.now());
       const title = document.getElementById('earn-title').value.trim();
       const amount = Number(document.getElementById('earn-amount').value) || 0;
@@ -2097,13 +2184,30 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       const payerOrCustomer = document.getElementById('earn-payer').value.trim();
       const referenceNo = document.getElementById('earn-ref').value.trim() || ('REC-' + Date.now().toString().slice(-6));
 
-      const earningObj = { id, title, amount, category, paymentMethod, date, payerOrCustomer, referenceNo };
+      if (!title || amount <= 0) {
+        alert('Please enter a valid title and amount for the earning.');
+        return;
+      }
+
+      const earningObj = {
+        id,
+        title,
+        amount,
+        category,
+        paymentMethod,
+        date,
+        payerOrCustomer,
+        referenceNo,
+        type: 'earning',
+        updatedAt: new Date().toISOString()
+      };
 
       if (deletedEarnings.has(id)) {
         deletedEarnings.delete(id);
         saveTombstones();
       }
 
+      // 1. Instant local persistence
       const idx = earnings.findIndex(x => x.id === id);
       if (idx !== -1) earnings[idx] = earningObj;
       else earnings.unshift(earningObj);
@@ -2113,15 +2217,48 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       renderEarnings();
       renderDashboard();
 
+      // 2. IMMEDIATE GLOBAL SUPABASE PERSISTENCE
+      if (sbClient) {
+        updateCloudSyncBadge('syncing');
+        const dbCategory = VALID_POSTGRES_EARN_CATS.includes(category) ? category : 'other';
+        const sbPayload = {
+          id: earningObj.id,
+          title: earningObj.title,
+          category: dbCategory,
+          amount: Number(earningObj.amount) || 0,
+          date: earningObj.date,
+          payment_method: earningObj.paymentMethod || 'cash',
+          payer_or_customer: earningObj.payerOrCustomer || '',
+          reference_no: earningObj.referenceNo || '',
+          description: earningObj.description || '',
+          custom_fields: {
+            type: 'earning',
+            originalCategory: earningObj.category
+          }
+        };
+
+        try {
+          const { data, error } = await sbClient.from('club_earnings').upsert([sbPayload], { onConflict: 'id' });
+          if (error) {
+            console.error('[Supabase Earning Save Error]:', error);
+            window.showToast('Saved locally, cloud notice: ' + error.message, 'error');
+          } else {
+            console.log('[Supabase Earning Saved Globally]:', earningObj.id);
+            updateCloudSyncBadge(true);
+            window.showToast('✓ Earning "' + earningObj.title + '" (+₹' + earningObj.amount.toLocaleString('en-IN') + ') saved globally!');
+          }
+        } catch(err) {
+          console.warn('[Earning Sync Catch]:', err);
+          window.showToast('Earning saved locally!', 'info');
+        }
+      } else {
+        window.showToast('Earning saved locally (offline mode)', 'info');
+      }
+
       debouncedCloudSync();
-      safeFetch('/api/finance/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(earningObj)
-      });
     };
 
-    window.deleteEarning = function(id) {
+    window.deleteEarning = async function(id) {
       if (confirm('Delete this earning entry?')) {
         earnings = earnings.filter(x => x.id !== id);
         deletedEarnings.add(id);
@@ -2131,9 +2268,18 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         renderDashboard();
 
         if (sbClient) {
-          sbClient.from('club_earnings').delete().eq('id', id).catch(() => {});
+          updateCloudSyncBadge('syncing');
+          try {
+            const { error } = await sbClient.from('club_earnings').delete().eq('id', id);
+            if (error) console.error('[Supabase Earning Delete Error]:', error);
+            else {
+              updateCloudSyncBadge(true);
+              window.showToast('✓ Earning removed globally from cloud database');
+            }
+          } catch(e) {
+            console.warn('[Earning Delete Catch]:', e);
+          }
         }
-        safeFetch('/api/finance/transactions/' + id, { method: 'DELETE' });
       }
     };
 
@@ -2144,7 +2290,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       if (document.getElementById('spend-id')) document.getElementById('spend-id').value = s.id;
       document.getElementById('spend-title').value = s.title;
       document.getElementById('spend-amount').value = s.amount;
-      document.getElementById('spend-category').value = s.category;
+      document.getElementById('spend-category').value = s.category || 'utilities';
       document.getElementById('spend-method').value = s.paymentMethod || 'cash';
       document.getElementById('spend-date').value = s.date || '';
       document.getElementById('spend-vendor').value = s.vendorOrRecipient || '';
@@ -2161,8 +2307,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       openModal('add-spending-modal');
     };
 
-    window.handleSaveSpending = function(e) {
-      e.preventDefault();
+    window.handleSaveSpending = async function(e) {
+      if (e) e.preventDefault();
       const id = document.getElementById('spend-id')?.value || ('spend-' + Date.now());
       const title = document.getElementById('spend-title').value.trim();
       const amount = Number(document.getElementById('spend-amount').value) || 0;
@@ -2174,9 +2320,24 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       const description = document.getElementById('spend-desc').value.trim();
       const receiptPhoto = document.getElementById('spend-receipt-img')?.value || '';
 
+      if (!title || amount <= 0) {
+        alert('Please enter a valid title and amount for the expense.');
+        return;
+      }
+
       const spendingObj = {
-        id, title, amount, category, paymentMethod, date, vendorOrRecipient, referenceNo, description,
-        receiptPhoto, type: 'spending'
+        id,
+        title,
+        amount,
+        category,
+        paymentMethod,
+        date,
+        vendorOrRecipient,
+        referenceNo,
+        description,
+        receiptPhoto,
+        type: 'spending',
+        updatedAt: new Date().toISOString()
       };
 
       if (deletedSpendings.has(id)) {
@@ -2186,6 +2347,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
 
       removeAttachedReceipt();
 
+      // 1. Instant local persistence
       const idx = spendings.findIndex(x => x.id === id);
       if (idx !== -1) spendings[idx] = spendingObj;
       else spendings.unshift(spendingObj);
@@ -2194,9 +2356,50 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       closeModal('add-spending-modal');
       renderEarnings();
       renderDashboard();
+
+      // 2. IMMEDIATE GLOBAL SUPABASE PERSISTENCE (using category 'other' to satisfy Postgres check constraint)
+      if (sbClient) {
+        updateCloudSyncBadge('syncing');
+        const sbPayload = {
+          id: spendingObj.id,
+          title: spendingObj.title,
+          category: 'other', // Safely satisfies Postgres check constraint
+          amount: Number(spendingObj.amount) || 0,
+          date: spendingObj.date,
+          payment_method: spendingObj.paymentMethod || 'cash',
+          payer_or_customer: spendingObj.vendorOrRecipient || '',
+          reference_no: spendingObj.referenceNo || '',
+          description: spendingObj.description || '',
+          custom_fields: {
+            type: 'spending',
+            spendCategory: spendingObj.category,
+            vendor: spendingObj.vendorOrRecipient || '',
+            receiptPhoto: spendingObj.receiptPhoto || ''
+          }
+        };
+
+        try {
+          const { data, error } = await sbClient.from('club_earnings').upsert([sbPayload], { onConflict: 'id' });
+          if (error) {
+            console.error('[Supabase Spending Save Error]:', error);
+            window.showToast('Saved locally, cloud notice: ' + error.message, 'error');
+          } else {
+            console.log('[Supabase Spending Saved Globally]:', spendingObj.id);
+            updateCloudSyncBadge(true);
+            window.showToast('✓ Expense "' + spendingObj.title + '" (-₹' + spendingObj.amount.toLocaleString('en-IN') + ') saved globally!');
+          }
+        } catch(err) {
+          console.warn('[Spending Sync Catch]:', err);
+          window.showToast('Expense saved locally!', 'info');
+        }
+      } else {
+        window.showToast('Expense saved locally (offline mode)', 'info');
+      }
+
+      debouncedCloudSync();
     };
 
-    window.deleteSpending = function(id) {
+    window.deleteSpending = async function(id) {
       if (confirm('Delete this spending expense entry?')) {
         spendings = spendings.filter(x => x.id !== id);
         deletedSpendings.add(id);
@@ -2204,6 +2407,20 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         saveDataLocally();
         renderEarnings();
         renderDashboard();
+
+        if (sbClient) {
+          updateCloudSyncBadge('syncing');
+          try {
+            const { error } = await sbClient.from('club_earnings').delete().eq('id', id);
+            if (error) console.error('[Supabase Spending Delete Error]:', error);
+            else {
+              updateCloudSyncBadge(true);
+              window.showToast('✓ Expense removed globally from cloud database');
+            }
+          } catch(e) {
+            console.warn('[Spending Delete Catch]:', e);
+          }
+        }
       }
     };
 
@@ -3706,7 +3923,7 @@ window.fetchAndRenderDonations = async function() {
             <span>+ Add Member</span>
           </button>
 
-          <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald">
+          <button type="button" onclick="openAddEarningModal()" class="btn btn-emerald">
             <span>+ Add Earning</span>
           </button>
         </div>
@@ -3933,10 +4150,10 @@ window.fetchAndRenderDonations = async function() {
           <button type="button" onclick="downloadEarningsPDF()" class="btn btn-secondary" style="background:rgba(56,189,248,0.15); color:#0284c7; border:1.5px solid rgba(56,189,248,0.4); font-size:12px; font-weight:800; padding:8px 14px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(56,189,248,0.15);" title="Generate official Financial Statement PDF ready to Save as PDF / Print">
             <span>📄 Download PDF</span>
           </button>
-          <button type="button" onclick="openModal('add-spending-modal')" class="btn btn-danger" style="background:#dc2626; color:#fff; font-size:12px; font-weight:800; border:none; box-shadow:0 4px 14px rgba(220,38,38,0.35); padding:8px 16px;">
+          <button type="button" onclick="openAddSpendingModal()" class="btn btn-danger" style="background:#dc2626; color:#fff; font-size:12px; font-weight:800; border:none; box-shadow:0 4px 14px rgba(220,38,38,0.35); padding:8px 16px;">
             💸 + Log Spending
           </button>
-          <button type="button" onclick="openModal('add-earning-modal')" class="btn btn-emerald" style="font-size:12px; font-weight:800; padding:8px 16px;">
+          <button type="button" onclick="openAddEarningModal()" class="btn btn-emerald" style="font-size:12px; font-weight:800; padding:8px 16px;">
             💰 + Log New Earning
           </button>
         </div>
@@ -5086,6 +5303,7 @@ window.fetchAndRenderDonations = async function() {
       </div>
 
       <form onsubmit="handleSaveSpending(event)">
+        <input type="hidden" id="spend-id">
         <div class="form-group">
           <label class="form-label">Expense / Spending Title *</label>
           <input type="text" id="spend-title" required placeholder="e.g. Ground Electricity Bill / Match Cricket Balls / Refreshments" class="form-input">
@@ -5201,6 +5419,7 @@ window.fetchAndRenderDonations = async function() {
       </div>
 
       <form onsubmit="handleSaveEarning(event)">
+        <input type="hidden" id="earn-id">
         <div class="form-group">
           <label class="form-label">Earning Title *</label>
           <input type="text" id="earn-title" required placeholder="e.g. Summer Cricket Tournament Entry Fees" class="form-input">
