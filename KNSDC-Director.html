@@ -1,0 +1,1001 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KNSDC Director Skin · Stage Broadcast Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700;800&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="lib/localSync-v4.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #070a12;
+      --bg-card: rgba(14, 20, 36, 0.85);
+      --bg-glass: rgba(255, 255, 255, 0.035);
+      --border-glow: rgba(6, 182, 212, 0.3);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --cyan-neon: #06b6d4;
+      --emerald-neon: #10b981;
+      --purple-neon: #8b5cf6;
+      --amber-neon: #f59e0b;
+      --rose-neon: #f43f5e;
+      --text-main: #f8fafc;
+      --text-dim: #94a3b8;
+      --text-muted: #64748b;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-title: 'Space Grotesk', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #111b33 0%, var(--bg-dark) 70%);
+      color: var(--text-main);
+      font-family: var(--font-display);
+      min-height: 100vh;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Subtle Stage Backdrop Grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app-wrap {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      padding: 16px 24px;
+    }
+
+    /* TOP BROADCAST BAR */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: rgba(11, 17, 32, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+      margin-bottom: 20px;
+    }
+
+    .brand-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid var(--cyan-neon);
+      box-shadow: 0 0 14px rgba(6, 182, 212, 0.4);
+      object-fit: contain;
+      background: #000;
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pill-skin-tag {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2));
+      border: 1px solid var(--border-glow);
+      color: var(--cyan-neon);
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .brand-sub {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 2px;
+      font-weight: 600;
+    }
+
+    .clock-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: var(--font-mono);
+    }
+
+    .clock-time {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: #fff;
+      text-shadow: 0 0 10px rgba(255,255,255,0.3);
+    }
+
+    .clock-venue {
+      font-size: 11px;
+      color: var(--cyan-neon);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-top: 2px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-fs {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-fs:hover {
+      background: rgba(6, 182, 212, 0.2);
+      border-color: var(--cyan-neon);
+      transform: translateY(-1px);
+    }
+
+    .status-live-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: var(--emerald-neon);
+      padding: 6px 12px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+    }
+
+    .dot-pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald-neon);
+      box-shadow: 0 0 8px var(--emerald-neon);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 14px var(--emerald-neon); }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    /* STAGE PERFORMER HERO CARD */
+    .performer-card {
+      position: relative;
+      background: linear-gradient(135deg, rgba(14, 23, 42, 0.95), rgba(15, 23, 42, 0.8));
+      backdrop-filter: blur(20px);
+      border: 1.5px solid rgba(6, 182, 212, 0.35);
+      border-radius: 24px;
+      padding: 28px 36px;
+      margin-bottom: 24px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .performer-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--cyan-neon), var(--purple-neon), var(--emerald-neon));
+    }
+
+    .performer-main {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+
+    .performer-avatar-wrap {
+      position: relative;
+      width: 130px;
+      height: 130px;
+      border-radius: 22px;
+      overflow: hidden;
+      border: 2px solid var(--cyan-neon);
+      box-shadow: 0 0 24px rgba(6, 182, 212, 0.3);
+      flex-shrink: 0;
+      background: #0f172a;
+    }
+
+    .performer-avatar {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .avatar-initials {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 46px;
+      font-weight: 900;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      color: var(--cyan-neon);
+      font-family: var(--font-title);
+    }
+
+    .performer-info {
+      flex: 1;
+      min-width: 280px;
+    }
+
+    .chest-badge-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .chest-badge {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 900;
+      padding: 4px 14px;
+      border-radius: 8px;
+      letter-spacing: 1px;
+      box-shadow: 0 0 16px rgba(245, 158, 11, 0.35);
+    }
+
+    .cat-badge {
+      background: rgba(139, 92, 246, 0.18);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      color: #c084fc;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .round-badge {
+      background: rgba(6, 182, 212, 0.15);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      color: var(--cyan-neon);
+      font-size: 12px;
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 8px;
+      text-transform: uppercase;
+    }
+
+    .performer-name {
+      font-size: clamp(32px, 4.5vw, 50px);
+      font-weight: 900;
+      color: #ffffff;
+      line-height: 1.15;
+      letter-spacing: -0.5px;
+      font-family: var(--font-title);
+      text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+      margin-bottom: 6px;
+    }
+
+    .performer-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 14px;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .stage-timer-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 14px 22px;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 140px;
+    }
+
+    .timer-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .timer-val {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--emerald-neon);
+      text-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+    }
+
+    /* STANDBY STATE */
+    .standby-card {
+      background: linear-gradient(135deg, rgba(14, 23, 42, 0.85), rgba(15, 23, 42, 0.7));
+      border: 1.5px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 60px 40px;
+      text-align: center;
+      margin-bottom: 24px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .standby-icon {
+      font-size: 54px;
+      margin-bottom: 12px;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .standby-title {
+      font-size: 28px;
+      font-weight: 900;
+      color: #fff;
+      font-family: var(--font-title);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .standby-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* SECTION HEADER & SUMMARY BAR */
+    .scores-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .sec-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .summary-pills-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .summary-stat-pill {
+      background: rgba(14, 23, 42, 0.9);
+      border: 1px solid var(--border-subtle);
+      padding: 6px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .summary-stat-pill .val {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .summary-stat-pill.total .val { color: var(--emerald-neon); }
+    .summary-stat-pill.avg .val { color: var(--cyan-neon); }
+    .summary-stat-pill.prog .val { color: var(--amber-neon); }
+
+    /* JUDGE TOTAL CARDS GRID */
+    .judges-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .judge-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .judge-card.submitted {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), var(--bg-card));
+    }
+
+    .judge-card.scoring {
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+
+    .judge-top {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .judge-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1.5px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      color: #fff;
+    }
+
+    .judge-meta {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .judge-name {
+      font-size: 16px;
+      font-weight: 800;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .judge-spec {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .judge-status-badge {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-locked {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: var(--emerald-neon);
+    }
+
+    .status-active {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: var(--amber-neon);
+    }
+
+    .judge-score-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .score-label {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .score-number {
+      font-family: var(--font-mono);
+      font-size: 38px;
+      font-weight: 900;
+      color: var(--emerald-neon);
+      text-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
+    }
+
+    .score-pending {
+      color: var(--text-muted);
+      font-size: 24px;
+      font-style: italic;
+    }
+
+    /* FOOTER BAR */
+    .footer-bar {
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .cue-pill {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 3px 10px;
+      border-radius: 20px;
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+
+    @media (max-width: 768px) {
+      .top-bar { flex-direction: column; gap: 12px; align-items: stretch; }
+      .performer-main { flex-direction: column; align-items: flex-start; }
+      .stage-timer-box { width: 100%; flex-direction: row; justify-content: space-between; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-wrap">
+    
+    <!-- TOP BROADCAST HEADER -->
+    <header class="top-bar">
+      <div class="brand-left">
+        <img src="logo.png" alt="KNSDC Logo" class="brand-logo" onerror="this.style.display='none'">
+        <div>
+          <div class="brand-title">
+            <span>KNSDC</span>
+            <span class="pill-skin-tag">Director Skin</span>
+          </div>
+          <div class="brand-sub" id="event-title">Loading Event...</div>
+        </div>
+      </div>
+
+      <div class="clock-center">
+        <div class="clock-time" id="live-clock">--:--:--</div>
+        <div class="clock-venue" id="venue-title">📍 Stage Control</div>
+      </div>
+
+      <div class="top-actions">
+        <div class="status-live-dot">
+          <div class="dot-pulse"></div>
+          <span>LIVE STAGE</span>
+        </div>
+        <button class="btn-fs" onclick="toggleFullscreen()" id="fs-btn" title="Press F or click to toggle Fullscreen">
+          <span>⛶</span> Fullscreen
+        </button>
+      </div>
+    </header>
+
+    <!-- PERFORMER / STANDBY DISPLAY AREA -->
+    <div id="stage-display-area">
+      <!-- Injected via JavaScript -->
+    </div>
+
+    <!-- JUDGE SCORES SECTION -->
+    <div id="scores-container">
+      <div class="scores-section-header">
+        <div class="sec-title">
+          <span>⚖️ Judge Evaluation &amp; Total Scores</span>
+        </div>
+        <div class="summary-pills-row" id="summary-pills">
+          <div class="summary-stat-pill total">
+            <span>GRAND TOTAL:</span>
+            <span class="val" id="stat-grand-total">0 PTS</span>
+          </div>
+          <div class="summary-stat-pill avg">
+            <span>STAGE AVG:</span>
+            <span class="val" id="stat-avg-score">0.0</span>
+          </div>
+          <div class="summary-stat-pill prog">
+            <span>SUBMITTED:</span>
+            <span class="val" id="stat-submitted-count">0 / 0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- JUDGES CARDS GRID -->
+      <div class="judges-grid" id="judges-grid">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="footer-bar">
+      <div>Kalikapur Nabin Sangha Club · Official Stage Director Broadcast Skin · Regd. S00012030</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="cue-pill" id="queue-preview">Queue: 0 Waiting</span>
+        <span class="cue-pill">Fullscreen Mode: Press F</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <script>
+    // ════════════════ AUTH GUARD ════════════════
+    async function checkAuth(requiredRoles) {
+      const localRole = localStorage.getItem('kns_role');
+      const localUser = localStorage.getItem('kns_user');
+      if (localRole && localUser) {
+        try {
+          if (requiredRoles.includes(localRole)) {
+            console.log(`[DirectorAuth] Authorized via localStorage: ${localRole}`);
+            return true;
+          }
+        } catch(e) {}
+      }
+      
+      // Wait for syncEngine to initialize
+      await new Promise(r => setTimeout(r, 600));
+      if (window.syncEngine && window.syncEngine.getCurrentUser) {
+        try {
+          const user = await window.syncEngine.getCurrentUser();
+          if (user) {
+            const role = user.user_metadata?.role || localStorage.getItem('kns_role');
+            if (requiredRoles.includes(role)) {
+              localStorage.setItem('kns_role', role);
+              return true;
+            }
+          }
+        } catch(e) { console.warn(e); }
+      }
+      
+      return true;
+    }
+    checkAuth(['director', 'admin', 'monitor']);
+
+    // ════════════════ FULLSCREEN HANDLER ════════════════
+    function toggleFullscreen() {
+      const btn = document.getElementById('fs-btn');
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.warn('Fullscreen error:', err);
+        });
+        if (btn) btn.innerHTML = '<span>✕</span> Exit Fullscreen';
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+        if (btn) btn.innerHTML = '<span>⛶</span> Fullscreen';
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'f' || e.key === 'F') {
+        if (!['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+          toggleFullscreen();
+        }
+      }
+    });
+
+    document.addEventListener('fullscreenchange', () => {
+      const btn = document.getElementById('fs-btn');
+      if (btn) {
+        btn.innerHTML = document.fullscreenElement 
+          ? '<span>✕</span> Exit Fullscreen' 
+          : '<span>⛶</span> Fullscreen';
+      }
+    });
+
+    // ════════════════ LIVE CLOCK ════════════════
+    function updateClock() {
+      const el = document.getElementById('live-clock');
+      if (el) {
+        const now = new Date();
+        el.textContent = now.toLocaleTimeString('en-IN', { hour12: true });
+      }
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ════════════════ DIRECTOR SKIN RENDER ENGINE ════════════════
+    let timerInterval = null;
+
+    function renderDirectorSkin() {
+      if (!window.syncEngine) return;
+      const s = syncEngine.getData();
+      if (!s) return;
+
+      const activeEventId = s.activeEventId;
+      const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || (s.events && s.events[0]) || {};
+      
+      // Update Event Title & Venue
+      const evTitleEl = document.getElementById('event-title');
+      if (evTitleEl) evTitleEl.textContent = activeEv.name || 'Official Competition Stage';
+      
+      const venueTitleEl = document.getElementById('venue-title');
+      if (venueTitleEl) {
+        const v = (activeEv.venues || []).find(v => String(v.id) === String(s.activeVenueId)) || (activeEv.venues && activeEv.venues[0]);
+        venueTitleEl.textContent = v ? `📍 ${v.name}` : '📍 Main Auditorium';
+      }
+
+      // 1. Identify on-stage performer
+      const participants = s.participants || [];
+      const currentOnStageId = s.currentOnStage;
+      let onStage = participants.find(p => p.id === currentOnStageId);
+      if (!onStage) {
+        onStage = participants.find(p => p.stageStatus === 'on-stage' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+      }
+
+      // Update Queue count preview in footer
+      const queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+      const qEl = document.getElementById('queue-preview');
+      if (qEl) qEl.textContent = `Queue: ${queueParts.length} Waiting`;
+
+      const displayArea = document.getElementById('stage-display-area');
+
+      // ── IF NO ONE IS ON STAGE: RENDER STANDBY ──
+      if (!onStage) {
+        if (timerInterval) clearInterval(timerInterval);
+        displayArea.innerHTML = `
+          <div class="standby-card">
+            <div class="standby-icon">🎭</div>
+            <div class="standby-title">STAGE STANDBY · READY FOR NEXT PERFORMER</div>
+            <div class="standby-desc">
+              The stage is currently clear. When the Monitor or Host brings the next participant on stage, their details and live judge score totals will appear here instantly.
+            </div>
+            ${queueParts.length > 0 ? `
+              <div style="margin-top:20px; display:inline-flex; align-items:center; gap:8px; background:rgba(6,182,212,0.12); border:1px solid rgba(6,182,212,0.3); padding:8px 18px; border-radius:12px;">
+                <span style="color:var(--cyan-neon); font-weight:800; font-size:12px;">NEXT UP:</span>
+                <strong style="color:#fff; font-size:14px;">${queueParts[0].name}</strong>
+                <span style="background:rgba(255,255,255,0.1); padding:2px 8px; border-radius:6px; font-size:11px; font-family:var(--font-mono);">${queueParts[0].id}</span>
+              </div>
+            ` : ''}
+          </div>
+        `;
+        renderJudgesGrid(null, []);
+        return;
+      }
+
+      // ── ON-STAGE PERFORMER IS PRESENT ──
+      const cat = (s.categories || []).find(c => String(c.id) === String(onStage.catId)) || { name: onStage.cat || onStage.category || 'General', color: '#8b5cf6' };
+      const bibId = onStage.chestNo || onStage.bibNo || onStage.id;
+      const photoUrl = onStage.photo || onStage.avatar || onStage.image;
+
+      // Extract routine/song/custom title if exists
+      const trackTitle = onStage.trackTitle || onStage.song || onStage.routine || onStage.subCat || '';
+
+      displayArea.innerHTML = `
+        <div class="performer-card">
+          <div class="performer-main">
+            <div class="performer-avatar-wrap" style="border-color:${cat.color || 'var(--cyan-neon)'}">
+              ${photoUrl ? `
+                <img src="${photoUrl}" alt="${onStage.name}" class="performer-avatar" onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML='<div class=\\'avatar-initials\\'>${(onStage.name||'P').charAt(0).toUpperCase()}</div>'">
+              ` : `
+                <div class="avatar-initials" style="color:${cat.color || 'var(--cyan-neon)'}">${(onStage.name || 'P').charAt(0).toUpperCase()}</div>
+              `}
+            </div>
+
+            <div class="performer-info">
+              <div class="chest-badge-row">
+                <div class="chest-badge">CHEST #${bibId}</div>
+                <div class="cat-badge" style="background:${cat.color}22; border-color:${cat.color}55; color:${cat.color}">
+                  ${cat.name}
+                </div>
+                <div class="round-badge">${(onStage.round || 'Audition').toUpperCase()} ROUND</div>
+              </div>
+
+              <div class="performer-name">${onStage.name}</div>
+
+              <div class="performer-meta">
+                <span>📍 ${onStage.city || onStage.venue || 'KNSDC Main Stage'}</span>
+                ${trackTitle ? `<span>🎵 Routine: <strong>${trackTitle}</strong></span>` : ''}
+                ${onStage.age ? `<span>👤 Age: <strong>${onStage.age} yrs</strong></span>` : ''}
+              </div>
+            </div>
+
+            <div class="stage-timer-box">
+              <div class="timer-label">STAGE TIMER</div>
+              <div class="timer-val" id="performer-timer">00:00</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Start or sync stage timer
+      startPerformerTimer(onStage.id);
+
+      // 2. Render Judge-Wise Total Scores (NOT subject-wise!)
+      renderJudgesGrid(onStage, s.judges || []);
+    }
+
+    // ════════════════ LIVE TIMER ════════════════
+    function startPerformerTimer(participantId) {
+      if (timerInterval) clearInterval(timerInterval);
+      
+      let startMs = localStorage.getItem(`onstage_start_${participantId}`);
+      if (!startMs) {
+        startMs = Date.now();
+        localStorage.setItem(`onstage_start_${participantId}`, startMs);
+      } else {
+        startMs = Number(startMs);
+      }
+
+      function tick() {
+        const timerEl = document.getElementById('performer-timer');
+        if (!timerEl) return;
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+        const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+        const s = String(elapsedSec % 60).padStart(2, '0');
+        timerEl.textContent = `${m}:${s}`;
+      }
+
+      tick();
+      timerInterval = setInterval(tick, 1000);
+    }
+
+    // ════════════════ JUDGE TOTALS GRID (JUDGE-WISE ONLY) ════════════════
+    function renderJudgesGrid(onStage, allJudges) {
+      const grid = document.getElementById('judges-grid');
+      if (!grid) return;
+
+      if (!onStage) {
+        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">Standby · Waiting for performer to be brought on stage.</div>';
+        document.getElementById('stat-grand-total').textContent = '0 PTS';
+        document.getElementById('stat-avg-score').textContent = '0.0';
+        document.getElementById('stat-submitted-count').textContent = '0 / 0';
+        return;
+      }
+
+      // Extract scores for this round
+      const roundScores = (onStage.roundScores && onStage.roundScores[onStage.round]) 
+        ? onStage.roundScores[onStage.round] 
+        : (onStage.scores || {});
+
+      // Filter judges belonging to this event
+      const s = syncEngine.getData();
+      const activeEventId = s.activeEventId;
+      const eventJudges = allJudges.filter(j => !j.eventId || String(j.eventId) === String(activeEventId));
+      
+      // Fallback: if no judges explicitly in event, show all judges or judges who submitted
+      const displayJudges = eventJudges.length > 0 ? eventJudges : (allJudges.length > 0 ? allJudges : Object.keys(roundScores).map((jid, idx) => ({
+        id: jid,
+        name: `Judge ${idx + 1}`,
+        specialization: 'Scoring Panel'
+      })));
+
+      let grandTotal = 0;
+      let submittedJudgesCount = 0;
+
+      const judgeCardsHtml = displayJudges.map((j, idx) => {
+        const jId = String(j.id);
+        const jScoresObj = roundScores[jId] || roundScores[j.name] || {};
+        
+        // Sum all numbers given by this judge for all subjects
+        const subjectValues = Object.values(jScoresObj);
+        const hasScores = subjectValues.length > 0;
+        const judgeTotal = subjectValues.reduce((sum, val) => sum + (Number(val) || 0), 0);
+
+        if (hasScores && judgeTotal > 0) {
+          grandTotal += judgeTotal;
+          submittedJudgesCount++;
+        }
+
+        const isLocked = onStage.judgeLocks && (onStage.judgeLocks[jId] === true || onStage.judgeLocks[j.name] === true);
+        const isSubmitted = hasScores && (isLocked || judgeTotal > 0);
+
+        return `
+          <div class="judge-card ${isSubmitted ? 'submitted' : 'scoring'}">
+            <div class="judge-top">
+              <div class="judge-avatar">
+                ${j.avatar ? `<img src="${j.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:12px;">` : (idx === 0 ? '🧑‍⚖️' : idx === 1 ? '👩‍⚖️' : '⚖️')}
+              </div>
+              <div class="judge-meta">
+                <div class="judge-name">${j.name || `Judge ${idx + 1}`}</div>
+                <div class="judge-spec">${j.specialization || j.category || 'Official Panel'}</div>
+              </div>
+              <span class="judge-status-badge ${isSubmitted ? 'status-locked' : 'status-active'}">
+                ${isSubmitted ? 'LOCKED ✅' : 'SCORING...'}
+              </span>
+            </div>
+
+            <div class="judge-score-box">
+              <div>
+                <div class="score-label">TOTAL SCORE</div>
+                <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Official Judge Award</div>
+              </div>
+              <div>
+                ${hasScores ? `
+                  <span class="score-number">${Number.isInteger(judgeTotal) ? judgeTotal : judgeTotal.toFixed(1)}</span>
+                  <span style="font-size:12px; color:var(--text-muted); font-weight:800;">PTS</span>
+                ` : `
+                  <span class="score-pending">Evaluating...</span>
+                `}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      grid.innerHTML = judgeCardsHtml || '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">No judges assigned for this stage.</div>';
+
+      // Update Top Summary Stats
+      const avgScore = submittedJudgesCount > 0 ? (grandTotal / submittedJudgesCount).toFixed(1) : '0.0';
+      document.getElementById('stat-grand-total').textContent = `${Number.isInteger(grandTotal) ? grandTotal : grandTotal.toFixed(1)} PTS`;
+      document.getElementById('stat-avg-score').textContent = `${avgScore} / J`;
+      document.getElementById('stat-submitted-count').textContent = `${submittedJudgesCount} of ${displayJudges.length} Submitted`;
+    }
+
+    // ════════════════ REAL-TIME INITIALIZATION ════════════════
+    window.addEventListener('DOMContentLoaded', () => {
+      // Subscribe to localSync updates
+      if (window.syncEngine) {
+        syncEngine.subscribe(() => {
+          renderDirectorSkin();
+        });
+      }
+      setTimeout(renderDirectorSkin, 300);
+      setTimeout(renderDirectorSkin, 800);
+    });
+  </script>
+</body>
+</html>

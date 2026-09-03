@@ -2763,7 +2763,23 @@
       <div style="font-size:14px; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;">🚗 Partner Service Accounts (Delivery/Transport)</div>
       <button class="btn btn-amber" onclick="openPartnerModal()">+ Assign Service Partner</button>
     </div>
-    <div class="g1" id="partner-list"></div>
+    <div class="g1" id="partner-list" style="margin-bottom: 40px;"></div>
+
+    <hr style="border:none; border-top:1.5px dashed var(--border); margin:30px 0 20px;"/>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+      <div>
+        <div style="font-size:14px; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;">🎬 Stage Director Accounts (Director Skin)</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">Fullscreen stage presentation skin showing on-stage performer &amp; judge-wise total scores</div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <a href="KNSDC-Director.html" target="_blank" class="btn btn-sm" style="background:#0284c7;color:white;text-decoration:none;display:flex;align-items:center;gap:6px;font-weight:700;padding:6px 12px;border-radius:8px;box-shadow:0 2px 8px rgba(2,132,199,0.3);">
+          ⛶ Open Director Skin ↗
+        </a>
+        <button class="btn btn-amber" onclick="openDirectorModal()">+ Assign Director</button>
+      </div>
+    </div>
+    <div class="g1" id="director-list" style="margin-bottom: 30px;"></div>
   </div>
 
   <!-- ════════════════ SETTINGS ════════════════ -->
@@ -3628,6 +3644,25 @@
       <div class="fg"><label class="fl">Email (Login ID)</label><input type="email" id="partner-email" placeholder="partner@knsdc.com" autocomplete="off"/></div>
       <div class="fg"><label class="fl">Password</label><input type="text" id="partner-pass" placeholder="Password" autocomplete="new-password"/></div>
       <button class="btn btn-amber" style="width:100%;margin-top:10px" id="partner-submit-btn" onclick="savePartner()">Save Partner</button>
+    </div>
+  </div>
+</div>
+
+<!-- DIRECTOR ASSIGN MODAL -->
+<div class="modal-overlay" id="director-modal" style="display:none" onclick="closeOnBg(event,'director-modal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="director-modal-title">🎬 Assign Stage Director</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeM('director-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="director-id" />
+      <div class="fg"><label class="fl">Event</label><select id="director-event" onchange="updateDirectorVenueDropdown()" style="background:rgba(255,255,255,0.95);border:1px solid #cbd5e1;padding:12px;border-radius:10px;width:100%;font-size:14px;color:#1e293b"></select></div>
+      <div class="fg"><label class="fl">Director Full Name *</label><input type="text" id="director-name" placeholder="e.g. Sourav Bairagi" autocomplete="off"/></div>
+      <div class="fg"><label class="fl">Stage / Venue</label><select id="director-venue"></select></div>
+      <div class="fg"><label class="fl">Email (Login ID) *</label><input type="email" id="director-email" placeholder="director@knsdc.com" autocomplete="off"/></div>
+      <div class="fg"><label class="fl">Password *</label><input type="text" id="director-pass" placeholder="Enter password" autocomplete="new-password"/></div>
+      <button class="btn btn-amber" style="width:100%;margin-top:10px" id="director-submit-btn" onclick="saveDirector()">Save Director</button>
     </div>
   </div>
 </div>
@@ -5202,6 +5237,7 @@ function hydrate() {
   agreements = s.judgeAgreements || s.agreements || [];
   hostAssignments = s.hostAssignments || [];
   partnerAssignments = s.partnerAssignments || [];
+  directorAssignments = s.directorAssignments || [];
   // Only load STAFF chat messages (those WITHOUT a participantId field, which is used exclusively by Helpdesk)
   chatHistory = (s.chatMessages || []).filter(m => !m.participantId);
   sosActive = s.sosActive || false;
@@ -5272,6 +5308,7 @@ function hydrate() {
   updateSOSUI();
   if (typeof renderHostAssign === 'function') renderHostAssign();
   if (typeof renderPartnerAssign === 'function') renderPartnerAssign();
+  if (typeof renderDirectorAssign === 'function') renderDirectorAssign();
   
   // Sync system Live/Offline status
   const isOffline = s.systemStatus === 'offline';
@@ -5378,6 +5415,7 @@ function syncAll() {
     newState.judgeAgreements = [...agreements];
     newState.hostAssignments = [...hostAssignments];
     newState.partnerAssignments = [...partnerAssignments];
+    newState.directorAssignments = [...directorAssignments];
     newState.sosActive = sosActive;
     newState.sosHistory = [...sosHistory];
     newState.nxtId = { ...nxtId };
@@ -13829,6 +13867,230 @@ function renderHostAssign() {
   `).join('');
 }
 
+// ══════════════════════════════════════════
+// 🎬 STAGE DIRECTOR ASSIGNMENT (DIRECTOR SKIN)
+// ══════════════════════════════════════════
+let directorAssignments = [];
+
+window.openDirectorModal = function() {
+  const s = syncEngine.getData();
+  const events = s.events || [];
+  if (events.length === 0) { toast('Create an event first!'); return; }
+  
+  const evSel = document.getElementById('director-event');
+  if (evSel) {
+    evSel.innerHTML = events.map(e => `<option value="${e.id}" ${String(e.id) === String(activeEventId) ? 'selected' : ''}>${e.name}</option>`).join('');
+  }
+  
+  updateDirectorVenueDropdown();
+  ['director-id', 'director-name', 'director-email', 'director-pass'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const emailEl = document.getElementById('director-email');
+  if (emailEl) emailEl.disabled = false;
+  const titleEl = document.getElementById('director-modal-title');
+  if (titleEl) titleEl.textContent = '🎬 Assign Stage Director';
+  const subBtn = document.getElementById('director-submit-btn');
+  if (subBtn) subBtn.textContent = 'Save Director';
+
+  openM('director-modal');
+};
+
+window.updateDirectorVenueDropdown = function() {
+  const s = syncEngine.getData();
+  const evId = document.getElementById('director-event')?.value || activeEventId;
+  const activeEv = (s.events || []).find(e => String(e.id) === String(evId));
+  const sel = document.getElementById('director-venue');
+  if (!sel) return;
+  sel.innerHTML = '<option value="all">⭐ All Venues / Main Stage</option>' + 
+    (activeEv?.venues || []).map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+};
+
+window.editDirector = function(id) {
+  const d = (directorAssignments || []).find(x => String(x.id) === String(id));
+  if (!d) return;
+
+  const s = syncEngine.getData();
+  const events = s.events || [];
+  const evSel = document.getElementById('director-event');
+  if (evSel) {
+    evSel.innerHTML = events.map(e => `<option value="${e.id}" ${String(e.id) === String(d.eventId) ? 'selected' : ''}>${e.name}</option>`).join('');
+  }
+  updateDirectorVenueDropdown();
+
+  if (document.getElementById('director-id')) document.getElementById('director-id').value = d.id;
+  if (document.getElementById('director-name')) document.getElementById('director-name').value = d.name || '';
+  if (document.getElementById('director-venue')) document.getElementById('director-venue').value = d.venueId || 'all';
+  const emailEl = document.getElementById('director-email');
+  if (emailEl) {
+    emailEl.value = d.email || '';
+    emailEl.disabled = true;
+  }
+  if (document.getElementById('director-pass')) document.getElementById('director-pass').value = d.password || '';
+
+  const titleEl = document.getElementById('director-modal-title');
+  if (titleEl) titleEl.textContent = '✏️ Edit Stage Director';
+  const subBtn = document.getElementById('director-submit-btn');
+  if (subBtn) subBtn.textContent = 'Update Director';
+
+  openM('director-modal');
+};
+
+let saveDirectorInProgress = false;
+window.saveDirector = async function() {
+  if (saveDirectorInProgress) return;
+  
+  const dId = document.getElementById('director-id')?.value;
+  const name = document.getElementById('director-name')?.value.trim();
+  const venueId = document.getElementById('director-venue')?.value || 'all';
+  const email = document.getElementById('director-email')?.value.trim();
+  const pass = document.getElementById('director-pass')?.value.trim();
+  
+  if (!name || !email || !pass) {
+    toast('Name, Email and Password are required!');
+    return;
+  }
+  
+  saveDirectorInProgress = true;
+  const btn = document.getElementById('director-submit-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+  }
+
+  try {
+    const evId = document.getElementById('director-event')?.value || activeEventId;
+    const s = syncEngine.getData();
+    const activeEv = (s.events || []).find(e => String(e.id) === String(evId));
+    const vName = venueId === 'all' 
+      ? 'All Venues / Main Stage' 
+      : ((activeEv?.venues || []).find(v => String(v.id) === String(venueId))?.name || 'Main Stage');
+
+    const newDirector = {
+      id: dId || Date.now().toString(),
+      eventId: evId,
+      name,
+      venueId,
+      venueName: vName,
+      email,
+      password: pass,
+      status: 'assigned'
+    };
+    
+    const exists = directorAssignments.some(d => d.email.toLowerCase() === email.toLowerCase());
+    if (!exists) {
+      directorAssignments.push(newDirector);
+    } else {
+      directorAssignments = directorAssignments.map(d => 
+        d.email.toLowerCase() === email.toLowerCase() 
+          ? { ...d, eventId: evId, name, venueId, venueName: vName, password: pass } 
+          : d
+      );
+    }
+    
+    syncEngine.setData(state => ({
+      ...state,
+      directorAssignments: [...directorAssignments]
+    }));
+    syncAll();
+    
+    // Sync to staff credentials with role 'director'
+    if (syncEngine.addStaffMember) {
+      await syncEngine.addStaffMember(email, pass, name, 'director');
+    }
+
+    closeM('director-modal');
+    renderDirectorAssign();
+    toast('Director assigned successfully!');
+  } catch (err) {
+    console.error(err);
+    toast('Error saving director!');
+  } finally {
+    saveDirectorInProgress = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Save Director';
+    }
+  }
+};
+
+window.deleteDirector = async function(id) {
+  if (!confirm('Delete this director account?')) return;
+  const dir = (directorAssignments || []).find(d => String(d.id) === String(id));
+  if (dir && dir.email) {
+    if (syncEngine.deleteStaffMember) {
+      await syncEngine.deleteStaffMember(dir.email).catch(e => console.warn(e));
+    }
+  }
+  directorAssignments = directorAssignments.filter(d => String(d.id) !== String(id));
+  syncEngine.setData(state => ({
+    ...state,
+    directorAssignments: [...directorAssignments]
+  }));
+  syncAll();
+  if (syncEngine.forceSaveStateToSupabase) {
+    await syncEngine.forceSaveStateToSupabase().catch(e => console.warn(e));
+  }
+  renderDirectorAssign();
+  toast('Director deleted successfully!');
+};
+
+function renderDirectorAssign() {
+  const container = document.getElementById('director-list');
+  if (!container) return;
+  
+  const activeDirectors = directorAssignments || [];
+  
+  if (activeDirectors.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:30px;background:rgba(0,0,0,0.02);border-radius:12px;border:1px dashed var(--border)">No stage directors assigned yet. Click <strong>+ Assign Director</strong> above to create a Director account for the Fullscreen Director Skin.</div>';
+    return;
+  }
+  
+  const s = syncEngine.getData();
+  const getEventName = (id) => (s.events || []).find(e => String(e.id) === String(id))?.name || 'All Events';
+
+  container.innerHTML = activeDirectors.map(d => `
+    <div class="card glass-card" style="padding:14px;border-left:4px solid #0284c7;background:linear-gradient(135deg,rgba(2,132,199,0.03),rgba(255,255,255,1));border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.03);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:6px;">
+            <span>🎬</span> ${d.name}
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+            🎪 Event: <strong>${getEventName(d.eventId)}</strong> | 📍 Venue: <strong>${d.venueName || 'All Stages'}</strong>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="badge" style="background:rgba(2,132,199,0.12);color:#0284c7;border:1px solid rgba(2,132,199,0.3);font-weight:800;font-size:10px;">DIRECTOR SKIN</span>
+          <a href="KNSDC-Director.html" target="_blank" class="btn btn-sm" style="background:#0284c7;color:#fff;text-decoration:none;font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;display:flex;align-items:center;gap:4px;" title="Open Director Skin in new tab">
+            ⛶ Launch ↗
+          </a>
+        </div>
+      </div>
+      <div style="background:rgba(0,0,0,0.03);padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:12px;border:1px solid rgba(0,0,0,0.04);">
+        <div style="margin-bottom:4px;display:flex;justify-content:space-between;">
+          <span><strong>Login Email:</strong> <span style="color:var(--blue);font-weight:700;">${d.email}</span></span>
+          <button onclick="navigator.clipboard.writeText('${d.email}');toast('Email copied!')" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--text-muted);" title="Copy email">📋</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span><strong>Password:</strong> <span style="font-family:monospace;background:rgba(0,0,0,0.05);padding:1px 6px;border-radius:4px;">${d.password}</span></span>
+          <button onclick="navigator.clipboard.writeText('${d.password}');toast('Password copied!')" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--text-muted);" title="Copy password">📋</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;color:var(--text-dim);">Role: <code>director</code> (Supabase Auth)</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-ghost" style="color:var(--blue);border-color:rgba(37,99,235,0.2);padding:3px 10px;font-size:11px;" onclick="editDirector('${d.id}')">✏️ Edit</button>
+          <button class="btn-delete-fancy" onclick="deleteDirector('${d.id}')" title="Delete Director">
+            <svg viewBox="0 0 448 512" class="svgIcon"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
 
 // ══════════════════════════════════════════
 // JUDGE ASSIGNMENT
@@ -14474,7 +14736,11 @@ syncEngine.subscribe(s => {
     if (pageId === 'promotion') renderPromoList();
     if (pageId === 'chat') renderChatOnlineList();
     if (pageId === 'judgeassign') { renderAgreements(); renderAssignedJudges(); }
-    if (pageId === 'hostassign') renderHostAssign();
+    if (pageId === 'hostassign') {
+      renderHostAssign();
+      if (typeof renderPartnerAssign === 'function') renderPartnerAssign();
+      if (typeof renderDirectorAssign === 'function') renderDirectorAssign();
+    }
     if (pageId === 'settings') {
       renderSubjects();
       renderEventSettings();
