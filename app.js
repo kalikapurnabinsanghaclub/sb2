@@ -41,6 +41,7 @@ const renderApp = (isUpdate = false) => {
     const portalMap = {
       'admin': 'KNSDC-Admin.html',
       'finance': 'KNSDC-Finance.html',
+      'director': 'KNSDC-Director.html',
       'host': 'KNSDC-Host.html',
       'judge': 'KNSDC-Judge.html',
       'monitor': 'KNSDC-Monitor.html',
@@ -48,7 +49,8 @@ const renderApp = (isUpdate = false) => {
       'umpire': 'KNSDC-umpior.html',
       'referee': 'KNSDC-Referee.html',
       'food_partner': 'KNSDC-Services.html',
-      'transport_partner': 'KNSDC-Services.html'
+      'transport_partner': 'KNSDC-Services.html',
+      'service_partner': 'KNSDC-Services.html'
     };
     window.location.href = portalMap[state.role] || `KNSDC-${state.role.charAt(0).toUpperCase() + state.role.slice(1)}.html`;
     return;

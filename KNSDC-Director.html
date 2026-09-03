@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -626,12 +626,18 @@
       </div>
 
       <div class="top-actions">
+        <select id="director-event-select" onchange="switchDirectorEvent(this.value)" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px 10px; border-radius:10px; font-size:12px; font-weight:700; outline:none; cursor:pointer; max-width:180px;">
+          <option value="">Switch Event</option>
+        </select>
         <div class="status-live-dot">
           <div class="dot-pulse"></div>
           <span>LIVE STAGE</span>
         </div>
         <button class="btn-fs" onclick="toggleFullscreen()" id="fs-btn" title="Press F or click to toggle Fullscreen">
           <span>⛶</span> Fullscreen
+        </button>
+        <button class="btn-fs" onclick="directorLogout()" style="background:rgba(239,68,68,0.15);border-color:rgba(239,68,68,0.3);color:#fca5a5;" title="Logout">
+          <span>🚪</span>
         </button>
       </div>
     </header>
@@ -757,6 +763,27 @@
     setInterval(updateClock, 1000);
     updateClock();
 
+    // ════════════════ DIRECTOR CONTROLS ════════════════
+    function directorLogout() {
+      localStorage.removeItem('kns_role');
+      localStorage.removeItem('kns_user');
+      if (window.syncEngine && typeof syncEngine.signOut === 'function') {
+        syncEngine.signOut();
+      }
+      window.location.href = 'index.html';
+    }
+
+    function switchDirectorEvent(evId) {
+      if (!evId) return;
+      if (window.syncEngine) {
+        syncEngine.setData(s => ({
+          ...s,
+          activeEventId: evId
+        }));
+      }
+      renderDirectorSkin();
+    }
+
     // ════════════════ DIRECTOR SKIN RENDER ENGINE ════════════════
     let timerInterval = null;
 
@@ -766,8 +793,17 @@
       if (!s) return;
 
       const activeEventId = s.activeEventId;
-      const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || (s.events && s.events[0]) || {};
+      const events = s.events || [];
+      const activeEv = events.find(e => String(e.id) === String(activeEventId)) || events[0] || {};
       
+      // Update Event Selector
+      const evSel = document.getElementById('director-event-select');
+      if (evSel && events.length > 0) {
+        evSel.innerHTML = events.map(e => `
+          <option value="${e.id}" ${String(e.id) === String(activeEv.id) ? 'selected' : ''}>🎪 ${e.name}</option>
+        `).join('');
+      }
+
       // Update Event Title & Venue
       const evTitleEl = document.getElementById('event-title');
       if (evTitleEl) evTitleEl.textContent = activeEv.name || 'Official Competition Stage';
