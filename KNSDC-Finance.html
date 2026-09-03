@@ -2616,6 +2616,8 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     // ── END DEFAULT PLANS ────────────────────────────────────────────────
 
     let members = JSON.parse(localStorage.getItem('fp_members') || '[]');
+    window.members = members;
+    window.plans = plans;
     let payments = JSON.parse(localStorage.getItem('fp_payments') || '[]');
     let earnings = JSON.parse(localStorage.getItem('fp_earnings') || '[]');
     let spendings = JSON.parse(localStorage.getItem('fp_spendings') || '[]');
@@ -2926,8 +2928,18 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     // 3. NAVIGATION & VIEW SWITCHING (ZERO-LAG)
     // 3. NAVIGATION & VIEW SWITCHING (ZERO-LAG UI/UX PRO)
     window.updateNavBadges = function() {
-      const activeMemsCount = (window.members || []).filter(m => m.status === 'active' && !deletedMembers.has(m.id)).length;
-      const activePlansCount = (window.plans || []).filter(p => !deletedPlans.has(p.id)).length;
+      const memList = (typeof members !== 'undefined' && Array.isArray(members) && members.length > 0)
+        ? members
+        : (window.members || JSON.parse(localStorage.getItem('fp_members') || '[]'));
+      const planList = (typeof plans !== 'undefined' && Array.isArray(plans) && plans.length > 0)
+        ? plans
+        : (window.plans || JSON.parse(localStorage.getItem('fp_plans') || '[]'));
+
+      const delM = (typeof deletedMembers !== 'undefined') ? deletedMembers : new Set();
+      const delP = (typeof deletedPlans !== 'undefined') ? deletedPlans : new Set();
+
+      const activeMemsCount = memList.filter(m => (m.status === 'active' || !m.status) && !delM.has(m.id)).length;
+      const activePlansCount = planList.filter(p => !delP.has(p.id)).length;
       const assetsCount = ((window.clubAssets || []).length) + ((window.clubBooks || []).length);
       const eventTxCount = (window.eventTransactions || []).length;
       const donationsCount = (window.allDonations || []).length;
@@ -2944,7 +2956,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       const elD = document.getElementById('donations-tab-pill');
       if (elD) elD.textContent = donationsCount;
 
-      // Update Sub-segmented counts
+      // Update Sub-segmented counts (Checklist, Members, Plans)
       ['sub-mems-count', 'sub-mems-count-2', 'sub-mems-count-3'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = activeMemsCount;
