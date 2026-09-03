@@ -476,8 +476,9 @@ const initState = loadState();
 if (initState.supportMissionVpa) currentSupportMissionVpa = initState.supportMissionVpa;
 if (initState.supportMissionPayee) currentPayeeName = initState.supportMissionPayee;
 let currentPayeeName = process.env.PAYEE_NAME || 'Kalikapur Nabin Sangha Club';
+let currentPublicDonationsEnabled = true;
 
-// Load saved Mission VPA from MongoDB on start
+// Load saved Mission VPA & Global Public Donations Switch from MongoDB on start
 async function loadSavedMissionVpa() {
   if (!db) return;
   try {
@@ -487,11 +488,16 @@ async function loadSavedMissionVpa() {
       if (conf.payeeName) currentPayeeName = conf.payeeName;
       console.log(`[MongoDB] Loaded Support Mission UPI VPA: ${currentSupportMissionVpa}`);
     }
+    const switchDoc = await db.collection('club_settings').findOne({ key: 'public_donations_switch' });
+    if (switchDoc && typeof switchDoc.enabled === 'boolean') {
+      currentPublicDonationsEnabled = switchDoc.enabled;
+      console.log(`[MongoDB] Loaded Public Donations Global Switch: ${currentPublicDonationsEnabled ? 'ENABLED' : 'PAUSED'}`);
+    }
   } catch(e) {}
 }
 setTimeout(loadSavedMissionVpa, 3000);
 
-// GET: Support Mission Donation Config
+// GET: Support Mission Donation Config & Global Switch State
 app.get('/api/donations/config', async (req, res) => {
   try {
     if (db) {
@@ -500,8 +506,57 @@ app.get('/api/donations/config', async (req, res) => {
         currentSupportMissionVpa = conf.vpa;
         if (conf.payeeName) currentPayeeName = conf.payeeName;
       }
+      const switchDoc = await db.collection('club_settings').findOne({ key: 'public_donations_switch' });
+      if (switchDoc && typeof switchDoc.enabled === 'boolean') {
+        currentPublicDonationsEnabled = switchDoc.enabled;
+      }
     }
-    res.json({ success: true, supportMissionVpa: currentSupportMissionVpa, payeeName: currentPayeeName });
+    res.json({
+      success: true,
+      supportMissionVpa: currentSupportMissionVpa,
+      payeeName: currentPayeeName,
+      publicDonationsEnabled: currentPublicDonationsEnabled,
+      eventSupportEnabled: currentPublicDonationsEnabled
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Global Toggle Switch for Public Website & Event Support Donations (MongoDB Atlas)
+app.post('/api/donations/toggle-switch', async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    currentPublicDonationsEnabled = !!enabled;
+
+    if (db) {
+      await db.collection('club_settings').updateOne(
+        { key: 'public_donations_switch' },
+        { 
+          $set: { 
+            key: 'public_donations_switch', 
+            enabled: currentPublicDonationsEnabled, 
+            eventSupportEnabled: currentPublicDonationsEnabled,
+            updatedAt: new Date() 
+          } 
+        },
+        { upsert: true }
+      );
+      console.log(`[MongoDB] Global Public Donations Switch set to: ${currentPublicDonationsEnabled ? 'ENABLED' : 'PAUSED'}`);
+    }
+
+    const st = loadState();
+    if (!st.switchStates) st.switchStates = {};
+    st.switchStates.publicDonations = currentPublicDonationsEnabled;
+    st.switchStates.eventSupport = currentPublicDonationsEnabled;
+    saveState(st);
+
+    res.json({ 
+      success: true, 
+      enabled: currentPublicDonationsEnabled, 
+      eventSupportEnabled: currentPublicDonationsEnabled,
+      message: currentPublicDonationsEnabled ? 'Public donations enabled globally' : 'Public donations paused globally'
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -543,6 +598,9 @@ const processedUtrs = new Set();
 // 1. Create Donation Order
 app.post('/api/donations/create-order', async (req, res) => {
   try {
+    if (!currentPublicDonationsEnabled) {
+      return res.status(403).json({ error: 'Public donations & event support are currently paused by the club administration.' });
+    }
     const { amount, donorName, donorPhone, donorEmail, message, eventId, eventName } = req.body;
     const numAmount = parseFloat(amount);
 

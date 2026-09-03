@@ -362,6 +362,19 @@
   <div class="app-container">
     
     <!-- STEP 1: DONATION / SUPPORT FORM -->
+    
+    <!-- PAUSED BANNER (CONTROLLED BY MONGODB GLOBAL SWITCH) -->
+    <div id="donations-paused-card" class="card hidden" style="text-align: center; padding: 48px 24px;">
+      <div style="font-size: 54px; margin-bottom: 16px;">🔒</div>
+      <h2 style="font-size: 1.4rem; font-weight: 900; color: #1e293b; margin-bottom: 8px;">Donations Currently Paused</h2>
+      <p style="font-size: 0.95rem; color: #64748b; line-height: 1.5; max-width: 380px; margin: 0 auto 24px auto;">
+        Kalikapur Nabin Sangha Club has temporarily paused public donations and event support contributions. Please check back soon or contact the club authority.
+      </p>
+      <a href="index.html" class="btn-primary" style="display: inline-block; width: auto; padding: 12px 28px; text-decoration: none; font-size: 0.95rem; background: linear-gradient(135deg, #1e293b, #0f172a);">
+        🏠 Return to Club Home
+      </a>
+    </div>
+
     <div id="form-card" class="card">
       <div class="header-banner">
         <div class="header-badge">🤝 Community Event Support</div>
@@ -540,12 +553,17 @@
         const res = await fetch("/api/donations/config");
         if (res.ok) {
           const data = await res.json();
-          if (data && data.success && data.supportMissionVpa) {
-            UPI_VPA = data.supportMissionVpa;
-            if (data.payeeName) PAYEE_NAME = data.payeeName;
-            localStorage.setItem("fp_support_mission_vpa", data.supportMissionVpa);
-            const btn = document.getElementById("copy-upi-btn");
-            if (btn) btn.textContent = "📋 Copy UPI ID · " + UPI_VPA;
+          if (data && data.success) {
+            if (data.supportMissionVpa) {
+              UPI_VPA = data.supportMissionVpa;
+              if (data.payeeName) PAYEE_NAME = data.payeeName;
+              localStorage.setItem("fp_support_mission_vpa", data.supportMissionVpa);
+              const btn = document.getElementById("copy-upi-btn");
+              if (btn) btn.textContent = "📋 Copy UPI ID · " + UPI_VPA;
+            }
+            if (typeof data.publicDonationsEnabled === 'boolean') {
+              applyPublicDonationSwitch(data.publicDonationsEnabled);
+            }
             return;
           }
         }
@@ -567,6 +585,23 @@
       } catch(e) {}
     }
     loadConfigVpa();
+
+    
+    function applyPublicDonationSwitch(isEnabled) {
+      const formCard = document.getElementById('form-card');
+      const paymentCard = document.getElementById('payment-card');
+      const pausedCard = document.getElementById('donations-paused-card');
+      if (!isEnabled) {
+        if (formCard) formCard.classList.add('hidden');
+        if (paymentCard) paymentCard.classList.add('hidden');
+        if (pausedCard) pausedCard.classList.remove('hidden');
+      } else {
+        if (pausedCard) pausedCard.classList.add('hidden');
+        if (formCard && (!paymentCard || paymentCard.classList.contains('hidden'))) {
+          formCard.classList.remove('hidden');
+        }
+      }
+    }
 
     let currentOrder = {
       orderId: null,

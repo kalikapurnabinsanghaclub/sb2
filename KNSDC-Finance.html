@@ -1503,10 +1503,199 @@
       font-weight: 700 !important;
     }
 
+  
+    /* ══════════════════════════════════════════════════════════
+       ✨ GLOBAL DONATION & EVENT SUPPORT TOGGLE SWITCH (UI/UX PRO)
+       ══════════════════════════════════════════════════════════ */
+    .global-switch-pill-container {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1.5px solid rgba(233, 30, 140, 0.35);
+      padding: 6px 14px;
+      border-radius: 999px;
+      backdrop-filter: blur(8px);
+      transition: all 0.25s ease;
+    }
+    body.light-theme .global-switch-pill-container {
+      background: #ffffff;
+      border-color: #fbcfe8;
+      box-shadow: 0 2px 10px rgba(233, 30, 140, 0.1);
+    }
+    .global-switch-pill-container.is-active {
+      border-color: rgba(16, 185, 129, 0.5);
+      background: rgba(16, 185, 129, 0.08);
+    }
+    body.light-theme .global-switch-pill-container.is-active {
+      background: #f0fdf4;
+      border-color: #86efac;
+    }
+
+    .switch-uiux-toggle {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      margin: 0;
+      flex-shrink: 0;
+    }
+    .switch-uiux-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider-uiux-round {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #64748b;
+      transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      border-radius: 34px;
+    }
+    .slider-uiux-round:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .switch-uiux-toggle input:checked + .slider-uiux-round {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+    .switch-uiux-toggle input:checked + .slider-uiux-round:before {
+      transform: translateX(20px);
+    }
+    .switch-status-label-text {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #34d399;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    body.light-theme .switch-status-label-text.active {
+      color: #059669 !important;
+    }
+    .switch-status-label-text.paused {
+      color: #f87171 !important;
+    }
+    body.light-theme .switch-status-label-text.paused {
+      color: #dc2626 !important;
+    }
+
   </style>
 <script>
 console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     window.__finance_loaded = true;
+
+    // ══════════════════════════════════════════════════════════════
+    // ✨ GLOBAL PUBLIC DONATIONS & EVENT SUPPORT TOGGLE ENGINE
+    // ══════════════════════════════════════════════════════════════
+    window.togglePublicDonationsGlobal = async function(isEnabled) {
+      const wrapper = document.getElementById('global-donations-switch-wrapper');
+      const label = document.getElementById('global-donations-switch-label');
+      const toggle = document.getElementById('global-donations-toggle');
+
+      if (toggle) toggle.checked = isEnabled;
+      if (wrapper) {
+        if (isEnabled) {
+          wrapper.classList.add('is-active');
+        } else {
+          wrapper.classList.remove('is-active');
+        }
+      }
+      if (label) {
+        if (isEnabled) {
+          label.className = 'switch-status-label-text active';
+          label.innerHTML = '🟢 Public Donations &amp; Event Support: ACTIVE';
+        } else {
+          label.className = 'switch-status-label-text paused';
+          label.innerHTML = '🔴 Public Donations &amp; Event Support: PAUSED';
+        }
+      }
+
+      localStorage.setItem('fp_public_donations_enabled', isEnabled ? 'true' : 'false');
+
+      // 1. Sync to MongoDB Atlas Backend
+      try {
+        await fetch('/api/donations/toggle-switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: isEnabled, eventSupportEnabled: isEnabled })
+        });
+        console.log('[MongoDB] Synced public donations switch state:', isEnabled);
+      } catch (err) {
+        console.warn('[MongoDB Switch Sync Error]:', err);
+      }
+
+      // 2. Sync to Supabase Cloud
+      try {
+        const payload = {
+          publicDonationsEnabled: isEnabled,
+          eventSupportEnabled: isEnabled,
+          updatedAt: new Date().toISOString()
+        };
+        await fetch('https://mmbtfbxxnprtzpzdklot.supabase.co/rest/v1/sync_state?id=eq.knsdc_finance_sync', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA',
+            'Authorization': 'Bearer sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ payload })
+        });
+        console.log('[Supabase] Synced public donations switch state:', isEnabled);
+      } catch (err) {}
+
+      // 3. Show Toast Feedback
+      showToast(isEnabled ? '🌐 Public Donations & Event Support ENABLED globally on website!' : '🔒 Public Donations & Event Support PAUSED globally on website!');
+    };
+
+    // Load initial Global Switch State
+    async function initGlobalDonationsSwitch() {
+      let isEnabled = localStorage.getItem('fp_public_donations_enabled') !== 'false';
+      try {
+        const res = await fetch('/api/donations/config');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && typeof data.publicDonationsEnabled === 'boolean') {
+            isEnabled = data.publicDonationsEnabled;
+            localStorage.setItem('fp_public_donations_enabled', isEnabled ? 'true' : 'false');
+          }
+        }
+      } catch(e) {}
+
+      const toggle = document.getElementById('global-donations-toggle');
+      const wrapper = document.getElementById('global-donations-switch-wrapper');
+      const label = document.getElementById('global-donations-switch-label');
+
+      if (toggle) toggle.checked = isEnabled;
+      if (wrapper) {
+        if (isEnabled) wrapper.classList.add('is-active');
+        else wrapper.classList.remove('is-active');
+      }
+      if (label) {
+        if (isEnabled) {
+          label.className = 'switch-status-label-text active';
+          label.innerHTML = '🟢 Public Donations &amp; Event Support: ACTIVE';
+        } else {
+          label.className = 'switch-status-label-text paused';
+          label.innerHTML = '🔴 Public Donations &amp; Event Support: PAUSED';
+        }
+      }
+    }
+    setTimeout(initGlobalDonationsSwitch, 400);
+
 
     // ══════════════════════════════════════════════════════════
     // 🎪 EVENT FINANCE & BUDGET MANAGEMENT ENGINE
@@ -6358,24 +6547,35 @@ To release this locker, click "Release" in the table below.')`
       <!-- Section Header -->
       <div class="section-header" style="background: linear-gradient(135deg, rgba(123,45,139,0.2), rgba(233,30,140,0.15)); border: 1px solid rgba(233,30,140,0.3);">
         <div>
-          <h1 class="section-title" style="color: #fff; display:flex; align-items:center; gap:10px;">
+          <h1 class="section-title" style="color: #fff; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span>💝 Event Collections &amp; Mission Donations</span>
             <span class="badge" style="background:#E91E8C; color:#fff; font-weight:800; font-size:11px;">0% Fee Direct UPI</span>
+            
+            <!-- ✨ RED BOX GLOBAL TOGGLE SWITCH (ACTIVE / PAUSED) -->
+            <div class="global-switch-pill-container is-active" id="global-donations-switch-wrapper">
+              <label class="switch-uiux-toggle" title="Toggle Public Website &amp; Event Support Donations Globally (MongoDB Atlas)">
+                <input type="checkbox" id="global-donations-toggle" onchange="togglePublicDonationsGlobal(this.checked)" checked>
+                <span class="slider-uiux-round"></span>
+              </label>
+              <span id="global-donations-switch-label" class="switch-status-label-text active">
+                🟢 Public Donations &amp; Event Support: ACTIVE
+              </span>
+            </div>
           </h1>
           <p class="section-sub" style="color: #cbd5e1;">Live tracking of all donor contributions for club community missions and specific cultural events.</p>
         </div>
-        <div style="display:flex; gap:10px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <button type="button" onclick="fetchAndRenderDonations()" class="btn btn-secondary" style="font-size:12px; font-weight:800;">
             🔄 Refresh Live
           </button>
-          <button type="button" onclick="openAddManualDonationModal()" class="btn btn-primary" style="background: linear-gradient(135deg,#7B2D8B,#E91E8C); border:none; font-size:12px; font-weight:800;">
+          <button type="button" onclick="openAddManualDonationModal()" class="btn btn-primary" style="background: linear-gradient(135deg,#7B2D8B,#E91E8C); border:none; font-size:12px; font-weight:800; box-shadow:0 4px 14px rgba(233,30,140,0.35);">
             ➕ Record Cash/Manual Donation
           </button>
         </div>
       </div>
 
       <!-- 4 Stat Summary Cards -->
-      <div class="grid-4" style="margin-bottom: 20px;">
+      <div class="grid-4"  style="margin-bottom: 20px;">
         <div class="card" style="border-left: 4px solid #10b981; background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(15,23,42,0.9));">
           <div class="stat-label">
             <span>Total Verified Donations</span>
