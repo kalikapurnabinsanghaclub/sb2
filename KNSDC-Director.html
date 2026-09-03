@@ -950,14 +950,34 @@
       // Filter judges belonging to this event
       const s = syncEngine.getData();
       const activeEventId = s.activeEventId;
-      const eventJudges = allJudges.filter(j => !j.eventId || String(j.eventId) === String(activeEventId));
       
-      // Fallback: if no judges explicitly in event, show all judges or judges who submitted
-      const displayJudges = eventJudges.length > 0 ? eventJudges : (allJudges.length > 0 ? allJudges : Object.keys(roundScores).map((jid, idx) => ({
-        id: jid,
-        name: `Judge ${idx + 1}`,
-        specialization: 'Scoring Panel'
-      })));
+      // 1. Get confirmed/verified agreements for the active event
+      const eventAgreements = (s.judgeAgreements || s.agreements || []).filter(a => 
+        String(a.eventId || a.event_id) === String(activeEventId) &&
+        (a.status === 'confirmed' || a.status === 'verified' || a.submitted === true)
+      );
+
+      let displayJudges = [];
+      if (eventAgreements.length > 0) {
+        displayJudges = eventAgreements.map(a => {
+          const aEmail = a.email ? a.email.trim().toLowerCase() : '';
+          const aName = a.name ? a.name.trim().toLowerCase() : '';
+          const jMatch = (allJudges || []).find(j => 
+            (j.email && aEmail && String(j.email).trim().toLowerCase() === aEmail) ||
+            (j.name && aName && String(j.name).trim().toLowerCase() === aName) ||
+            String(j.id) === String(a.id)
+          );
+          return {
+            id: a.id,
+            name: a.name,
+            avatar: a.photoUrl || (jMatch && (jMatch.avatar || jMatch.photoUrl)),
+            specialization: a.spec || (jMatch && jMatch.spec) || 'Official Panel'
+          };
+        });
+      } else {
+        // Fallback to allJudges strictly filtered to activeEventId
+        displayJudges = (allJudges || []).filter(j => String(j.eventId) === String(activeEventId));
+      }
 
       let grandTotal = 0;
       let submittedJudgesCount = 0;

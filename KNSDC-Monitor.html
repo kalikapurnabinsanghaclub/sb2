@@ -14259,9 +14259,10 @@ function renderAssignedJudges() {
       // Credentials
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.12);border-radius:10px">' +
       '<div style="font-size:8px;font-family:var(--fm);color:#3b82f6"><div>&#x1F4E7; ' + (a.email || 'Not set') + '</div><div style="margin-top:2px">&#x1F511; ' + (a.password ? '●'.repeat(Math.min(a.password.length,8)) : 'Not set') + '</div></div>' +
-      '<div style="display:flex;gap:6px">' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
       (a.agreedTc ? '<span class="badge b-green" style="font-size:8px">T&amp;C &#x2713;</span>' : '') +
       '<button class="btn btn-ghost btn-xs" onclick="openAgreementModal(' + a.id + ')" style="font-size:10px">&#x270F;&#xFE0F; Edit</button>' +
+      '<button class="btn-delete-fancy" onclick="deleteAgreement(' + a.id + ')" title="Delete Judge" style="padding:4px"><svg viewBox="0 0 448 512" class="svgIcon" style="width:12px;height:12px"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg></button>' +
       '</div></div>' +
 
       (a.notes ? '<div style="margin-top:10px;font-size:9px;color:#64748b;padding:8px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--amber2)">&#x1F4DD; ' + a.notes + '</div>' : '') +
@@ -14416,18 +14417,98 @@ async function saveAgreement(){
 }
 
 async function deleteAgreement(id){
-  if(!confirm('Delete this agreement?')) return;
-  const agr = (agreements || []).find(a => a.id === id);
-  if (agr && agr.email) {
-    if (syncEngine.deleteStaffMember) {
-      await syncEngine.deleteStaffMember(agr.email);
-    }
+  if(!confirm('Delete this judge and all related agreement & score data?')) return;
+  const agr = (agreements || []).find(a => String(a.id) === String(id));
+  const agrEmail = agr && agr.email ? agr.email.trim().toLowerCase() : '';
+  const agrName = agr && agr.name ? agr.name.trim().toLowerCase() : '';
+
+  // 1. Delete from staff credentials
+  if (agrEmail && syncEngine.deleteStaffMember) {
+    await syncEngine.deleteStaffMember(agrEmail).catch(e => console.warn(e));
   }
-  const success = await syncEngine.deleteAgreement(id);
-  if(!success){toast('❌ Error deleting agreement');return;}
-  agreements=agreements.filter(a=>a.id!==id);
+
+  // 2. Delete agreement from Supabase table
+  if (syncEngine.deleteAgreement) {
+    await syncEngine.deleteAgreement(id).catch(e => console.warn(e));
+  }
+
+  // 3. Remove from agreements in memory
+  agreements = (agreements || []).filter(a => String(a.id) !== String(id));
+
+  // 4. Remove from judges in memory
+  judges = (judges || []).filter(j => {
+    if (String(j.id) === String(id)) return false;
+    if (agrEmail && j.email && String(j.email).trim().toLowerCase() === agrEmail) return false;
+    if (agrName && j.name && String(j.name).trim().toLowerCase() === agrName) return false;
+    return true;
+  });
+
+  // 5. Clean participants' scores given by this deleted judge
+  (participants || []).forEach(p => {
+    if (p.scores) {
+      delete p.scores[id];
+      delete p.scores[String(id)];
+      if (agr && agr.name) delete p.scores[agr.name];
+      if (agrEmail) delete p.scores[agrEmail];
+    }
+    if (p.roundScores) {
+      Object.keys(p.roundScores).forEach(r => {
+        if (p.roundScores[r]) {
+          delete p.roundScores[r][id];
+          delete p.roundScores[r][String(id)];
+          if (agr && agr.name) delete p.roundScores[r][agr.name];
+          if (agrEmail) delete p.roundScores[r][agrEmail];
+        }
+      });
+    }
+    if (p.judgeLocks) {
+      delete p.judgeLocks[id];
+      delete p.judgeLocks[String(id)];
+      if (agr && agr.name) delete p.judgeLocks[agr.name];
+      if (agrEmail) delete p.judgeLocks[agrEmail];
+    }
+  });
+
+  // 6. Update syncEngine state
+  syncEngine.setData(state => {
+    const newAgreements = (state.judgeAgreements || state.agreements || []).filter(a => String(a.id) !== String(id));
+    const newJudges = (state.judges || []).filter(j => {
+      if (String(j.id) === String(id)) return false;
+      if (agrEmail && j.email && String(j.email).trim().toLowerCase() === agrEmail) return false;
+      if (agrName && j.name && String(j.name).trim().toLowerCase() === agrName) return false;
+      return true;
+    });
+    const newEvents = (state.events || []).map(ev => {
+      if (ev.judges) {
+        ev.judges = ev.judges.filter(j => {
+          if (String(j.id) === String(id)) return false;
+          if (agrEmail && j.email && String(j.email).trim().toLowerCase() === agrEmail) return false;
+          if (agrName && j.name && String(j.name).trim().toLowerCase() === agrName) return false;
+          return true;
+        });
+      }
+      return ev;
+    });
+
+    return {
+      ...state,
+      agreements: newAgreements,
+      judgeAgreements: newAgreements,
+      judges: newJudges,
+      events: newEvents,
+      participants: [...participants]
+    };
+  });
+
+  // 7. Sync and persist
+  syncAll();
+  if (syncEngine.forceSaveStateToSupabase) {
+    await syncEngine.forceSaveStateToSupabase().catch(e => console.warn(e));
+  }
+
   renderAgreements();
-  toast('Agreement removed');
+  if (typeof renderAssignedJudges === 'function') renderAssignedJudges();
+  toast('Judge and all associated data deleted successfully!');
 }
 
 function openJudgeFormModal(agrId){

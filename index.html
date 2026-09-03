@@ -10419,9 +10419,24 @@
       
       const state = syncEngine.getData();
       
-      const eventJudges = ev.judges && ev.judges.length > 0 
-        ? ev.judges 
-        : (state.judges || []).filter(j => String(j.eventId) === String(ev.id));
+      // Only include judges that are actively confirmed / verified for this event
+      const confirmedAgreements = (state.judgeAgreements || state.agreements || []).filter(a => 
+        String(a.eventId || a.event_id) === String(ev.id) &&
+        (a.status === 'confirmed' || a.status === 'verified' || a.submitted === true)
+      );
+
+      let eventJudges = [];
+      if (confirmedAgreements.length > 0) {
+        eventJudges = confirmedAgreements.map(a => ({
+          name: a.name,
+          spec: a.spec || 'Judge',
+          photo: a.photoUrl || a.photo
+        }));
+      } else if (ev.judges && ev.judges.length > 0) {
+        eventJudges = ev.judges;
+      } else {
+        eventJudges = (state.judges || []).filter(j => String(j.eventId) === String(ev.id));
+      }
       
       const judgesCont = document.getElementById('epv-judges-container');
       const judgesBody = document.getElementById('epv-judges');
