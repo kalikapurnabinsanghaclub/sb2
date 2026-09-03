@@ -1798,76 +1798,7 @@
       color: #fff;
     }
 
-  
-    /* ══════════════════════════════════════════════════════════════
-       🎪 EVENT FINANCE: PUBLIC NOTICE TOGGLE SWITCH & DELETE STYLES
-       ══════════════════════════════════════════════════════════════ */
-    .event-public-toggle-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 2px 7px;
-      border-radius: 20px;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      user-select: none;
-      border: 1px solid rgba(0, 0, 0, 0.12);
-    }
-    .event-public-toggle-btn.is-live {
-      background: rgba(16, 185, 129, 0.15);
-      border-color: rgba(16, 185, 129, 0.4);
-    }
-    .event-public-toggle-btn.is-hidden {
-      background: rgba(148, 163, 184, 0.18);
-      border-color: rgba(148, 163, 184, 0.35);
-    }
-    .event-public-toggle-btn:hover {
-      transform: scale(1.05);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-    }
-    .event-toggle-label {
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.2px;
-    }
-    .event-public-toggle-btn.is-live .event-toggle-label {
-      color: #059669;
-    }
-    .event-public-toggle-btn.is-hidden .event-toggle-label {
-      color: #64748b;
-    }
-    [data-theme="dark"] .event-public-toggle-btn.is-live .event-toggle-label {
-      color: #34d399;
-    }
-    [data-theme="dark"] .event-public-toggle-btn.is-hidden .event-toggle-label {
-      color: #94a3b8;
-    }
-    .event-ios-switch {
-      width: 25px;
-      height: 14px;
-      border-radius: 14px;
-      background: #cbd5e1;
-      position: relative;
-      transition: background 0.25s ease;
-    }
-    .event-ios-switch.on {
-      background: #10b981;
-      box-shadow: 0 0 6px rgba(16, 185, 129, 0.45);
-    }
-    .event-ios-knob {
-      width: 10px;
-      height: 10px;
-      background: #ffffff;
-      border-radius: 50%;
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-    }
-    .event-ios-switch.on .event-ios-knob {
-      transform: translateX(11px);
-    }
+
     .btn-chip-delete {
       padding: 2px 6px;
       font-size: 11px;
@@ -2093,31 +2024,30 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     }
     setTimeout(loadEventFinanceData, 400);
 
-    // 🌐 Toggle Event Public Notice Board Switch (MongoDB Atlas)
-    window.toggleEventPublicNotice = async function(eventId, newStatus) {
-      const ev = (window.clubEvents || []).find(e => e.id === eventId);
-      if (!ev) return;
-
-      ev.publicNotice = !!newStatus;
-      localStorage.setItem('fp_club_events', JSON.stringify(window.clubEvents));
+    // 📄 Download Finance Report PDF for a specific event
+    window.downloadEventFinancePDF = function(eventId, eventName) {
+      // Switch to the target event first
+      const prevSelectedId = window.selectedEventId;
+      window.selectedEventId = eventId;
+      localStorage.setItem('fp_selected_event_id', eventId);
       renderEventFinance();
 
-      try {
-        const res = await fetch(`/api/events/${eventId}/toggle-public`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ publicNotice: ev.publicNotice })
-        });
-        const data = await res.json();
-        if (data.success && typeof window.showToast === 'function') {
-          window.showToast(ev.publicNotice 
-            ? `🌐 "${ev.name}" is now LIVE on Public Notice Board!`
-            : `🔒 "${ev.name}" is now HIDDEN from Public Notice Board!`);
+      // Small delay to let the UI update earnings/spendings arrays
+      setTimeout(() => {
+        if (typeof window.downloadEarningsPDF === 'function') {
+          window.downloadEarningsPDF();
         }
-      } catch (err) {
-        console.error('[Toggle Event Public Notice Error]:', err);
-      }
+        // Restore previous selection if it was a different event
+        if (prevSelectedId && prevSelectedId !== eventId) {
+          setTimeout(() => {
+            window.selectedEventId = prevSelectedId;
+            localStorage.setItem('fp_selected_event_id', prevSelectedId);
+            renderEventFinance();
+          }, 800);
+        }
+      }, 300);
     };
+
 
     // 🗑️ Delete Event (MongoDB Atlas)
     window.deleteEvent = async function(eventId, eventName) {
@@ -2192,15 +2122,13 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
                 <div class="event-chip-top" style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px;">
                   <span class="event-chip-category">${e.category || 'Event'}</span>
 
-                  <!-- 🟥 RED BOX: Public Notice Board Toggle Switch -->
-                  <div class="event-public-toggle-btn ${isPublic ? 'is-live' : 'is-hidden'}" 
-                       onclick="event.stopPropagation(); window.toggleEventPublicNotice('${e.id}', ${!isPublic})"
-                       title="${isPublic ? 'Public Notice: LIVE (Click to Hide from Public Page)' : 'Public Notice: HIDDEN (Click to Show on Public Page)'}">
-                    <span class="event-toggle-label">${isPublic ? '🌐 Public' : '🔒 Hide'}</span>
-                    <div class="event-ios-switch ${isPublic ? 'on' : 'off'}">
-                      <div class="event-ios-knob"></div>
-                    </div>
-                  </div>
+                  <!-- 📄 Download PDF for this event -->
+                  <button type="button"
+                    onclick="event.stopPropagation(); window.downloadEventFinancePDF('${e.id}', '${safeName}')"
+                    title="Download Finance Report PDF for ${safeName}"
+                    style="display:flex; align-items:center; gap:4px; padding:3px 9px; font-size:11px; font-weight:800; border-radius:8px; border:1.5px solid rgba(56,189,248,0.5); background:rgba(56,189,248,0.12); color:#0284c7; cursor:pointer; transition:all 0.18s;">
+                    📄 PDF
+                  </button>
 
                   <div style="display:flex; align-items:center; gap:5px;">
                     <button type="button" onclick="event.stopPropagation(); openEditEventModal('${e.id}')" class="btn" style="padding:2px 7px; font-size:11px; background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.4); border-radius:6px; font-weight:800; cursor:pointer;" title="Edit Event, Goal & Budget">
