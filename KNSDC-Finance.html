@@ -2032,10 +2032,11 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       localStorage.setItem('fp_selected_event_id', eventId);
       renderEventFinance();
 
-      // Small delay to let the UI update earnings/spendings arrays
+      // Small delay to let the UI update earnings/spendings arrays for this event
       setTimeout(() => {
         if (typeof window.downloadEarningsPDF === 'function') {
-          window.downloadEarningsPDF();
+          // Pass eventName so PDF header labels it as "Event Ledger — <EventName>"
+          window.downloadEarningsPDF(eventName);
         }
         // Restore previous selection if it was a different event
         if (prevSelectedId && prevSelectedId !== eventId) {
@@ -4537,7 +4538,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       a.click();
     };
 
-            window.downloadEarningsPDF = function() {
+            window.downloadEarningsPDF = function(forEventName) {
       const combined = [];
       const validEarnings = (typeof earnings !== 'undefined' ? earnings : (window.earnings || [])).filter(e => !deletedEarnings.has(e.id));
       const validSpendings = (typeof spendings !== 'undefined' ? spendings : (window.spendings || [])).filter(s => !deletedSpendings.has(s.id));
@@ -4592,7 +4593,11 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       `).join('');
 
       const reportDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-      const filterLabel = earningsFilter === 'all' ? 'Complete Financial Ledger (Income & Expenses)' : (earningsFilter === 'earning' ? 'Earnings & Revenue Statement' : 'Expenditure & Outflow Statement');
+      // If called for a specific event, show event name; otherwise use filter label
+      const filterLabel = forEventName
+        ? `Event Ledger — ${forEventName}`
+        : (earningsFilter === 'all' ? 'Complete Financial Ledger (Income & Expenses)' : (earningsFilter === 'earning' ? 'Earnings & Revenue Statement' : 'Expenditure & Outflow Statement'));
+
 
       const printDoc = `
         <!DOCTYPE html>
