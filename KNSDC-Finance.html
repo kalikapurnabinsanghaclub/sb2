@@ -2024,29 +2024,346 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     }
     setTimeout(loadEventFinanceData, 400);
 
-    // 📄 Download Finance Report PDF for a specific event
+    // 📄 Download Finance Report PDF for a specific event (SHOWS ONLY THAT EVENT'S LEDGER)
     window.downloadEventFinancePDF = function(eventId, eventName) {
-      // Switch to the target event first
-      const prevSelectedId = window.selectedEventId;
-      window.selectedEventId = eventId;
-      localStorage.setItem('fp_selected_event_id', eventId);
-      renderEventFinance();
+      const targetId = eventId || window.selectedEventId;
+      const events = window.clubEvents || [];
+      const ev = events.find(e => String(e.id) === String(targetId)) || { id: targetId, name: eventName || 'Event Ledger' };
+      const eventTitle = ev.name || ev.title || eventName || 'Event Financial Ledger';
 
-      // Small delay to let the UI update earnings/spendings arrays for this event
-      setTimeout(() => {
-        if (typeof window.downloadEarningsPDF === 'function') {
-          // Pass eventName so PDF header labels it as "Event Ledger — <EventName>"
-          window.downloadEarningsPDF(eventName);
-        }
-        // Restore previous selection if it was a different event
-        if (prevSelectedId && prevSelectedId !== eventId) {
-          setTimeout(() => {
-            window.selectedEventId = prevSelectedId;
-            localStorage.setItem('fp_selected_event_id', prevSelectedId);
-            renderEventFinance();
-          }, 800);
-        }
-      }, 300);
+      // Pull transactions strictly for THIS EVENT ONLY
+      let allTxs = window.eventTransactions;
+      if (!allTxs || allTxs.length === 0) {
+        try {
+          allTxs = JSON.parse(localStorage.getItem('fp_event_transactions')) || [];
+        } catch(e) { allTxs = []; }
+      }
+      const evTxs = allTxs.filter(t => String(t.eventId) === String(targetId));
+
+      const totalIncome = evTxs.filter(t => t.type === 'income').reduce((s, x) => s + (Number(x.amount) || 0), 0);
+      const totalExpense = evTxs.filter(t => t.type === 'expense').reduce((s, x) => s + (Number(x.amount) || 0), 0);
+      const netBalance = totalIncome - totalExpense;
+      const targetRev = Number(ev.targetRevenue) || 0;
+      const budgetExp = Number(ev.budgetExpense) || 0;
+
+      // Sort by date descending
+      const sortedTxs = [...evTxs].sort((a, b) => new Date(b.date || '2000-01-01') - new Date(a.date || '2000-01-01'));
+
+      const rowsHtml = sortedTxs.length > 0 ? sortedTxs.map((r, idx) => {
+        const isInc = r.type === 'income';
+        return `
+          <tr style="background:${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; position:relative; z-index:1;">
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-weight:800; color:${isInc ? '#059669' : '#dc2626'}; font-size:11px;">
+              ${isInc ? '🟢 INCOME' : '🔴 EXPENSE'}
+            </td>
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a; font-size:12px;">
+              ${r.title || '-'}
+              ${r.notes ? `<div style="font-size:10px; color:#64748b; font-weight:400; margin-top:2px;">${r.notes}</div>` : ''}
+            </td>
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-size:11px; color:#475569; text-transform:uppercase; font-weight:600;">
+              ${(r.category || 'EVENT').replace(/_/g, ' ')}
+            </td>
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-size:11.5px; color:#1e293b; font-weight:600;">
+              ${r.payerOrVendor || '-'}
+            </td>
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-size:11px; color:#475569; font-family:monospace;">
+              ${r.date || '-'}
+            </td>
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-size:11px; color:#475569; text-transform:uppercase; font-family:monospace;">
+              ${r.paymentMethod || 'cash'}
+            </td>
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-size:12px; font-weight:800; font-family:monospace; text-align:right; color:${isInc ? '#059669' : '#dc2626'};">
+              ${isInc ? '+' : '-'}₹${(Number(r.amount) || 0).toLocaleString('en-IN')}
+            </td>
+            <td style="padding:7px 9px; border-bottom:1px solid #e2e8f0; font-size:10.5px; color:#64748b; font-family:monospace; text-align:right;">
+              ${r.refNo || r.id || '-'}
+            </td>
+          </tr>
+        `;
+      }).join('') : `
+        <tr>
+          <td colspan="8" style="text-align:center; padding:32px; font-size:12px; color:#64748b; font-weight:600;">
+            No financial transactions recorded for this event yet.
+          </td>
+        </tr>
+      `;
+
+      const reportDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+      const printDoc = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${eventTitle} - Financial Ledger - ${reportDate}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 12mm 14mm 12mm;
+            }
+            * { box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              color: #0f172a;
+              background: #ffffff;
+              margin: 0;
+              padding: 0;
+              position: relative;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .pdf-watermark-overlay {
+              position: fixed;
+              top: 48%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              width: 520px;
+              height: 520px;
+              background-image: url('logo.png');
+              background-repeat: no-repeat;
+              background-position: center;
+              background-size: contain;
+              opacity: 0.085;
+              mix-blend-mode: multiply;
+              pointer-events: none;
+              z-index: 99999;
+            }
+            .report-content {
+              position: relative;
+              z-index: 1;
+            }
+            .report-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 12px;
+              margin-bottom: 14px;
+            }
+            .club-title {
+              font-size: 19px;
+              font-weight: 900;
+              color: #0f172a;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .club-sub {
+              font-size: 11px;
+              color: #475569;
+              margin-top: 2px;
+              font-weight: 600;
+            }
+            .event-badge-strip {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              margin-top: 6px;
+            }
+            .event-badge-strip .ev-name {
+              font-size: 13px;
+              font-weight: 900;
+              color: #1e3a8a;
+            }
+            .event-badge-strip .ev-cat {
+              background: #e0e7ff;
+              color: #3730a3;
+              font-size: 10px;
+              font-weight: 800;
+              padding: 2px 8px;
+              border-radius: 10px;
+              text-transform: uppercase;
+            }
+            .doc-meta {
+              text-align: right;
+            }
+            .doc-badge {
+              display: inline-block;
+              background: #0f172a;
+              color: #ffffff;
+              padding: 4px 10px;
+              border-radius: 4px;
+              font-size: 11px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .summary-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+              gap: 10px;
+              margin-bottom: 16px;
+            }
+            .summary-card {
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              padding: 9px 12px;
+              background: rgba(248, 250, 252, 0.85);
+            }
+            .summary-card.inc { border-left: 4px solid #059669; }
+            .summary-card.exp { border-left: 4px solid #dc2626; }
+            .summary-card.net { border-left: 4px solid #2563eb; }
+            .summary-card.tgt { border-left: 4px solid #f59e0b; }
+            .summary-label {
+              font-size: 10px;
+              font-weight: 800;
+              text-transform: uppercase;
+              color: #64748b;
+            }
+            .summary-val {
+              font-size: 15px;
+              font-weight: 900;
+              margin-top: 3px;
+              font-family: monospace;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 20px;
+            }
+            th {
+              background: #0f172a;
+              color: #ffffff;
+              font-size: 10.5px;
+              font-weight: 800;
+              text-transform: uppercase;
+              padding: 7px 9px;
+              text-align: left;
+              letter-spacing: 0.3px;
+            }
+            .signatures-section {
+              margin-top: 30px;
+              display: flex;
+              justify-content: space-between;
+              padding-top: 20px;
+            }
+            .sig-box {
+              width: 220px;
+              text-align: center;
+              border-top: 1.5px dashed #64748b;
+              padding-top: 6px;
+              font-size: 11px;
+              font-weight: 700;
+              color: #334155;
+            }
+            .footer-note {
+              margin-top: 20px;
+              font-size: 9.5px;
+              color: #64748b;
+              text-align: center;
+              border-top: 1px solid #e2e8f0;
+              padding-top: 6px;
+              font-weight: 500;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="pdf-watermark-overlay"></div>
+
+          <div class="report-content">
+            <div class="report-header">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <img src="logo.png" style="width:52px; height:52px; border-radius:10px; object-fit:contain;" alt="KNSDC Logo" onerror="this.style.display='none'">
+                <div>
+                  <div class="club-title">Kalikapur Nabin Sangha Club</div>
+                  <div class="club-sub">Regd. No: S00012030 of 2020 · Premier Sports, Wellness &amp; Community Development</div>
+                  <div class="event-badge-strip">
+                    <span class="ev-name">🎪 ${eventTitle}</span>
+                    <span class="ev-cat">${ev.category || 'Event'}</span>
+                  </div>
+                  ${ev.startDate ? `<div style="font-size:10.5px; color:#64748b; margin-top:3px;">📅 Date: ${ev.startDate}${ev.endDate ? ' to ' + ev.endDate : ''} ${ev.venue ? '· 📍 ' + ev.venue : ''}</div>` : ''}
+                </div>
+              </div>
+              <div class="doc-meta">
+                <div class="doc-badge">Official Event Statement</div>
+                <div style="font-size:11px; color:#475569; margin-top:5px; font-weight:700;">Date: ${reportDate}</div>
+                <div style="font-size:10px; color:#059669; font-weight:800; font-family:monospace;">Regd: S00012030 of 2020</div>
+              </div>
+            </div>
+
+            <div class="summary-grid">
+              <div class="summary-card inc">
+                <div class="summary-label">Total Event Inflow</div>
+                <div class="summary-val" style="color:#059669;">+₹${totalIncome.toLocaleString('en-IN')}</div>
+              </div>
+              <div class="summary-card exp">
+                <div class="summary-label">Total Event Outflow</div>
+                <div class="summary-val" style="color:#dc2626;">-₹${totalExpense.toLocaleString('en-IN')}</div>
+              </div>
+              <div class="summary-card net">
+                <div class="summary-label">Net Event Balance</div>
+                <div class="summary-val" style="color:${netBalance >= 0 ? '#059669' : '#dc2626'};">${netBalance >= 0 ? '+' : ''}₹${netBalance.toLocaleString('en-IN')}</div>
+              </div>
+              ${targetRev > 0 ? `
+              <div class="summary-card tgt">
+                <div class="summary-label">Target Revenue</div>
+                <div class="summary-val" style="color:#d97706;">₹${targetRev.toLocaleString('en-IN')}</div>
+              </div>
+              ` : ''}
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:75px;">Type</th>
+                  <th>Title / Particulars</th>
+                  <th style="width:105px;">Category</th>
+                  <th style="width:125px;">Payer / Vendor</th>
+                  <th style="width:85px;">Date</th>
+                  <th style="width:70px;">Method</th>
+                  <th style="width:95px; text-align:right;">Amount (₹)</th>
+                  <th style="width:85px; text-align:right;">Ref / Tx ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+
+            <div class="signatures-section">
+              <div class="sig-box">
+                Accountant / Treasurer
+                <div style="font-size:9.5px; color:#64748b; font-weight:400; margin-top:2px;">Kalikapur Nabin Sangha · S00012030 of 2020</div>
+              </div>
+              <div class="sig-box">
+                General Secretary / President
+                <div style="font-size:9.5px; color:#64748b; font-weight:400; margin-top:2px;">Kalikapur Nabin Sangha · S00012030 of 2020</div>
+              </div>
+            </div>
+
+            <div class="footer-note">
+              Official Certified Document · Kalikapur Nabin Sangha Club (Govt. Registration No: S00012030 of 2020) · Total Event Records: ${evTxs.length}.
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 250);
+            };
+          <\/script>
+        </body>
+        </html>
+      `;
+
+      const printWindow = window.open('', '_blank', 'width=950,height=750');
+      if (printWindow) {
+        printWindow.document.open();
+        printWindow.document.write(printDoc);
+        printWindow.document.close();
+      } else {
+        const frame = document.createElement('iframe');
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '0';
+        frame.style.height = '0';
+        frame.style.border = '0';
+        document.body.appendChild(frame);
+        frame.contentDocument.open();
+        frame.contentDocument.write(printDoc);
+        frame.contentDocument.close();
+      }
     };
 
 
@@ -7202,11 +7519,16 @@ To release this locker, click "Release" in the table below.')`
 
       <!-- Event Financial Ledger Table -->
       <div class="table-card">
-        <div class="table-header" style="background: rgba(15,23,42,0.85); display:flex; justify-content:space-between; align-items:center;">
+        <div class="table-header" style="background: rgba(15,23,42,0.85); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <h3 style="font-size:14px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
             <span>📋 Event Financial Ledger: <span id="evt-ledger-selected-title" style="color:#fbbf24;">Loading...</span></span>
           </h3>
-          <span style="font-size:11px; color:#cbd5e1;">Official event balance sheet &amp; audit trail</span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <button type="button" onclick="downloadEventFinancePDF(window.selectedEventId)" class="btn" style="background:linear-gradient(135deg,#0284c7,#0369a1); color:#fff; font-size:11px; font-weight:800; padding:5px 12px; border-radius:8px; border:none; cursor:pointer; display:flex; align-items:center; gap:5px; box-shadow:0 2px 8px rgba(2,132,199,0.3);">
+              📄 Download Event PDF
+            </button>
+            <span style="font-size:11px; color:#cbd5e1;">Official event balance sheet &amp; audit trail</span>
+          </div>
         </div>
         <div class="table-container">
           <table>
