@@ -1683,6 +1683,121 @@
       border-color: #e9d5ff;
     }
 
+  
+    /* ══════════════════════════════════════════════════════════
+       ✨ ACTIVE MEMBER ENJOYED SERVICES (LOCKERS & BOOKS)
+       ══════════════════════════════════════════════════════════ */
+    .member-services-section {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    body.light-theme .member-services-section {
+      border-top: 1px dashed #cbd5e1;
+    }
+    .member-services-head {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      letter-spacing: 0.3px;
+    }
+    body.light-theme .member-services-head {
+      color: #475569;
+    }
+
+    .service-enjoyed-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .service-enjoyed-chip strong {
+      font-weight: 800;
+    }
+
+    .chip-locker {
+      background: rgba(59, 130, 246, 0.12);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+    }
+    body.light-theme .chip-locker {
+      background: #eff6ff;
+      color: #1e40af;
+      border-color: #bfdbfe;
+    }
+    body.light-theme .chip-locker strong {
+      color: #1d4ed8;
+    }
+
+    .chip-book {
+      background: rgba(129, 140, 248, 0.12);
+      color: #c7d2fe;
+      border: 1px solid rgba(129, 140, 248, 0.35);
+    }
+    body.light-theme .chip-book {
+      background: #eef2ff;
+      color: #3730a3;
+      border-color: #c7d2fe;
+    }
+    body.light-theme .chip-book strong {
+      color: #4338ca;
+    }
+
+    .service-enjoyed-empty {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    body.light-theme .service-enjoyed-empty {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+      color: #64748b;
+    }
+
+    .btn-xs-service {
+      background: rgba(79, 70, 229, 0.15);
+      color: #818cf8;
+      border: 1px solid rgba(79, 70, 229, 0.3);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-xs-service:hover {
+      background: #4f46e5;
+      color: #fff;
+    }
+    body.light-theme .btn-xs-service {
+      background: #eef2ff;
+      color: #4338ca;
+      border-color: #c7d2fe;
+    }
+    body.light-theme .btn-xs-service:hover {
+      background: #4f46e5;
+      color: #fff;
+    }
+
   </style>
 <script>
 console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
@@ -3261,6 +3376,99 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
     };
 
     // 6. MEMBERS DIRECTORY (ADD, EDIT, DELETE)
+    
+    // ══════════════════════════════════════════════════════════════
+    // 🔑 LIVE MEMBER SERVICES & ENJOYED FACILITIES ENGINE
+    // ══════════════════════════════════════════════════════════════
+    window.getMemberActiveServices = function(member) {
+      const services = {
+        lockers: [],
+        books: []
+      };
+      if (!member) return services;
+
+      const mName = (member.name || '').trim().toLowerCase();
+      const mPhone = (member.phone || '').trim();
+
+      // 1. Check Active Locker Bookings
+      const assetBookings = window.assetBookings || JSON.parse(localStorage.getItem('fp_asset_bookings') || '[]');
+      assetBookings.forEach(b => {
+        if (b.status === 'active') {
+          const bName = (b.memberName || '').trim().toLowerCase();
+          const bPhone = (b.memberPhone || '').trim();
+          if ((mName && bName === mName) || (mPhone && bPhone && bPhone === mPhone)) {
+            services.lockers.push({
+              id: b.id,
+              name: b.assetName || 'Locker',
+              code: b.assetCode || 'LK',
+              startDate: b.startDate,
+              rent: b.rentAmount
+            });
+          }
+        }
+      });
+
+      // Also check member customFields.lockerNumber if not in bookings
+      const customLocker = member.customFields?.lockerNumber;
+      if (customLocker && !services.lockers.some(l => l.name.includes(customLocker) || l.code.includes(customLocker))) {
+        services.lockers.push({
+          id: 'lkr-assigned',
+          name: `Locker ${customLocker}`,
+          code: customLocker,
+          isAssigned: true
+        });
+      }
+
+      // 2. Check Active Book Issues
+      const bookIssues = window.bookIssues || JSON.parse(localStorage.getItem('fp_book_issues') || '[]');
+      bookIssues.forEach(i => {
+        if (i.status === 'issued') {
+          const iName = (i.memberName || '').trim().toLowerCase();
+          const iPhone = (i.memberPhone || '').trim();
+          if ((mName && iName === mName) || (mPhone && iPhone && iPhone === mPhone)) {
+            services.books.push({
+              id: i.id,
+              title: i.bookTitle || 'Library Book',
+              code: i.bookCode || 'BK',
+              issueDate: i.issueDate,
+              dueDate: i.dueDate
+            });
+          }
+        }
+      });
+
+      return services;
+    };
+
+    window.openAddAssetBookingModalForMember = function(memName, memPhone) {
+      if (typeof openAddAssetBookingModal === 'function') {
+        openAddAssetBookingModal();
+      } else {
+        openModal('add-asset-booking-modal');
+      }
+      setTimeout(() => {
+        const nameInput = document.getElementById('bk-member-name');
+        const phoneInput = document.getElementById('bk-member-phone');
+        if (nameInput) nameInput.value = memName || '';
+        if (phoneInput) phoneInput.value = memPhone || '';
+      }, 50);
+    };
+
+    window.openIssueBookModalForMember = function(memName, memPhone) {
+      if (typeof openIssueBookModal === 'function') {
+        openIssueBookModal();
+      } else {
+        openModal('issue-book-modal');
+      }
+      setTimeout(() => {
+        const nameInput = document.getElementById('iss-member-name');
+        const phoneInput = document.getElementById('iss-member-phone');
+        if (nameInput) nameInput.value = memName || '';
+        if (phoneInput) phoneInput.value = memPhone || '';
+      }, 50);
+    };
+
+    // 6. MEMBERS DIRECTORY (LIVE ENJOYED SERVICES & ACTIVE ALLOCATIONS)
     function renderMembers() {
       const container = document.getElementById('members-cards-container');
       if (!container) return;
@@ -3281,37 +3489,38 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
         const plan = plans.find(p => p.id === m.planId);
         const fee = (m.customFee !== undefined && m.customFee !== null && m.customFee >= 0) ? m.customFee : (plan ? plan.fee : 0);
 
-        // Compute Active Member Benefits & Perks
-        const perks = [];
-        const lockerNo = m.customFields?.lockerNumber;
-        if (lockerNo) {
-          perks.push(`<span class="member-perk-pill perk-locker">🔒 Locker ${lockerNo}</span>`);
-        } else if (plan && (plan.perks?.locker || (Array.isArray(plan.benefits) && plan.benefits.some(b => /locker/i.test(b))) || /locker/i.test(plan.description||''))) {
-          perks.push(`<span class="member-perk-pill perk-locker">🔒 Locker Access</span>`);
-        }
+        // Get live enjoyed services specifically for this member
+        const services = window.getMemberActiveServices(m);
+        const hasServices = (services.lockers.length > 0) || (services.books.length > 0);
 
-        if (plan && (plan.perks?.library || (Array.isArray(plan.benefits) && plan.benefits.some(b => /library/i.test(b))) || /library/i.test(plan.description||'') || /student|supporter|patron|executive|vip/i.test(plan.name||''))) {
-          perks.push(`<span class="member-perk-pill perk-library">📚 Library Books</span>`);
-        }
-
-        if (plan && (plan.perks?.sports || (Array.isArray(plan.benefits) && plan.benefits.some(b => /sport/i.test(b))) || /sport/i.test(plan.description||'') || /sports|athlete|player/i.test(plan.name||''))) {
-          perks.push(`<span class="member-perk-pill perk-sports">🏏 Ground &amp; Kits</span>`);
-        }
-
-        if (plan && (plan.perks?.gym || (Array.isArray(plan.benefits) && plan.benefits.some(b => /gym|fitness/i.test(b))) || /gym|fitness/i.test(plan.description||''))) {
-          perks.push(`<span class="member-perk-pill perk-gym">🏋️ Gym &amp; Fitness</span>`);
-        }
-
-        if (plan && (plan.perks?.events || (Array.isArray(plan.benefits) && plan.benefits.some(b => /event|pass/i.test(b))) || /event|pass/i.test(plan.description||''))) {
-          perks.push(`<span class="member-perk-pill perk-events">🎟️ Event Free Passes</span>`);
-        }
-
-        if (plan && (plan.perks?.voting || (Array.isArray(plan.benefits) && plan.benefits.some(b => /voting|agm|rights/i.test(b))) || /voting|agm/i.test(plan.description||''))) {
-          perks.push(`<span class="member-perk-pill perk-voting">🗳️ Voting &amp; AGM</span>`);
-        }
-
-        if (perks.length === 0) {
-          perks.push(`<span class="member-perk-pill">🌟 Standard Club Member</span>`);
+        let serviceItemsHtml = '';
+        if (hasServices) {
+          services.lockers.forEach(l => {
+            serviceItemsHtml += `
+              <div class="service-enjoyed-chip chip-locker">
+                <span>🔒</span>
+                <div>Active Locker: <strong>${l.name}</strong> ${l.rent ? `<span style="font-size:10px; opacity:0.85;">(₹${l.rent}/mo)</span>` : '<span style="font-size:10px; opacity:0.85;">(Assigned)</span>'}</div>
+              </div>
+            `;
+          });
+          services.books.forEach(b => {
+            serviceItemsHtml += `
+              <div class="service-enjoyed-chip chip-book">
+                <span>📖</span>
+                <div>Borrowed Book: <strong>"${b.title}"</strong> ${b.dueDate ? `<span style="font-size:10px; opacity:0.85;">(Due: ${b.dueDate})</span>` : ''}</div>
+              </div>
+            `;
+          });
+        } else {
+          serviceItemsHtml = `
+            <div class="service-enjoyed-empty">
+              <span>✨ No active locker or book issues</span>
+              <div style="display:flex; gap:4px;">
+                <button type="button" onclick="openAddAssetBookingModalForMember('${(m.name||'').replace(/'/g, "\'")}', '${m.phone||''}')" class="btn-xs-service" title="Assign Locker to ${m.name}">🔒 + Locker</button>
+                <button type="button" onclick="openIssueBookModalForMember('${(m.name||'').replace(/'/g, "\'")}', '${m.phone||''}')" class="btn-xs-service" title="Issue Book to ${m.name}">📚 + Book</button>
+              </div>
+            </div>
+          `;
         }
 
         return `
@@ -3335,17 +3544,14 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
                 <div style="display:flex; justify-content:space-between;"><span class="meta-label">Email:</span> <span class="meta-val" style="font-weight:500;">${m.email || '-'}</span></div>
                 <div style="display:flex; justify-content:space-between;"><span class="meta-label">Plan:</span> <span style="color:#818cf8; font-weight:800;">${plan ? plan.name : 'Standard'}</span></div>
                 <div style="display:flex; justify-content:space-between;"><span class="meta-label">Monthly Fee:</span> <span style="color:#34d399; font-weight:900;">${formatINR(fee)}</span></div>
-                ${m.customFields?.lockerNumber ? `<div style="display:flex; justify-content:space-between;"><span class="meta-label">Locker Assigned:</span> <span class="meta-val" style="color:#fbbf24; font-weight:800;">${m.customFields.lockerNumber}</span></div>` : ''}
 
-                <!-- Active Plan Benefits & Member Perks Strip -->
-                <div class="member-perks-section">
-                  <div style="font-size:10px; font-weight:800; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
-                    <span>🎁 Active Plan Benefits:</span>
-                    <span style="color:#34d399; font-size:9.5px;">✓ Live Active</span>
+                <!-- Live Enjoyed Services & Facilities Section -->
+                <div class="member-services-section">
+                  <div class="member-services-head">
+                    <span>🔑 Enjoyed Facilities &amp; Services:</span>
+                    ${hasServices ? '<span style="color:#34d399; font-size:9.5px; font-weight:900;">● LIVE ACTIVE</span>' : ''}
                   </div>
-                  <div style="display:flex; flex-wrap:wrap; gap:5px;">
-                    ${perks.join('')}
-                  </div>
+                  ${serviceItemsHtml}
                 </div>
               </div>
             </div>
