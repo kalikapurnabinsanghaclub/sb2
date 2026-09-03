@@ -1798,6 +1798,92 @@
       color: #fff;
     }
 
+  
+    /* ══════════════════════════════════════════════════════════════
+       🎪 EVENT FINANCE: PUBLIC NOTICE TOGGLE SWITCH & DELETE STYLES
+       ══════════════════════════════════════════════════════════════ */
+    .event-public-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 7px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      user-select: none;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+    }
+    .event-public-toggle-btn.is-live {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+    .event-public-toggle-btn.is-hidden {
+      background: rgba(148, 163, 184, 0.18);
+      border-color: rgba(148, 163, 184, 0.35);
+    }
+    .event-public-toggle-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+    .event-toggle-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+    .event-public-toggle-btn.is-live .event-toggle-label {
+      color: #059669;
+    }
+    .event-public-toggle-btn.is-hidden .event-toggle-label {
+      color: #64748b;
+    }
+    [data-theme="dark"] .event-public-toggle-btn.is-live .event-toggle-label {
+      color: #34d399;
+    }
+    [data-theme="dark"] .event-public-toggle-btn.is-hidden .event-toggle-label {
+      color: #94a3b8;
+    }
+    .event-ios-switch {
+      width: 25px;
+      height: 14px;
+      border-radius: 14px;
+      background: #cbd5e1;
+      position: relative;
+      transition: background 0.25s ease;
+    }
+    .event-ios-switch.on {
+      background: #10b981;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.45);
+    }
+    .event-ios-knob {
+      width: 10px;
+      height: 10px;
+      background: #ffffff;
+      border-radius: 50%;
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    }
+    .event-ios-switch.on .event-ios-knob {
+      transform: translateX(11px);
+    }
+    .btn-chip-delete {
+      padding: 2px 6px;
+      font-size: 11px;
+      background: rgba(239, 68, 68, 0.14);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 6px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-chip-delete:hover {
+      background: rgba(239, 68, 68, 0.28);
+      transform: scale(1.08);
+    }
+
   </style>
 <script>
 console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
@@ -1978,73 +2064,89 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       }
     ];
 
-    // Auto-fetch events & transactions from Supabase
+    // ══════════════════════════════════════════════════════════════
+    // 🎪 MONGODB ATLAS CLOUD SYNC ENGINE FOR EVENT FINANCE
+    // ══════════════════════════════════════════════════════════════
     async function loadEventFinanceData() {
-      if (!sbClient) return;
       try {
-        const [evRes, ledgerRes] = await Promise.all([
-          sbClient.from('events').select('*').catch(() => null),
-          sbClient.from('club_earnings').select('*').catch(() => null)
+        const [eventsRes, txRes] = await Promise.all([
+          fetch('/api/events').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/events/transactions').then(r => r.ok ? r.json() : null).catch(() => null)
         ]);
 
-        // 1. Process Supabase events
-        if (evRes && evRes.data && evRes.data.length > 0) {
-          const cloudEvents = evRes.data.map(e => ({
-            id: String(e.id),
-            name: e.name || e.title || 'Club Event',
-            category: e.category || e.type || 'Cultural',
-            venue: e.venue || 'KNSDC Ground',
-            startDate: e.start_date || e.date || '',
-            endDate: e.end_date || '',
-            targetRevenue: Number(e.capacity ? e.capacity * 100 : 150000),
-            budgetExpense: 100000,
-            description: e.description || '',
-            status: e.active !== false ? 'active' : 'completed'
-          }));
-
-          const cIds = new Set(cloudEvents.map(x => x.id));
-          const localOnly = window.clubEvents.filter(x => !cIds.has(x.id));
-          window.clubEvents = [...cloudEvents, ...localOnly];
+        if (eventsRes && eventsRes.success && Array.isArray(eventsRes.events) && eventsRes.events.length > 0) {
+          window.clubEvents = eventsRes.events;
           localStorage.setItem('fp_club_events', JSON.stringify(window.clubEvents));
         }
 
-        // 2. Process Supabase Event Transactions
-        if (ledgerRes && ledgerRes.data && ledgerRes.data.length > 0) {
-          const cloudTx = [];
-          ledgerRes.data.forEach(item => {
-            const cf = item.custom_fields || {};
-            if (cf.type === 'event_finance' || item.id.startsWith('EVT-') || (item.title && item.title.includes('[Event'))) {
-              cloudTx.push({
-                id: item.id,
-                eventId: cf.event_id || (window.clubEvents[0]?.id || 'evt-101'),
-                type: cf.event_tx_type || (item.category === 'other' ? 'expense' : 'income'),
-                title: cf.title || item.title.replace(/\[Event[^\]]*\]\s*/, ''),
-                category: cf.category || (item.category === 'other' ? 'Other Expense' : 'Other Income'),
-                amount: Number(item.amount) || 0,
-                date: item.date || '',
-                paymentMethod: item.payment_method || 'Cash',
-                payerOrVendor: item.payer_or_customer || cf.payerOrVendor || '',
-                refNo: item.reference_no || '',
-                notes: item.description || '',
-                createdAt: item.created_at || new Date().toISOString()
-              });
-            }
-          });
-
-          if (cloudTx.length > 0) {
-            const txIds = new Set(cloudTx.map(x => x.id));
-            const localOnlyTx = window.eventTransactions.filter(x => !txIds.has(x.id));
-            window.eventTransactions = [...cloudTx, ...localOnlyTx];
-            localStorage.setItem('fp_event_transactions', JSON.stringify(window.eventTransactions));
-          }
+        if (txRes && txRes.success && Array.isArray(txRes.transactions)) {
+          window.eventTransactions = txRes.transactions;
+          localStorage.setItem('fp_event_transactions', JSON.stringify(window.eventTransactions));
         }
 
         if (typeof renderEventFinance === 'function') renderEventFinance();
+        if (typeof updateCloudSyncBadge === 'function') updateCloudSyncBadge(true);
+        console.log('[MongoDB Event Cloud] Synchronized', (window.clubEvents || []).length, 'events and', (window.eventTransactions || []).length, 'transactions.');
       } catch (err) {
-        console.warn('[Event Finance Sync Notice]:', err);
+        console.warn('[MongoDB Event Cloud Notice]:', err);
       }
     }
-    setTimeout(loadEventFinanceData, 1000);
+    setTimeout(loadEventFinanceData, 400);
+
+    // 🌐 Toggle Event Public Notice Board Switch (MongoDB Atlas)
+    window.toggleEventPublicNotice = async function(eventId, newStatus) {
+      const ev = (window.clubEvents || []).find(e => e.id === eventId);
+      if (!ev) return;
+
+      ev.publicNotice = !!newStatus;
+      localStorage.setItem('fp_club_events', JSON.stringify(window.clubEvents));
+      renderEventFinance();
+
+      try {
+        const res = await fetch(`/api/events/${eventId}/toggle-public`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publicNotice: ev.publicNotice })
+        });
+        const data = await res.json();
+        if (data.success && typeof window.showToast === 'function') {
+          window.showToast(ev.publicNotice 
+            ? `🌐 "${ev.name}" is now LIVE on Public Notice Board!`
+            : `🔒 "${ev.name}" is now HIDDEN from Public Notice Board!`);
+        }
+      } catch (err) {
+        console.error('[Toggle Event Public Notice Error]:', err);
+      }
+    };
+
+    // 🗑️ Delete Event (MongoDB Atlas)
+    window.deleteEvent = async function(eventId, eventName) {
+      if (!confirm(`⚠️ PERMANENT DELETE:\n\nAre you sure you want to delete event "${eventName}"?\n\nThis will remove the event and all its financial transactions from MongoDB cloud and public notice board.`)) {
+        return;
+      }
+
+      window.clubEvents = (window.clubEvents || []).filter(e => e.id !== eventId);
+      window.eventTransactions = (window.eventTransactions || []).filter(t => t.eventId !== eventId);
+      localStorage.setItem('fp_club_events', JSON.stringify(window.clubEvents));
+      localStorage.setItem('fp_event_transactions', JSON.stringify(window.eventTransactions));
+
+      if (window.selectedEventId === eventId && window.clubEvents.length > 0) {
+        window.selectedEventId = window.clubEvents[0].id;
+        localStorage.setItem('fp_selected_event_id', window.selectedEventId);
+      }
+
+      renderEventFinance();
+
+      try {
+        const res = await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success && typeof window.showToast === 'function') {
+          window.showToast(`🗑️ Event "${eventName}" deleted from MongoDB.`);
+        }
+      } catch (err) {
+        console.error('[Delete Event Error]:', err);
+      }
+    };
 
     // Switch Selected Active Event
     window.switchActiveEvent = function(eventId) {
@@ -2082,16 +2184,32 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
           const exp = txs.filter(t => t.type === 'expense').reduce((s, x) => s + (Number(x.amount) || 0), 0);
           const net = inc - exp;
 
+          const isPublic = e.publicNotice !== false;
+          const safeName = (e.name || 'Event').replace(/'/g, "\\'");
           return `
             <div class="event-select-chip ${isAct ? 'active' : ''}" onclick="switchActiveEvent('${e.id}')">
               <div>
-                <div class="event-chip-top">
+                <div class="event-chip-top" style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px;">
                   <span class="event-chip-category">${e.category || 'Event'}</span>
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <button type="button" onclick="event.stopPropagation(); openEditEventModal('${e.id}')" class="btn" style="padding:1px 7px; font-size:11px; background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.4); border-radius:6px; font-weight:800; cursor:pointer;" title="Edit Event, Goal & Budget">
+
+                  <!-- 🟥 RED BOX: Public Notice Board Toggle Switch -->
+                  <div class="event-public-toggle-btn ${isPublic ? 'is-live' : 'is-hidden'}" 
+                       onclick="event.stopPropagation(); window.toggleEventPublicNotice('${e.id}', ${!isPublic})"
+                       title="${isPublic ? 'Public Notice: LIVE (Click to Hide from Public Page)' : 'Public Notice: HIDDEN (Click to Show on Public Page)'}">
+                    <span class="event-toggle-label">${isPublic ? '🌐 Public' : '🔒 Hide'}</span>
+                    <div class="event-ios-switch ${isPublic ? 'on' : 'off'}">
+                      <div class="event-ios-knob"></div>
+                    </div>
+                  </div>
+
+                  <div style="display:flex; align-items:center; gap:5px;">
+                    <button type="button" onclick="event.stopPropagation(); openEditEventModal('${e.id}')" class="btn" style="padding:2px 7px; font-size:11px; background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.4); border-radius:6px; font-weight:800; cursor:pointer;" title="Edit Event, Goal & Budget">
                       ✏️ Edit
                     </button>
-                    <span style="font-size:10.5px; font-weight:800; color:${isAct ? '#f59e0b' : 'var(--text-muted)'};">
+                    <button type="button" onclick="event.stopPropagation(); window.deleteEvent('${e.id}', '${safeName}')" class="btn btn-chip-delete" title="Delete Event & its transactions permanently">
+                      🗑️
+                    </button>
+                    <span style="font-size:10px; font-weight:800; color:${isAct ? '#f59e0b' : 'var(--text-muted)'}; margin-left:2px;">
                       ${isAct ? '● ACTIVE' : 'Select'}
                     </span>
                   </div>
@@ -2343,7 +2461,7 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       openModal('event-receipt-modal');
     };
 
-    // Save Handlers
+    // Save Handlers (Fully Cloud-Powered by MongoDB Atlas)
     window.handleSaveEvent = async function(e) {
       if (e) e.preventDefault();
       const id = document.getElementById('evt-id').value || ('evt-' + Date.now());
@@ -2358,7 +2476,13 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
 
       if (!name) { alert('Please enter an event name'); return; }
 
-      const evDoc = { id, name, category, venue, startDate, endDate, targetRevenue, budgetExpense, description, status: 'active', createdAt: new Date().toISOString() };
+      const existingEv = (window.clubEvents || []).find(x => x.id === id);
+      const publicNotice = existingEv && existingEv.publicNotice !== undefined ? existingEv.publicNotice : true;
+
+      const evDoc = { 
+        id, name, category, venue, startDate, endDate, targetRevenue, budgetExpense, description, 
+        publicNotice, status: 'active', updatedAt: new Date().toISOString() 
+      };
 
       if (!window.clubEvents) window.clubEvents = [];
       const idx = window.clubEvents.findIndex(x => x.id === id);
@@ -2370,27 +2494,19 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       closeModal('create-event-modal');
       renderEventFinance();
 
-      if (sbClient) {
-        updateCloudSyncBadge('syncing');
-        try {
-          await Promise.allSettled([
-            sbClient.from('events').upsert([{ id, name, category, venue, start_date: startDate, end_date: endDate, description }]),
-            sbClient.from('club_earnings').upsert([{
-              id: 'EVT-DEF-' + id,
-              title: `Event Config: ${name}`,
-              category: 'events',
-              amount: 0,
-              date: startDate || new Date().toISOString().split('T')[0],
-              payment_method: 'cash',
-              payer_or_customer: 'System',
-              reference_no: id,
-              description: `Event definition: ${name}`,
-              custom_fields: { type: 'club_event_definition', ...evDoc }
-            }])
-          ]);
-          updateCloudSyncBadge(true);
-          window.showToast(`✓ Event "${name}" created globally!`);
-        } catch (err) {}
+      // Persist to MongoDB Cloud
+      try {
+        const res = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(evDoc)
+        });
+        const data = await res.json();
+        if (data.success && typeof window.showToast === 'function') {
+          window.showToast(`✓ Event "${name}" saved to MongoDB cloud!`);
+        }
+      } catch (err) {
+        console.error('[Save Event MongoDB Error]:', err);
       }
     };
 
@@ -2422,25 +2538,19 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       closeModal('add-event-earning-modal');
       renderEventFinance();
 
-      if (sbClient) {
-        updateCloudSyncBadge('syncing');
-        const sbLedgerPayload = {
-          id: txDoc.id,
-          title: `[Event: ${ev ? ev.name : 'Event'}] ${title}`,
-          category: 'events',
-          amount: txDoc.amount,
-          date: txDoc.date,
-          payment_method: ['cash', 'upi', 'card', 'bank_transfer'].includes(paymentMethod.toLowerCase()) ? paymentMethod.toLowerCase() : 'cash',
-          payer_or_customer: payerOrVendor || (ev ? ev.name : 'Sponsor'),
-          reference_no: refNo || txDoc.id,
-          description: `Event Inflow: ${title} for ${ev ? ev.name : ''}`,
-          custom_fields: { type: 'event_finance', event_id: eventId, event_name: ev ? ev.name : '', event_tx_type: 'income', ...txDoc }
-        };
-        try {
-          await sbClient.from('club_earnings').upsert([sbLedgerPayload], { onConflict: 'id' });
-          updateCloudSyncBadge(true);
-          window.showToast(`✓ Inflow of ₹${amount.toLocaleString('en-IN')} saved to ${ev ? ev.name : 'event'}!`);
-        } catch (err) {}
+      // Persist to MongoDB Cloud
+      try {
+        const res = await fetch('/api/events/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(txDoc)
+        });
+        const data = await res.json();
+        if (data.success && typeof window.showToast === 'function') {
+          window.showToast(`✓ Inflow of ₹${amount.toLocaleString('en-IN')} saved to MongoDB!`);
+        }
+      } catch (err) {
+        console.error('[Save Event Earning MongoDB Error]:', err);
       }
     };
 
@@ -2472,25 +2582,19 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       closeModal('add-event-spending-modal');
       renderEventFinance();
 
-      if (sbClient) {
-        updateCloudSyncBadge('syncing');
-        const sbLedgerPayload = {
-          id: txDoc.id,
-          title: `[Event Exp: ${ev ? ev.name : 'Event'}] ${title}`,
-          category: 'other',
-          amount: txDoc.amount,
-          date: txDoc.date,
-          payment_method: ['cash', 'upi', 'card', 'bank_transfer'].includes(paymentMethod.toLowerCase()) ? paymentMethod.toLowerCase() : 'cash',
-          payer_or_customer: payerOrVendor || 'Vendor',
-          reference_no: refNo || txDoc.id,
-          description: `Event Outflow: ${title} for ${ev ? ev.name : ''}`,
-          custom_fields: { type: 'event_finance', event_id: eventId, event_name: ev ? ev.name : '', event_tx_type: 'expense', ...txDoc }
-        };
-        try {
-          await sbClient.from('club_earnings').upsert([sbLedgerPayload], { onConflict: 'id' });
-          updateCloudSyncBadge(true);
-          window.showToast(`✓ Outflow of ₹${amount.toLocaleString('en-IN')} recorded for ${ev ? ev.name : 'event'}!`);
-        } catch (err) {}
+      // Persist to MongoDB Cloud
+      try {
+        const res = await fetch('/api/events/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(txDoc)
+        });
+        const data = await res.json();
+        if (data.success && typeof window.showToast === 'function') {
+          window.showToast(`✓ Outflow of ₹${amount.toLocaleString('en-IN')} recorded to MongoDB!`);
+        }
+      } catch (err) {
+        console.error('[Save Event Spending MongoDB Error]:', err);
       }
     };
 
@@ -2500,13 +2604,15 @@ console.log('STARTING ULTRA-SMOOTH KNSDC FINANCE SCRIPT...');
       localStorage.setItem('fp_event_transactions', JSON.stringify(window.eventTransactions));
       renderEventFinance();
 
-      if (sbClient) {
-        updateCloudSyncBadge('syncing');
-        try {
-          await sbClient.from('club_earnings').delete().eq('id', txId);
-          updateCloudSyncBadge(true);
-          window.showToast('✓ Event transaction deleted globally.');
-        } catch (err) {}
+      // Persist delete to MongoDB Cloud
+      try {
+        const res = await fetch(`/api/events/transactions/${txId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success && typeof window.showToast === 'function') {
+          window.showToast('✓ Event transaction deleted from MongoDB.');
+        }
+      } catch (err) {
+        console.error('[Delete Event Tx MongoDB Error]:', err);
       }
     };
 

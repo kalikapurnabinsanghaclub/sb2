@@ -1151,6 +1151,232 @@ app.get("/api/assets/bookings", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ══════════════════════════════════════════════════════════════
+// 🎪 EVENT FINANCE & PUBLIC NOTICE BOARD MONGODB CLOUD ENGINE
+// ══════════════════════════════════════════════════════════════
+
+const DEFAULT_CLUB_EVENTS = [
+  {
+    id: "evt-101",
+    name: "DANCE IGNITION season 5",
+    category: "Cultural",
+    venue: "KNSDC Main Ground",
+    startDate: "2026-10-25",
+    endDate: "2026-10-27",
+    targetRevenue: 150000,
+    budgetExpense: 120000,
+    description: "Premier inter-district dance festival & championship",
+    publicNotice: true,
+    status: "active"
+  },
+  {
+    id: "evt-102",
+    name: "Durga Puja Festival 2026",
+    category: "Cultural",
+    venue: "Kalikapur Puja Pandal",
+    startDate: "2026-10-18",
+    endDate: "2026-10-23",
+    targetRevenue: 350000,
+    budgetExpense: 300000,
+    description: "5-day grand Durga Puja celebration with pandal, lights, and feasting",
+    publicNotice: true,
+    status: "active"
+  },
+  {
+    id: "evt-103",
+    name: "Annual Cricket Tournament 2026",
+    category: "Tournament",
+    venue: "Nabin Sangha Ground",
+    startDate: "2026-11-15",
+    endDate: "2026-11-22",
+    targetRevenue: 80000,
+    budgetExpense: 60000,
+    description: "16-team knockout night cricket tournament with live commentary",
+    publicNotice: true,
+    status: "active"
+  }
+];
+
+const DEFAULT_EVENT_TRANSACTIONS = [
+  {
+    id: "EVT-TX-1001",
+    eventId: "evt-101",
+    type: "income",
+    title: "Title Sponsorship - Senco Gold",
+    category: "Sponsorship",
+    amount: 40000,
+    date: "2026-09-01",
+    paymentMethod: "Bank Transfer",
+    payerOrVendor: "Senco Gold Ltd",
+    refNo: "SPON-01",
+    notes: "Main stage branding",
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: "EVT-TX-1002",
+    eventId: "evt-101",
+    type: "expense",
+    title: "Stage, Truss & LED Sound Setup",
+    category: "Stage, Sound & Lights",
+    amount: 25000,
+    date: "2026-09-02",
+    paymentMethod: "UPI",
+    payerOrVendor: "Bengal Sound & Tech",
+    refNo: "VCH-102",
+    notes: "Advance 50% paid",
+    createdAt: new Date().toISOString()
+  }
+];
+
+async function seedEventFinance() {
+  if (!db) return;
+  try {
+    const evCount = await db.collection("club_events").countDocuments();
+    if (evCount === 0) {
+      await db.collection("club_events").insertMany(DEFAULT_CLUB_EVENTS);
+      console.log("[MongoDB] Seeded default club events!");
+    }
+    const txCount = await db.collection("club_event_transactions").countDocuments();
+    if (txCount === 0) {
+      await db.collection("club_event_transactions").insertMany(DEFAULT_EVENT_TRANSACTIONS);
+      console.log("[MongoDB] Seeded default event financial transactions!");
+    }
+  } catch (err) {
+    console.error("[MongoDB Seed Events Error]:", err.message);
+  }
+}
+setTimeout(seedEventFinance, 4000);
+
+// 1. GET ALL EVENTS
+app.get("/api/events", async (req, res) => {
+  try {
+    if (db) {
+      const events = await db.collection("club_events").find({}).sort({ startDate: 1 }).toArray();
+      if (events.length > 0) return res.json({ success: true, count: events.length, events });
+    }
+    res.json({ success: true, count: DEFAULT_CLUB_EVENTS.length, events: DEFAULT_CLUB_EVENTS });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. CREATE / UPDATE EVENT (UPSERT)
+app.post("/api/events", async (req, res) => {
+  try {
+    const ev = req.body;
+    ev.id = ev.id || ("evt-" + Date.now());
+    ev.updatedAt = new Date();
+    if (ev.publicNotice === undefined) ev.publicNotice = true;
+    if (db) {
+      await db.collection("club_events").updateOne(
+        { id: ev.id },
+        { $set: ev },
+        { upsert: true }
+      );
+      console.log(`[MongoDB] Upserted event: ${ev.name} (${ev.id})`);
+    }
+    res.json({ success: true, event: ev });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. DELETE EVENT (AND ITS TRANSACTIONS)
+app.delete("/api/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (db) {
+      await db.collection("club_events").deleteOne({ id });
+      await db.collection("club_event_transactions").deleteMany({ eventId: id });
+      console.log(`[MongoDB] Deleted event ${id} and all related transactions`);
+    }
+    res.json({ success: true, message: `Deleted event ${id} and related transactions` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. TOGGLE EVENT PUBLIC NOTICE BOARD VISIBILITY SWITCH
+app.post("/api/events/:id/toggle-public", async (req, res) => {
+  try {
+    const { id } = req.params;
+    let { publicNotice } = req.body;
+    if (publicNotice === undefined) {
+      if (db) {
+        const cur = await db.collection("club_events").findOne({ id });
+        publicNotice = cur ? !cur.publicNotice : true;
+      } else {
+        publicNotice = true;
+      }
+    }
+    publicNotice = !!publicNotice;
+    if (db) {
+      await db.collection("club_events").updateOne(
+        { id },
+        { $set: { publicNotice, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      console.log(`[MongoDB] Event ${id} publicNotice set to: ${publicNotice}`);
+    }
+    res.json({ success: true, id, publicNotice, message: `Event is now ${publicNotice ? 'visible' : 'hidden'} on public notice board` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. GET EVENT TRANSACTIONS
+app.get("/api/events/transactions", async (req, res) => {
+  try {
+    const { eventId } = req.query;
+    let query = {};
+    if (eventId) query.eventId = eventId;
+    if (db) {
+      const transactions = await db.collection("club_event_transactions").find(query).sort({ date: -1 }).toArray();
+      return res.json({ success: true, count: transactions.length, transactions });
+    }
+    const txList = eventId ? DEFAULT_EVENT_TRANSACTIONS.filter(t => t.eventId === eventId) : DEFAULT_EVENT_TRANSACTIONS;
+    res.json({ success: true, count: txList.length, transactions: txList });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. CREATE / UPDATE EVENT TRANSACTION (INFLOW / OUTFLOW)
+app.post("/api/events/transactions", async (req, res) => {
+  try {
+    const tx = req.body;
+    tx.id = tx.id || ("EVT-TX-" + Date.now());
+    tx.createdAt = tx.createdAt || new Date().toISOString();
+    tx.updatedAt = new Date();
+    if (db) {
+      await db.collection("club_event_transactions").updateOne(
+        { id: tx.id },
+        { $set: tx },
+        { upsert: true }
+      );
+      console.log(`[MongoDB] Upserted event transaction: ${tx.title} (${tx.id})`);
+    }
+    res.json({ success: true, transaction: tx });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. DELETE EVENT TRANSACTION
+app.delete("/api/events/transactions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (db) {
+      await db.collection("club_event_transactions").deleteOne({ id });
+      console.log(`[MongoDB] Deleted event transaction: ${id}`);
+    }
+    res.json({ success: true, message: `Deleted transaction ${id}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════
 // 👥 MEMBERS DIRECTORY & 🎛️ PLANS & 📋 CHECKLIST MONGODB CLOUD ENGINE
 // ══════════════════════════════════════════════════════════════
