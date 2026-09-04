@@ -2542,7 +2542,6 @@ function submitVerification() {
       const nowStr = new Date().toISOString();
       if (existingJudge) {
         existingJudge.present = true;
-        existingJudge.isUnlocked = true;
         existingJudge.eventId = judgeAgreements[idx].eventId;
         existingJudge.attendanceLog = existingJudge.attendanceLog || [];
         existingJudge.attendanceLog.push({ checkIn: nowStr, checkOut: null });
@@ -2554,7 +2553,7 @@ function submitVerification() {
           eventId: judgeAgreements[idx].eventId,
           role: 'Judge',
           present: true,
-          isUnlocked: true,
+          isUnlocked: false,
           attendanceLog: [{ checkIn: nowStr, checkOut: null }],
           color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
         });
@@ -3333,16 +3332,15 @@ function setupHoldButton() {
 
     if (target) {
       target.present = !target.present;
-      target.isUnlocked = target.present;
       target.eventId = JUDGE.eventId || '0';
       target.attendanceLog = target.attendanceLog || [];
       if (target.present) {
         target.attendanceLog.push({ checkIn: nowStr, checkOut: null });
-        toast('🔓 You are now Present. Scoring Section Unlocked!', '#10b981');
+        toast('🟢 You are marked Present (Check 1). If locked, ask Monitor to unlock scoring.', '#10b981');
       } else {
         const lastLog = target.attendanceLog[target.attendanceLog.length - 1];
         if (lastLog && !lastLog.checkOut) lastLog.checkOut = nowStr;
-        toast('🔒 You are now Absent. Scoring Section Locked.', '#f59e0b');
+        toast('🔴 You are marked Absent. Scoring is locked.', '#f59e0b');
       }
     } else {
       target = {
@@ -3352,7 +3350,7 @@ function setupHoldButton() {
         eventId: JUDGE.eventId || '0',
         role: 'Judge',
         present: true,
-        isUnlocked: true,
+        isUnlocked: false,
         attendanceLog: [{ checkIn: nowStr, checkOut: null }],
         color: JUDGE.color || '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
       };
@@ -5082,6 +5080,7 @@ syncEngine.subscribe((state) => {
     // Note: renderParticipantsTable() targets scoring-page DOM elements and must NOT be called here
   }
   if (currentPage === 'scoring') {
+    if (typeof renderParticipantsTable === 'function') renderParticipantsTable();
     // renderOnStage() internally decides whether to reload the score panel
     // based on isEditing state and whether the participant has changed.
     renderOnStage();

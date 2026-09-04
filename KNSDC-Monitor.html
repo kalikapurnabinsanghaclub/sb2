@@ -6598,50 +6598,47 @@ window.toggleJudgePresence = async (identifier, forcedState) => {
     (String(j.id) === idNorm)
   );
   
-  const currentActive = currentJudge ? (currentJudge.present === true || currentJudge.isUnlocked === true) : false;
   const makePresent = typeof forcedState === 'boolean' 
     ? forcedState 
-    : !currentActive;
+    : !(currentJudge && currentJudge.present === true);
 
   if (window.syncEngine && typeof window.syncEngine.setJudgePresence === 'function') {
     await window.syncEngine.setJudgePresence(identifier, makePresent, activeEventId, currentVenueMonitor);
-  }
-
-  // Ensure local memory state is synchronously and immediately updated with both present and isUnlocked
-  syncEngine.setData(s => {
-    const judgesList = [...(s.judges || [])];
-    let target = judgesList.find(j => 
-      (j.email && String(j.email).toLowerCase().trim() === idNorm) || 
-      (j.name && String(j.name).toLowerCase().trim() === idNorm) ||
-      (String(j.id) === idNorm)
-    );
-    if (target) {
-      target.present = makePresent;
-      target.isUnlocked = makePresent;
-    } else {
-      const agr = (s.judgeAgreements || s.agreements || []).find(a => 
-        (a.email && String(a.email).toLowerCase().trim() === idNorm) || 
-        (a.name && String(a.name).toLowerCase().trim() === idNorm) ||
-        (String(a.id) === idNorm)
+  } else {
+    syncEngine.setData(s => {
+      const judgesList = [...(s.judges || [])];
+      let target = judgesList.find(j => 
+        (j.email && String(j.email).toLowerCase().trim() === idNorm) || 
+        (j.name && String(j.name).toLowerCase().trim() === idNorm) ||
+        (String(j.id) === idNorm)
       );
-      if (agr) {
-        judgesList.push({
-          id: judgesList.length ? Math.max(...judgesList.map(j => Number(j.id) || 0)) + 1 : 1,
-          name: agr.name,
-          email: agr.email,
-          eventId: agr.eventId || '0',
-          role: 'Judge',
-          present: makePresent,
-          isUnlocked: makePresent,
-          color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
-        });
+      if (target) {
+        target.present = makePresent;
+      } else {
+        const agr = (s.judgeAgreements || s.agreements || []).find(a => 
+          (a.email && String(a.email).toLowerCase().trim() === idNorm) || 
+          (a.name && String(a.name).toLowerCase().trim() === idNorm) ||
+          (String(a.id) === idNorm)
+        );
+        if (agr) {
+          judgesList.push({
+            id: judgesList.length ? Math.max(...judgesList.map(j => Number(j.id) || 0)) + 1 : 1,
+            name: agr.name,
+            email: agr.email,
+            eventId: agr.eventId || '0',
+            role: 'Judge',
+            present: makePresent,
+            isUnlocked: false,
+            color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
+          });
+        }
       }
-    }
-    return { ...s, judges: judgesList, lastUpdated: Date.now() };
-  });
+      return { ...s, judges: judgesList, lastUpdated: Date.now() };
+    });
 
-  if (syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
-    await syncEngine.forceSaveStateToSupabase().catch(e => console.warn('[toggleJudgePresence] persist error:', e));
+    if (syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
+      await syncEngine.forceSaveStateToSupabase().catch(e => console.warn('[toggleJudgePresence] persist error:', e));
+    }
   }
 
   // Refresh all views globally and reactively
@@ -6649,7 +6646,7 @@ window.toggleJudgePresence = async (identifier, forcedState) => {
   if (typeof renderStageView === 'function') renderStageView();
   if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
   if (typeof renderDashboard === 'function') renderDashboard();
-  toast(makePresent ? '🟢 Judge activated (Present & Unlocked)!' : '🔴 Judge deactivated (Absent & Locked).');
+  toast(makePresent ? '🟢 Check 1: Judge marked Present' : '🔴 Check 1: Judge marked Absent');
 };
 
 window.syncVenueJudges = async () => {
@@ -6667,7 +6664,63 @@ window.toggleVenueJudgePresence = async (identifier, makePresent) => {
 };
 
 window.toggleJudgeUnlock = async (identifier, forcedState) => {
-  return await window.toggleJudgePresence(identifier, forcedState);
+  const sData = (syncEngine && syncEngine.getData()) || {};
+  const currentJudges = sData.judges || [];
+  const idNorm = String(identifier || '').toLowerCase().trim();
+  const currentJudge = currentJudges.find(j => 
+    (j.email && String(j.email).toLowerCase().trim() === idNorm) || 
+    (j.name && String(j.name).toLowerCase().trim() === idNorm) ||
+    (String(j.id) === idNorm)
+  );
+  
+  const makeUnlocked = typeof forcedState === 'boolean' 
+    ? forcedState 
+    : !(currentJudge && currentJudge.isUnlocked === true);
+
+  if (window.syncEngine && typeof window.syncEngine.setJudgeUnlock === 'function') {
+    await window.syncEngine.setJudgeUnlock(identifier, makeUnlocked);
+  } else {
+    syncEngine.setData(s => {
+      const judgesList = [...(s.judges || [])];
+      let target = judgesList.find(j => 
+        (j.email && String(j.email).toLowerCase().trim() === idNorm) || 
+        (j.name && String(j.name).toLowerCase().trim() === idNorm) ||
+        (String(j.id) === idNorm)
+      );
+      if (target) {
+        target.isUnlocked = makeUnlocked;
+      } else {
+        const agr = (s.judgeAgreements || s.agreements || []).find(a => 
+          (a.email && String(a.email).toLowerCase().trim() === idNorm) || 
+          (a.name && String(a.name).toLowerCase().trim() === idNorm) ||
+          (String(a.id) === idNorm)
+        );
+        if (agr) {
+          judgesList.push({
+            id: judgesList.length ? Math.max(...judgesList.map(j => Number(j.id) || 0)) + 1 : 1,
+            name: agr.name,
+            email: agr.email,
+            eventId: agr.eventId || '0',
+            role: 'Judge',
+            present: false,
+            isUnlocked: makeUnlocked,
+            color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
+          });
+        }
+      }
+      return { ...s, judges: judgesList, lastUpdated: Date.now() };
+    });
+
+    if (syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
+      await syncEngine.forceSaveStateToSupabase().catch(e => console.warn('[toggleJudgeUnlock] persist error:', e));
+    }
+  }
+
+  // Refresh all views globally and reactively
+  if (typeof renderAssignedJudges === 'function') renderAssignedJudges();
+  if (typeof renderStageView === 'function') renderStageView();
+  if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
+  toast(makeUnlocked ? '🔓 Check 2: Scoring UNLOCKED for Judge' : '🔒 Check 2: Scoring LOCKED for Judge');
 };
 
 window.togglePreviousScoresFromAssign = (cb) => {
@@ -14265,16 +14318,17 @@ function renderAssignedJudges() {
       : '<div style="width:52px;height:52px;border-radius:50%;background:' + ac + '20;color:' + ac + ';display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;border:2px solid ' + ac + '50;flex-shrink:0">' + initial + '</div>';
     const isPresent = !!(jSession && jSession.present === true);
     const isUnlocked = !!(jSession && jSession.isUnlocked === true);
-    const isActive = (isPresent && isUnlocked) || isPresent;
     const attLogs = jSession && jSession.attendanceLog ? jSession.attendanceLog : [];
 
-    const presentBadge = '<div class="badge ' + (isActive ? 'b-green' : 'b-red') + '" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', ' + (!isActive) + ')" title="Click to toggle presence & scoring">' +
-      (isActive ? '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT' : 'ABSENT') +
+    // CHECK 1: Presence Badge (Judge Check-In or Monitor click)
+    const presentBadge = '<div class="badge ' + (isPresent ? 'b-green' : 'b-red') + '" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', ' + (!isPresent) + ')" title="Check 1: ' + (isPresent ? 'Mark Absent' : 'Mark Present') + '">' +
+      (isPresent ? '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT' : 'ABSENT') +
       '</div>';
 
+    // CHECK 2: Monitor Scoring Authorization Claw Toggle Switch
     const unlockSwitch = '<div style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:6px">' +
-      '<label class="claw-toggle-wrapper" style="font-size: 3px; margin: 0; flex-shrink: 0;" title="' + (isActive ? 'Deactivate Judge (Lock & Mark Absent)' : 'Activate Judge (Unlock & Mark Present)') + ' for ' + a.name + '">' +
-      '<input type="checkbox" class="claw-toggle-input" onchange="toggleJudgePresence(\'' + (a.email||a.name) + '\', this.checked)" ' + (isActive ? 'checked' : '') + ' />' +
+      '<label class="claw-toggle-wrapper" style="font-size: 3px; margin: 0; flex-shrink: 0;" title="Check 2: ' + (isUnlocked ? 'Lock Scoring' : 'Unlock Scoring') + ' for ' + a.name + '">' +
+      '<input type="checkbox" class="claw-toggle-input" onchange="toggleJudgeUnlock(\'' + (a.email||a.name) + '\', this.checked)" ' + (isUnlocked ? 'checked' : '') + ' />' +
       '<div class="claw-toggle-track">' +
       '<div class="claw-toggle-slot"><div class="claw-toggle-slot-fill"></div></div>' +
       '<div class="claw-toggle-core"><div class="claw-toggle-core-gear"></div><div class="claw-toggle-core-inner"></div></div>' +
@@ -14285,7 +14339,7 @@ function renderAssignedJudges() {
       '<div class="claw-machine-joint"><div class="claw-machine-joint-pin"></div></div>' +
       '</div>' +
       '</div>' +
-      '</label><div style="font-size:9px;font-weight:800;color:' + (isActive ? '#059669' : 'var(--text-muted)') + ';margin-top:4px">' + (isActive ? 'UNLOCKED' : 'LOCKED') + '</div></div>';
+      '</label><div style="font-size:9px;font-weight:800;color:' + (isUnlocked ? '#059669' : 'var(--text-muted)') + ';margin-top:4px">' + (isUnlocked ? 'UNLOCKED' : 'LOCKED') + '</div></div>';
 
     let attHtml = '';
     if (attLogs.length > 0) {
