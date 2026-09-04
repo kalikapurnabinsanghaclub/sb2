@@ -600,6 +600,97 @@
       .top-bar { flex-direction: column; gap: 12px; align-items: stretch; }
       .performer-main { flex-direction: column; align-items: flex-start; }
       .stage-timer-box { width: 100%; flex-direction: row; justify-content: space-between; }
+    }
+
+    /* DIRECTOR EVENT SELECTOR */
+    .director-select {
+      background: rgba(14, 20, 36, 0.9);
+      border: 1.5px solid rgba(6, 182, 212, 0.35);
+      color: #fff;
+      padding: 7px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 800;
+      outline: none;
+      cursor: pointer;
+      min-width: 210px;
+      max-width: 280px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+      transition: all 0.2s ease;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .director-select:hover, .director-select:focus {
+      border-color: var(--cyan-neon);
+      box-shadow: 0 0 16px rgba(6, 182, 212, 0.4);
+    }
+
+    /* JUDGE CARD PRO STYLES */
+    .status-pulse-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber-neon);
+      box-shadow: 0 0 6px var(--amber-neon);
+      animation: pulseDot 1.2s infinite alternate;
+      margin-right: 4px;
+    }
+
+    @keyframes pulseDot {
+      from { opacity: 0.4; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1.3); }
+    }
+
+    .score-val-wrap {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .score-star {
+      color: #fbbf24;
+      font-size: 20px;
+      filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.6));
+    }
+
+    .score-unit {
+      font-size: 13px;
+      color: var(--text-dim);
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    .eval-live-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .eval-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 18px;
+    }
+
+    .eval-bars .bar {
+      width: 3px;
+      background: var(--amber-neon);
+      border-radius: 2px;
+      animation: barDance 1.2s infinite ease-in-out;
+    }
+    .eval-bars .bar.b1 { height: 8px; animation-delay: 0.1s; }
+    .eval-bars .bar.b2 { height: 16px; animation-delay: 0.3s; }
+    .eval-bars .bar.b3 { height: 11px; animation-delay: 0.2s; }
+
+    @keyframes barDance {
+      0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+      50% { transform: scaleY(1); opacity: 1; box-shadow: 0 0 8px var(--amber-neon); }
+    }
+
     .brand-logo-wrap {
       position: relative;
       cursor: pointer;
@@ -974,8 +1065,8 @@
       </div>
 
       <div class="top-actions">
-        <select id="director-event-select" onchange="switchDirectorEvent(this.value)" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px 10px; border-radius:10px; font-size:12px; font-weight:700; outline:none; cursor:pointer; max-width:180px;">
-          <option value="">Switch Event</option>
+        <select id="director-event-select" class="director-select" onchange="switchDirectorEvent(this.value)">
+          <option value="">🎪 Switch Event</option>
         </select>
         <div class="status-live-dot">
           <div class="dot-pulse"></div>
@@ -1427,21 +1518,31 @@
                 <div class="judge-spec">${j.specialization || j.category || 'Official Panel'}</div>
               </div>
               <span class="judge-status-badge ${isSubmitted ? 'status-locked' : 'status-active'}">
-                ${isSubmitted ? 'LOCKED ✅' : 'SCORING...'}
+                ${isSubmitted ? 'LOCKED ✅' : '<span class="status-pulse-dot"></span> SCORING...'}
               </span>
             </div>
 
             <div class="judge-score-box">
               <div>
                 <div class="score-label">TOTAL SCORE</div>
-                <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Official Judge Award</div>
+                <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">${isSubmitted ? 'Official Judge Award' : 'Live Stage Evaluation'}</div>
               </div>
               <div>
                 ${hasScores ? `
-                  <span class="score-number">${Number.isInteger(judgeTotal) ? judgeTotal : judgeTotal.toFixed(1)}</span>
-                  <span style="font-size:12px; color:var(--text-muted); font-weight:800;">PTS</span>
+                  <div class="score-val-wrap">
+                    <span class="score-star">★</span>
+                    <span class="score-number">${Number.isInteger(judgeTotal) ? judgeTotal : judgeTotal.toFixed(1)}</span>
+                    <span class="score-unit">PTS</span>
+                  </div>
                 ` : `
-                  <span class="score-pending">Evaluating...</span>
+                  <div class="eval-live-indicator">
+                    <div class="eval-bars">
+                      <span class="bar b1"></span>
+                      <span class="bar b2"></span>
+                      <span class="bar b3"></span>
+                    </div>
+                    <span class="score-pending">Evaluating...</span>
+                  </div>
                 `}
               </div>
             </div>
@@ -1454,7 +1555,7 @@
       // Update Top Summary Stats
       const avgScore = submittedJudgesCount > 0 ? (grandTotal / submittedJudgesCount).toFixed(1) : '0.0';
       document.getElementById('stat-grand-total').textContent = `${Number.isInteger(grandTotal) ? grandTotal : grandTotal.toFixed(1)} PTS`;
-      document.getElementById('stat-avg-score').textContent = `${avgScore} / J`;
+      document.getElementById('stat-avg-score').textContent = `${avgScore} PTS`;
       document.getElementById('stat-submitted-count').textContent = `${submittedJudgesCount} of ${displayJudges.length} Submitted`;
     }
 
