@@ -849,13 +849,24 @@
       pointer-events: none;
     }
 
-    /* DROPDOWN OPTIONS LIST / PANEL (STUDIO LIGHT THEME - UI/UX PRO) */
+    /* BACKDROP OVERLAY FOR SAFE DISMISS */
+    .dopt-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 9998;
+    }
+
+    /* DROPDOWN OPTIONS LIST / PANEL (STUDIO LIGHT THEME - TOP RIGHT DOCK) */
     .display-options-panel {
-      position: absolute;
-      top: calc(100% + 14px);
-      left: 0;
-      width: 330px;
-      background: rgba(255, 255, 255, 0.97);
+      position: fixed;
+      top: 80px;
+      right: 24px;
+      left: auto;
+      width: 340px;
+      background: rgba(255, 255, 255, 0.98);
       backdrop-filter: blur(32px);
       -webkit-backdrop-filter: blur(32px);
       border: 1.5px solid rgba(255, 255, 255, 0.95);
@@ -863,13 +874,22 @@
       padding: 18px;
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 4px 20px rgba(0, 0, 0, 0.15), 0 0 25px rgba(6, 182, 212, 0.25);
       z-index: 9999;
-      animation: doptSlideDown 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: doptSlideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
       color: #0f172a;
     }
 
-    @keyframes doptSlideDown {
-      from { opacity: 0; transform: translateY(-10px) scale(0.96); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+    @keyframes doptSlideInRight {
+      from { opacity: 0; transform: translateX(20px) scale(0.96); }
+      to { opacity: 1; transform: translateX(0) scale(1); }
+    }
+
+    @media (max-width: 768px) {
+      .display-options-panel {
+        top: 70px;
+        right: 12px;
+        width: calc(100vw - 24px);
+        max-width: 340px;
+      }
     }
 
     .dopt-header {
@@ -1060,6 +1080,24 @@
       transform: translateY(-1px);
     }
 
+    .dopt-done-btn {
+      background: linear-gradient(135deg, #0284c7, #0d9488);
+      border: none;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 6px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+      transition: all 0.2s;
+    }
+
+    .dopt-done-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
+    }
+
     /* VISIBILITY TOGGLE CLASSES (HIDES ITEMS WHEN CLASS IS PRESENT) */
     body.hide-chestBadge .chest-badge, body.hide-chestBadge [data-opt="chestBadge"] { display: none !important; }
     body.hide-catBadge .cat-badge, body.hide-catBadge [data-opt="catBadge"] { display: none !important; }
@@ -1091,6 +1129,9 @@
           <div class="brand-sub" id="event-title">Loading Event...</div>
         </div>
 
+        <!-- DISPLAY OPTIONS BACKDROP (SAFE DISMISS) -->
+        <div id="display-options-backdrop" class="dopt-backdrop" style="display:none;" onclick="closeDisplayOptions(event)"></div>
+
         <!-- DISPLAY OPTIONS DROPDOWN / LIST -->
         <div id="display-options-panel" class="display-options-panel" style="display:none;" 
              onclick="event.stopPropagation()" 
@@ -1102,7 +1143,7 @@
               <span>⚙️ Display Visibility Controls</span>
               <span class="dopt-sub">Toggle on-screen stage elements</span>
             </div>
-            <button class="dopt-close" onclick="toggleDisplayOptions(event)" title="Close">✕</button>
+            <button class="dopt-close" onclick="closeDisplayOptions(event)" title="Close">✕</button>
           </div>
 
           <div class="dopt-list">
@@ -1204,8 +1245,8 @@
           </div>
 
           <div class="dopt-footer">
-            <button class="dopt-reset-btn" onclick="resetDisplayPrefs()">↺ Reset All to Visible</button>
-            <span style="font-size:9px; color:var(--text-muted);">Auto-saved locally</span>
+            <button class="dopt-reset-btn" onclick="resetDisplayPrefs()">↺ Reset All</button>
+            <button class="dopt-done-btn" onclick="closeDisplayOptions(event)">✓ Done</button>
           </div>
         </div>
       </div>
@@ -1418,21 +1459,21 @@
       lastLogoToggleTime = now;
       if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
       const panel = document.getElementById('display-options-panel');
+      const backdrop = document.getElementById('display-options-backdrop');
       if (!panel) return;
       const isVisible = panel.style.display === 'block';
       panel.style.display = isVisible ? 'none' : 'block';
+      if (backdrop) backdrop.style.display = isVisible ? 'none' : 'block';
       if (!isVisible) applyDisplayPrefs();
     }
 
-    document.addEventListener('pointerdown', (e) => {
+    function closeDisplayOptions(e) {
+      if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
       const panel = document.getElementById('display-options-panel');
-      const logoWrap = document.querySelector('.brand-logo-wrap');
-      if (panel && panel.style.display === 'block') {
-        if (!panel.contains(e.target) && (!logoWrap || !logoWrap.contains(e.target))) {
-          panel.style.display = 'none';
-        }
-      }
-    });
+      const backdrop = document.getElementById('display-options-backdrop');
+      if (panel) panel.style.display = 'none';
+      if (backdrop) backdrop.style.display = 'none';
+    }
 
     // Run on startup
     applyDisplayPrefs();
