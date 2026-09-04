@@ -1085,6 +1085,7 @@
       position: relative;
       transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
       flex-shrink: 0;
+      pointer-events: none; /* row handles the click */
     }
 
     .dopt-toggle-switch.active {
@@ -1098,6 +1099,7 @@
       left: 2px;
       width: 20px;
       height: 20px;
+      pointer-events: none; /* row handles the click */
       border-radius: 50%;
       background: #ffffff;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
@@ -1241,7 +1243,7 @@
 
           <div class="dopt-list">
             <!-- Option 1: Chest / Bib Badge -->
-            <div class="dopt-item is-active" id="row-opt-chestBadge" onclick="toggleOption('chestBadge', event)">
+            <div class="dopt-item is-active" id="row-opt-chestBadge" onpointerdown="toggleOption('chestBadge', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">🏷️</span>
                 <div>
@@ -1258,7 +1260,7 @@
             </div>
 
             <!-- Option 2: Category Badge -->
-            <div class="dopt-item is-active" id="row-opt-catBadge" onclick="toggleOption('catBadge', event)">
+            <div class="dopt-item is-active" id="row-opt-catBadge" onpointerdown="toggleOption('catBadge', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">👥</span>
                 <div>
@@ -1275,7 +1277,7 @@
             </div>
 
             <!-- Option 3: Round Badge -->
-            <div class="dopt-item is-active" id="row-opt-roundBadge" onclick="toggleOption('roundBadge', event)">
+            <div class="dopt-item is-active" id="row-opt-roundBadge" onpointerdown="toggleOption('roundBadge', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">🎯</span>
                 <div>
@@ -1292,7 +1294,7 @@
             </div>
 
             <!-- Option 4: Performer Meta Info -->
-            <div class="dopt-item is-active" id="row-opt-performerMeta" onclick="toggleOption('performerMeta', event)">
+            <div class="dopt-item is-active" id="row-opt-performerMeta" onpointerdown="toggleOption('performerMeta', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">📍</span>
                 <div>
@@ -1309,7 +1311,7 @@
             </div>
 
             <!-- Option 5: Stage Average Pill -->
-            <div class="dopt-item is-active" id="row-opt-stageAvg" onclick="toggleOption('stageAvg', event)">
+            <div class="dopt-item is-active" id="row-opt-stageAvg" onpointerdown="toggleOption('stageAvg', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">📊</span>
                 <div>
@@ -1326,7 +1328,7 @@
             </div>
 
             <!-- Option 6: Grand Total Pill -->
-            <div class="dopt-item is-active" id="row-opt-grandTotal" onclick="toggleOption('grandTotal', event)">
+            <div class="dopt-item is-active" id="row-opt-grandTotal" onpointerdown="toggleOption('grandTotal', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">🏆</span>
                 <div>
@@ -1343,7 +1345,7 @@
             </div>
 
             <!-- Option 7: Submitted Counter -->
-            <div class="dopt-item is-active" id="row-opt-submittedCount" onclick="toggleOption('submittedCount', event)">
+            <div class="dopt-item is-active" id="row-opt-submittedCount" onpointerdown="toggleOption('submittedCount', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">⚖️</span>
                 <div>
@@ -1360,7 +1362,7 @@
             </div>
 
             <!-- Option 8: Stage Stopwatch Box -->
-            <div class="dopt-item is-active" id="row-opt-stageTimer" onclick="toggleOption('stageTimer', event)">
+            <div class="dopt-item is-active" id="row-opt-stageTimer" onpointerdown="toggleOption('stageTimer', event)">
               <div class="dopt-item-info">
                 <span class="dopt-icon">⏱️</span>
                 <div>
@@ -1543,7 +1545,13 @@
       try {
         const saved = localStorage.getItem('knsdc_director_display_prefs');
         if (saved) {
-          return { ...DEFAULT_DISPLAY_PREFS, ...JSON.parse(saved) };
+          const parsed = JSON.parse(saved);
+          // Version check: if saved data lacks '_v' key, it's from old code — reset
+          if (!parsed._v || parsed._v < 2) {
+            localStorage.removeItem('knsdc_director_display_prefs');
+            return { ...DEFAULT_DISPLAY_PREFS };
+          }
+          return { ...DEFAULT_DISPLAY_PREFS, ...parsed };
         }
       } catch (e) {}
       return { ...DEFAULT_DISPLAY_PREFS };
@@ -1562,7 +1570,10 @@
     }
 
     function toggleOption(key, e) {
-      if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+      }
       const prefs = getDisplayPrefs();
       const cur = Boolean(prefs[key] !== undefined ? prefs[key] : true);
       const next = !cur;
@@ -1625,12 +1636,13 @@
     function setDisplayPref(key, isVisible) {
       const prefs = getDisplayPrefs();
       prefs[key] = Boolean(isVisible);
+      prefs._v = 2; // Version marker so old stale data is auto-cleared
       localStorage.setItem('knsdc_director_display_prefs', JSON.stringify(prefs));
       applyDisplayPrefs();
     }
 
     function resetDisplayPrefs() {
-      localStorage.setItem('knsdc_director_display_prefs', JSON.stringify(DEFAULT_DISPLAY_PREFS));
+      localStorage.setItem('knsdc_director_display_prefs', JSON.stringify({ ...DEFAULT_DISPLAY_PREFS, _v: 2 }));
       applyDisplayPrefs();
       showDoptToast('↺ All Stage Elements Reset to Visible', true);
     }
