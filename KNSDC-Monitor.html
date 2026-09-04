@@ -2413,21 +2413,6 @@
       <button class="btn btn-amber" onclick="refreshVenueView()">↺ Refresh</button>
     </div>
 
-    <!-- VENUE PRESENT JUDGES STRIP -->
-    <div class="card" style="margin-bottom:14px; padding:12px 18px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:16px;">⚖️</span>
-          <span style="font-size:10px; font-weight:800; color:var(--text); letter-spacing:1.5px; text-transform:uppercase;">PRESENT JUDGES (THIS VENUE):</span>
-          <span id="venue-judge-present-badge" class="badge b-amber" style="font-size:9px;">0 Present</span>
-        </div>
-        <button class="btn btn-ghost btn-xs" onclick="syncVenueJudges()" style="font-size:9px; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; gap:4px;">
-          🔄 Sync Judges
-        </button>
-      </div>
-      <div id="venue-present-judges-list" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"></div>
-    </div>
-
     <!-- STAGE MESSAGE FLASHER PANEL MOVED TO DASHBOARD -->
 
     <div id="venue-categories-container"></div>
@@ -6598,41 +6583,46 @@ function renderJudgeStatus(){
         <div style="font-weight:600;font-size:13px">${j.name}</div>
         <div style="font-size:9px;color:var(--text-muted)">${j.role} · ${j.scoresGiven} scored</div>
       </div>
-      <span class="badge ${j.present?'b-green':'b-red'}">${j.present?'Present':'Absent'}</span>
+      <span class="badge ${j.present?'b-green':'b-red'}" style="cursor:pointer;user-select:none;" onclick="toggleJudgePresence('${j.email || j.name}', ${!j.present})" title="Click to toggle presence">${j.present?'Present':'Absent'}</span>
     </div>`;
   }).join('') || '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px 0">No judges assigned to this event</div>';
 }
 
-window.toggleJudgePresence = (identifier) => {
-  syncEngine.setData(s => {
-    const judgesList = [...(s.judges || [])];
-    let target = judgesList.find(j => 
-      (j.email && j.email.toLowerCase() === identifier.toLowerCase()) || 
-      (j.name && j.name.toLowerCase() === identifier.toLowerCase())
-    );
-    if (target) {
-      target.present = !target.present;
-    } else {
-      // Find agreement to populate
-      const agr = (s.judgeAgreements || s.agreements || []).find(a => 
-        (a.email && a.email.toLowerCase() === identifier.toLowerCase()) || 
-        (a.name && a.name.toLowerCase() === identifier.toLowerCase())
+window.toggleJudgePresence = async (identifier, forcedState) => {
+  const sData = (syncEngine && syncEngine.getData()) || {};
+  const currentJudges = sData.judges || [];
+  const idNorm = String(identifier || '').toLowerCase().trim();
+  const currentJudge = currentJudges.find(j => 
+    (j.email && String(j.email).toLowerCase().trim() === idNorm) || 
+    (j.name && String(j.name).toLowerCase().trim() === idNorm) ||
+    (String(j.id) === idNorm)
+  );
+  
+  const makePresent = typeof forcedState === 'boolean' 
+    ? forcedState 
+    : !(currentJudge && currentJudge.present === true);
+
+  if (window.syncEngine && typeof window.syncEngine.setJudgePresence === 'function') {
+    await window.syncEngine.setJudgePresence(identifier, makePresent, activeEventId, currentVenueMonitor);
+  } else {
+    syncEngine.setData(s => {
+      const judgesList = [...(s.judges || [])];
+      let target = judgesList.find(j => 
+        (j.email && j.email.toLowerCase() === idNorm) || 
+        (j.name && j.name.toLowerCase() === idNorm)
       );
-      if (agr) {
-        judgesList.push({
-          id: judgesList.length ? Math.max(...judgesList.map(j => j.id)) + 1 : 1,
-          name: agr.name,
-          email: agr.email,
-          eventId: agr.eventId || '0',
-          role: 'Judge',
-          present: true,
-          color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
-        });
+      if (target) {
+        target.present = makePresent;
       }
-    }
-    return { ...s, judges: judgesList };
-  });
-  toast('Judge presence status toggled!');
+      return { ...s, judges: judgesList };
+    });
+  }
+
+  // Refresh all views globally
+  if (typeof renderAssignedJudges === 'function') renderAssignedJudges();
+  if (typeof renderStageView === 'function') renderStageView();
+  if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
+  toast(makePresent ? '🟢 Judge marked Present!' : '🔴 Judge marked Absent.');
 };
 
 window.syncVenueJudges = async () => {
@@ -6682,8 +6672,11 @@ window.toggleJudgeUnlock = (identifier) => {
         });
       }
     }
-    return { ...s, judges: judgesList };
+    return { ...s, judges: judgesList, lastUpdated: Date.now() };
   });
+  if (syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
+    syncEngine.forceSaveStateToSupabase().catch(e => console.warn('[toggleJudgeUnlock] persist error:', e));
+  }
   toast('Judge scoring lock toggled!');
 };
 
@@ -9490,30 +9483,6 @@ function renderVenueParticipants(){
   });
 
   const activeJudges = allVenueJudgesWithStatus.filter(j => j.present);
-
-  // Update the Venue Present Judges Strip
-  const stripBadge = document.getElementById('venue-judge-present-badge');
-  const stripList = document.getElementById('venue-present-judges-list');
-  if (stripBadge) {
-    stripBadge.textContent = `${activeJudges.length} / ${allVenueJudgesWithStatus.length} Present`;
-    stripBadge.className = `badge ${activeJudges.length > 0 ? 'b-green' : 'b-amber'}`;
-  }
-  if (stripList) {
-    if (allVenueJudgesWithStatus.length === 0) {
-      stripList.innerHTML = `<span style="font-size:11px; color:var(--text-muted);">No confirmed judges assigned to this venue yet.</span>`;
-    } else {
-      stripList.innerHTML = allVenueJudgesWithStatus.map(j => {
-        return `<div style="display:inline-flex; align-items:center; gap:6px; background:${j.present ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.08)'}; border:1px solid ${j.present ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.2)'}; border-radius:8px; padding:4px 10px; font-size:11px;">
-          <span style="font-size:10px;">${j.present ? '🟢' : '🔴'}</span>
-          <strong style="color:var(--text);">${j.name}</strong>
-          <span style="font-size:9px; color:var(--text-muted);">(${j.spec})</span>
-          <button class="btn btn-ghost btn-xs" onclick="toggleVenueJudgePresence('${j.email || j.name}', ${!j.present})" style="padding:1px 6px; font-size:9px; font-weight:700; border-radius:4px; margin-left:4px;">
-            ${j.present ? 'Mark Absent' : 'Mark Present'}
-          </button>
-        </div>`;
-      }).join('');
-    }
-  }
 
   // Judge Scoring Status UI on Active Stage Card
   const scoringContainer = document.getElementById('venue-judge-scoring-status');
@@ -14309,8 +14278,8 @@ function renderAssignedJudges() {
     const attLogs = jSession && jSession.attendanceLog ? jSession.attendanceLog : [];
 
     const presentBadge = isPresent 
-      ? '<div class="badge b-green" style="margin-bottom:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT</div>'
-      : '<div class="badge b-red" style="margin-bottom:6px">ABSENT</div>';
+      ? '<div class="badge b-green" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', false)" title="Click to mark Absent"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT</div>'
+      : '<div class="badge b-red" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', true)" title="Click to mark Present">ABSENT</div>';
 
     const unlockSwitch = '<div style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:6px">' +
       '<label class="claw-toggle-wrapper" style="font-size: 3px; margin: 0; flex-shrink: 0;" title="Unlock Scoring for ' + a.name + '">' +
