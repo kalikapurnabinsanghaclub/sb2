@@ -3318,51 +3318,57 @@ function setupHoldButton() {
     progressBar.classList.remove('pulsing');
   };
 
-  const completeHold = () => {
+  const completeHold = async () => {
     endHold();
     const state = window.syncEngine.getData() || {};
     let judgesList = [...(state.judges || [])];
     
     let target = judgesList.find(j => 
-      (j.email && JUDGE.email && String(j.email).toLowerCase() === String(JUDGE.email).toLowerCase()) ||
-      (j.name && JUDGE.name && String(j.name).toLowerCase() === String(JUDGE.name).toLowerCase())
+      (j.email && JUDGE.email && String(j.email).toLowerCase().trim() === String(JUDGE.email).toLowerCase().trim()) || 
+      (j.name && JUDGE.name && String(j.name).toLowerCase().trim() === String(JUDGE.name).toLowerCase().trim()) ||
+      (String(j.id) === String(JUDGE.id))
     );
 
-    const nowStr = new Date().toISOString();
+    const makePresent = !(target && target.present === true);
+    const idToUse = JUDGE.email || JUDGE.name || JUDGE.id;
 
-    if (target) {
-      target.present = !target.present;
-      target.eventId = JUDGE.eventId || '0';
-      target.attendanceLog = target.attendanceLog || [];
-      if (target.present) {
-        target.attendanceLog.push({ checkIn: nowStr, checkOut: null });
-        toast('🟢 You are marked Present (Check 1). If locked, ask Monitor to unlock scoring.', '#10b981');
-      } else {
-        const lastLog = target.attendanceLog[target.attendanceLog.length - 1];
-        if (lastLog && !lastLog.checkOut) lastLog.checkOut = nowStr;
-        toast('🔴 You are marked Absent. Scoring is locked.', '#f59e0b');
-      }
+    if (window.syncEngine && typeof window.syncEngine.setJudgePresence === 'function') {
+      await window.syncEngine.setJudgePresence(idToUse, makePresent, JUDGE.eventId);
     } else {
-      target = {
-        id: judgesList.length ? Math.max(...judgesList.map(j => j.id)) + 1 : 1,
-        name: JUDGE.name,
-        email: JUDGE.email,
-        eventId: JUDGE.eventId || '0',
-        role: 'Judge',
-        present: true,
-        isUnlocked: false,
-        attendanceLog: [{ checkIn: nowStr, checkOut: null }],
-        color: JUDGE.color || '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
-      };
-      judgesList.push(target);
+      const nowStr = new Date().toISOString();
+      if (target) {
+        target.present = makePresent;
+        target.eventId = JUDGE.eventId || '0';
+        target.attendanceLog = target.attendanceLog || [];
+        if (makePresent) {
+          target.attendanceLog.push({ checkIn: nowStr, checkOut: null });
+        } else {
+          const lastLog = target.attendanceLog[target.attendanceLog.length - 1];
+          if (lastLog && !lastLog.checkOut) lastLog.checkOut = nowStr;
+        }
+      } else {
+        judgesList.push({
+          id: judgesList.length ? Math.max(...judgesList.map(j => Number(j.id) || 0)) + 1 : 1,
+          name: JUDGE.name,
+          email: JUDGE.email,
+          eventId: JUDGE.eventId || '0',
+          role: 'Judge',
+          present: makePresent,
+          isUnlocked: false,
+          attendanceLog: makePresent ? [{ checkIn: nowStr, checkOut: null }] : [],
+          color: JUDGE.color || '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
+        });
+      }
+      window.syncEngine.setData(s => ({ ...s, judges: judgesList, lastUpdated: Date.now() }));
+      if (window.syncEngine.forceSaveStateToSupabase) {
+        await window.syncEngine.forceSaveStateToSupabase().catch(e => console.warn(e));
+      }
     }
-    
-    window.syncEngine.updateState({ judges: judgesList });
-    
+
     if (navigator.vibrate) {
       navigator.vibrate([100, 50, 100]);
     }
-    toast(target.present ? '🟢 Presence marked successfully!' : '🔴 Presence reset to Absent.');
+    toast(makePresent ? '🟢 Presence marked! Awaiting Monitor scoring unlock.' : '🔴 Presence reset to Absent.');
     renderDashboard();
   };
 
@@ -3946,6 +3952,11 @@ async function saveScores() {
   const p = participants.find(x=>x.id===scoringParticipantId);
   if(!p) return;
 
+  if (JUDGE.present !== true || JUDGE.isUnlocked !== true) {
+    toast('⚠️ Scoring locked! Both Presence check-in and Monitor Unlock are required.');
+    return;
+  }
+
   if (!p.roundScores) p.roundScores = {};
   if (!p.round) p.round = 'audition';
   if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
@@ -4433,11 +4444,11 @@ function renderParticipantsTable() {
     const lockMsg = document.getElementById('scoring-lock-msg');
     if (lockMsg) {
       if (!isPresent && !isUnlocked) {
-        lockMsg.innerHTML = 'You are currently marked as <strong>Absent</strong> and your session is <strong>Locked</strong>.<br>1. Go to your Dashboard and check-in.<br>2. Ask the Monitor to unlock your session.';
+        lockMsg.innerHTML = '🛑 You are currently marked as <strong>Absent</strong> and your session is <strong>Locked</strong>.<br>1. Go to your Dashboard and hold the 5-second button to check in.<br>2. Ask the Monitor to unlock your scoring session.';
       } else if (!isPresent) {
-        lockMsg.innerHTML = 'You are currently marked as <strong>Absent</strong>.<br>Please go to your Dashboard and check-in to unlock your scoring panel.';
+        lockMsg.innerHTML = '🔴 You are currently marked as <strong>Absent</strong>.<br>Please go to your Dashboard and hold the 5-second check-in button to mark yourself Present.';
       } else if (!isUnlocked) {
-        lockMsg.innerHTML = 'You are marked as Present, but your session is <strong>Locked</strong> by the Monitor.<br>Please ask the Monitor to unlock your session.';
+        lockMsg.innerHTML = '🟢 You are marked as <strong>Present</strong> (Check-in confirmed), but your scoring panel is <strong>Locked by the Monitor</strong>.<br>Please ask the Monitor to toggle scoring to UNLOCKED in Active Panel.';
       }
     }
     return;
