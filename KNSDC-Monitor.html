@@ -6598,31 +6598,58 @@ window.toggleJudgePresence = async (identifier, forcedState) => {
     (String(j.id) === idNorm)
   );
   
+  const currentActive = currentJudge ? (currentJudge.present === true || currentJudge.isUnlocked === true) : false;
   const makePresent = typeof forcedState === 'boolean' 
     ? forcedState 
-    : !(currentJudge && currentJudge.present === true);
+    : !currentActive;
 
   if (window.syncEngine && typeof window.syncEngine.setJudgePresence === 'function') {
     await window.syncEngine.setJudgePresence(identifier, makePresent, activeEventId, currentVenueMonitor);
-  } else {
-    syncEngine.setData(s => {
-      const judgesList = [...(s.judges || [])];
-      let target = judgesList.find(j => 
-        (j.email && j.email.toLowerCase() === idNorm) || 
-        (j.name && j.name.toLowerCase() === idNorm)
-      );
-      if (target) {
-        target.present = makePresent;
-      }
-      return { ...s, judges: judgesList };
-    });
   }
 
-  // Refresh all views globally
+  // Ensure local memory state is synchronously and immediately updated with both present and isUnlocked
+  syncEngine.setData(s => {
+    const judgesList = [...(s.judges || [])];
+    let target = judgesList.find(j => 
+      (j.email && String(j.email).toLowerCase().trim() === idNorm) || 
+      (j.name && String(j.name).toLowerCase().trim() === idNorm) ||
+      (String(j.id) === idNorm)
+    );
+    if (target) {
+      target.present = makePresent;
+      target.isUnlocked = makePresent;
+    } else {
+      const agr = (s.judgeAgreements || s.agreements || []).find(a => 
+        (a.email && String(a.email).toLowerCase().trim() === idNorm) || 
+        (a.name && String(a.name).toLowerCase().trim() === idNorm) ||
+        (String(a.id) === idNorm)
+      );
+      if (agr) {
+        judgesList.push({
+          id: judgesList.length ? Math.max(...judgesList.map(j => Number(j.id) || 0)) + 1 : 1,
+          name: agr.name,
+          email: agr.email,
+          eventId: agr.eventId || '0',
+          role: 'Judge',
+          present: makePresent,
+          isUnlocked: makePresent,
+          color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
+        });
+      }
+    }
+    return { ...s, judges: judgesList, lastUpdated: Date.now() };
+  });
+
+  if (syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
+    await syncEngine.forceSaveStateToSupabase().catch(e => console.warn('[toggleJudgePresence] persist error:', e));
+  }
+
+  // Refresh all views globally and reactively
   if (typeof renderAssignedJudges === 'function') renderAssignedJudges();
   if (typeof renderStageView === 'function') renderStageView();
   if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
-  toast(makePresent ? '🟢 Judge marked Present!' : '🔴 Judge marked Absent.');
+  if (typeof renderDashboard === 'function') renderDashboard();
+  toast(makePresent ? '🟢 Judge activated (Present & Unlocked)!' : '🔴 Judge deactivated (Absent & Locked).');
 };
 
 window.syncVenueJudges = async () => {
@@ -6636,48 +6663,11 @@ window.syncVenueJudges = async () => {
 };
 
 window.toggleVenueJudgePresence = async (identifier, makePresent) => {
-  if (window.syncEngine && typeof window.syncEngine.setJudgePresence === 'function') {
-    await window.syncEngine.setJudgePresence(identifier, makePresent, activeEventId, currentVenueMonitor);
-  } else if (typeof toggleJudgePresence === 'function') {
-    toggleJudgePresence(identifier);
-  }
-  if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
-  toast(makePresent ? '🟢 Judge marked Present!' : '🔴 Judge marked Absent.');
+  await window.toggleJudgePresence(identifier, makePresent);
 };
 
-window.toggleJudgeUnlock = (identifier) => {
-  syncEngine.setData(s => {
-    const judgesList = [...(s.judges || [])];
-    let target = judgesList.find(j => 
-      (j.email && j.email.toLowerCase() === identifier.toLowerCase()) || 
-      (j.name && j.name.toLowerCase() === identifier.toLowerCase())
-    );
-    if (target) {
-      target.isUnlocked = !target.isUnlocked;
-    } else {
-      const agr = (s.judgeAgreements || s.agreements || []).find(a => 
-        (a.email && a.email.toLowerCase() === identifier.toLowerCase()) || 
-        (a.name && a.name.toLowerCase() === identifier.toLowerCase())
-      );
-      if (agr) {
-        judgesList.push({
-          id: judgesList.length ? Math.max(...judgesList.map(j => j.id)) + 1 : 1,
-          name: agr.name,
-          email: agr.email,
-          eventId: agr.eventId || '0',
-          role: 'Judge',
-          present: false,
-          isUnlocked: true,
-          color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
-        });
-      }
-    }
-    return { ...s, judges: judgesList, lastUpdated: Date.now() };
-  });
-  if (syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
-    syncEngine.forceSaveStateToSupabase().catch(e => console.warn('[toggleJudgeUnlock] persist error:', e));
-  }
-  toast('Judge scoring lock toggled!');
+window.toggleJudgeUnlock = async (identifier, forcedState) => {
+  return await window.toggleJudgePresence(identifier, forcedState);
 };
 
 window.togglePreviousScoresFromAssign = (cb) => {
@@ -14273,19 +14263,29 @@ function renderAssignedJudges() {
     const avatarHtml = photo
       ? '<img src="' + photo + '" alt="' + a.name + '" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:3px solid ' + ac + '60;box-shadow:0 4px 12px rgba(0,0,0,0.12);flex-shrink:0">'
       : '<div style="width:52px;height:52px;border-radius:50%;background:' + ac + '20;color:' + ac + ';display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;border:2px solid ' + ac + '50;flex-shrink:0">' + initial + '</div>';
-    const isPresent = jSession && jSession.present === true;
-    const isUnlocked = jSession && jSession.isUnlocked === true;
+    const isPresent = !!(jSession && jSession.present === true);
+    const isUnlocked = !!(jSession && jSession.isUnlocked === true);
+    const isActive = (isPresent && isUnlocked) || isPresent;
     const attLogs = jSession && jSession.attendanceLog ? jSession.attendanceLog : [];
 
-    const presentBadge = isPresent 
-      ? '<div class="badge b-green" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', false)" title="Click to mark Absent"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT</div>'
-      : '<div class="badge b-red" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', true)" title="Click to mark Present">ABSENT</div>';
+    const presentBadge = '<div class="badge ' + (isActive ? 'b-green' : 'b-red') + '" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', ' + (!isActive) + ')" title="Click to toggle presence & scoring">' +
+      (isActive ? '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT' : 'ABSENT') +
+      '</div>';
 
     const unlockSwitch = '<div style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:6px">' +
-      '<label class="claw-toggle-wrapper" style="font-size: 3px; margin: 0; flex-shrink: 0;" title="Unlock Scoring for ' + a.name + '">' +
-      '<input type="checkbox" class="claw-toggle-input" onchange="toggleJudgeUnlock(\'' + (a.email||a.name) + '\')" ' + (isUnlocked ? 'checked' : '') + ' />' +
-      '<div class="claw-toggle-track"><div class="claw-toggle-slot"><div class="claw-toggle-slot-fill"></div></div><div class="claw-toggle-core"><div class="claw-toggle-core-gear"></div></div></div>' +
-      '</label><div style="font-size:9px;font-weight:800;color:var(--text-muted);margin-top:4px">' + (isUnlocked?'UNLOCKED':'LOCKED') + '</div></div>';
+      '<label class="claw-toggle-wrapper" style="font-size: 3px; margin: 0; flex-shrink: 0;" title="' + (isActive ? 'Deactivate Judge (Lock & Mark Absent)' : 'Activate Judge (Unlock & Mark Present)') + ' for ' + a.name + '">' +
+      '<input type="checkbox" class="claw-toggle-input" onchange="toggleJudgePresence(\'' + (a.email||a.name) + '\', this.checked)" ' + (isActive ? 'checked' : '') + ' />' +
+      '<div class="claw-toggle-track">' +
+      '<div class="claw-toggle-slot"><div class="claw-toggle-slot-fill"></div></div>' +
+      '<div class="claw-toggle-core"><div class="claw-toggle-core-gear"></div><div class="claw-toggle-core-inner"></div></div>' +
+      '<div class="claw-machine-wrapper">' +
+      '<div class="claw-machine-arm"><div class="claw-machine-arm-detail"></div></div>' +
+      '<div class="claw-pincer claw-pincer-top"></div>' +
+      '<div class="claw-pincer claw-pincer-bottom"></div>' +
+      '<div class="claw-machine-joint"><div class="claw-machine-joint-pin"></div></div>' +
+      '</div>' +
+      '</div>' +
+      '</label><div style="font-size:9px;font-weight:800;color:' + (isActive ? '#059669' : 'var(--text-muted)') + ';margin-top:4px">' + (isActive ? 'UNLOCKED' : 'LOCKED') + '</div></div>';
 
     let attHtml = '';
     if (attLogs.length > 0) {
