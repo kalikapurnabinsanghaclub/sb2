@@ -1628,6 +1628,23 @@
         displayJudges = judgesList.filter(j => String(j.eventId) === String(activeEventId));
       }
 
+      // 2. Check active event's judge array
+      if (displayJudges.length === 0) {
+        const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
+        if (activeEv && Array.isArray(activeEv.judges) && activeEv.judges.length > 0) {
+          displayJudges = activeEv.judges.map(aj => {
+            const jId = typeof aj === 'object' ? aj.id : aj;
+            const match = judgesList.find(j => String(j.id) === String(jId)) || (typeof aj === 'object' ? aj : null);
+            return match || { id: jId, name: `Judge ${jId}`, specialization: 'Official Panel' };
+          });
+        }
+      }
+
+      // 3. Fallback to all available judges if no event filter matched
+      if (displayJudges.length === 0 && judgesList.length > 0) {
+        displayJudges = judgesList;
+      }
+
       // If no performer on stage: RENDER JUDGES IN STANDBY / READY PANEL (NEVER A SMALL LINE!)
       if (!onStage) {
         document.getElementById('stat-grand-total').textContent = '0 PTS';
