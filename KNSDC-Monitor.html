@@ -2413,6 +2413,21 @@
       <button class="btn btn-amber" onclick="refreshVenueView()">↺ Refresh</button>
     </div>
 
+    <!-- VENUE PRESENT JUDGES STRIP -->
+    <div class="card" style="margin-bottom:14px; padding:12px 18px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:16px;">⚖️</span>
+          <span style="font-size:10px; font-weight:800; color:var(--text); letter-spacing:1.5px; text-transform:uppercase;">PRESENT JUDGES (THIS VENUE):</span>
+          <span id="venue-judge-present-badge" class="badge b-amber" style="font-size:9px;">0 Present</span>
+        </div>
+        <button class="btn btn-ghost btn-xs" onclick="syncVenueJudges()" style="font-size:9px; font-weight:700; border-radius:6px; display:inline-flex; align-items:center; gap:4px;">
+          🔄 Sync Judges
+        </button>
+      </div>
+      <div id="venue-present-judges-list" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"></div>
+    </div>
+
     <!-- STAGE MESSAGE FLASHER PANEL MOVED TO DASHBOARD -->
 
     <div id="venue-categories-container"></div>
@@ -5051,11 +5066,7 @@ let stageQueue = [];
 let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, certificatePublic: false, publicVoting: false, whatsapp: false, prevScoresViewer: false, servicesToggle: false };
 let nxtId = { reg: 1, cat: 1, venue: 1, subj: 1, agr: 1 };
 let formFields = [];
-let agreements = [
-  {id:1,name:"Dr. Meera Iyer",phone:"+91 98001 11111",city:"Mumbai",eventId:1,date:"2025-12-20",time:"09:00",venueId:1,spec:"Classical Dance",amount:5000,advance:2000,notes:"Head Judge",status:"confirmed",submitted:true,paymentReceived:2000,photoUrl:"",agreedTc:true},
-  {id:2,name:"Prof. Rajan Das",phone:"+91 98002 22222",city:"Delhi",eventId:1,date:"2025-12-20",time:"09:00",venueId:1,spec:"Western Dance",amount:4000,advance:1500,notes:"",status:"pending",submitted:false,paymentReceived:0,photoUrl:"",agreedTc:false},
-  {id:3,name:"Ms. Sunita Nair",phone:"+91 98003 33333",city:"Chennai",eventId:1,date:"2025-12-20",time:"09:30",venueId:2,spec:"Vocal Music",amount:3500,advance:1000,notes:"Needs accommodation",status:"none",submitted:false,paymentReceived:0,photoUrl:"",agreedTc:false}
-];
+let agreements = [];
 let EVENTS = [];
 const todayStr = new Date().toISOString().split('T')[0];
 let promoSelections = new Set();
@@ -5243,9 +5254,31 @@ function hydrate() {
   sosActive = s.sosActive || false;
   sosHistory = s.sosHistory || [];
   
-  // Auto-repair currentOnStage desync
-  const actualOnStage = participants.find(p => p.stageStatus === 'on-stage' && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  currentOnStage = actualOnStage ? actualOnStage.id : null;
+  // ── Deterministic Stage & Queue Reconciliation ──
+  // Respect authoritative currentOnStage from syncEngine
+  const authoritativeOnStage = s.currentOnStage !== undefined ? s.currentOnStage : currentOnStage;
+  
+  if (authoritativeOnStage === null) {
+    currentOnStage = null;
+    // Auto-heal: Ensure no participant for this active event lingers with 'on-stage' status
+    participants.forEach(p => {
+      if (p.stageStatus === 'on-stage' && (String(p.eventId) === String(activeEventId) || !p.eventId)) {
+        p.stageStatus = 'queue';
+      }
+    });
+  } else {
+    currentOnStage = authoritativeOnStage;
+    // Ensure only the designated performer has 'on-stage' and others are cleared
+    participants.forEach(p => {
+      const isThisPerformer = String(p.id) === String(authoritativeOnStage);
+      const isThisEvent = String(p.eventId) === String(activeEventId) || !p.eventId;
+      if (isThisPerformer) {
+        p.stageStatus = 'on-stage';
+      } else if (p.stageStatus === 'on-stage' && isThisEvent) {
+        p.stageStatus = 'done';
+      }
+    });
+  }
 
   // ── Restore switch states: prioritize per-event cloud data, then global fallback ──
   if (s && s.switchStates) {
@@ -6375,17 +6408,23 @@ function renderStageView(){
   const scoreContainer = document.getElementById('on-stage-judge-status');
   if (scoreContainer) {
     if (onStage) {
-      scoreContainer.style.display = 'block';
-      let activeJudges = judges.filter(j => j.present && (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0'));
-      
-      // Only show judges that have a verified/confirmed agreement
       const sState = syncEngine.getData() || {};
-      activeJudges = activeJudges.filter(j => {
-        const agr = (sState.judgeAgreements || []).find(a => 
-          (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-          (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      const allAgrs = (sState.judgeAgreements && sState.judgeAgreements.length > 0) ? sState.judgeAgreements : (agreements || []);
+      
+      // Filter agreements strictly for this event and venue (if venId is selected)
+      const validAgrs = allAgrs.filter(a => 
+        String(a.eventId) === String(activeEventId) &&
+        (!venId || !a.venueId || String(a.venueId) === String(venId)) &&
+        (a.status === 'confirmed' || a.status === 'verified' || a.submitted === true)
+      );
+
+      let activeJudges = judges.filter(j => {
+        if (!j.present) return false;
+        return validAgrs.some(a => 
+          (a.email && j.email && String(a.email).toLowerCase().trim() === String(j.email).toLowerCase().trim()) || 
+          (a.name && j.name && String(a.name).toLowerCase().trim() === String(j.name).toLowerCase().trim()) ||
+          (String(a.id) === String(j.id))
         );
-        return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
       });
 
       if (activeJudges.length === 0) {
@@ -6594,6 +6633,26 @@ window.toggleJudgePresence = (identifier) => {
     return { ...s, judges: judgesList };
   });
   toast('Judge presence status toggled!');
+};
+
+window.syncVenueJudges = async () => {
+  if (window.syncEngine && typeof window.syncEngine.loadEvents === 'function') {
+    toast('Syncing judges from server...');
+    await window.syncEngine.loadEvents();
+    if (typeof hydrate === 'function') hydrate();
+    if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
+    toast('✅ Judges synchronized!');
+  }
+};
+
+window.toggleVenueJudgePresence = async (identifier, makePresent) => {
+  if (window.syncEngine && typeof window.syncEngine.setJudgePresence === 'function') {
+    await window.syncEngine.setJudgePresence(identifier, makePresent, activeEventId, currentVenueMonitor);
+  } else if (typeof toggleJudgePresence === 'function') {
+    toggleJudgePresence(identifier);
+  }
+  if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
+  toast(makePresent ? '🟢 Judge marked Present!' : '🔴 Judge marked Absent.');
 };
 
 window.toggleJudgeUnlock = (identifier) => {
@@ -9396,33 +9455,83 @@ function renderVenueParticipants(){
     stopOnStageTimers();
   }
 
-  // Judge Scoring Status UI
+  // ── Venue Judges & Scoring Status ──
+  const sState = (syncEngine && syncEngine.getData()) || {};
+  const allAgreements = (sState.judgeAgreements && sState.judgeAgreements.length > 0)
+    ? sState.judgeAgreements
+    : (Array.isArray(agreements) ? agreements : []);
+
+  // Filter agreements strictly assigned to THIS event and THIS venue (if venue selected)
+  const venueAgreements = allAgreements.filter(a => {
+    const isThisEvent = String(a.eventId) === String(activeEventId);
+    const isThisVenue = !venId || !a.venueId || String(a.venueId) === String(venId);
+    const isConfirmed = a.status === 'confirmed' || a.status === 'verified' || a.submitted === true;
+    return isThisEvent && isThisVenue && isConfirmed;
+  });
+
+  // Cross-reference with judges array to find presence
+  const venueJudgesList = (sState.judges || judges || []);
+  const allVenueJudgesWithStatus = venueAgreements.map(agr => {
+    const jSession = venueJudgesList.find(j => 
+      (j.email && agr.email && String(j.email).toLowerCase().trim() === String(agr.email).toLowerCase().trim()) ||
+      (j.name && agr.name && String(j.name).toLowerCase().trim() === String(agr.name).toLowerCase().trim()) ||
+      (String(j.id) === String(agr.id))
+    );
+    const isPresent = !!(jSession && jSession.present === true);
+    return {
+      id: jSession ? jSession.id : agr.id,
+      agrId: agr.id,
+      name: agr.name,
+      email: agr.email,
+      spec: agr.spec || 'General Judge',
+      present: isPresent,
+      color: jSession?.color || '#7c3aed'
+    };
+  });
+
+  const activeJudges = allVenueJudgesWithStatus.filter(j => j.present);
+
+  // Update the Venue Present Judges Strip
+  const stripBadge = document.getElementById('venue-judge-present-badge');
+  const stripList = document.getElementById('venue-present-judges-list');
+  if (stripBadge) {
+    stripBadge.textContent = `${activeJudges.length} / ${allVenueJudgesWithStatus.length} Present`;
+    stripBadge.className = `badge ${activeJudges.length > 0 ? 'b-green' : 'b-amber'}`;
+  }
+  if (stripList) {
+    if (allVenueJudgesWithStatus.length === 0) {
+      stripList.innerHTML = `<span style="font-size:11px; color:var(--text-muted);">No confirmed judges assigned to this venue yet.</span>`;
+    } else {
+      stripList.innerHTML = allVenueJudgesWithStatus.map(j => {
+        return `<div style="display:inline-flex; align-items:center; gap:6px; background:${j.present ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.08)'}; border:1px solid ${j.present ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.2)'}; border-radius:8px; padding:4px 10px; font-size:11px;">
+          <span style="font-size:10px;">${j.present ? '🟢' : '🔴'}</span>
+          <strong style="color:var(--text);">${j.name}</strong>
+          <span style="font-size:9px; color:var(--text-muted);">(${j.spec})</span>
+          <button class="btn btn-ghost btn-xs" onclick="toggleVenueJudgePresence('${j.email || j.name}', ${!j.present})" style="padding:1px 6px; font-size:9px; font-weight:700; border-radius:4px; margin-left:4px;">
+            ${j.present ? 'Mark Absent' : 'Mark Present'}
+          </button>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  // Judge Scoring Status UI on Active Stage Card
   const scoringContainer = document.getElementById('venue-judge-scoring-status');
   if (scoringContainer) {
-    let activeJudges = judges.filter(j => {
-      if (!j.present) return false;
-      const isEventMatch = String(j.eventId) === String(activeEventId) || String(j.eventId) === '0';
-      if (!isEventMatch) return false;
-      
-      const allAgreements = (typeof agreements !== 'undefined' && Array.isArray(agreements)) ? agreements : ((syncEngine && syncEngine.getData()) ? (syncEngine.getData().judgeAgreements || []) : []);
-      const agreement = allAgreements.find(a => 
-        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-      );
-      return agreement && (agreement.status === 'confirmed' || agreement.status === 'verified');
-    });
-
     if (onStage && activeJudges.length > 0) {
       const judgeStatuses = activeJudges.map(j => {
-        const pScores = onStage.scores?.[j.id] || {};
-        const pRoundScores = onStage.roundScores?.[onStage.round]?.[j.id] || {};
+        const pScores = onStage.scores?.[j.id] || onStage.scores?.[j.agrId] || {};
+        const pRoundScores = onStage.roundScores?.[onStage.round]?.[j.id] || onStage.roundScores?.[onStage.round]?.[j.agrId] || {};
         const hasScored = Object.keys(pScores).length > 0 || Object.keys(pRoundScores).length > 0;
         return `<div style="display:flex; align-items:center; justify-content:space-between; font-size:12px; margin-bottom:4px;">
-                  <span style="font-weight:600; color:var(--text);">${j.name}</span>
+                  <span style="font-weight:600; color:var(--text);">${j.name} <span style="font-size:10px; opacity:0.7;">(${j.spec})</span></span>
                   ${hasScored ? '<span style="color:var(--emerald); font-weight:800;">✓ Scored</span>' : '<span style="color:var(--amber); font-weight:800; animation:pulse 1.5s infinite;">⏳ Scoring...</span>'}
                 </div>`;
       }).join('');
-      scoringContainer.innerHTML = `<div style="font-size:8px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">⚖️ JUDGE SCORING STATUS</div>${judgeStatuses}`;
+      scoringContainer.innerHTML = `<div style="font-size:8px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">⚖️ JUDGE SCORING STATUS (${activeJudges.length} Present)</div>${judgeStatuses}`;
+      scoringContainer.style.display = 'block';
+    } else if (onStage) {
+      scoringContainer.innerHTML = `<div style="font-size:8px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">⚖️ JUDGE SCORING STATUS</div><div style="font-size:11px;color:var(--red);font-weight:700;">⚠️ No judges marked Present for this venue!</div>`;
       scoringContainer.style.display = 'block';
     } else {
       scoringContainer.style.display = 'none';
@@ -9538,45 +9647,39 @@ window.renderVenueParticipants = renderVenueParticipants;
 //    this single flag so they also block each other.
 let _stageOpInProgress = false;
 
-function pushToStage(id){
+async function pushToStage(id){
   if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
   _stageOpInProgress = true;
   try {
-    const now = Date.now();
+    const venId = currentVenueMonitor;
     const nextP = participants.find(x=>String(x.id)===String(id));
     if (!nextP) return;
 
-    // 1. Move previous on-stage to done in-memory + persist to Supabase
-    participants.forEach(p=>{ 
-      if(p.stageStatus==='on-stage' && String(p.id) !== String(id)) {
-        p.stageStatus='done';
-        p.localMutatedAt = now;
-        // BUG-FIX: Direct Supabase write so Monitor and Host stay in sync
-        if(window.syncEngine && window.syncEngine.updateParticipant) {
-          window.syncEngine.updateParticipant(p.id, { stageStatus: 'done', localMutatedAt: now }).catch(e=>console.error('[pushToStage] done write error:', e));
-        }
-      }
-    });
-    
-    // 2. Set new performer on-stage
-    nextP.stageStatus='on-stage'; 
-    const round = nextP.round || 'audition';
-    setRoundPresent(nextP, round, true);
-    nextP.localMutatedAt = now;
     currentOnStage = nextP.id;
 
-    // BUG-FIX: Direct Supabase write for the new on-stage participant
-    if(window.syncEngine && window.syncEngine.updateParticipant) {
-      window.syncEngine.updateParticipant(nextP.id, { stageStatus: 'on-stage', localMutatedAt: now, roundPresence: nextP.roundPresence }).catch(e=>console.error('[pushToStage] on-stage write error:', e));
+    if (window.syncEngine && typeof window.syncEngine.stagePush === 'function') {
+      await window.syncEngine.stagePush(nextP.id, venId);
+    } else {
+      const now = Date.now();
+      participants.forEach(p=>{ 
+        if(p.stageStatus==='on-stage' && String(p.id) !== String(id)) {
+          p.stageStatus='done';
+          p.localMutatedAt = now;
+        }
+      });
+      nextP.stageStatus='on-stage'; 
+      const round = nextP.round || 'audition';
+      setRoundPresent(nextP, round, true);
+      nextP.localMutatedAt = now;
+      syncAll();
     }
     
-    // 3. Single atomic sync & immediate render
-    syncAll();
     renderVenueParticipants();
     renderStageView();
     toast(`⬆ ${nextP.name} pushed to stage!`);
+  } catch(err) {
+    console.error('[pushToStage] error:', err);
   } finally {
-    // Release lock after a short delay to absorb any accidental double-taps
     setTimeout(() => { _stageOpInProgress = false; }, 800);
   }
 }
@@ -9592,58 +9695,68 @@ function pushNextToStage(){
 }
 window.pushNextToStage = pushNextToStage;
 
-function markStageDone(){
+async function markStageDone(){
   if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
   _stageOpInProgress = true;
   try {
-    const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
-    if(p){ 
-      const now = Date.now();
-      p.stageStatus='done'; 
-      p.localMutatedAt = now;
-      currentOnStage=null;
-      if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
-      // BUG-FIX: Direct Supabase write so Host portal reflects done state immediately
-      if(window.syncEngine && window.syncEngine.updateParticipant) {
-        window.syncEngine.updateParticipant(p.id, { stageStatus: 'done', localMutatedAt: now }).catch(e=>console.error('[markStageDone] write error:', e));
+    const venId = currentVenueMonitor;
+    const p = participants.find(x => x.id === currentOnStage || (venId ? (String(x.venueId) === String(venId) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
+    
+    currentOnStage = null;
+    if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
+
+    if (window.syncEngine && typeof window.syncEngine.stageComplete === 'function') {
+      await window.syncEngine.stageComplete(p ? p.id : null, venId);
+    } else {
+      if(p){ 
+        const now = Date.now();
+        p.stageStatus='done'; 
+        p.localMutatedAt = now;
       }
+      syncAll();
     }
     
-    syncAll();
     renderVenueParticipants();
     renderStageView();
-    toast('Marked as done!');
+    toast('✓ Marked as done!');
+  } catch(err) {
+    console.error('[markStageDone] error:', err);
   } finally {
     setTimeout(() => { _stageOpInProgress = false; }, 800);
   }
 }
 window.markStageDone = markStageDone;
 
-function dropToQueue(){
+async function dropToQueue(){
   if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
   _stageOpInProgress = true;
   try {
-    const p = participants.find(x => x.id === currentOnStage || (currentVenueMonitor ? (String(x.venueId) === String(currentVenueMonitor) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
-    if(p){ 
-      const now = Date.now();
-      p.stageStatus='queue'; 
-      p.queuedAt = now;
-      p.localMutatedAt = now;
-      const queuedParts = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
-      const maxOrder = queuedParts.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
-      p.queueOrder = maxOrder + 1;
-      currentOnStage=null; 
-      if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
-      // BUG-FIX: Direct Supabase write so drop is not overwritten by stale syncAll
-      if(window.syncEngine && window.syncEngine.updateParticipant) {
-        window.syncEngine.updateParticipant(p.id, { stageStatus: 'queue', queuedAt: now, queueOrder: p.queueOrder, localMutatedAt: now }).catch(e=>console.error('[dropToQueue] write error:', e));
+    const venId = currentVenueMonitor;
+    const p = participants.find(x => x.id === currentOnStage || (venId ? (String(x.venueId) === String(venId) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
+    
+    currentOnStage = null; 
+    if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
+
+    if (window.syncEngine && typeof window.syncEngine.stageDrop === 'function') {
+      await window.syncEngine.stageDrop(p ? p.id : null, venId);
+    } else {
+      if(p){ 
+        const now = Date.now();
+        p.stageStatus='queue'; 
+        p.queuedAt = now;
+        p.localMutatedAt = now;
+        const queuedParts = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
+        const maxOrder = queuedParts.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+        p.queueOrder = maxOrder + 1;
       }
+      syncAll();
     }
     
-    syncAll();
     renderVenueParticipants();
     renderStageView();
-    toast('Dropped back to queue!');
+    toast('⬇ Dropped back to queue!');
+  } catch(err) {
+    console.error('[dropToQueue] error:', err);
   } finally {
     setTimeout(() => { _stageOpInProgress = false; }, 800);
   }

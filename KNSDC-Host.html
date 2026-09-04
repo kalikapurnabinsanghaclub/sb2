@@ -1873,60 +1873,68 @@ window.switchEvent = (id) => {
 // so Host changes propagate immediately (previously in-memory only).
 let _hostStageOpInProgress = false;
 
-window.pushToStage = (id) => {
+window.pushToStage = async (id) => {
   if (_hostStageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
   _hostStageOpInProgress = true;
-  const now = Date.now();
-  // Update in-memory state immediately for instant UI feedback
-  syncEngine.setData(s => {
-    const participants = s.participants.map(p => {
-      if(p.id === id) return { ...p, stageStatus: 'on-stage', present: true, localMutatedAt: now };
-      if(p.stageStatus === 'on-stage') return { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now };
-      return p;
-    });
-    return { ...s, participants, currentOnStage: id };
-  });
-  // BUG-FIX: Also write directly to Supabase so Monitor gets the update immediately
-  // Previously Host relied solely on setData → realtime broadcast cycle which could be overwritten
-  const s = syncEngine.getData();
-  const prevOnStage = (s.participants || []).filter(p => p.stageStatus === 'done' && p.localMutatedAt === now && p.id !== id);
-  const writePromises = [
-    syncEngine.updateParticipant(id, { stageStatus: 'on-stage', present: true, localMutatedAt: now }).catch(e => console.error('[Host pushToStage] on-stage write error:', e))
-  ];
-  prevOnStage.forEach(p => {
-    writePromises.push(syncEngine.updateParticipant(p.id, { stageStatus: 'done', isReady: false, localMutatedAt: now }).catch(e => console.error('[Host pushToStage] done write error:', e)));
-  });
-  Promise.all(writePromises).finally(() => {
+  try {
+    if (syncEngine && typeof syncEngine.stagePush === 'function') {
+      await syncEngine.stagePush(id);
+    } else {
+      const now = Date.now();
+      syncEngine.setData(s => {
+        const participants = s.participants.map(p => {
+          if(p.id === id) return { ...p, stageStatus: 'on-stage', present: true, localMutatedAt: now };
+          if(p.stageStatus === 'on-stage') return { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now };
+          return p;
+        });
+        return { ...s, participants, currentOnStage: id };
+      });
+    }
+  } catch(e) {
+    console.error('[Host pushToStage] error:', e);
+  } finally {
     setTimeout(() => { _hostStageOpInProgress = false; }, 800);
-  });
+  }
 };
 
-window.markDone = (id) => {
+window.markDone = async (id) => {
   if (_hostStageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
   _hostStageOpInProgress = true;
-  const now = Date.now();
-  syncEngine.setData(s => {
-    const participants = s.participants.map(p => p.id === id ? { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now } : p);
-    return { ...s, participants, currentOnStage: null };
-  });
-  // BUG-FIX: Direct Supabase write
-  syncEngine.updateParticipant(id, { stageStatus: 'done', isReady: false, localMutatedAt: now })
-    .catch(e => console.error('[Host markDone] write error:', e))
-    .finally(() => { setTimeout(() => { _hostStageOpInProgress = false; }, 800); });
+  try {
+    if (syncEngine && typeof syncEngine.stageComplete === 'function') {
+      await syncEngine.stageComplete(id);
+    } else {
+      const now = Date.now();
+      syncEngine.setData(s => {
+        const participants = s.participants.map(p => p.id === id ? { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now } : p);
+        return { ...s, participants, currentOnStage: null };
+      });
+    }
+  } catch(e) {
+    console.error('[Host markDone] error:', e);
+  } finally {
+    setTimeout(() => { _hostStageOpInProgress = false; }, 800);
+  }
 };
 
-window.dropToQueue = (id) => {
+window.dropToQueue = async (id) => {
   if (_hostStageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
   _hostStageOpInProgress = true;
-  const now = Date.now();
-  syncEngine.setData(s => {
-    const participants = s.participants.map(p => p.id === id ? { ...p, stageStatus: 'queue', localMutatedAt: now } : p);
-    return { ...s, participants, currentOnStage: null };
-  });
-  // BUG-FIX: Direct Supabase write
-  syncEngine.updateParticipant(id, { stageStatus: 'queue', localMutatedAt: now })
-    .catch(e => console.error('[Host dropToQueue] write error:', e))
-    .finally(() => { setTimeout(() => { _hostStageOpInProgress = false; }, 800); });
+  try {
+    if (syncEngine && typeof syncEngine.stageDrop === 'function') {
+      await syncEngine.stageDrop(id);
+    } else {
+      const now = Date.now();
+      syncEngine.setData(s => {
+        const participants = s.participants.map(p => p.id === id ? { ...p, stageStatus: 'queue', localMutatedAt: now } : p);
+        return { ...s, participants, currentOnStage: null };
+      });
+    }
+  } catch(e) {
+    console.error('[Host dropToQueue] error:', e);
+  } finally {
+    setTimeout(() => { _hostStageOpInProgress = false; }, 800);
+  }
 };
 
 window.switchLeaderRound = (round) => {
