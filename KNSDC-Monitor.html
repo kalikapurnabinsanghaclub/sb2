@@ -6689,6 +6689,7 @@ window.toggleJudgeUnlock = async (identifier, forcedState) => {
       );
       if (target) {
         target.isUnlocked = makeUnlocked;
+        if (makeUnlocked) target.scoresLocked = false;
       } else {
         const agr = (s.judgeAgreements || s.agreements || []).find(a => 
           (a.email && String(a.email).toLowerCase().trim() === idNorm) || 
@@ -6704,6 +6705,7 @@ window.toggleJudgeUnlock = async (identifier, forcedState) => {
             role: 'Judge',
             present: false,
             isUnlocked: makeUnlocked,
+            scoresLocked: false,
             color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
           });
         }
@@ -6721,6 +6723,18 @@ window.toggleJudgeUnlock = async (identifier, forcedState) => {
   if (typeof renderStageView === 'function') renderStageView();
   if (typeof renderVenueParticipants === 'function') renderVenueParticipants();
   toast(makeUnlocked ? '🔓 Check 2: Scoring UNLOCKED for Judge' : '🔒 Check 2: Scoring LOCKED for Judge');
+};
+
+window.monitorUnlockJudgeFinalScores = async (identifier) => {
+  if (confirm('Unlock final scoring lockdown for this judge? This will re-enable scoring and allow the judge to check in as Present.')) {
+    if (window.syncEngine && typeof window.syncEngine.unlockJudgeFinalScores === 'function') {
+      await window.syncEngine.unlockJudgeFinalScores(identifier);
+    } else {
+      await window.toggleJudgeUnlock(identifier, true);
+    }
+    if (typeof renderAssignedJudges === 'function') renderAssignedJudges();
+    toast('🔓 Judge final scoring lock removed!');
+  }
 };
 
 window.togglePreviousScoresFromAssign = (cb) => {
@@ -14318,6 +14332,8 @@ function renderAssignedJudges() {
       : '<div style="width:52px;height:52px;border-radius:50%;background:' + ac + '20;color:' + ac + ';display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;border:2px solid ' + ac + '50;flex-shrink:0">' + initial + '</div>';
     const isPresent = !!(jSession && jSession.present === true);
     const isUnlocked = !!(jSession && jSession.isUnlocked === true);
+    const isScoresLocked = !!(jSession && jSession.scoresLocked === true);
+    const lockPassword = jSession && jSession.lockPassword ? jSession.lockPassword : '';
     const attLogs = jSession && jSession.attendanceLog ? jSession.attendanceLog : [];
 
     // CHECK 1: Presence Badge (Judge Check-In or Monitor click)
@@ -14367,6 +14383,7 @@ function renderAssignedJudges() {
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">' +
       '<div style="font-weight:900;font-size:15px">' + a.name + '</div>' +
       '<span class="badge b-green" style="font-size:8px">&#x2705; ' + statusLabel + '</span>' +
+      (isScoresLocked ? '<span class="badge b-red" style="font-size:8px;animation:pulse 1.5s infinite">&#x1F512; SCORES LOCKED</span>' : '') +
       '</div>' +
       '<div style="font-size:9px;color:#64748b;margin-bottom:3px">&#x1F4CD; ' + (a.spec || 'General Judge') + (a.venueName ? ' &middot; &#x1F3DB; ' + a.venueName : '') + '</div>' +
       '<div style="font-size:9px;color:#64748b">&#x1F4DE; ' + (a.phone || '&mdash;') + (a.city ? ' &middot; ' + a.city : '') + '</div>' +
@@ -14400,6 +14417,13 @@ function renderAssignedJudges() {
       '<button class="btn btn-ghost btn-xs" onclick="openAgreementModal(' + a.id + ')" style="font-size:10px">&#x270F;&#xFE0F; Edit</button>' +
       '<button class="btn-delete-fancy" onclick="deleteAgreement(' + a.id + ')" title="Delete Judge" style="padding:4px"><svg viewBox="0 0 448 512" class="svgIcon" style="width:12px;height:12px"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg></button>' +
       '</div></div>' +
+
+      // Final Submission Lockdown & Password Box
+      (isScoresLocked ? 
+        '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;background:rgba(239,68,68,0.08);border:1.5px solid rgba(239,68,68,0.3);padding:8px 12px;border-radius:10px;">' +
+        '<div style="font-size:11px;color:#dc2626;font-weight:800;">&#x1F511; Final Lock Password: <strong style="font-family:var(--fm);letter-spacing:1px;font-size:13px;color:#991b1b;background:white;padding:2px 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);">' + (lockPassword || 'SET') + '</strong></div>' +
+        '<button class="btn btn-xs" style="background:#10b981;color:white;border:none;border-radius:8px;font-weight:800;font-size:11px;padding:6px 12px;cursor:pointer;box-shadow:0 2px 6px rgba(16,185,129,0.3);display:flex;align-items:center;gap:4px;" onclick="monitorUnlockJudgeFinalScores(\'' + (a.email||a.name) + '\')">&#x1F513; Unlock Judge</button>' +
+        '</div>' : '') +
 
       (a.notes ? '<div style="margin-top:10px;font-size:9px;color:#64748b;padding:8px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--amber2)">&#x1F4DD; ' + a.notes + '</div>' : '') +
       '</div></div>';
