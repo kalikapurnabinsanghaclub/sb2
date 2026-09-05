@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
@@ -7,6 +8,7 @@ import fs from 'fs';
 import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
 import { parsePaymentNotification } from './parsers/smsParser.js';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -105,7 +107,23 @@ function broadcastPaymentConfirmed(orderId, payload) {
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
+
+// Cloudflare R2 Client (Zero Egress Object Storage)
+const R2_ENDPOINT = process.env.R2_ENDPOINT || 'https://7a82f5f63d73babe8d030cadf0e23553.r2.cloudflarestorage.com';
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || '742e426d48dca9ee9fb355b27ca23c9d';
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || 'eee81cd469df636dae899ae49246e48e24a9500b204b9eb4179f4aa59fae3afb';
+const R2_BUCKET = process.env.R2_BUCKET_NAME || 'my-app-uploads';
+const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || 'https://pub-407c9d11c2a04dc1973e0dc94d659214.r2.dev').replace(/\/+$/, '');
+
+const r2Client = new S3Client({
+  region: 'auto',
+  endpoint: R2_ENDPOINT,
+  credentials: {
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+  },
 });
 
 const STATE_FILE = path.join(__dirname, 'data', 'sync_state.json');
@@ -179,10 +197,63 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend is running on Render with MongoDB!' });
 });
 
-// Image Upload Endpoint (Saves to MongoDB)
+// Cloudflare R2 Upload Helper
+async function uploadBufferToR2(buffer, originalName, mimeType, prefix = 'uploads') {
+  const ext = path.extname(originalName) || '.png';
+  const cleanPrefix = prefix ? prefix.replace(/^\/+|\/+$/g, '') : 'uploads';
+  const key = `${cleanPrefix}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
+
+  await r2Client.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: mimeType || 'application/octet-stream',
+  }));
+
+  return `${R2_PUBLIC_URL}/${key}`;
+}
+
+// Unified Cloudflare R2 Upload Endpoint (Zero Egress)
+app.post('/api/upload', (req, res, next) => {
+  upload.any()(req, res, (err) => {
+    if (err) return res.status(400).json({ status: 'error', message: err.message });
+    next();
+  });
+}, async (req, res) => {
+  const file = req.files && req.files.length > 0 ? req.files[0] : req.file;
+  if (!file) {
+    return res.status(400).json({ status: 'error', message: 'No file provided.' });
+  }
+
+  try {
+    const prefix = req.body.pathPrefix || req.body.prefix || 'uploads';
+    const publicUrl = await uploadBufferToR2(file.buffer, file.originalname, file.mimetype, prefix);
+    console.log('[R2 Upload] Success:', publicUrl);
+    res.json({
+      status: 'success',
+      fileUrl: publicUrl,
+      imageUrl: publicUrl
+    });
+  } catch (err) {
+    console.error('[R2 Upload] Error:', err);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// Image Upload Endpoint (Saves to Cloudflare R2 with MongoDB fallback)
 app.post('/api/menu/upload', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ status: 'error', message: 'No file uploaded.' });
+  }
+
+  // 1. Try Cloudflare R2
+  if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
+    try {
+      const publicUrl = await uploadBufferToR2(req.file.buffer, req.file.originalname, req.file.mimetype, 'menu');
+      return res.json({ status: 'success', imageUrl: publicUrl, fileUrl: publicUrl });
+    } catch (r2Err) {
+      console.warn('[R2 Menu Upload] Falling back to MongoDB:', r2Err.message);
+    }
   }
 
   if (!db) {
@@ -211,11 +282,20 @@ app.post('/api/menu/upload', upload.single('image'), async (req, res) => {
   }
 });
 
-
-// Participant Image Upload Endpoint (Saves to MongoDB)
+// Participant Image Upload Endpoint (Saves to Cloudflare R2 with MongoDB fallback)
 app.post('/api/participant/upload', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ status: 'error', message: 'No file uploaded.' });
+  }
+
+  // 1. Try Cloudflare R2
+  if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
+    try {
+      const publicUrl = await uploadBufferToR2(req.file.buffer, req.file.originalname, req.file.mimetype, 'participants');
+      return res.json({ status: 'success', imageUrl: publicUrl, fileUrl: publicUrl });
+    } catch (r2Err) {
+      console.warn('[R2 Participant Upload] Falling back to MongoDB:', r2Err.message);
+    }
   }
 
   if (!db) {
