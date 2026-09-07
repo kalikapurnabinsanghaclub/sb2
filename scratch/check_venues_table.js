@@ -6,7 +6,7 @@ const envContent = fs.readFileSync(path.join(__dirname, '../.env'), 'utf8');
 const urlMatch = envContent.match(/VITE_SUPABASE_URL\s*=\s*(.+)/);
 const keyMatch = envContent.match(/VITE_SUPABASE_ANON_KEY\s*=\s*(.+)/);
 
-const supabaseUrl = urlMatch ? urlMatch[1].trim() : 'https://mmbtfbxxnprtzpzdklot.supabase.co';
+const supabaseUrl = urlMatch ? urlMatch[1].trim() : 'https://fjscpohgysbelzkrkrxm.supabase.co';
 const supabaseKey = keyMatch ? keyMatch[1].trim() : '';
 
 const supabase = createClient(supabaseUrl, supabaseKey);

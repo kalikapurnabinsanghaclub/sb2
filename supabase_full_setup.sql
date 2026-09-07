@@ -1,7 +1,7 @@
 -- ============================================================
 -- KNSDC — COMPLETE SUPABASE SETUP SCRIPT v2.0
--- Project : https://mmbtfbxxnprtzpzdklot.supabase.co
--- Anon Key: sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA
+-- Project : https://fjscpohgysbelzkrkrxm.supabase.co
+-- Anon Key: sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5
 --
 -- ✅ Run this ONCE in Supabase → SQL Editor → New Query
 -- ✅ Safe to re-run — uses IF NOT EXISTS + DROP POLICY IF EXISTS

@@ -1,7 +1,7 @@
 
     // 1. Live Supabase Client
-    const SUPABASE_URL = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
+    const SUPABASE_URL = 'https://fjscpohgysbelzkrkrxm.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5';
     let supabase = null;
     try {
       if (window.supabase && typeof window.supabase.createClient === 'function') {

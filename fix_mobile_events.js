@@ -6,8 +6,8 @@ const directFetchCode = `    // ── DIRECT SUPABASE EVENTS FETCH ────
       try {
         if (!window.supabase) return;
         const client = window.supabase.createClient(
-          "https://mmbtfbxxnprtzpzdklot.supabase.co",
-          "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA"
+          "https://fjscpohgysbelzkrkrxm.supabase.co",
+          "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5"
         );
         const { data, error } = await client.from('events').select('*').order('start_date', { ascending: true });
         if (error || !data || data.length === 0) return;

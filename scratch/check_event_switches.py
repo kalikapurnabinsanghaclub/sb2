@@ -1,10 +1,10 @@
 import urllib.request
 import json
 
-url_events = "https://mmbtfbxxnprtzpzdklot.supabase.co/rest/v1/events?select=id,name,switch_states"
+url_events = "https://fjscpohgysbelzkrkrxm.supabase.co/rest/v1/events?select=id,name,switch_states"
 headers = {
-    "apikey": "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA",
-    "Authorization": "Bearer sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA"
+    "apikey": "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5",
+    "Authorization": "Bearer sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5"
 }
 
 try:
@@ -17,7 +17,7 @@ try:
             print(f" - ID: {ev.get('id')}, Name: {ev.get('name')}, switch_states: {ev.get('switch_states')}")
             
     # Check sync_state payload
-    url_sync = "https://mmbtfbxxnprtzpzdklot.supabase.co/rest/v1/sync_state?id=eq.knsdc_global_sync"
+    url_sync = "https://fjscpohgysbelzkrkrxm.supabase.co/rest/v1/sync_state?id=eq.knsdc_global_sync"
     req_sync = urllib.request.Request(url_sync, headers=headers)
     with urllib.request.urlopen(req_sync) as response:
         rows = json.loads(response.read().decode())

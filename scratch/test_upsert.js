@@ -2,8 +2,8 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
 const supabase = createClient(
-  'https://mmbtfbxxnprtzpzdklot.supabase.co',
-  'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA'
+  'https://fjscpohgysbelzkrkrxm.supabase.co',
+  'sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5'
 );
 
 async function sha256(message) {

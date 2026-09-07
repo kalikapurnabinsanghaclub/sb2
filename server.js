@@ -112,10 +112,10 @@ const upload = multer({
 
 // Cloudflare R2 Client (Zero Egress Object Storage)
 const R2_ENDPOINT = process.env.R2_ENDPOINT || 'https://7a82f5f63d73babe8d030cadf0e23553.r2.cloudflarestorage.com';
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || '742e426d48dca9ee9fb355b27ca23c9d';
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || 'eee81cd469df636dae899ae49246e48e24a9500b204b9eb4179f4aa59fae3afb';
-const R2_BUCKET = process.env.R2_BUCKET_NAME || 'my-app-uploads';
-const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || 'https://pub-407c9d11c2a04dc1973e0dc94d659214.r2.dev').replace(/\/+$/, '');
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || '2f9f69b46a704fdde549649d93786e88';
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || '6fa569a12f6ee2ceecdb6336c15de438375d31f9789b8f06b5788df2eb929715';
+const R2_BUCKET = process.env.R2_BUCKET_NAME || 'knsdc-media';
+const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || 'https://pub-8312d730dfad4f298d7efc93ad64bb22.r2.dev').replace(/\/+$/, '');
 
 const r2Client = new S3Client({
   region: 'auto',
@@ -289,7 +289,7 @@ app.post('/api/participant/upload', upload.single('image'), async (req, res) => 
   }
 
   // 1. Try Cloudflare R2
-  if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
+  if (R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY) {
     try {
       const publicUrl = await uploadBufferToR2(req.file.buffer, req.file.originalname, req.file.mimetype, 'participants');
       return res.json({ status: 'success', imageUrl: publicUrl, fileUrl: publicUrl });

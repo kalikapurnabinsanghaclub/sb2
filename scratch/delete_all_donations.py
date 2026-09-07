@@ -2,10 +2,10 @@ import urllib.request
 import urllib.parse
 import json
 
-url = "https://mmbtfbxxnprtzpzdklot.supabase.co/rest/v1/donations?id=not.is.null"
+url = "https://fjscpohgysbelzkrkrxm.supabase.co/rest/v1/donations?id=not.is.null"
 headers = {
-    "apikey": "sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA",
-    "Authorization": "Bearer sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA"
+    "apikey": "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5",
+    "Authorization": "Bearer sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5"
 }
 
 req = urllib.request.Request(url, method="DELETE", headers=headers)
