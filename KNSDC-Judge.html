@@ -1812,8 +1812,8 @@
 </div>
 
 <!-- FINAL SUBMIT & LOCK PASSWORD MODAL -->
-<div class="overlay" id="final-submit-modal" style="display:none; z-index: 2600;">
-  <div class="modal" style="max-width:440px;">
+<div class="overlay" id="final-submit-modal" style="display:none; z-index: 2600;" onclick="if(event.target === this) closeFinalSubmitModal()">
+  <div class="modal" style="max-width:440px;" onclick="event.stopPropagation()">
     <div class="mhd" style="background:linear-gradient(135deg, rgba(239,68,68,0.08), rgba(245,158,11,0.08)); border-bottom:1px solid rgba(239,68,68,0.2);">
       <div class="mtitle" style="color:var(--text);display:flex;align-items:center;gap:8px;">
         <span style="font-size:20px;">🔒</span>
@@ -1846,7 +1846,7 @@
       <div style="margin-bottom:18px;">
         <label style="display:block; font-size:12px; font-weight:700; margin-bottom:6px; color:var(--text);">Confirm Lock Password <span style="color:red">*</span></label>
         <div style="position:relative;">
-          <input type="password" id="fsm-lock-password-confirm" placeholder="Re-type password" 
+          <input type="password" id="fsm-lock-password-confirm" placeholder="Re-type password" onkeydown="if(event.key==='Enter') executeFinalSubmitWithPassword()"
                  style="width:100%; padding:11px 40px 11px 14px; border-radius:10px; border:2px solid var(--border); font-size:14px; background:var(--surface); color:var(--text); box-sizing:border-box;">
           <button type="button" onclick="toggleLockPasswordVisibility('fsm-lock-password-confirm', this)" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px;">👁️</button>
         </div>
@@ -1865,14 +1865,14 @@
 </div>
 
 <!-- JUDGE RE-AUTHENTICATION / UNLOCK MODAL -->
-<div class="overlay" id="judge-unlock-modal" style="display:none; z-index: 2600;">
-  <div class="modal" style="max-width:400px;">
+<div class="overlay" id="judge-unlock-modal" style="display:none; z-index: 2600;" onclick="if(event.target === this) closeJudgeUnlockModal()">
+  <div class="modal" style="max-width:400px;" onclick="event.stopPropagation()">
     <div class="mhd">
       <div class="mtitle" style="color:var(--text);display:flex;align-items:center;gap:8px;">
         <span style="font-size:20px;">🔓</span>
         <span>Unlock Scoring Portal</span>
       </div>
-      <button class="btn btn-icon btn-ghost" onclick="document.getElementById('judge-unlock-modal').style.display='none'">✕</button>
+      <button class="btn btn-icon btn-ghost" onclick="closeJudgeUnlockModal()">✕</button>
     </div>
     <div class="mbody" style="padding:22px;">
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">
@@ -1880,12 +1880,12 @@
       </p>
       <div style="margin-bottom:16px;">
         <label style="display:block; font-size:12px; font-weight:700; margin-bottom:6px; color:var(--text);">Enter Lock Password</label>
-        <input type="password" id="jum-password-input" placeholder="Your lock password" 
+        <input type="password" id="jum-password-input" placeholder="Your lock password" onkeydown="if(event.key==='Enter') executeJudgePasswordUnlock()"
                style="width:100%; padding:11px 14px; border-radius:10px; border:2px solid var(--border); font-size:14px; background:var(--surface); color:var(--text); box-sizing:border-box;">
       </div>
       <div id="jum-error" style="display:none; padding:8px 12px; border-radius:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#dc2626; font-size:12px; font-weight:700; margin-bottom:14px; text-align:center;"></div>
       <div style="display:flex; gap:10px;">
-        <button class="btn btn-ghost" style="flex:1;" onclick="document.getElementById('judge-unlock-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-ghost" style="flex:1;" onclick="closeJudgeUnlockModal()">Cancel</button>
         <button class="btn btn-gold" style="flex:1.5; font-weight:800;" onclick="executeJudgePasswordUnlock()">🔓 Unlock</button>
       </div>
     </div>
@@ -2169,13 +2169,16 @@ function initIdentity() {
   if (!userJson) return;
   try {
     const user = JSON.parse(userJson);
-    if (user.name) JUDGE.name = user.name;
+    if (user.name) JUDGE.name = String(user.name).trim();
+    if (user.email) JUDGE.email = String(user.email).trim().toLowerCase();
+    if (user.agreement_id) JUDGE.agreementId = user.agreement_id;
+    if (user.id) JUDGE.userId = user.id;
 
     if (window.syncEngine) {
-      const state = window.syncEngine.getData();
+      const state = window.syncEngine.getData() || {};
 
       // ── The Monitor saves all judge agreements into state.judgeAgreements ──
-      const judgeAgreements = state.judgeAgreements || [];
+      const judgeAgreements = state.judgeAgreements || state.agreements || [];
 
       // Priority 1: match by agreement_id stored at login time
       let matchedAgr = user.agreement_id
@@ -2213,28 +2216,13 @@ function initIdentity() {
       if (matchedAgr) {
         JUDGE.agreementId = matchedAgr.id;
         JUDGE.id       = matchedAgr.id;
-        
-        // Ensure JUDGE.id perfectly matches the KNSDC-Monitor.html judges array ID
-        const existingJudge = (state.judges || []).find(j => 
-          (j.email && matchedAgr.email && String(j.email).toLowerCase() === String(matchedAgr.email).toLowerCase()) || 
-          (j.name && matchedAgr.name && String(j.name).toLowerCase() === String(matchedAgr.name).toLowerCase())
-        );
-        if (existingJudge) {
-          JUDGE.id = existingJudge.id;
-          JUDGE.present = existingJudge.present;
-          JUDGE.isUnlocked = existingJudge.isUnlocked;
-          JUDGE.avatar = existingJudge.avatar || existingJudge.photoUrl || existingJudge.photo || '';
-        }
-
         JUDGE.spec     = matchedAgr.spec     || JUDGE.spec;
         JUDGE.date     = matchedAgr.date     || JUDGE.date;
-        JUDGE.email    = matchedAgr.email    || user.email || '';
+        JUDGE.email    = (matchedAgr.email   || user.email || JUDGE.email || '').trim().toLowerCase();
         JUDGE.password = matchedAgr.password || '';
         JUDGE.dateUpto = matchedAgr.dateUpto || '';
         JUDGE.time     = matchedAgr.time     || JUDGE.time;
         JUDGE.status   = matchedAgr.status   || JUDGE.status;
-        
-        // (Removed old 'everVerifiedAgr' check that was auto-accepting new agreements for returning judges)
         JUDGE.amount   = parseInt(matchedAgr.amount)  || 0;
         JUDGE.advance  = parseInt(matchedAgr.advance) || 0;
         JUDGE.remainingPaid = !!(matchedAgr.remainingPaid === true || matchedAgr.remainingStatus === 'paid');
@@ -2264,6 +2252,41 @@ function initIdentity() {
             v = state.venues.find(vx => String(vx.id) === String(matchedAgr.venueId));
           }
           if (v) JUDGE.venue = v.name;
+        }
+      }
+
+      // Comprehensive cross-reference with state.judges to ensure presence, lock, and session IDs match across all devices
+      const targetEmail = (JUDGE.email || user.email || (matchedAgr && matchedAgr.email) || '').trim().toLowerCase();
+      const targetName = (JUDGE.name || user.name || (matchedAgr && matchedAgr.name) || '').trim().toLowerCase();
+      const targetId = String((matchedAgr && matchedAgr.id) || user.agreement_id || user.id || JUDGE.id || '');
+
+      const existingJudge = (state.judges || []).find(j => {
+        if (!j) return false;
+        const jEmail = String(j.email || '').trim().toLowerCase();
+        const jName = String(j.name || '').trim().toLowerCase();
+        const jId = String(j.id || '');
+        const jAgrId = String(j.agreementId || j.agreement_id || '');
+        return (targetEmail && jEmail && jEmail === targetEmail) ||
+               (targetName && jName && jName === targetName) ||
+               (targetId && (jId === targetId || jAgrId === targetId));
+      });
+
+      if (existingJudge) {
+        JUDGE.id = existingJudge.id;
+        JUDGE.present = existingJudge.present === true;
+        JUDGE.isUnlocked = existingJudge.isUnlocked === true;
+        JUDGE.attendanceLog = existingJudge.attendanceLog || [];
+        if (existingJudge.avatar || existingJudge.photoUrl || existingJudge.photo) {
+          JUDGE.avatar = existingJudge.avatar || existingJudge.photoUrl || existingJudge.photo;
+        }
+
+        if (existingJudge.scoresLocked === false) {
+          const wasLocked = localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
+          localStorage.removeItem('knsdc_scores_locked_' + JUDGE.id);
+          if (wasLocked) {
+            if (typeof closeJudgeUnlockModal === 'function') closeJudgeUnlockModal();
+            toast('🔓 Portal unlocked by Monitor! You can now check in as Present.');
+          }
         }
       }
     }
@@ -2963,8 +2986,7 @@ function downloadEventReportPDF() {
 
   // Check if locked
   const state = (window.syncEngine && window.syncEngine.getData()) || {};
-  const myJudgeEntry = (state.judges || []).find(j => j.id === JUDGE.id);
-  const isScoresLocked = !!(myJudgeEntry && myJudgeEntry.scoresLocked) || localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
+  const isScoresLocked = typeof checkIsScoresLocked === 'function' ? checkIsScoresLocked(state) : (localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true');
 
   // ── Total Scored Badge & Audit Status ──
   doc.setFillColor(245, 158, 11);
@@ -3351,18 +3373,34 @@ function renderDashboard() {
   }).join('');
 
   // Presence UI Updates
-  const state = window.syncEngine.getData() || {};
-  const currentSession = (state.judges || []).find(j => 
-    (j.email && JUDGE.email && String(j.email).toLowerCase() === String(JUDGE.email).toLowerCase()) ||
-    (j.name && JUDGE.name && String(j.name).toLowerCase() === String(JUDGE.name).toLowerCase())
-  );
+  const state = (window.syncEngine && window.syncEngine.getData()) || {};
+  const user = JSON.parse(localStorage.getItem('kns_user') || '{}');
+  const userEmail = (JUDGE.email || user.email || '').trim().toLowerCase();
+  const userName = (JUDGE.name || user.name || '').trim().toLowerCase();
+  const userId = String(JUDGE.id || user.agreement_id || user.id || '');
+
+  const currentSession = (state.judges || []).find(j => {
+    if (!j) return false;
+    const jEmail = String(j.email || '').trim().toLowerCase();
+    const jName = String(j.name || '').trim().toLowerCase();
+    const jId = String(j.id || '');
+    const jAgrId = String(j.agreementId || j.agreement_id || '');
+    return (userEmail && jEmail && jEmail === userEmail) ||
+           (userName && jName && jName === userName) ||
+           (userId && (jId === userId || jAgrId === userId));
+  });
   
-  const myJudgeEntry = (state.judges || []).find(j => j.id === JUDGE.id);
-  const isScoresLocked = !!(currentSession && currentSession.scoresLocked) || 
-                         !!(myJudgeEntry && myJudgeEntry.scoresLocked) || 
+  const myJudgeEntry = (state.judges || []).find(j => String(j.id) === String(JUDGE.id));
+  const activeJudgeRecord = currentSession || myJudgeEntry;
+
+  const isScoresLocked = !!(activeJudgeRecord && activeJudgeRecord.scoresLocked) || 
+                         !!(JUDGE.scoresLocked) || 
                          localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
   
-  const isPresent = !isScoresLocked && !!(currentSession && currentSession.present);
+  const isPresent = !isScoresLocked && !!(
+    (activeJudgeRecord && activeJudgeRecord.present === true) || 
+    (JUDGE.present === true)
+  );
   const badge = document.getElementById('presence-badge');
   const hbtn = document.getElementById('hold-present-btn');
   const btnIcon = document.getElementById('hold-btn-icon');
@@ -3516,10 +3554,16 @@ function setupHoldButton() {
     );
 
     const makePresent = !(target && target.present === true);
+    JUDGE.present = makePresent;
     const idToUse = JUDGE.email || JUDGE.name || JUDGE.id;
 
     if (window.syncEngine && typeof window.syncEngine.setJudgePresence === 'function') {
-      await window.syncEngine.setJudgePresence(idToUse, makePresent, JUDGE.eventId);
+      await window.syncEngine.setJudgePresence(idToUse, makePresent, JUDGE.eventId, null, {
+        id: JUDGE.id,
+        name: JUDGE.name,
+        email: JUDGE.email,
+        avatar: JUDGE.avatar || ''
+      });
     } else {
       const nowStr = new Date().toISOString();
       if (target) {
@@ -4248,6 +4292,12 @@ function openFinalSubmitModal() {
 function closeFinalSubmitModal() {
   const modal = document.getElementById('final-submit-modal');
   if (modal) modal.style.display = 'none';
+  const p1 = document.getElementById('fsm-lock-password');
+  const p2 = document.getElementById('fsm-lock-password-confirm');
+  if (p1) p1.value = '';
+  if (p2) p2.value = '';
+  const err = document.getElementById('fsm-error');
+  if (err) err.style.display = 'none';
 }
 
 function openJudgeUnlockModal() {
@@ -4259,13 +4309,47 @@ function openJudgeUnlockModal() {
   if (modal) modal.style.display = 'flex';
 }
 
+function closeJudgeUnlockModal() {
+  const modal = document.getElementById('judge-unlock-modal');
+  if (modal) modal.style.display = 'none';
+  const inp = document.getElementById('jum-password-input');
+  if (inp) inp.value = '';
+  const err = document.getElementById('jum-error');
+  if (err) err.style.display = 'none';
+}
+
+function checkIsScoresLocked(st) {
+  const state = st || (window.syncEngine && window.syncEngine.getData()) || {};
+  const jList = state.judges || [];
+  const myJudge = jList.find(j => 
+    (j.email && JUDGE.email && String(j.email).toLowerCase().trim() === String(JUDGE.email).toLowerCase().trim()) ||
+    (j.name && JUDGE.name && String(j.name).toLowerCase().trim() === String(JUDGE.name).toLowerCase().trim()) ||
+    (String(j.id) === String(JUDGE.id))
+  );
+  if (myJudge) {
+    if (myJudge.scoresLocked === false) {
+      localStorage.removeItem('knsdc_scores_locked_' + JUDGE.id);
+      return false;
+    }
+    if (myJudge.scoresLocked === true) {
+      localStorage.setItem('knsdc_scores_locked_' + JUDGE.id, 'true');
+      return true;
+    }
+  }
+  return localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
+}
+
 async function executeJudgePasswordUnlock() {
   const inp = document.getElementById('jum-password-input');
   const err = document.getElementById('jum-error');
   const enteredPass = inp ? inp.value.trim() : '';
 
   const state = (window.syncEngine && window.syncEngine.getData()) || {};
-  const myJudge = (state.judges || []).find(j => j.id === JUDGE.id);
+  const myJudge = (state.judges || []).find(j => 
+    (j.email && JUDGE.email && String(j.email).toLowerCase().trim() === String(JUDGE.email).toLowerCase().trim()) ||
+    (j.name && JUDGE.name && String(j.name).toLowerCase().trim() === String(JUDGE.name).toLowerCase().trim()) ||
+    (String(j.id) === String(JUDGE.id))
+  );
   const correctPass = (myJudge && myJudge.lockPassword) || localStorage.getItem('knsdc_lock_password_' + JUDGE.id) || '';
 
   if (!enteredPass) {
@@ -4278,15 +4362,16 @@ async function executeJudgePasswordUnlock() {
     return;
   }
 
-  // Password matches! Unlock portal
+  // Password matches! Immediately close modal and update state
+  closeJudgeUnlockModal();
+  localStorage.removeItem('knsdc_scores_locked_' + JUDGE.id);
+  JUDGE.isUnlocked = true;
+  toast('✅ Portal unlocked! You can now check-in as Present.');
+  renderDashboard();
+
   if (window.syncEngine && typeof syncEngine.unlockJudgeFinalScores === 'function') {
     await syncEngine.unlockJudgeFinalScores(JUDGE.id);
   }
-  localStorage.removeItem('knsdc_scores_locked_' + JUDGE.id);
-  JUDGE.isUnlocked = true;
-  document.getElementById('judge-unlock-modal').style.display = 'none';
-  toast('✅ Portal unlocked! You can now check-in as Present.');
-  renderDashboard();
 }
 
 async function executeFinalSubmitWithPassword() {
@@ -4309,12 +4394,22 @@ async function executeFinalSubmitWithPassword() {
   }
 
   if (errEl) errEl.style.display = 'none';
-  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Finalizing & Locking...'; }
+
+  // Immediately close modal & mark local locked state
+  closeFinalSubmitModal();
+  toast("🔒 Locking portal & finalizing scores...");
+
+  const now = Date.now();
+  localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
+  localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
+  localStorage.setItem('knsdc_scores_locked_' + JUDGE.id, 'true');
+  localStorage.setItem('knsdc_lock_password_' + JUDGE.id, p1);
+
+  JUDGE.present = false;
+  JUDGE.isUnlocked = false;
+  renderDashboard();
 
   try {
-    toast("🔄 Finalizing and syncing scores to database...");
-    const now = Date.now();
-
     if (window.syncEngine) {
       // 1. Force push all locally scored participants to public_registrations
       const state = syncEngine.getData();
@@ -4353,11 +4448,6 @@ async function executeFinalSubmitWithPassword() {
       
       console.log(`[Judge] Final Submit: Pushed ${pushCount}/${scoredParts.length} scored participants.`);
       
-      if (scoredParts.length > 0 && failedPushes.length > 0) {
-        toast(`❌ Failed to push scores for ${failedPushes.length} participants. Please check your connection and try again.`);
-        return;
-      }
-
       // 2. Lock judge via syncEngine with password and automatic absenteeism
       if (typeof syncEngine.lockJudgeFinalScores === 'function') {
         await syncEngine.lockJudgeFinalScores(JUDGE.id, p1);
@@ -4382,21 +4472,13 @@ async function executeFinalSubmitWithPassword() {
         await syncEngine.forceSaveStateToSupabase();
       }
 
-      // 3. LocalStorage markers
-      localStorage.setItem('knsdc_scores_submitted_' + JUDGE.id, 'true');
-      localStorage.setItem('knsdc_scores_submitted_at_' + JUDGE.id, now);
-      localStorage.setItem('knsdc_scores_locked_' + JUDGE.id, 'true');
-      localStorage.setItem('knsdc_lock_password_' + JUDGE.id, p1);
-
-      JUDGE.present = false;
-      JUDGE.isUnlocked = false;
-
-      closeFinalSubmitModal();
       toast("🔒 Scores finalized! Portal locked & marked Absent. Reports unlocked.");
       renderDashboard();
     } else {
       toast("❌ Connection Error: Sync engine not initialized. Please try reloading the page.");
     }
+  } catch (err) {
+    console.error('[Judge Submit Error]', err);
   } finally {
     if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '🔒 Confirm & Lock Portal'; }
   }
@@ -4411,8 +4493,18 @@ window.openFinalSubmitModal = openFinalSubmitModal;
 window.closeFinalSubmitModal = closeFinalSubmitModal;
 window.toggleLockPasswordVisibility = toggleLockPasswordVisibility;
 window.openJudgeUnlockModal = openJudgeUnlockModal;
+window.closeJudgeUnlockModal = closeJudgeUnlockModal;
 window.executeJudgePasswordUnlock = executeJudgePasswordUnlock;
 window.executeFinalSubmitWithPassword = executeFinalSubmitWithPassword;
+window.checkIsScoresLocked = checkIsScoresLocked;
+
+// Global Escape listener to automatically dismiss open modals
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeFinalSubmitModal();
+    closeJudgeUnlockModal();
+  }
+});
 
 function triggerStopDancing() {
   if (!window.syncEngine) return;
@@ -4701,6 +4793,11 @@ async function saveModalScores() {
 
   if (isScoresLocked) {
     alert('🔒 Scoring is permanently locked after Final Submission! Please ask Monitor to unlock.');
+    return;
+  }
+
+  if (JUDGE.present !== true || JUDGE.isUnlocked !== true) {
+    alert('🔒 Scoring locked! Both Presence check-in and Monitor Unlock are required.');
     return;
   }
 
@@ -5061,7 +5158,10 @@ function toast(msg) {
 // ════════════════════════════════════════
 initIdentity();
 if (typeof syncEngine.loadEvents === 'function') {
-  syncEngine.loadEvents().then(() => initIdentity());
+  syncEngine.loadEvents().then(() => {
+    initIdentity();
+    if (currentPage === 'dashboard') renderDashboard();
+  });
 }
 
 let judgeTimerInterval = null;
@@ -5198,6 +5298,24 @@ syncEngine.subscribe((state) => {
   
   // Re-sync identity in case agreements or assignments changed
   initIdentity();
+
+  // Auto-hide unlock modal and sync scoresLocked if Monitor or another tab unlocked the judge
+  const activeJudge = (state.judges || []).find(j => 
+    (j.email && JUDGE.email && String(j.email).toLowerCase().trim() === String(JUDGE.email).toLowerCase().trim()) || 
+    (j.name && JUDGE.name && String(j.name).toLowerCase().trim() === String(JUDGE.name).toLowerCase().trim()) ||
+    (String(j.id) === String(JUDGE.id))
+  );
+  if (activeJudge) {
+    if (activeJudge.scoresLocked === false) {
+      if (typeof closeJudgeUnlockModal === 'function') closeJudgeUnlockModal();
+      localStorage.removeItem('knsdc_scores_locked_' + JUDGE.id);
+      JUDGE.isUnlocked = true;
+    } else if (activeJudge.scoresLocked === true) {
+      if (typeof closeFinalSubmitModal === 'function') closeFinalSubmitModal();
+      localStorage.setItem('knsdc_scores_locked_' + JUDGE.id, 'true');
+      JUDGE.isUnlocked = false;
+    }
+  }
   
   // If verification modal is open, dynamically update it!
   const vm = document.getElementById('judge-verification-modal');

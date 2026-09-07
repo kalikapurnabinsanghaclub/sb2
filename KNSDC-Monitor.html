@@ -9528,6 +9528,8 @@ function renderVenueParticipants(){
       (String(j.id) === String(agr.id))
     );
     const isPresent = !!(jSession && jSession.present === true);
+    const isUnlocked = !!(jSession && jSession.isUnlocked === true);
+    const canScore = isPresent && isUnlocked;
     return {
       id: jSession ? jSession.id : agr.id,
       agrId: agr.id,
@@ -9535,11 +9537,13 @@ function renderVenueParticipants(){
       email: agr.email,
       spec: agr.spec || 'General Judge',
       present: isPresent,
+      isUnlocked: isUnlocked,
+      canScore: canScore,
       color: jSession?.color || '#7c3aed'
     };
   });
 
-  const activeJudges = allVenueJudgesWithStatus.filter(j => j.present);
+  const activeJudges = allVenueJudgesWithStatus.filter(j => j.canScore);
 
   // Judge Scoring Status UI on Active Stage Card
   const scoringContainer = document.getElementById('venue-judge-scoring-status');
@@ -9554,10 +9558,14 @@ function renderVenueParticipants(){
                   ${hasScored ? '<span style="color:var(--emerald); font-weight:800;">✓ Scored</span>' : '<span style="color:var(--amber); font-weight:800; animation:pulse 1.5s infinite;">⏳ Scoring...</span>'}
                 </div>`;
       }).join('');
-      scoringContainer.innerHTML = `<div style="font-size:8px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">⚖️ JUDGE SCORING STATUS (${activeJudges.length} Present)</div>${judgeStatuses}`;
+      scoringContainer.innerHTML = `<div style="font-size:8px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">⚖️ JUDGE SCORING STATUS (${activeJudges.length} Active &amp; Unlocked)</div>${judgeStatuses}`;
       scoringContainer.style.display = 'block';
     } else if (onStage) {
-      scoringContainer.innerHTML = `<div style="font-size:8px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">⚖️ JUDGE SCORING STATUS</div><div style="font-size:11px;color:var(--red);font-weight:700;">⚠️ No judges marked Present for this venue!</div>`;
+      const anyPresent = allVenueJudgesWithStatus.some(j => j.present);
+      const msg = anyPresent 
+        ? '⚠️ Judges are Present but scoring is LOCKED by Monitor! (Toggle switch to UNLOCKED in Active Panel)'
+        : '⚠️ No judges marked Present for this venue! (Judge check-in required)';
+      scoringContainer.innerHTML = `<div style="font-size:8px;color:var(--text-muted);font-family:var(--fm);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">⚖️ JUDGE SCORING STATUS</div><div style="font-size:11px;color:var(--amber2);font-weight:700;">${msg}</div>`;
       scoringContainer.style.display = 'block';
     } else {
       scoringContainer.style.display = 'none';
@@ -14324,7 +14332,8 @@ function renderAssignedJudges() {
     const statusLabel = a.status === 'verified' ? 'VERIFIED' : 'CONFIRMED';
     const jSession = (sData.judges || []).find(function(j) {
       return (j.email && a.email && String(j.email).toLowerCase() === String(a.email).toLowerCase()) || 
-             (j.name && a.name && String(j.name).toLowerCase() === String(a.name).toLowerCase());
+             (j.name && a.name && String(j.name).toLowerCase() === String(a.name).toLowerCase()) ||
+             (String(j.id) === String(a.id));
     });
     const photo = (jSession && jSession.avatar) || (jSession && jSession.photoUrl) || (jSession && jSession.photo) || a.photoUrl;
     const avatarHtml = photo
