@@ -10933,7 +10933,7 @@
 
     let _isSigningUp = false;
 
-    function handleSignup() {
+    async function handleSignup() {
       if (_isSigningUp) return;
       const state = syncEngine.getData();
       const participants = state.participants || [];
@@ -11068,44 +11068,60 @@
       }
 
       _isSigningUp = true;
+      let regBtn = document.querySelector("#suStep3 .btn-p");
+      let originalBtnHtml = regBtn ? regBtn.innerHTML : "";
+      if (regBtn) {
+        regBtn.disabled = true;
+        regBtn.innerHTML = `<span>Saving to Server... ⏳</span>`;
+      }
+
       try {
-        const email = document.getElementById("suEmail").value.trim();
-        const password = document.getElementById("suPass").value;
+        const email = (document.getElementById("suEmail") ? document.getElementById("suEmail").value : "").trim();
+        const password = document.getElementById("suPass") ? document.getElementById("suPass").value : "";
 
         // Generate ID using random 2-letter, 4-digit unique code
         const s = syncEngine.getData();
         const newId = syncEngine.generateUniqueParticipantId();
         const now = Date.now();
 
+        if (email && !formData.email && !formData['Email Address'] && !formData['Email']) {
+          formData.email = email;
+        }
+
         const newP = {
-          id: newId, name, phone: phone || '—', age, gender,
-          email: email || '', password: password || '',
-          eventId: eventId, formAnswers: formData,
-          catId, venueId, round: "audition",
-          stageStatus: "waiting", present: false,
-          isPublic: true, isVerified: true, scores: {},
+          id: newId,
+          name,
+          phone: phone || '—',
+          age,
+          gender,
+          email: email || '',
+          password: password || newId,
+          eventId: eventId,
+          formAnswers: formData,
+          catId,
+          venueId,
+          round: "audition",
+          stageStatus: "waiting",
+          present: false,
+          isPublic: true,
+          isVerified: true,
+          scores: {},
+          roundScores: {},
+          roundComments: {},
+          comment: '',
           localMutatedAt: now,
           regDate: new Date().toISOString()
         };
 
-        // Update local memory state immediately
-        syncEngine.setData(st => {
-          const parts = [...(st.participants || [])];
-          const idx = parts.findIndex(x => x.id === newId);
-          if (idx > -1) parts[idx] = newP;
-          else parts.push(newP);
-          return { ...st, participants: parts };
-        });
+        // Persist directly to Supabase database first and await confirmation
+        let saveSuccess = true;
+        if (syncEngine.createParticipant) {
+          saveSuccess = await syncEngine.createParticipant(newP);
+        }
 
-        // Persist to Supabase database
-        if (syncEngine.supabase && syncEngine.createParticipant) {
-          syncEngine.createParticipant(newP).then((success) => {
-            if (!success) {
-              console.error('[Supabase] Error auto-syncing participant to database');
-            } else {
-              console.log('[Supabase] Participant auto-synced successfully');
-            }
-          }).catch(e => console.error('[Supabase] createParticipant error:', e));
+        if (!saveSuccess) {
+          showToast("Registration Failed", "Failed to save registration to server. Please check your internet connection and try again.", "❌");
+          return;
         }
 
         const updatedNxtId = { ...(s.nxtId || { reg: 1 }) };
@@ -11150,7 +11166,15 @@
 
         document.getElementById("regSuccessModal").classList.remove("hidden");
         hideAuth();
+        showToast("Registration Success", "Participant registered and synced to monitor!", "🎉");
+      } catch(err) {
+        console.error('[handleSignup] Exception:', err);
+        showToast("Registration Error", "An unexpected error occurred. Please try again.", "⚠️");
       } finally {
+        if (regBtn) {
+          regBtn.disabled = false;
+          regBtn.innerHTML = originalBtnHtml;
+        }
         _isSigningUp = false;
       }
     }
