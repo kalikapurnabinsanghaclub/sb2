@@ -3173,8 +3173,7 @@ function downloadEventReportExcel() {
 
   // Check if locked
   var state = (window.syncEngine && window.syncEngine.getData()) || {};
-  var myJudgeEntry = (state.judges || []).find(function(j) { return j.id === JUDGE.id; });
-  var isScoresLocked = !!(myJudgeEntry && myJudgeEntry.scoresLocked) || localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
+  var isScoresLocked = typeof checkIsScoresLocked === 'function' ? checkIsScoresLocked(state) : (localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true');
 
   // Detailed Scores Section
   var sectionTitle = isScoresLocked ? '\ud83d\udd12 DETAILED SCORES (OFFICIAL AUDITED & LOCKED)' : '\ud83d\udcc4 DETAILED SCORES (PRE-LOCK DRAFT)';
@@ -3393,9 +3392,9 @@ function renderDashboard() {
   const myJudgeEntry = (state.judges || []).find(j => String(j.id) === String(JUDGE.id));
   const activeJudgeRecord = currentSession || myJudgeEntry;
 
-  const isScoresLocked = !!(activeJudgeRecord && activeJudgeRecord.scoresLocked) || 
-                         !!(JUDGE.scoresLocked) || 
-                         localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
+  const isScoresLocked = typeof checkIsScoresLocked === 'function'
+    ? checkIsScoresLocked(state)
+    : (activeJudgeRecord ? activeJudgeRecord.scoresLocked === true : localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true');
   
   const isPresent = !isScoresLocked && !!(
     (activeJudgeRecord && activeJudgeRecord.present === true) || 
@@ -3496,8 +3495,10 @@ function setupHoldButton() {
   const startHold = (e) => {
     e.preventDefault();
     const st = (window.syncEngine && window.syncEngine.getData()) || {};
-    const curJ = (st.judges || []).find(j => j.id === JUDGE.id);
-    if ((curJ && curJ.scoresLocked) || localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true') {
+    const isLocked = typeof checkIsScoresLocked === 'function' 
+      ? checkIsScoresLocked(st) 
+      : ((curJ && curJ.scoresLocked) || localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true');
+    if (isLocked) {
       toast('🔒 Portal is locked. Enter your password to unlock or ask the Monitor.');
       openJudgeUnlockModal();
       return;
@@ -4183,8 +4184,9 @@ async function saveScores() {
   if(!p) return;
 
   const state = (window.syncEngine && window.syncEngine.getData()) || {};
-  const myJudgeEntry = (state.judges || []).find(j => j.id === JUDGE.id);
-  const isScoresLocked = !!(myJudgeEntry && myJudgeEntry.scoresLocked) || localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
+  const isScoresLocked = typeof checkIsScoresLocked === 'function' 
+    ? checkIsScoresLocked(state) 
+    : (localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true');
 
   if (isScoresLocked) {
     toast('🔒 Scoring is locked after Final Submission! Please ask Monitor to unlock.');
@@ -4788,8 +4790,9 @@ async function saveModalScores() {
   if(!p) return;
 
   const state = (window.syncEngine && window.syncEngine.getData()) || {};
-  const myJudgeEntry = (state.judges || []).find(j => j.id === JUDGE.id);
-  const isScoresLocked = !!(myJudgeEntry && myJudgeEntry.scoresLocked) || localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true';
+  const isScoresLocked = typeof checkIsScoresLocked === 'function' 
+    ? checkIsScoresLocked(state) 
+    : (localStorage.getItem('knsdc_scores_locked_' + JUDGE.id) === 'true');
 
   if (isScoresLocked) {
     alert('🔒 Scoring is permanently locked after Final Submission! Please ask Monitor to unlock.');
