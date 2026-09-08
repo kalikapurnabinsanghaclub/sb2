@@ -1893,6 +1893,46 @@
 <script src="lib/staffAudio.js"></script>
 <script src="lib/sampleDataLocal.js"></script>
 <script>
+// ── Image Compression Helper ──
+window.compressImageFile = (file, maxDim = 1200, quality = 0.75) => {
+  return new Promise((resolve) => {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(e.target.result);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+};
+
 // ── Banner Upload & Real-Time Preview ──
 window.handleBannerUpload = async (evt, hiddenId) => {
   const fileInput = evt.target;
@@ -1902,16 +1942,10 @@ window.handleBannerUpload = async (evt, hiddenId) => {
   const hiddenInput = document.getElementById(hiddenId);
   const existingUrls = typeof window.parseBanners === 'function' ? window.parseBanners(hiddenInput.value) : [];
   
-  // 1. Instantly read selected files for real-time instant preview
-  const localUrls = await Promise.all(files.map(file => {
-    return new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onload = e => resolve(e.target.result);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  }));
-  
+  toast(`🖼️ Optimizing ${files.length} banner(s)...`);
+
+  // 1. Compress and read selected files for real-time instant preview
+  const localUrls = await Promise.all(files.map(file => window.compressImageFile(file)));
   const validLocalUrls = localUrls.filter(Boolean);
   
   // Display instant local previews immediately below the input
@@ -2742,10 +2776,20 @@ window.populateDropdowns = (state) => {
 };
 
 window.openCreateEventModal = () => {
-  ['cev-name','cev-org','cev-venue','cev-start','cev-time','cev-end','cev-endtime','cev-capacity','cev-banner','cev-desc'].forEach(id => {
+  ['cev-name','cev-org','cev-venue','cev-start','cev-time','cev-end','cev-endtime','cev-capacity','cev-banner','cev-desc','cev-whatsapp','cev-facebook'].forEach(id => {
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
+  const allowDonationsEl = document.getElementById('cev-allow-donations');
+  if (allowDonationsEl) allowDonationsEl.checked = true;
+  const targetGoalEl = document.getElementById('cev-target-goal');
+  if (targetGoalEl) targetGoalEl.value = '50000';
+  const upiIdEl = document.getElementById('cev-upi-id');
+  if (upiIdEl) upiIdEl.value = 'kalikapurnabinsangha@sbi';
+  const bannerFileEl = document.getElementById('cev-banner-file');
+  if (bannerFileEl) bannerFileEl.value = '';
+
+  if (typeof previewEventBanner === 'function') previewEventBanner();
   if(document.getElementById('ev-banner-img')) document.getElementById('ev-banner-img').style.display = 'none';
   if(document.getElementById('ev-banner-placeholder')) document.getElementById('ev-banner-placeholder').style.display = 'block';
   const m = document.getElementById('create-event-modal');
@@ -3007,7 +3051,7 @@ window.saveEditedEvent = async () => {
 
       // Save to Supabase
       const result = await syncEngine.updateEvent(id, updatedEvent);
-      const success = result === true;
+      const success = result === true || (result && result.success === true);
       if (!success) {
           const errMsg = (result && result.message) ? result.message : 'Unknown database error';
           console.error('[Admin] updateEvent failed:', errMsg);
