@@ -208,6 +208,27 @@ app.get('/api/health', (req, res) => {
 
 // Cloudflare R2 Upload Helper
 async function uploadBufferToR2(buffer, originalName, mimeType, prefix = 'uploads') {
+  // 1. Primary: Forward to live Cloudflare R2 Worker
+  try {
+    const cleanPrefix = prefix ? prefix.replace(/^\/+|\/+$/g, '') : 'uploads';
+    const fd = new FormData();
+    fd.append('pathPrefix', cleanPrefix);
+    fd.append('file', new Blob([buffer], { type: mimeType || 'application/octet-stream' }), originalName || 'file.bin');
+    const workerRes = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', {
+      method: 'POST',
+      body: fd
+    });
+    if (workerRes.ok) {
+      const workerJson = await workerRes.json();
+      if (workerJson.status === 'success' && (workerJson.fileUrl || workerJson.imageUrl)) {
+        return workerJson.fileUrl || workerJson.imageUrl;
+      }
+    }
+  } catch (wfErr) {
+    console.warn('[server.js] Cloudflare R2 Worker forward error:', wfErr.message);
+  }
+
+  // 2. Fallback: S3 Client
   const ext = path.extname(originalName) || '.png';
   const cleanPrefix = prefix ? prefix.replace(/^\/+|\/+$/g, '') : 'uploads';
   const key = `${cleanPrefix}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
@@ -256,13 +277,13 @@ app.post('/api/menu/upload', upload.single('image'), async (req, res) => {
   }
 
   // 1. Try Cloudflare R2
-  if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
-    try {
-      const publicUrl = await uploadBufferToR2(req.file.buffer, req.file.originalname, req.file.mimetype, 'menu');
+  try {
+    const publicUrl = await uploadBufferToR2(req.file.buffer, req.file.originalname, req.file.mimetype, 'menu');
+    if (publicUrl) {
       return res.json({ status: 'success', imageUrl: publicUrl, fileUrl: publicUrl });
-    } catch (r2Err) {
-      console.warn('[R2 Menu Upload] Falling back to MongoDB:', r2Err.message);
     }
+  } catch (r2Err) {
+    console.warn('[R2 Menu Upload] Cloudflare notice:', r2Err.message);
   }
 
   if (!db) {
@@ -274,7 +295,7 @@ app.post('/api/menu/upload', upload.single('image'), async (req, res) => {
     const doc = {
       filename: req.file.originalname,
       contentType: req.file.mimetype,
-      data: req.file.buffer, // Buffer is stored directly as Binary in MongoDB
+      data: req.file.buffer,
       uploadedAt: new Date()
     };
 
@@ -291,20 +312,26 @@ app.post('/api/menu/upload', upload.single('image'), async (req, res) => {
   }
 });
 
-// Participant Image Upload Endpoint (Saves to Cloudflare R2 with MongoDB fallback)
-app.post('/api/participant/upload', upload.single('image'), async (req, res) => {
-  if (!req.file) {
+// Participant Image & Music Upload Endpoint (Saves to Cloudflare R2)
+app.post('/api/participant/upload', (req, res, next) => {
+  upload.any()(req, res, (err) => {
+    if (err) return res.status(400).json({ status: 'error', message: err.message });
+    next();
+  });
+}, async (req, res) => {
+  const file = req.files && req.files.length > 0 ? req.files[0] : req.file;
+  if (!file) {
     return res.status(400).json({ status: 'error', message: 'No file uploaded.' });
   }
 
-  // 1. Try Cloudflare R2
-  if (R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY) {
-    try {
-      const publicUrl = await uploadBufferToR2(req.file.buffer, req.file.originalname, req.file.mimetype, 'participants');
+  // 1. Always upload to Cloudflare R2
+  try {
+    const publicUrl = await uploadBufferToR2(file.buffer, file.originalname, file.mimetype, 'participants');
+    if (publicUrl) {
       return res.json({ status: 'success', imageUrl: publicUrl, fileUrl: publicUrl });
-    } catch (r2Err) {
-      console.warn('[R2 Participant Upload] Falling back to MongoDB:', r2Err.message);
     }
+  } catch (r2Err) {
+    console.warn('[R2 Participant Upload] Cloudflare notice:', r2Err.message);
   }
 
   if (!db) {
@@ -314,9 +341,9 @@ app.post('/api/participant/upload', upload.single('image'), async (req, res) => 
   try {
     const imagesCollection = db.collection('participant_images');
     const doc = {
-      filename: req.file.originalname,
-      contentType: req.file.mimetype,
-      data: req.file.buffer,
+      filename: file.originalname,
+      contentType: file.mimetype,
+      data: file.buffer,
       uploadedAt: new Date()
     };
 
@@ -325,7 +352,8 @@ app.post('/api/participant/upload', upload.single('image'), async (req, res) => 
     
     res.json({
       status: 'success',
-      imageUrl: imageUrl
+      imageUrl: imageUrl,
+      fileUrl: imageUrl
     });
   } catch (err) {
     console.error('[Upload] Error storing participant image in MongoDB:', err);

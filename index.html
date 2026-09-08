@@ -9775,23 +9775,82 @@
     window.uploadPublicFileToCloud = async function(input, targetId) {
       const file = input.files[0];
       if(!file) return;
-      if (file.size > 20 * 1024 * 1024) {
-         showToast("File too large", "Please select a file smaller than 20MB, or paste a link instead.", "⚠️");
+      if (file.size > 50 * 1024 * 1024) {
+         showToast("File too large", "Please select a file smaller than 50MB, or paste a link instead.", "⚠️");
          input.value = "";
          return;
       }
       
-      showToast("Uploading...", "Please wait while your file is securely uploaded.", "⏳");
+      const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)$/i.test(file.name);
+      const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name);
+      const typeLabel = isAudio ? 'music track' : (isVideo ? 'video' : 'photo');
+
+      showToast("Uploading to Cloudflare...", `Please wait while your ${typeLabel} is securely uploaded to Cloudflare R2.`, "⏳");
       input.disabled = true;
       
-      const url = await syncEngine.uploadFile(file, 'participants/');
+      let url = null;
+      try {
+        if (window.syncEngine && typeof window.syncEngine.uploadFile === 'function') {
+          url = await syncEngine.uploadFile(file, 'participants/');
+        } else {
+          // Direct Cloudflare R2 Worker fallback
+          const fd = new FormData();
+          fd.append('pathPrefix', 'participants');
+          fd.append('file', file);
+          const r2Res = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', {
+            method: 'POST',
+            body: fd
+          });
+          if (r2Res.ok) {
+            const r2Json = await r2Res.json();
+            url = r2Json.fileUrl || r2Json.imageUrl;
+          }
+        }
+      } catch(err) {
+        console.warn('[Public Upload] Cloudflare upload error:', err);
+      }
       input.disabled = false;
       
       if (url) {
-        document.getElementById(targetId).value = url;
-        showToast("Success", "File uploaded successfully!", "✅");
+        const targetInput = document.getElementById(targetId);
+        if (targetInput) targetInput.value = url;
+
+        // Render or update preview right under the file input
+        let previewBox = document.getElementById(targetId + '-public-preview');
+        if (!previewBox) {
+          previewBox = document.createElement('div');
+          previewBox.id = targetId + '-public-preview';
+          previewBox.style.cssText = 'margin-top:8px; padding:8px; background:#f1f5f9; border-radius:8px; border:1px solid #cbd5e1;';
+          input.parentNode.appendChild(previewBox);
+        }
+
+        if (isAudio) {
+          previewBox.innerHTML = `
+            <div style="font-size:0.85rem; font-weight:700; color:#4338ca; margin-bottom:4px;">🎵 Music track ready: ${file.name}</div>
+            <audio controls src="${url}" style="width:100%; height:36px; border-radius:6px;"></audio>
+            <div style="font-size:0.75rem; color:#15803d; margin-top:4px;">✅ Uploaded to Cloudflare R2</div>
+          `;
+        } else if (isVideo) {
+          previewBox.innerHTML = `
+            <div style="font-size:0.85rem; font-weight:700; color:#4338ca; margin-bottom:4px;">🎬 Video ready: ${file.name}</div>
+            <video controls src="${url}" style="max-width:100%; max-height:180px; border-radius:6px;"></video>
+            <div style="font-size:0.75rem; color:#15803d; margin-top:4px;">✅ Uploaded to Cloudflare R2</div>
+          `;
+        } else {
+          previewBox.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px;">
+              <img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:8px; border:2px solid #6366f1;">
+              <div>
+                <div style="font-size:0.85rem; font-weight:700; color:#1e293b;">${file.name}</div>
+                <div style="font-size:0.75rem; color:#15803d;">✅ Uploaded to Cloudflare R2</div>
+              </div>
+            </div>
+          `;
+        }
+
+        showToast("Success", `✅ ${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} saved to Cloudflare R2!`, "✅");
       } else {
-        showToast("Error", "Failed to upload file. Please try again or paste a link.", "❌");
+        showToast("Error", "Failed to upload file to Cloudflare. Please try again or paste a link.", "❌");
         input.value = "";
       }
     };
@@ -11094,6 +11153,23 @@
           formData.email = email;
         }
 
+        // Scan formData for Cloudflare photo and music URLs to attach at top level
+        let uploadedPhoto = '';
+        let uploadedMusic = '';
+        if (formData && typeof formData === 'object') {
+          for (const [k, v] of Object.entries(formData)) {
+            if (typeof v === 'string') {
+              const vLower = v.toLowerCase();
+              if (vLower.includes('.mp3') || vLower.includes('.wav') || vLower.includes('.m4a') || vLower.includes('.ogg') || vLower.includes('.aac') || k.toLowerCase().includes('music') || k.toLowerCase().includes('song') || k.toLowerCase().includes('audio')) {
+                if (!uploadedMusic && (v.startsWith('http') || v.includes('.r2.dev'))) uploadedMusic = v;
+              }
+              if (vLower.includes('.jpg') || vLower.includes('.jpeg') || vLower.includes('.png') || vLower.includes('.webp') || k.toLowerCase().includes('photo') || k.toLowerCase().includes('picture') || k.toLowerCase().includes('image') || k.toLowerCase().includes('selfie')) {
+                if (!uploadedPhoto && (v.startsWith('http') || v.includes('.r2.dev'))) uploadedPhoto = v;
+              }
+            }
+          }
+        }
+
         const newP = {
           id: newId,
           name,
@@ -11104,6 +11180,8 @@
           password: password || newId,
           eventId: eventId,
           formAnswers: formData,
+          photo: uploadedPhoto || '',
+          musicUrl: uploadedMusic || '',
           catId,
           venueId,
           round: "audition",

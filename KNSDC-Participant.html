@@ -7,6 +7,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <!-- Removed importmap to support file:// protocol -->
+<script>
+  window.CLOUDFLARE_UPLOAD_URL = 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
+</script>
 <style>
   :root {
     --primary: #FF6B35;
@@ -1992,55 +1995,91 @@ function logout() {
 window.uploadParticipantFileToCloud = async function(input, targetId) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 20 * 1024 * 1024) {
-      toast("File too large. Please select a file smaller than 20MB.");
+  if (file.size > 50 * 1024 * 1024) {
+      toast("⚠️ File too large. Please select a file smaller than 50MB.");
       input.value = "";
       return;
   }
   
-  toast("Uploading image to MongoDB... Please wait.");
+  const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)$/i.test(file.name);
+  const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name);
+  const typeLabel = isAudio ? 'music track' : (isVideo ? 'video' : 'photo');
+
+  toast(`Uploading ${typeLabel} to Cloudflare R2... ⏳`);
   input.disabled = true;
 
-  const reader = new FileReader();
-  reader.onload = async function(e) {
-    const base64Url = e.target.result;
-    input.disabled = false;
-    document.getElementById(targetId).value = base64Url;
-    toast("✅ Image uploaded & stored in MongoDB Atlas!");
-    
-    // Photo/Image preview
-    const imgPreview = document.getElementById(targetId + '-preview');
-    if (imgPreview) {
-      imgPreview.src = base64Url;
-      imgPreview.style.display = 'block';
-    }
-    
-    // Media preview wrap
-    const previewWrap = document.getElementById(targetId + '-preview-wrap');
-    if (previewWrap) {
-      previewWrap.style.display = 'block';
-      const mediaPreview = document.getElementById(targetId + '-preview');
-      if (mediaPreview) {
-        mediaPreview.src = base64Url;
+  try {
+    let cloudUrl = null;
+    if (window.syncEngine && typeof window.syncEngine.uploadFile === 'function') {
+      cloudUrl = await window.syncEngine.uploadFile(file, 'participants/');
+    } else {
+      // Direct Cloudflare R2 Worker fallback
+      const fd = new FormData();
+      fd.append('pathPrefix', 'participants');
+      fd.append('file', file);
+      const r2Res = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', {
+        method: 'POST',
+        body: fd
+      });
+      if (r2Res.ok) {
+        const r2Json = await r2Res.json();
+        cloudUrl = r2Json.fileUrl || r2Json.imageUrl;
       }
     }
-    
-    // Download link
-    const previewLink = document.getElementById(targetId + '-preview-link');
-    if (previewLink) {
-      previewLink.href = base64Url;
-    }
 
-    // Automatically sync participant state to MongoDB
-    if (window.syncEngine) {
-      await window.syncEngine.forceSaveStateToSupabase();
+    if (cloudUrl) {
+      input.disabled = false;
+      const targetInput = document.getElementById(targetId);
+      if (targetInput) targetInput.value = cloudUrl;
+
+      // Photo/Image preview
+      const imgPreview = document.getElementById(targetId + '-preview');
+      if (imgPreview) {
+        imgPreview.src = cloudUrl;
+        imgPreview.style.display = 'block';
+      }
+
+      // Media preview wrap (Audio & Video)
+      const previewWrap = document.getElementById(targetId + '-preview-wrap');
+      if (previewWrap) {
+        previewWrap.style.display = 'block';
+        const mediaPreview = document.getElementById(targetId + '-preview');
+        if (mediaPreview) {
+          mediaPreview.src = cloudUrl;
+          if (typeof mediaPreview.load === 'function') mediaPreview.load();
+        }
+      }
+
+      // Download link
+      const previewLink = document.getElementById(targetId + '-preview-link');
+      if (previewLink) {
+        previewLink.href = cloudUrl;
+        previewLink.style.display = 'inline';
+      }
+
+      toast(`✅ ${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} saved to Cloudflare R2!`);
+
+      // Automatically sync participant state
+      if (window.syncEngine) {
+        const state = window.syncEngine.getData() || {};
+        const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+        if (p) {
+          if (!p.formAnswers) p.formAnswers = {};
+          const fieldLabel = targetInput ? (targetInput.getAttribute('data-label') || targetId) : targetId;
+          p.formAnswers[fieldLabel] = cloudUrl;
+          if (isAudio && !p.musicUrl) p.musicUrl = cloudUrl;
+          if (!isAudio && !isVideo && !p.photo) p.photo = cloudUrl;
+        }
+        await window.syncEngine.forceSaveStateToSupabase();
+      }
+    } else {
+      throw new Error('Cloudflare upload returned empty URL');
     }
-  };
-  reader.onerror = function() {
+  } catch (err) {
+    console.error('[Participant Upload Error]', err);
     input.disabled = false;
-    toast("⚠️ Failed to read image file.");
-  };
-  reader.readAsDataURL(file);
+    toast(`⚠️ Upload failed: ${err.message || 'Please check your connection and retry.'}`);
+  }
 };
 
 // 3. Render Dashboard & Lock Logic
