@@ -949,7 +949,7 @@
 <div class="main">
   <div class="topbar">
     <div class="topbar-title" id="page-title">Dashboard</div>
-    <div style="display:none; flex-direction:column; gap:2px" id="topbar-event-info">
+    <div style="display:flex; flex-direction:column; gap:2px; margin-left:16px" id="topbar-event-info">
       <div class="topbar-event" id="topbar-event-name" style="font-family:var(--fh);font-size:14px;font-weight:800;color:var(--text)">Loading...</div>
       <div id="topbar-event-meta" style="font-size:10px; color:var(--text-dim); font-family:var(--fm)">Organized by...</div>
     </div>
@@ -2062,7 +2062,10 @@ window.renderEventsPage = (state) => {
   const today = new Date();
   today.setHours(0,0,0,0);
 
+  const currentActiveId = String(state.activeEventId || (evs[0] ? evs[0].id : ''));
+
   tbody.innerHTML = evs.map(e => {
+    const isCurrentActive = String(e.id) === currentActiveId;
     const startDate = e.startDate ? new Date(e.startDate) : null;
     const endDate   = e.endDate   ? new Date(e.endDate)   : startDate;
     if (startDate) startDate.setHours(0,0,0,0);
@@ -2075,27 +2078,39 @@ window.renderEventsPage = (state) => {
       else                         status = 'upcoming';
     }
 
-    const squareColor = status === 'completed' ? '#ef4444'
+    const squareColor = isCurrentActive ? '#22c55e'
+                       : status === 'completed' ? '#ef4444'
                        : status === 'ongoing'   ? '#22c55e'
                        : '#f59e0b';
-    const statusLabel = status === 'completed' ? 'Completed'
+    const statusLabel = isCurrentActive ? 'Active / Present'
+                       : status === 'completed' ? 'Completed'
                        : status === 'ongoing'   ? 'Ongoing'
                        : 'Upcoming';
-    const statusBg    = status === 'completed' ? 'rgba(239,68,68,0.1)'
+    const statusBg    = isCurrentActive ? 'rgba(34,197,94,0.15)'
+                       : status === 'completed' ? 'rgba(239,68,68,0.1)'
                        : status === 'ongoing'   ? 'rgba(34,197,94,0.1)'
                        : 'rgba(245,158,11,0.1)';
 
     return `
-    <tr>
+    <tr style="${isCurrentActive ? 'background:rgba(16,185,129,0.04);' : ''}">
       <td><div style="width:14px;height:14px;border-radius:3px;background:${squareColor};flex-shrink:0"></div></td>
-      <td><span style="font-weight:700;color:var(--blue)">${e.name}</span>
-          <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${e.type || ''} &bull; ID: ${e.id}</div></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-weight:700;color:var(--blue)">${e.name}</span>
+          ${isCurrentActive ? `<span style="font-size:10px;background:rgba(16,185,129,0.15);color:#10b981;font-weight:800;padding:2px 8px;border-radius:12px;border:1px solid rgba(16,185,129,0.3)">🟢 PRESENT / ACTIVE</span>` : ''}
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${e.type || ''} &bull; ID: ${e.id}</div>
+      </td>
       <td>${e.org || e.organizer || 'KNSDC'}</td>
       <td><span style="font-size:11px;background:#f1f5f9;padding:4px 8px;border-radius:4px;font-weight:700">${e.startDate || 'TBA'} ${e.startTime || ''}</span>
           ${e.endDate ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Ends: ${e.endDate} ${e.endTime || ''}</div>` : ''}</td>
       <td><span style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;background:${statusBg};color:${squareColor}">${statusLabel}</span></td>
       <td>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center">
+          ${isCurrentActive 
+            ? `<button class="btn btn-xs" style="background:#10b981;color:#fff;border:none;font-weight:700;cursor:default" disabled>✓ Active</button>` 
+            : `<button class="btn btn-ghost btn-xs" style="color:var(--blue);font-weight:700;border:1px solid rgba(59,130,246,0.3)" onclick="switchEvent('${e.id}')">⭐ Set Active</button>`
+          }
           <button class="btn btn-ghost btn-xs" onclick="editEvent('${e.id}')">✏ Edit</button>
           <button class="btn btn-ghost btn-xs" style="color:red" onclick="deleteEvent('${e.id}')">🗑 Delete</button>
         </div>
@@ -2107,6 +2122,7 @@ window.renderEventsPage = (state) => {
 window.refreshUI = (pageId) => {
   const state = window.syncEngine ? window.syncEngine.getData() : null;
   if (!state) return;
+  if (window.populateDropdowns) window.populateDropdowns(state);
   if ((!pageId || pageId === 'dashboard') && window.renderDashboard) window.renderDashboard(state);
   if ((!pageId || pageId === 'events') && window.renderEventsPage) window.renderEventsPage(state);
   if ((!pageId || pageId === 'staff') && window.renderStaffPage) window.renderStaffPage(state);
@@ -2147,10 +2163,18 @@ window.renderDashboard = (state) => {
     if (completedMeta) completedMeta.textContent = 'History empty';
   }
   
-  const activeEvent = events.find(e => String(e.id) === String(state.activeEventId));
+  let activeEvent = events.find(e => String(e.id) === String(state.activeEventId));
+  if (!activeEvent && events.length > 0) {
+    activeEvent = events.find(e => e.active === true) || events[0];
+    if (activeEvent && window.syncEngine) {
+      window.syncEngine.setData(s => ({ ...s, activeEventId: activeEvent.id }));
+      try { localStorage.setItem('knsdc_activeEventId', String(activeEvent.id)); } catch(e) {}
+    }
+  }
+
   if (activeEvent) {
     if (ongoingName) ongoingName.textContent = activeEvent.name;
-    if (ongoingMeta) ongoingMeta.textContent = `Active ID: ${activeEvent.id}`;
+    if (ongoingMeta) ongoingMeta.textContent = `Active ID: ${activeEvent.id} • ${activeEvent.startDate || activeEvent.date || 'Present Event'}`;
   } else {
     if (ongoingName) ongoingName.textContent = 'No ongoing event';
     if (ongoingMeta) ongoingMeta.textContent = 'Select active event from the events panel';
@@ -2684,11 +2708,16 @@ window.saveEditReg = async () => {
   }
 };
 
-window.switchEvent = (eventId) => {
+window.switchEvent = async (eventId) => {
   if (!window.syncEngine || !eventId) return;
-  window.syncEngine.setData(state => ({ ...state, activeEventId: eventId }));
-  try { localStorage.setItem('knsdc_activeEventId', eventId); } catch(e) {}
-  toast('Switched active event');
+  if (typeof window.syncEngine.setActiveEvent === 'function') {
+    await window.syncEngine.setActiveEvent(eventId);
+  } else {
+    window.syncEngine.setData(state => ({ ...state, activeEventId: eventId }));
+    try { localStorage.setItem('knsdc_activeEventId', String(eventId)); } catch(e) {}
+  }
+  toast('✅ Switched active event');
+  if (typeof window.refreshUI === 'function') window.refreshUI();
 };
 
 window.statsTab = (tabName, btn) => {
@@ -3175,7 +3204,7 @@ syncEngine.subscribe((newState) => {
     const pageId = activePage ? activePage.id.replace('pp-', '') : '';
     
     if (topInfo) {
-        topInfo.style.display = (pageId === 'chat') ? 'flex' : 'none';
+        topInfo.style.display = 'flex';
     }
     
     if (sel) {
@@ -3183,11 +3212,14 @@ syncEngine.subscribe((newState) => {
         if (!sel.innerHTML) sel.innerHTML = '<option value="">No Events</option>';
     }
 
-    const activeEv = events.find(e => String(e.id) === String(newState.activeEventId));
+    let activeEv = events.find(e => String(e.id) === String(newState.activeEventId));
+    if (!activeEv && events.length > 0) {
+        activeEv = events.find(e => e.active === true) || events[0];
+    }
     if (activeEv) {
         if (topName) topName.textContent = activeEv.name;
         const staffCount = (activeEv.staff || []).length;
-        if (topMeta) topMeta.textContent = `Organized by ${activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha'} | ${staffCount} Staff Assigned`;
+        if (topMeta) topMeta.textContent = `Present Event • Organized by ${activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha'} | ${staffCount} Staff Assigned`;
     } else {
         if (topName) topName.textContent = newState.eventName || 'No Event Selected';
         if (topMeta) topMeta.textContent = 'Organized by ' + (newState.organizer || 'Kalikapur Nabin Sangha');
@@ -3599,7 +3631,7 @@ window.nav = function(pageId, el) {
 
   const topInfo = document.getElementById('topbar-event-info');
   if (topInfo) {
-    topInfo.style.display = (pageId === 'chat') ? 'flex' : 'none';
+    topInfo.style.display = 'flex';
   }
 
   if (typeof window.refreshUI === 'function') window.refreshUI(pageId);
