@@ -1,7 +1,7 @@
 -- ============================================================
 -- KNSDC — CONSOLIDATED SUPABASE ECOSYSTEM SETUP SCRIPT
--- Project : https://fjscpohgysbelzkrkrxm.supabase.co
--- Anon Key: sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5
+-- Project : https://mmbtfbxxnprtzpzdklot.supabase.co
+-- Anon Key: sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA
 --
 -- INSTRUCTIONS:
 -- 1. Run this script in the Supabase SQL Editor to initialize all tables.

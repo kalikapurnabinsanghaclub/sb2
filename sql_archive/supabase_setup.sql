@@ -1,7 +1,7 @@
 -- ============================================================
 -- KNSDC Supabase Setup Script
 -- Run this ONCE in your Supabase project → SQL Editor
--- Project: https://fjscpohgysbelzkrkrxm.supabase.co
+-- Project: https://mmbtfbxxnprtzpzdklot.supabase.co
 -- ============================================================
 
 -- Step 1: Create judge_credentials table
