@@ -8670,6 +8670,7 @@ function renderVenueMonitor(){
     }
   }
   renderVenueParticipants();
+  renderStageView();
   if (typeof updateFlashStatusUI === 'function') updateFlashStatusUI();
 }
 window.renderVenueMonitor = renderVenueMonitor;
@@ -8872,20 +8873,21 @@ function moveQueueItem(id, direction) {
   queueParts[idx].queueOrder = queueParts[targetIdx].queueOrder;
   queueParts[targetIdx].queueOrder = temp;
   
+  // 1. Immediately render UI synchronously (0ms delay)
+  renderVenueParticipants();
+  renderStageView();
+  toast('Queue order updated!');
+
+  // 2. Persist in background
   if (window.syncEngine && window.syncEngine.updateParticipant) {
     Promise.all([
       window.syncEngine.updateParticipant(queueParts[idx].id, { queueOrder: queueParts[idx].queueOrder }),
       window.syncEngine.updateParticipant(queueParts[targetIdx].id, { queueOrder: queueParts[targetIdx].queueOrder })
     ]).then(() => {
       syncAll();
-      renderVenueParticipants();
-      renderStageView();
-      toast('Queue order updated!');
     }).catch(err => console.error('Error swapping queue order:', err));
   } else {
     syncAll();
-    renderVenueParticipants();
-    renderStageView();
     handleTimerReset();
     syncTimerToGlobal();
   }
@@ -9671,7 +9673,7 @@ window.renderVenueParticipants = renderVenueParticipants;
 let _stageOpInProgress = false;
 
 async function pushToStage(id){
-  if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
+  if (_stageOpInProgress) return;
   _stageOpInProgress = true;
   try {
     const venId = currentVenueMonitor;
@@ -9679,31 +9681,38 @@ async function pushToStage(id){
     if (!nextP) return;
 
     currentOnStage = nextP.id;
+    const now = Date.now();
 
-    if (window.syncEngine && typeof window.syncEngine.stagePush === 'function') {
-      await window.syncEngine.stagePush(nextP.id, venId);
-    } else {
-      const now = Date.now();
-      participants.forEach(p=>{ 
-        if(p.stageStatus==='on-stage' && String(p.id) !== String(id)) {
-          p.stageStatus='done';
-          p.localMutatedAt = now;
-        }
-      });
-      nextP.stageStatus='on-stage'; 
-      const round = nextP.round || 'audition';
-      setRoundPresent(nextP, round, true);
-      nextP.localMutatedAt = now;
-      syncAll();
-    }
-    
+    // 1. Optimistic Local State Mutation (0ms latency)
+    participants.forEach(p=>{ 
+      const isSameVenue = venId ? (String(p.venueId) === String(venId) || !p.venueId) : true;
+      if(p.stageStatus==='on-stage' && String(p.id) !== String(id) && isSameVenue) {
+        p.stageStatus='done';
+        p.isReady = false;
+        p.localMutatedAt = now;
+      }
+    });
+    nextP.stageStatus='on-stage'; 
+    nextP.isReady = false;
+    const round = nextP.round || 'audition';
+    setRoundPresent(nextP, round, true);
+    nextP.localMutatedAt = now;
+
+    // 2. Synchronous Immediate UI Render
     renderVenueParticipants();
     renderStageView();
     toast(`⬆ ${nextP.name} pushed to stage!`);
+
+    // 3. Fast WebSocket broadcast + background DB persist (non-blocking)
+    if (window.syncEngine && typeof window.syncEngine.stagePush === 'function') {
+      window.syncEngine.stagePush(nextP.id, venId).catch(e => console.error('[pushToStage] sync error:', e));
+    } else {
+      syncAll();
+    }
   } catch(err) {
     console.error('[pushToStage] error:', err);
   } finally {
-    setTimeout(() => { _stageOpInProgress = false; }, 800);
+    setTimeout(() => { _stageOpInProgress = false; }, 120);
   }
 }
 window.pushToStage = pushToStage;
@@ -9719,69 +9728,74 @@ function pushNextToStage(){
 window.pushNextToStage = pushNextToStage;
 
 async function markStageDone(){
-  if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
+  if (_stageOpInProgress) return;
   _stageOpInProgress = true;
   try {
     const venId = currentVenueMonitor;
     const p = participants.find(x => x.id === currentOnStage || (venId ? (String(x.venueId) === String(venId) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
     
     currentOnStage = null;
+    const now = Date.now();
+    if(p){ 
+      p.stageStatus='done'; 
+      p.isReady = false;
+      p.localMutatedAt = now;
+    }
     if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
 
-    if (window.syncEngine && typeof window.syncEngine.stageComplete === 'function') {
-      await window.syncEngine.stageComplete(p ? p.id : null, venId);
-    } else {
-      if(p){ 
-        const now = Date.now();
-        p.stageStatus='done'; 
-        p.localMutatedAt = now;
-      }
-      syncAll();
-    }
-    
+    // 1. Synchronous Immediate UI Render
     renderVenueParticipants();
     renderStageView();
     toast('✓ Marked as done!');
+
+    // 2. Fast WebSocket broadcast + background DB persist (non-blocking)
+    if (window.syncEngine && typeof window.syncEngine.stageComplete === 'function') {
+      window.syncEngine.stageComplete(p ? p.id : null, venId).catch(e => console.error('[markStageDone] sync error:', e));
+    } else {
+      syncAll();
+    }
   } catch(err) {
     console.error('[markStageDone] error:', err);
   } finally {
-    setTimeout(() => { _stageOpInProgress = false; }, 800);
+    setTimeout(() => { _stageOpInProgress = false; }, 120);
   }
 }
 window.markStageDone = markStageDone;
 
 async function dropToQueue(){
-  if (_stageOpInProgress) { toast('⏳ Stage operation in progress, please wait…'); return; }
+  if (_stageOpInProgress) return;
   _stageOpInProgress = true;
   try {
     const venId = currentVenueMonitor;
     const p = participants.find(x => x.id === currentOnStage || (venId ? (String(x.venueId) === String(venId) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
     
     currentOnStage = null; 
+    const now = Date.now();
+    if(p){ 
+      p.stageStatus='queue'; 
+      p.queuedAt = now;
+      p.localMutatedAt = now;
+      const queuedParts = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
+      const maxOrder = queuedParts.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
+      p.queueOrder = maxOrder + 1;
+    }
     if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
 
-    if (window.syncEngine && typeof window.syncEngine.stageDrop === 'function') {
-      await window.syncEngine.stageDrop(p ? p.id : null, venId);
-    } else {
-      if(p){ 
-        const now = Date.now();
-        p.stageStatus='queue'; 
-        p.queuedAt = now;
-        p.localMutatedAt = now;
-        const queuedParts = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
-        const maxOrder = queuedParts.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
-        p.queueOrder = maxOrder + 1;
-      }
-      syncAll();
-    }
-    
+    // 1. Synchronous Immediate UI Render
     renderVenueParticipants();
     renderStageView();
     toast('⬇ Dropped back to queue!');
+
+    // 2. Fast WebSocket broadcast + background DB persist (non-blocking)
+    if (window.syncEngine && typeof window.syncEngine.stageDrop === 'function') {
+      window.syncEngine.stageDrop(p ? p.id : null, venId).catch(e => console.error('[dropToQueue] sync error:', e));
+    } else {
+      syncAll();
+    }
   } catch(err) {
     console.error('[dropToQueue] error:', err);
   } finally {
-    setTimeout(() => { _stageOpInProgress = false; }, 800);
+    setTimeout(() => { _stageOpInProgress = false; }, 120);
   }
 }
 window.dropToQueue = dropToQueue;
