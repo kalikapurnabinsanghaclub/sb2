@@ -2432,16 +2432,17 @@ window.saveNewStaff = async () => {
         const events = window.syncEngine.getData().events || [];
         // First remove from all other events
         for (const ev of events) {
-          if (ev.staff && ev.staff.map(s => s.toLowerCase()).includes(email.toLowerCase())) {
-            const updatedStaff = ev.staff.filter(s => s.toLowerCase() !== email.toLowerCase());
+          let curStaff = Array.isArray(ev.staff) ? [...ev.staff] : (typeof ev.staff === 'string' ? (JSON.parse(ev.staff || '[]') || []) : []);
+          if (curStaff.map(s => (s || '').toLowerCase()).includes(email.toLowerCase())) {
+            const updatedStaff = curStaff.filter(s => (s || '').toLowerCase() !== email.toLowerCase());
             await window.syncEngine.updateEvent(ev.id, { staff: updatedStaff });
           }
         }
         // Then add to selected event
-        const targetEvent = events.find(e => String(e.id) === eventId);
+        const targetEvent = events.find(e => String(e.id) === String(eventId));
         if (targetEvent) {
-          let staffArr = targetEvent.staff || [];
-          if (!staffArr.map(s => s.toLowerCase()).includes(email.toLowerCase())) {
+          let staffArr = Array.isArray(targetEvent.staff) ? [...targetEvent.staff] : (typeof targetEvent.staff === 'string' ? (JSON.parse(targetEvent.staff || '[]') || []) : []);
+          if (!staffArr.map(s => (s || '').toLowerCase()).includes(email.toLowerCase())) {
             staffArr.push(email.toLowerCase());
             await window.syncEngine.updateEvent(targetEvent.id, { staff: staffArr });
           }
@@ -2449,6 +2450,7 @@ window.saveNewStaff = async () => {
       }
 
       errEl.style.display = "none";
+      errEl.textContent = "";
       closeM('add-staff-modal');
       document.getElementById('ns-name').value = '';
       document.getElementById('ns-email').value = '';
@@ -2467,6 +2469,11 @@ window.saveNewStaff = async () => {
 };
 
 window.openAddStaffModal = () => {
+  const errEl = document.getElementById('ns-error');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.style.display = 'none';
+  }
   const sel = document.getElementById('ns-event');
   if (sel && window.syncEngine) {
     const events = window.syncEngine.getData().events || [];

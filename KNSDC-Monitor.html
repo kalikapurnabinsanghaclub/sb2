@@ -8261,39 +8261,33 @@ async function saveCat() {
 
   const color = document.getElementById('cm-color').value || 'b-amber';
   const btn = document.querySelector('#cat-modal .btn-amber');
-
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+  _isSavingCat = true;
   closeM('cat-modal');
 
-  const actionMsg = (editingCatId !== null && editingCatId !== undefined) ? `Update category "${name}"?` : `Create category "${name}"?`;
-
-  showUndoToast(actionMsg, async () => {
-    if (_isSavingCat) return;
-    _isSavingCat = true;
-    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
-    try {
-      const obj = { name, ageMin, ageMax, color, eventId: activeEventId };
-      if(editingCatId !== null && editingCatId !== undefined){
-        const existing = categories.find(c => String(c.id) === String(editingCatId));
-        if(existing && existing.prizes) obj.prizes = existing.prizes;
-        const success = await syncEngine.updateCategory(editingCatId, obj);
-        if (!success) { toast('❌ Error saving category'); return; }
-        if(existing) Object.assign(existing, obj);
-      } else {
-        obj.id = Date.now();
-        obj.prizes = [];
-        const success = await syncEngine.createCategory(obj);
-        if (!success) { toast('❌ Error creating category'); return; }
-        if(!categories.find(c => String(c.id) === String(obj.id))) categories.push(obj);
-      }
-      syncAll();
-      renderCategories();
-      toast('Category saved!');
-      if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
-    } finally {
-      _isSavingCat = false;
-      if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
+  try {
+    const obj = { name, ageMin, ageMax, color, eventId: activeEventId };
+    if(editingCatId !== null && editingCatId !== undefined){
+      const existing = categories.find(c => String(c.id) === String(editingCatId));
+      if(existing && existing.prizes) obj.prizes = existing.prizes;
+      const success = await syncEngine.updateCategory(editingCatId, obj);
+      if (!success) { toast('❌ Error saving category'); return; }
+      if(existing) Object.assign(existing, obj);
+    } else {
+      obj.id = Date.now();
+      obj.prizes = [];
+      const success = await syncEngine.createCategory(obj);
+      if (!success) { toast('❌ Error creating category'); return; }
+      if(!categories.find(c => String(c.id) === String(obj.id))) categories.push(obj);
     }
-  });
+    syncAll();
+    renderCategories();
+    toast('✅ Category saved!');
+    if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
+  } finally {
+    _isSavingCat = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
+  }
 }
 
 async function deleteCat(id) {
@@ -8603,35 +8597,30 @@ async function saveVenue() {
   }
 
   const btn = document.querySelector('#venue-modal .btn-amber');
+  if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+  _isSavingVenue = true;
   closeM('venue-modal');
 
-  const actionMsg = (editingVenueId !== null && editingVenueId !== undefined) ? `Update venue "${name}"?` : `Create venue "${name}"?`;
-
-  showUndoToast(actionMsg, async () => {
-    if (_isSavingVenue) return;
-    _isSavingVenue = true;
-    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
-    try {
-      const obj = { name, location: loc, capacity: cap, dates, eventId: activeEventId };
-      if(editingVenueId !== null && editingVenueId !== undefined){
-        const success = await syncEngine.updateVenue(editingVenueId, obj);
-        if (!success) { toast('❌ Error saving venue'); return; }
-        const existing = venues.find(v => String(v.id) === String(editingVenueId));
-        if(existing) Object.assign(existing, obj);
-      } else {
-        obj.id = Date.now();
-        const success = await syncEngine.createVenue(obj);
-        if (!success) { toast('❌ Error creating venue'); return; }
-        if(!venues.find(v => String(v.id) === String(obj.id))) venues.push(obj);
-      }
-      syncAll();
-      renderVenueDates();
-      toast('Venue saved!');
-    } finally {
-      _isSavingVenue = false;
-      if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
+  try {
+    const obj = { name, location: loc, capacity: cap, dates, eventId: activeEventId };
+    if(editingVenueId !== null && editingVenueId !== undefined){
+      const success = await syncEngine.updateVenue(editingVenueId, obj);
+      if (!success) { toast('❌ Error saving venue'); return; }
+      const existing = venues.find(v => String(v.id) === String(editingVenueId));
+      if(existing) Object.assign(existing, obj);
+    } else {
+      obj.id = Date.now();
+      const success = await syncEngine.createVenue(obj);
+      if (!success) { toast('❌ Error creating venue'); return; }
+      if(!venues.find(v => String(v.id) === String(obj.id))) venues.push(obj);
     }
-  });
+    syncAll();
+    renderVenueDates();
+    toast('✅ Venue saved!');
+  } finally {
+    _isSavingVenue = false;
+    if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
+  }
 }
 
 async function deleteVenue(id) {
