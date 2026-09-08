@@ -18,9 +18,18 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 
-// Enable JSON body parsing with large limit for Base64 fallback (if needed)
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Enable CORS for frontend clients (Vite, custom domains, localhost)
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Enable JSON body parsing with large limit for music & images
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Serve static files from root and dist directory with no-cache headers
 app.use(express.static(__dirname, {
@@ -107,7 +116,7 @@ function broadcastPaymentConfirmed(orderId, payload) {
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit for audio/music & images
 });
 
 // Cloudflare R2 Client (Zero Egress Object Storage)
