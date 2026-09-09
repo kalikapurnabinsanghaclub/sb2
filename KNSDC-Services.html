@@ -6,6 +6,9 @@
 <title>KNSDC — Food & Ride Partner Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script>
+  window.CLOUDFLARE_UPLOAD_URL = 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
+</script>
 <style>
   :root {
     --bg: #0f172a;
@@ -122,7 +125,7 @@
       <h2 class="section-title" style="color: var(--primary); font-weight: 800;">📝 Menu Management</h2>
       <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap; align-items:center;">
         <div style="display:flex; flex-direction:column; gap:4px; min-width:180px; flex:1;">
-          <label style="font-weight:bold; color:var(--text-muted); font-size:11px; margin-left:4px;">📷 Upload Photo</label>
+          <label style="font-weight:bold; color:var(--text-muted); font-size:11px; margin-left:4px;">📷 Upload Photo (Cloudflare R2)</label>
           <input type="file" id="new-menu-file" accept="image/*" style="padding:8px; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; background:#fff; width:100%; box-sizing:border-box;">
         </div>
         <div style="display:flex; flex-direction:column; gap:4px; min-width:150px; flex:2;">
@@ -137,7 +140,7 @@
           <label style="font-weight:bold; color:var(--text-muted); font-size:11px; margin-left:4px;">🚚 Delivery Fee</label>
           <input type="number" id="new-menu-delivery-fee" placeholder="Fee (₹)" value="20" style="padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; width:100%; box-sizing:border-box;">
         </div>
-        <button onclick="addMenuItem()" class="action-btn" style="background:var(--primary); color:white; width:auto; padding:12px 24px; font-weight:bold; margin-top:20px; border-radius:8px; cursor:pointer;">+ Add Item</button>
+        <button id="add-menu-btn" onclick="addMenuItem()" class="action-btn" style="background:var(--primary); color:white; width:auto; padding:12px 24px; font-weight:bold; margin-top:20px; border-radius:8px; cursor:pointer;">+ Add Item</button>
       </div>
       <div id="menu-management-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:10px;">
         <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px; grid-column:1/-1;">Loading menu...</div>
@@ -1084,63 +1087,63 @@ async function addMenuItem() {
   }
 
   const file = fileInput.files[0];
-  toast('📸 Processing photo...');
+  const btn = document.getElementById('add-menu-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⏳ Uploading to Cloudflare...';
+  }
+  toast('📸 Uploading photo to Cloudflare R2... ⏳');
 
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const img = new Image();
-    img.onload = async function() {
-      // Compress image to max 128x128 thumbnail
-      const canvas = document.createElement('canvas');
-      const maxDim = 128;
-      let w = img.width;
-      let h = img.height;
-      if (w > maxDim || h > maxDim) {
-        if (w > h) {
-          h = Math.round((h * maxDim) / w);
-          w = maxDim;
-        } else {
-          w = Math.round((w * maxDim) / h);
-          h = maxDim;
-        }
-      }
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+  try {
+    const cfUrl = window.CLOUDFLARE_UPLOAD_URL || 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
+    const fd = new FormData();
+    fd.append('pathPrefix', 'food_menu');
+    fd.append('file', file);
 
-      const id = 'f' + Date.now();
+    const res = await fetch(cfUrl, {
+      method: 'POST',
+      body: fd
+    });
 
-      window.syncEngine.setData(s => {
-        const foodMenu = s.foodMenu || [
-          { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
-          { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
-          { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
-          { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
-        ];
-        foodMenu.push({ id, name, price, deliveryFee, image: compressedBase64 });
-        return { ...s, foodMenu };
-      });
+    if (!res.ok) {
+      throw new Error(`Cloudflare upload failed with HTTP ${res.status}`);
+    }
 
-      fileInput.value = '';
-      document.getElementById('new-menu-name').value = '';
-      document.getElementById('new-menu-price').value = '';
+    const json = await res.json();
+    const imageUrl = json.fileUrl || json.imageUrl;
 
-      toast('✅ Menu photo saved and compressed!');
-      await window.syncEngine.forceSaveStateToSupabase();
-    };
-    img.onerror = function() {
-      alert('Failed to process photo.');
-    };
-    img.src = e.target.result;
-  };
+    if (!imageUrl) {
+      throw new Error('No image URL returned from Cloudflare');
+    }
 
-  reader.onerror = function() {
-    alert('Failed to read photo file.');
-  };
+    const id = 'f' + Date.now();
 
-  reader.readAsDataURL(file);
+    window.syncEngine.setData(s => {
+      const foodMenu = s.foodMenu || [
+        { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+        { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+        { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+        { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+      ];
+      foodMenu.push({ id, name, price, deliveryFee, image: imageUrl });
+      return { ...s, foodMenu };
+    });
+
+    fileInput.value = '';
+    document.getElementById('new-menu-name').value = '';
+    document.getElementById('new-menu-price').value = '';
+
+    toast('✅ Food image saved to Cloudflare R2!');
+    await window.syncEngine.forceSaveStateToSupabase();
+  } catch (err) {
+    console.error('[Cloudflare Food Upload Error]', err);
+    alert('Failed to upload image to Cloudflare: ' + (err.message || err));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = '+ Add Item';
+    }
+  }
 }
 
 async function editMenuPrice(id, currentPrice) {
