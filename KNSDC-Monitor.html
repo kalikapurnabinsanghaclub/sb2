@@ -2420,23 +2420,12 @@
 
   <!-- ════════════════ HELPDESK ════════════════ -->
   <div id="pp-helpdesk" class="pp" style="height:100%; gap:20px;">
-    <div style="flex:1; max-width:380px; min-width:320px; background:var(--surface); border-radius:16px; border:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden;">
-      <div style="padding:14px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.02);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-weight:800; font-size:15px; color:var(--text); display:flex; align-items:center; gap:6px;">
-            <span>🎧</span> Helpdesk Chats
-          </div>
-          <span id="helpdesk-event-badge" class="badge b-purple" style="font-size:11px; padding:3px 8px; font-weight:800; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Active Event</span>
+    <div style="flex:1; max-width:360px; min-width:300px; background:var(--surface); border-radius:16px; border:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden;">
+      <div style="padding:15px 18px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.02); display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:800; font-size:15px; color:var(--text); display:flex; align-items:center; gap:8px;">
+          <span>🎧</span> Helpdesk
         </div>
-        <!-- Event Scope Filter Buttons -->
-        <div style="display:flex; gap:6px; background:var(--bg2); padding:3px; border-radius:8px;">
-          <button id="helpdesk-scope-current" onclick="setHelpdeskEventFilter('current')" style="flex:1; padding:6px 10px; border-radius:6px; font-size:11.5px; font-weight:800; border:none; cursor:pointer; background:var(--primary); color:#fff; transition:all 0.2s;">
-            📌 Current Event (<span id="helpdesk-count-current">0</span>)
-          </button>
-          <button id="helpdesk-scope-all" onclick="setHelpdeskEventFilter('all')" style="flex:1; padding:6px 10px; border-radius:6px; font-size:11.5px; font-weight:700; border:none; cursor:pointer; background:transparent; color:var(--text-muted); transition:all 0.2s;">
-            🌐 All Events (<span id="helpdesk-count-all">0</span>)
-          </button>
-        </div>
+        <span id="helpdesk-event-badge" class="badge b-purple" style="font-size:11px; padding:3px 8px; font-weight:800; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Locked Event</span>
       </div>
       <div id="helpdesk-user-list" style="flex:1; overflow-y:auto; padding:10px;">
         <div style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:20px;">No active chats.</div>
@@ -15440,50 +15429,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <script>
 // ==========================================
-// HELPDESK LOGIC (EVENT-WISE MAPPED)
+// HELPDESK LOGIC (AUTOMATICALLY LOCKED TO MONITOR EVENT)
 // ==========================================
 let activeHelpdeskParticipant = null;
 let lastRenderedHelpdeskState = "";
-let helpdeskEventFilter = 'current'; // 'current' or 'all'
-
-window.setHelpdeskEventFilter = function(filter) {
-  helpdeskEventFilter = filter;
-  const btnCurrent = document.getElementById('helpdesk-scope-current');
-  const btnAll = document.getElementById('helpdesk-scope-all');
-  if (btnCurrent && btnAll) {
-    if (filter === 'current') {
-      btnCurrent.style.background = 'var(--primary)';
-      btnCurrent.style.color = '#fff';
-      btnCurrent.style.fontWeight = '800';
-      btnAll.style.background = 'transparent';
-      btnAll.style.color = 'var(--text-muted)';
-      btnAll.style.fontWeight = '700';
-    } else {
-      btnAll.style.background = 'var(--primary)';
-      btnAll.style.color = '#fff';
-      btnAll.style.fontWeight = '800';
-      btnCurrent.style.background = 'transparent';
-      btnCurrent.style.color = 'var(--text-muted)';
-      btnCurrent.style.fontWeight = '700';
-    }
-  }
-  renderHelpdesk();
-};
 
 function renderHelpdesk() {
   if (!window.syncEngine) return;
   const state = window.syncEngine.getData() || {};
   
-  // Resolve current active event
-  const curEv = (state.events || EVENTS || []).find(e => String(e.id) === String(activeEventId));
-  const curEvName = curEv ? (curEv.name || curEv.title) : (activeEventId ? `Event #${activeEventId}` : 'Active Event');
+  // Automatically identify the event this logged-in monitor is locked to
+  const curEventId = String(activeEventId || '');
+  const curEv = (state.events || EVENTS || []).find(e => String(e.id) === curEventId);
+  const curEvName = curEv ? (curEv.name || curEv.title) : (curEventId ? `Event #${curEventId}` : 'Assigned Event');
   const evBadge = document.getElementById('helpdesk-event-badge');
   if (evBadge) {
     evBadge.textContent = curEvName;
-    evBadge.title = `Current Event ID: ${activeEventId || 'None'}`;
+    evBadge.title = `Locked Event: ${curEvName} (ID: ${curEventId})`;
   }
 
-  // ONLY show messages that belong to the Helpdesk (they always have a participantId)
+  // ONLY show messages that belong to the Helpdesk (within 5 hours)
   const FIVE_HOURS = 5 * 60 * 60 * 1000;
   const now = Date.now();
   const msgs = (state.chatMessages || []).filter(m => m.participantId && m.senderRole && (now - m.timestamp <= FIVE_HOURS));
@@ -15498,31 +15463,29 @@ function renderHelpdesk() {
   const userList = document.getElementById('helpdesk-user-list');
   if (!userList) return;
   
-  let currentEventCount = 0;
-  let totalUnreadCurrent = 0;
-  let totalUnreadAll = 0;
+  let totalUnread = 0;
   const userItems = [];
 
   Object.keys(byUser).forEach(pid => {
     const pMsgs = byUser[pid];
     pMsgs.sort((a,b) => a.timestamp - b.timestamp);
     const lastMsg = pMsgs[pMsgs.length - 1];
-    const unread = pMsgs.filter(m => m.senderRole === 'participant' && !m.read).length;
-    totalUnreadAll += unread;
     
     const pInfo = (state.participants || []).find(x => String(x.id) === String(pid));
     const pName = pInfo ? pInfo.name : 'Unknown';
     const pEvId = pInfo ? (pInfo.eventId || pInfo.event_id) : (lastMsg.eventId || null);
     
-    // Determine if belongs to currently active event
-    const isCurrentEvent = !pEvId || String(pEvId) === String(activeEventId) || ((!state.events || state.events.length <= 1) && !pEvId);
-    if (isCurrentEvent) {
-      currentEventCount++;
-      totalUnreadCurrent += unread;
-    }
+    // AUTOMATIC LOCK: Strictly include only participants belonging to this monitor's locked event
+    const isLockedEvent = curEventId
+      ? (String(pEvId) === curEventId || (!pEvId && (!state.events || state.events.length <= 1)))
+      : true;
+    
+    if (!isLockedEvent) return; // Exclude messages from other events
+
+    const unread = pMsgs.filter(m => m.senderRole === 'participant' && !m.read).length;
+    totalUnread += unread;
 
     const evObj = (state.events || EVENTS || []).find(e => String(e.id) === String(pEvId));
-    const evName = evObj ? (evObj.name || evObj.title) : (pEvId ? `Event #${pEvId}` : curEvName);
     const catName = pInfo ? (pInfo.category || (evObj?.categories?.find(c => String(c.id) === String(pInfo.catId))?.name) || '') : '';
     const stageStatus = pInfo ? (pInfo.stageStatus || 'waiting') : '';
 
@@ -15531,41 +15494,28 @@ function renderHelpdesk() {
       pInfo,
       pName,
       pEvId,
-      evName,
       catName,
       stageStatus,
-      isCurrentEvent,
       pMsgs,
       lastMsg,
       unread
     });
   });
 
-  // Update counters on toggle buttons
-  const countCurrentEl = document.getElementById('helpdesk-count-current');
-  const countAllEl = document.getElementById('helpdesk-count-all');
-  if (countCurrentEl) countCurrentEl.textContent = currentEventCount;
-  if (countAllEl) countAllEl.textContent = userItems.length;
-
-  // Filter based on scope
-  const filteredUsers = helpdeskEventFilter === 'current'
-    ? userItems.filter(u => u.isCurrentEvent)
-    : userItems;
-
   // Sort: unread first, then latest message
-  filteredUsers.sort((a, b) => {
+  userItems.sort((a, b) => {
     if (a.unread > 0 && b.unread === 0) return -1;
     if (b.unread > 0 && a.unread === 0) return 1;
     return b.lastMsg.timestamp - a.lastMsg.timestamp;
   });
 
   let html = '';
-  filteredUsers.forEach(u => {
+  userItems.forEach(u => {
     const isActive = String(activeHelpdeskParticipant) === String(u.pid);
     const stageBadgeClass = u.stageStatus === 'on-stage' ? 'b-amber' : u.stageStatus === 'done' ? 'b-green' : 'b-blue';
 
     html += `
-      <div onclick="selectHelpdeskParticipant('${u.pid}')" style="padding:12px 14px; margin-bottom:8px; cursor:pointer; background:${isActive ? 'var(--bg2)' : (u.unread > 0 ? 'rgba(37,211,102,0.08)' : 'transparent')}; border-radius:12px; display:flex; align-items:center; gap:10px; transition:all 0.2s; border-left:4px solid ${isActive ? 'var(--primary)' : (u.isCurrentEvent ? '#25D366' : 'transparent')}; border:1px solid ${isActive ? 'var(--border)' : 'transparent'};">
+      <div onclick="selectHelpdeskParticipant('${u.pid}')" style="padding:12px 14px; margin-bottom:8px; cursor:pointer; background:${isActive ? 'var(--bg2)' : (u.unread > 0 ? 'rgba(37,211,102,0.08)' : 'transparent')}; border-radius:12px; display:flex; align-items:center; gap:10px; transition:all 0.2s; border-left:4px solid ${isActive ? 'var(--primary)' : '#25D366'}; border:1px solid ${isActive ? 'var(--border)' : 'transparent'};">
         <div style="width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg, #128C7E, #25D366); color:white; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; flex-shrink:0; position:relative;">
           ${u.pName.charAt(0).toUpperCase()}
           ${u.unread > 0 ? `<div style="position:absolute; top:-2px; right:-2px; width:12px; height:12px; background:#ef4444; border-radius:50%; border:2px solid var(--surface);"></div>` : ''}
@@ -15579,12 +15529,10 @@ function renderHelpdesk() {
               ${new Date(u.lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:4px; margin-top:3px; flex-wrap:wrap;">
-            <span class="badge ${u.isCurrentEvent ? 'b-purple' : 'b-gray'}" style="font-size:9.5px; padding:1px 6px; font-weight:700; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              🎪 ${u.evName}
-            </span>
-            ${u.catName ? `<span style="font-size:10px; color:var(--text-muted); font-weight:600; max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🏷️ ${u.catName}</span>` : ''}
-            ${u.stageStatus ? `<span class="badge ${stageBadgeClass}" style="font-size:8.5px; padding:1px 4px; text-transform:uppercase;">${u.stageStatus}</span>` : ''}
+          <div style="display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap;">
+            ${u.catName ? `<span style="font-size:10.5px; color:var(--text-muted); font-weight:700;">🏷️ ${u.catName}</span>` : ''}
+            ${u.catName && u.stageStatus ? `<span style="color:var(--text-muted); font-size:9px;">•</span>` : ''}
+            ${u.stageStatus ? `<span class="badge ${stageBadgeClass}" style="font-size:8.5px; padding:1px 5px; text-transform:uppercase;">${u.stageStatus}</span>` : ''}
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
             <div style="font-size:12.5px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
@@ -15602,7 +15550,7 @@ function renderHelpdesk() {
       <div style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:30px; padding:0 20px;">
         <div style="font-size:28px; margin-bottom:8px;">🎧</div>
         <div style="font-weight:700; color:var(--text); margin-bottom:4px;">No active chats for this event</div>
-        <div style="font-size:11px;">${helpdeskEventFilter === 'current' ? 'Switch to "All Events" to view messages across other events.' : 'No participant messages received yet.'}</div>
+        <div style="font-size:11px;">Participant messages for <strong>${curEvName}</strong> will appear here.</div>
       </div>
     `;
   }
@@ -15611,10 +15559,9 @@ function renderHelpdesk() {
   // Update badge in sidebar
   const badge = document.getElementById('nb-helpdesk');
   if (badge) {
-    const unreadToShow = helpdeskEventFilter === 'current' ? totalUnreadCurrent : totalUnreadAll;
-    if (unreadToShow > 0) {
+    if (totalUnread > 0) {
       badge.style.display = 'inline-block';
-      badge.innerText = unreadToShow;
+      badge.innerText = totalUnread;
     } else {
       badge.style.display = 'none';
     }
@@ -15652,11 +15599,9 @@ function renderActiveHelpdeskChat(pMsgs, participants, activeUserObj) {
   const pEvId = pInfo ? (pInfo.eventId || pInfo.event_id) : (activeUserObj?.pEvId || null);
   const state = window.syncEngine ? window.syncEngine.getData() : {};
   const evObj = (state.events || EVENTS || []).find(e => String(e.id) === String(pEvId));
-  const evName = evObj ? (evObj.name || evObj.title) : (pEvId ? `Event #${pEvId}` : 'General Event');
   const catName = pInfo ? (pInfo.category || (evObj?.categories?.find(c => String(c.id) === String(pInfo.catId))?.name) || 'General') : 'General';
   const stageStatus = pInfo?.stageStatus || 'waiting';
   const statusColor = stageStatus === 'on-stage' ? '#f59e0b' : stageStatus === 'done' ? '#10b981' : '#3b82f6';
-  const isMatchCurrent = !pEvId || String(pEvId) === String(activeEventId);
 
   header.innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; width:100%; flex-wrap:wrap; gap:8px;">
@@ -15670,15 +15615,15 @@ function renderActiveHelpdeskChat(pMsgs, participants, activeUserObj) {
             <span class="badge b-gray" style="font-size:10px; padding:1px 6px;">${activeHelpdeskParticipant}</span>
             <span style="font-size:11px; color:#25D366; font-weight:700;">● Online</span>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; margin-top:2px; font-size:11px; color:var(--text-muted); flex-wrap:wrap;">
-            <span class="badge ${isMatchCurrent ? 'b-purple' : 'b-gray'}" style="font-size:9.5px; padding:1px 6px;">🎪 ${evName}</span>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:2px; font-size:11.5px; color:var(--text-muted); flex-wrap:wrap;">
             <span>🏷️ ${catName}</span>
-            <span style="color:${statusColor}; font-weight:800; text-transform:uppercase;">● ${stageStatus}</span>
+            <span>•</span>
+            <span style="color:${statusColor}; font-weight:800; text-transform:uppercase;">● Stage: ${stageStatus}</span>
           </div>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:6px;">
-        ${isMatchCurrent && stageStatus !== 'on-stage' && stageStatus !== 'done' ? `
+        ${stageStatus !== 'on-stage' && stageStatus !== 'done' ? `
           <button onclick="pushToStage('${activeHelpdeskParticipant}')" class="btn btn-amber btn-xs" style="font-size:10px; padding:4px 10px; border-radius:6px; font-weight:800; cursor:pointer;">▶ Push to Stage</button>
         ` : ''}
       </div>
@@ -15734,18 +15679,15 @@ async function sendHelpdeskReply() {
   }, 50);
 }
 
-function showHelpdeskToast(msg, pName, evName) {
+function showHelpdeskToast(msg, pName) {
   const container = document.getElementById('helpdesk-toast-container');
   if (!container) return;
   
   const toast = document.createElement('div');
-  toast.style = "background:var(--surface); border:1px solid var(--border); box-shadow:0 10px 25px rgba(0,0,0,0.2); border-left:4px solid #25D366; border-radius:10px; padding:12px 16px; width:320px; display:flex; justify-content:space-between; align-items:flex-start; animation:fadeIn 0.3s ease-out;";
+  toast.style = "background:var(--surface); border:1px solid var(--border); box-shadow:0 10px 25px rgba(0,0,0,0.2); border-left:4px solid #25D366; border-radius:10px; padding:12px 16px; width:300px; display:flex; justify-content:space-between; align-items:flex-start; animation:fadeIn 0.3s ease-out;";
   toast.innerHTML = `
     <div style="flex:1;">
-      <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-        <span style="font-weight:800; font-size:12.5px; color:var(--text);">🎧 ${pName}</span>
-        ${evName ? `<span class="badge b-purple" style="font-size:9px; padding:1px 5px;">${evName}</span>` : ''}
-      </div>
+      <div style="font-weight:800; font-size:12.5px; color:var(--text); margin-bottom:4px;">🎧 New message from ${pName}</div>
       <div style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${msg.text}</div>
     </div>
     <button style="background:none; border:none; font-size:16px; color:var(--text-muted); cursor:pointer; padding:0; margin-left:10px;" onclick="this.parentElement.remove()">✕</button>
@@ -15760,19 +15702,23 @@ setInterval(() => {
   if (!window.syncEngine) return;
   const state = window.syncEngine.getData() || {};
   const msgs = state.chatMessages || [];
+  const curEventId = String(activeEventId || '');
   
   let newFound = false;
   msgs.forEach(m => {
     if (!_lastChatIds.has(m.id)) {
       _lastChatIds.add(m.id);
       newFound = true;
-      // Show toast if it's from participant and it's new
+      // Show toast if it's from participant, unread, and belongs to this monitor's locked event
       if (m.senderRole === 'participant' && !m.read && (Date.now() - m.timestamp < 30000)) {
         const pInfo = (state.participants || []).find(x => String(x.id) === String(m.participantId));
         const pEvId = pInfo ? (pInfo.eventId || pInfo.event_id) : (m.eventId || null);
-        const evObj = (state.events || EVENTS || []).find(e => String(e.id) === String(pEvId));
-        const evName = evObj ? (evObj.name || evObj.title) : null;
-        showHelpdeskToast(m, pInfo ? pInfo.name : 'Participant', evName);
+        const isLockedEvent = curEventId
+          ? (String(pEvId) === curEventId || (!pEvId && (!state.events || state.events.length <= 1)))
+          : true;
+        if (isLockedEvent) {
+          showHelpdeskToast(m, pInfo ? pInfo.name : 'Participant');
+        }
       }
     }
   });
