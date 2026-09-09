@@ -1954,11 +1954,24 @@
       }
 
       // 1. Identify on-stage performer
-      const participants = s.participants || [];
-      const currentOnStageId = s.currentOnStage;
-      let onStage = participants.find(p => p.id === currentOnStageId);
+      const allParticipants = [
+        ...(s.participants || []),
+        ...(s.public_registrations || [])
+      ];
+      // Deduplicate by ID
+      const participants = Array.from(new Map(allParticipants.map(p => [String(p.id), p])).values());
+      const rawStageId = s.currentOnStage;
+      const currentOnStageId = (rawStageId && typeof rawStageId === 'object') ? rawStageId.id : rawStageId;
+
+      let onStage = null;
+      if (currentOnStageId) {
+        onStage = participants.find(p => String(p.id) === String(currentOnStageId));
+      }
       if (!onStage) {
         onStage = participants.find(p => p.stageStatus === 'on-stage' && (String(p.eventId) === String(activeEventId) || !p.eventId));
+      }
+      if (!onStage) {
+        onStage = participants.find(p => p.stageStatus === 'on-stage');
       }
 
       // Update Queue count preview in footer
@@ -2241,6 +2254,9 @@
             </div>
           </div>
         `;
+        return;
+      }
+
       // Position 3 Check: Only in Position 3 do judge scores reveal on Director Portal
       const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
       const switches = s.switchStates || activeEv.switchStates || {};
