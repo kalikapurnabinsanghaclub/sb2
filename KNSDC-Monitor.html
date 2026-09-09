@@ -5289,8 +5289,12 @@ function hydrate() {
     } else if (activeEv && activeEv.scoring_subjects && activeEv.scoring_subjects.length > 0) {
       rawSubs = typeof activeEv.scoring_subjects === 'string' ? JSON.parse(activeEv.scoring_subjects) : activeEv.scoring_subjects;
     } else if (s.subjects && s.subjects.length > 0) {
-      rawSubs = s.subjects.filter(sub => sub.eventId && String(sub.eventId) === String(activeEventId));
-      if (rawSubs.length === 0) rawSubs = s.subjects.filter(sub => !sub.eventId);
+      rawSubs = s.subjects.filter(sub => {
+        const sEv = sub.eventId || sub.event_id;
+        return sEv && String(sEv) === String(activeEventId);
+      });
+      if (rawSubs.length === 0) rawSubs = s.subjects.filter(sub => !sub.eventId && !sub.event_id);
+      if (rawSubs.length === 0) rawSubs = s.subjects;
     }
     subjects = (rawSubs || []).map(sub => ({
       id: Number(sub.id) || sub.id,
@@ -5299,8 +5303,8 @@ function hydrate() {
       desc: sub.desc || sub.description || '',
       eventId: sub.eventId || sub.event_id || activeEventId
     }));
-    categories = (activeEv && activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (s.categories || []).filter(c => c.eventId && String(c.eventId) === String(activeEventId));
-    venues = (activeEv && activeEv.venues && activeEv.venues.length > 0) ? activeEv.venues : (s.venues || []).filter(v => v.eventId && String(v.eventId) === String(activeEventId));
+    categories = (activeEv && activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (s.categories || []).filter(c => (c.eventId || c.event_id) && String(c.eventId || c.event_id) === String(activeEventId));
+    venues = (activeEv && activeEv.venues && activeEv.venues.length > 0) ? activeEv.venues : (s.venues || []).filter(v => (v.eventId || v.event_id) && String(v.eventId || v.event_id) === String(activeEventId));
     // Only reload formFields from state if the event changed OR formFields is currently empty
     if (eventDidChange || !formFields || formFields.length === 0) {
       if (s && s.eventFormFields && s.eventFormFields[activeEventId] && s.eventFormFields[activeEventId].length > 0) {

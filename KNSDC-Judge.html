@@ -2237,22 +2237,24 @@ function initIdentity() {
 
         // Resolve event name from eventId
         let ev = null;
-        if (matchedAgr.eventId) JUDGE.eventId = String(matchedAgr.eventId);
+        if (matchedAgr.eventId || matchedAgr.event_id) JUDGE.eventId = String(matchedAgr.eventId || matchedAgr.event_id);
         if (JUDGE.eventId && state.events) {
           ev = state.events.find(e => String(e.id) === JUDGE.eventId);
           if (ev) JUDGE.eventName = ev.name || ev.title || JUDGE.eventName;
         }
 
         // Resolve venue name — use saved venueName first, then lookup by venueId in event, then global venues
-        if (matchedAgr.venueName) {
-          JUDGE.venue = matchedAgr.venueName;
-        } else if (matchedAgr.venueId) {
+        const matchedVenueName = matchedAgr.venueName || matchedAgr.venue_name;
+        const matchedVenueId = matchedAgr.venueId || matchedAgr.venue_id;
+        if (matchedVenueName) {
+          JUDGE.venue = matchedVenueName;
+        } else if (matchedVenueId) {
           let v = null;
           if (ev && ev.venues) {
-            v = ev.venues.find(vx => String(vx.id) === String(matchedAgr.venueId));
+            v = ev.venues.find(vx => String(vx.id) === String(matchedVenueId));
           }
           if (!v && state.venues) {
-            v = state.venues.find(vx => String(vx.id) === String(matchedAgr.venueId));
+            v = state.venues.find(vx => String(vx.id) === String(matchedVenueId));
           }
           if (v) JUDGE.venue = v.name;
         }
@@ -2276,6 +2278,9 @@ function initIdentity() {
 
       if (existingJudge) {
         JUDGE.id = existingJudge.id;
+        if (!JUDGE.eventId && (existingJudge.eventId || existingJudge.event_id)) {
+          JUDGE.eventId = String(existingJudge.eventId || existingJudge.event_id);
+        }
         JUDGE.present = existingJudge.present === true;
         JUDGE.isUnlocked = existingJudge.isUnlocked === true;
         JUDGE.attendanceLog = existingJudge.attendanceLog || [];
@@ -2291,6 +2296,21 @@ function initIdentity() {
             toast('🔓 Portal unlocked by Monitor! You can now check in as Present.');
           }
         }
+      }
+
+      if (!JUDGE.eventId) {
+        if (user.eventId || user.event_id) {
+          JUDGE.eventId = String(user.eventId || user.event_id);
+        } else if (state.activeEventId) {
+          JUDGE.eventId = String(state.activeEventId);
+        } else if (state.events && state.events.length > 0) {
+          const activeEvFallback = state.events.find(e => e.active === true) || state.events[0];
+          if (activeEvFallback) JUDGE.eventId = String(activeEvFallback.id);
+        }
+      }
+      if (JUDGE.eventId && state.events && (!JUDGE.eventName || JUDGE.eventName === 'Dance Competition')) {
+        const evFound = state.events.find(e => String(e.id) === JUDGE.eventId);
+        if (evFound) JUDGE.eventName = evFound.name || evFound.title || JUDGE.eventName;
       }
     }
   } catch(e) { console.error('initIdentity error', e); }
@@ -5437,11 +5457,17 @@ syncEngine.subscribe((state) => {
   if (activeContentEl) activeContentEl.style.display = isOffline ? 'none' : 'block';
   if (offlineWrapEl) offlineWrapEl.style.display = isOffline ? 'block' : 'none';
   
-  const activeEvId = JUDGE.eventId || state.activeEventId;
-  if (state.participants && activeEvId) {
+  const activeEvId = JUDGE.eventId || state.activeEventId || (state.events && state.events.length > 0 ? String((state.events.find(e => e.active === true) || state.events[0]).id) : null);
+  if (!JUDGE.eventId && activeEvId) JUDGE.eventId = String(activeEvId);
+
+  if (state.participants && state.participants.length > 0) {
     const seenIds = new Set();
-    participants = state.participants.filter(p => !p.eventId || String(p.eventId) === String(activeEvId)).filter(p => {
+    participants = state.participants.filter(p => {
       if (!p || !p.id) return false;
+      if (activeEvId) {
+        const pEvId = p.eventId || p.event_id;
+        if (pEvId && String(pEvId) !== String(activeEvId)) return false;
+      }
       const idStr = String(p.id);
       if (seenIds.has(idStr)) return false;
       seenIds.add(idStr);
@@ -5458,7 +5484,9 @@ syncEngine.subscribe((state) => {
   }
   
   // Prioritize event-specific configuration
-  const activeEv = activeEvId ? (state.events || []).find(e => String(e.id) === String(activeEvId)) : null;
+  const activeEv = activeEvId 
+    ? (state.events || []).find(e => String(e.id) === String(activeEvId)) 
+    : (state.events && state.events.length > 0 ? (state.events.find(e => e.active === true) || state.events[0]) : null);
 
   let rawSubs = [];
   if (activeEv && activeEv.subjects && activeEv.subjects.length > 0) {
@@ -5466,8 +5494,11 @@ syncEngine.subscribe((state) => {
   } else if (activeEv && activeEv.scoring_subjects && activeEv.scoring_subjects.length > 0) {
     rawSubs = typeof activeEv.scoring_subjects === 'string' ? JSON.parse(activeEv.scoring_subjects) : activeEv.scoring_subjects;
   } else if (activeEvId && state.subjects && state.subjects.length > 0) {
-    rawSubs = state.subjects.filter(sub => sub.eventId && String(sub.eventId) === String(activeEvId));
-    if (rawSubs.length === 0) rawSubs = state.subjects.filter(sub => !sub.eventId);
+    rawSubs = state.subjects.filter(sub => {
+      const sEv = sub.eventId || sub.event_id;
+      return sEv && String(sEv) === String(activeEvId);
+    });
+    if (rawSubs.length === 0) rawSubs = state.subjects;
   } else if (state.subjects && state.subjects.length > 0) {
     rawSubs = state.subjects;
   }
@@ -5480,28 +5511,30 @@ syncEngine.subscribe((state) => {
     eventId: s.eventId || s.event_id || activeEvId
   }));
 
-  CATEGORIES = (activeEvId && activeEv && activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (activeEvId ? (state.categories || []).filter(c => c.eventId && String(c.eventId) === String(activeEvId)) : []);
+  CATEGORIES = (activeEvId && activeEv && activeEv.categories && activeEv.categories.length > 0) 
+    ? activeEv.categories 
+    : (activeEvId ? (state.categories || []).filter(c => (c.eventId || c.event_id) && String(c.eventId || c.event_id) === String(activeEvId)) : (state.categories || []));
   
-    if (activeEv) {
-      JUDGE.eventName = activeEv.name;
-      JUDGE.organizer = activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha';
-      const eventBadge = document.getElementById('event-badge');
-      if (eventBadge) eventBadge.textContent = activeEv.name;
-      
-      const jvenue = document.getElementById('jvenue');
-      if (jvenue) jvenue.textContent = `📍 ${activeEv.venue || JUDGE.venue}`;
-      
-      // Update assignment panel
-      ['assign-event', 'assign-venue', 'assign-date', 'assign-time'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-          if (id === 'assign-event') el.textContent = activeEv.name;
-          if (id === 'assign-venue') el.textContent = activeEv.venue || JUDGE.venue;
-          if (id === 'assign-date') el.textContent = activeEv.date || activeEv.startDate || JUDGE.date;
-          if (id === 'assign-time') el.textContent = activeEv.time || activeEv.startTime || JUDGE.time;
-        }
-      });
-    } else if (state.eventName) {
+  if (activeEv) {
+    JUDGE.eventName = activeEv.name || JUDGE.eventName;
+    JUDGE.organizer = activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha';
+    const eventBadge = document.getElementById('event-badge');
+    if (eventBadge) eventBadge.textContent = activeEv.name;
+    
+    const jvenue = document.getElementById('jvenue');
+    if (jvenue) jvenue.textContent = `📍 ${activeEv.venue || JUDGE.venue}`;
+    
+    // Update assignment panel
+    ['assign-event', 'assign-venue', 'assign-date', 'assign-time'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        if (id === 'assign-event') el.textContent = activeEv.name;
+        if (id === 'assign-venue') el.textContent = activeEv.venue || JUDGE.venue;
+        if (id === 'assign-date') el.textContent = activeEv.date || activeEv.startDate || JUDGE.date;
+        if (id === 'assign-time') el.textContent = activeEv.time || activeEv.startTime || JUDGE.time;
+      }
+    });
+  } else if (state.eventName) {
     JUDGE.eventName = state.eventName;
     const eventBadge = document.getElementById('event-badge');
     if (eventBadge) eventBadge.textContent = state.eventName;
@@ -5516,7 +5549,7 @@ syncEngine.subscribe((state) => {
   const autoFollowEl = document.getElementById('auto-follow-toggle');
   const autoFollowEnabled = autoFollowEl ? autoFollowEl.checked : true;
   const _isNewParticipant = currentOnStage && currentOnStage !== prevOnStage;
-  if (autoFollowEnabled && _isNewParticipant) {
+  if (autoFollowEnabled && (_isNewParticipant || !scoringParticipantId) && currentOnStage) {
     scoringParticipantId = currentOnStage;
   }
   if (state.switchStates) switchStates = state.switchStates;
