@@ -1088,7 +1088,11 @@
 </style>
 </head>
 <body>
-<div id="sidebar-overlay" class="sidebar-backdrop" onclick="toggleSidebarMenu()"></div>
+<!-- Keep Screen Awake Transparent Background Video (30% Opacity) -->
+<video id="keep-awake-video" autoplay muted loop playsinline
+  style="position:fixed; top:0; left:0; width:100vw; height:100vh; object-fit:cover; opacity:0.3; pointer-events:none; z-index:0;">
+  <source src="i_want_transparent_backkground.mp4" type="video/mp4">
+</video>
 <div id="sidebar-overlay" class="sidebar-backdrop" onclick="toggleSidebarMenu()"></div>
 <div id="drm-watermark" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:99999; overflow:hidden; display:flex; flex-wrap:wrap; opacity:0.04; justify-content:center; align-items:center; transform:rotate(-30deg) scale(1.5);"></div>
 <!-- SIDEBAR -->
@@ -4160,7 +4164,6 @@ function loadScorePanel(id) {
         <div>
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-family:var(--fh);font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px">${s.name}</span>
-            <span class="badge" style="background:rgba(37,99,235,0.08);color:var(--blue2);border:1px solid rgba(37,99,235,0.25);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px">Limit: ${sMax} pts</span>
           </div>
           <div style="font-size:10px;color:var(--tmuted);margin-top:2px">${s.desc}</div>
         </div>
@@ -4809,7 +4812,6 @@ function openEditModal(id) {
         <div>
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-family:var(--fh);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px">${s.name}</span>
-            <span class="badge" style="background:rgba(37,99,235,0.08);color:var(--blue2);border:1px solid rgba(37,99,235,0.25);font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px">Limit: ${sMax} pts</span>
           </div>
           <div style="font-size:10px;color:var(--tmuted);margin-top:2px">${s.desc}</div>
         </div>
@@ -5961,6 +5963,37 @@ function toggleSidebarMenu() {
   }
 }
 window.toggleSidebarMenu = toggleSidebarMenu;
+
+// Keep Screen Awake (Video Playback + Wake Lock API)
+(function initKeepAwake() {
+  const vid = document.getElementById('keep-awake-video');
+  if (vid) {
+    const playVid = () => {
+      if (vid.paused) {
+        vid.play().catch(() => {});
+      }
+    };
+    playVid();
+    document.addEventListener('click', playVid, { once: true });
+    document.addEventListener('touchstart', playVid, { once: true });
+  }
+
+  if ('wakeLock' in navigator) {
+    let wakeLock = null;
+    const requestLock = async () => {
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+      } catch (err) {}
+    };
+    requestLock();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') requestLock();
+    });
+    document.addEventListener('click', () => {
+      if (!wakeLock) requestLock();
+    });
+  }
+})();
 
 </script>
 </body>
