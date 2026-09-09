@@ -49,7 +49,11 @@ export const renderLiveStage = (data) => {
               <div style="position: absolute; top: -30px; left: 25%; width: 180px; height: 220px; background: radial-gradient(ellipse at top, rgba(255, 210, 63, 0.2) 0%, transparent 70%); animation: stageLight 2s ease-in-out infinite; transform: translateX(-50%); pointer-events: none;"></div>
               <div style="position: absolute; top: -30px; left: 75%; width: 180px; height: 220px; background: radial-gradient(ellipse at top, rgba(255, 210, 63, 0.2) 0%, transparent 70%); animation: stageLight 3s ease-in-out infinite; animation-delay: 0.8s; transform: translateX(-50%); pointer-events: none;"></div>
               <div style="position: relative; z-index: 1;">
-                <div style="font-size: 2.8rem; margin-bottom: 8px;">🎭</div>
+                ${p && (p.photo || p.photoUrl || p.selfieImage) ? `
+                  <div style="margin-bottom: 16px;">
+                    <img src="${p.photo || p.photoUrl || p.selfieImage}" alt="${p.name}" style="width: 110px; height: 110px; border-radius: 50%; object-fit: cover; border: 3px solid #FFD23F; box-shadow: 0 6px 20px rgba(0,0,0,0.4); display: inline-block;">
+                  </div>
+                ` : `<div style="font-size: 2.8rem; margin-bottom: 8px;">🎭</div>`}
                 <h4 style="color: #FFD23F; font-family: 'Playfair Display', serif; font-size: 1.5rem; margin-bottom: 8px;">🎬 ON STAGE</h4>
                 <div class="performer-card-live" style="background: var(--gradient-gold); color: white; padding: 24px; border-radius: 16px; margin: 0 auto; max-width: 500px; animation: fadeUp 0.6s ease 0.2s backwards;">
                   <div class="performer-label-live" style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; opacity: 0.8; margin-bottom: 8px;">Now Performing</div>

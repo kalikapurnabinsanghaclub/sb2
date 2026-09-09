@@ -5511,9 +5511,15 @@
           if (!ev || ev.switchStates?.stagePreview === false) return;
           const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
           if (publicVotingOn) {
-            const onStage = participants.find(p => p.eventId == eid && p.stageStatus === 'on-stage');
+            const allP = [
+              ...(participants || []),
+              ...((state.public_registrations || []).filter(pr => !(participants || []).some(p => String(p.id) === String(pr.id))))
+            ];
+            const onStage = allP.find(p => String(p.eventId) === String(eid) && p.stageStatus === 'on-stage');
             if (onStage) {
-              activeVotingPerformer = onStage;
+              const prMatch = (state.public_registrations || []).find(pr => String(pr.id) === String(onStage.id));
+              const pMatch = (state.participants || []).find(p => String(p.id) === String(onStage.id));
+              activeVotingPerformer = { ...(prMatch || {}), ...(pMatch || {}), ...onStage };
               activeVotingRound = onStage.round;
             }
           }
@@ -5526,7 +5532,13 @@
             if (!hasVoted) {
               const descEl = document.getElementById('live-voting-toast-desc');
               if (descEl) {
-                descEl.innerHTML = `Rate performance of <strong>${activeVotingPerformer.name}</strong> now!`;
+                const toastPhoto = getParticipantPhotoUrl(activeVotingPerformer, activeVotingPerformer.eventId);
+                descEl.innerHTML = `
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    ${toastPhoto ? `<img src="${toastPhoto.replace(/"/g, '&quot;')}" alt="${activeVotingPerformer.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1.5px solid #FFD23F;flex-shrink:0;">` : ''}
+                    <span>Rate performance of <strong>${activeVotingPerformer.name}</strong> now!</span>
+                  </div>
+                `;
               }
               toastEl.style.display = 'flex';
 
@@ -5623,7 +5635,10 @@
                 <div style="position:absolute; bottom:-30px; left:-30px; font-size:100px; opacity:0.05; pointer-events:none;">🎭</div>
                 
                 <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 14px;">
-                  <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(255,210,63,0.35);">⭐</div>
+                  ${(() => {
+                    const vPhoto = getParticipantPhotoUrl(activeVotingPerformer, eid);
+                    return vPhoto ? `<img src="${vPhoto.replace(/"/g, '&quot;')}" alt="${pName}" style="width:52px; height:52px; border-radius:14px; object-fit:cover; border:2px solid #f59e0b; box-shadow:0 4px 12px rgba(245,158,11,0.25); cursor:pointer; flex-shrink:0;" onclick="if(window.openImageModal) openImageModal(this.src)" onerror="this.style.display='none';">` : `<div style="width: 48px; height: 48px; background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(255,210,63,0.35); flex-shrink:0;">⭐</div>`;
+                  })()}
                   <div>
                     <h4 style="color: #92400e; font-family: 'Cinzel Decorative', cursive; font-size: 1.1rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Rate This Performance</h4>
                     <p style="color: #78716c; font-size: 0.85rem; margin: 4px 0 0;">Now performing: <strong style="color:#1e1b4b;">${pName}</strong> · ${catName} · ${pRound.toUpperCase()}</p>
@@ -6683,8 +6698,17 @@
         return;
       }
 
-      const state = syncEngine.getData();
-      const p = state.participants.find(x => String(x.id) === String(id));
+      const state = syncEngine.getData() || {};
+      const allParticipants = [
+        ...(state.participants || []),
+        ...((state.public_registrations || []).filter(pr => !(state.participants || []).some(x => String(x.id) === String(pr.id))))
+      ];
+      let p = allParticipants.find(x => String(x.id) === String(id));
+      if (p) {
+        const prMatch = (state.public_registrations || []).find(pr => String(pr.id) === String(p.id));
+        const pMatch = (state.participants || []).find(x => String(x.id) === String(p.id));
+        p = { ...(prMatch || {}), ...(pMatch || {}), ...p };
+      }
 
       if (!p) {
         area.innerHTML = `<div style="color:#ef4444; font-size:0.85rem; padding:12px; background:rgba(239,68,68,0.06); border-radius:12px; border:1px solid rgba(239,68,68,0.15);">❌ Participant ID "${id}" not found. Please check your ID and try again.</div>`;
@@ -6725,16 +6749,20 @@
       const yourScoreEl = document.getElementById('stat-your-score');
       if (yourScoreEl) yourScoreEl.textContent = totalScore;
 
+      const pPhoto = getParticipantPhotoUrl(p, p.eventId);
       const pData = { id: p.id, phone: p.phone || '', name: p.name, cat: catName, catId: p.catId, eventId: p.eventId, rank: rank, score: totalScore };
       const pEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(pData))));
 
       area.innerHTML = `
         <div style="padding:24px; border-radius:20px; border:2px solid rgba(124,58,237,0.2); text-align:left; animation:bounceIn 0.5s ease both; background:linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); box-shadow: 0 8px 24px rgba(124,58,237,0.08);">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
-            <div>
-              <div style="font-size:0.7rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:1px;">ID: ${p.id}</div>
-              <h3 style="color:#1E293B; font-size:1.4rem; font-weight:900; margin:4px 0;">${p.name}</h3>
-              <div style="font-size:0.85rem; color:#64748B;">${catName}</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:16px;">
+            <div style="display:flex; align-items:center; gap:14px;">
+              ${pPhoto ? `<img src="${pPhoto.replace(/"/g, '&quot;')}" alt="${p.name}" style="width:64px; height:64px; border-radius:18px; object-fit:cover; border:2px solid #7C3AED; box-shadow:0 4px 15px rgba(124,58,237,0.2); cursor:pointer; flex-shrink:0;" onclick="if(window.openImageModal) openImageModal(this.src)" onerror="this.style.display='none';">` : ''}
+              <div>
+                <div style="font-size:0.7rem; color:#7C3AED; font-weight:800; text-transform:uppercase; letter-spacing:1px;">ID: ${p.id}</div>
+                <h3 style="color:#1E293B; font-size:1.4rem; font-weight:900; margin:4px 0;">${p.name}</h3>
+                <div style="font-size:0.85rem; color:#64748B;">${catName}</div>
+              </div>
             </div>
           </div>
 
@@ -7585,6 +7613,88 @@
         }
       }
     }
+
+    // Exhaustive Participant Photo Resolution Helper for Public Live Pages & Modules
+    function getParticipantPhotoUrl(p, eventId) {
+      if (!p) return '';
+      // 1. Check direct photo attributes
+      if (p.photo && typeof p.photo === 'string' && p.photo.trim()) return p.photo.trim();
+      if (p.photoUrl && typeof p.photoUrl === 'string' && p.photoUrl.trim()) return p.photoUrl.trim();
+      if (p.selfieImage && typeof p.selfieImage === 'string' && p.selfieImage.trim()) return p.selfieImage.trim();
+      if (p.avatar && typeof p.avatar === 'string' && p.avatar.trim()) return p.avatar.trim();
+      if (p.image && typeof p.image === 'string' && p.image.trim()) return p.image.trim();
+
+      const s = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
+      const evId = eventId || p.eventId;
+
+      // 2. Cross-reference with state.participants or state.public_registrations if candidate record lacks photo
+      if (p.id) {
+        const altP = (s.participants || []).find(x => String(x.id) === String(p.id) && (x.photo || x.photoUrl || x.selfieImage || x.avatar || x.image || x.formAnswers)) ||
+                     (s.public_registrations || []).find(x => String(x.id) === String(p.id) && (x.photo || x.photoUrl || x.selfieImage || x.avatar || x.image || x.formAnswers));
+        if (altP && altP !== p) {
+          if (altP.photo && typeof altP.photo === 'string' && altP.photo.trim()) return altP.photo.trim();
+          if (altP.photoUrl && typeof altP.photoUrl === 'string' && altP.photoUrl.trim()) return altP.photoUrl.trim();
+          if (altP.selfieImage && typeof altP.selfieImage === 'string' && altP.selfieImage.trim()) return altP.selfieImage.trim();
+          if (altP.avatar && typeof altP.avatar === 'string' && altP.avatar.trim()) return altP.avatar.trim();
+          if (altP.image && typeof altP.image === 'string' && altP.image.trim()) return altP.image.trim();
+          if (!p.formAnswers && altP.formAnswers) {
+            p = { ...altP, ...p };
+          }
+        }
+      }
+
+      const formFields = (s.eventFormFields && evId && s.eventFormFields[evId]) || [];
+
+      // 3. Check formAnswers with form fields metadata (both field id and label)
+      if (p.formAnswers && typeof p.formAnswers === 'object') {
+        for (const f of formFields) {
+          const isPhotoField = f.type === 'photo' || (f.type === 'file' && /photo|image|pic|picture|selfie|headshot/i.test(f.label || ''));
+          if (isPhotoField) {
+            if (f.id && p.formAnswers[f.id] && typeof p.formAnswers[f.id] === 'string' && p.formAnswers[f.id].trim()) {
+              return p.formAnswers[f.id].trim();
+            }
+            if (f.label && p.formAnswers[f.label] && typeof p.formAnswers[f.label] === 'string' && p.formAnswers[f.label].trim()) {
+              return p.formAnswers[f.label].trim();
+            }
+          }
+        }
+      }
+
+      // 4. Scan formAnswers for photo-named keys
+      if (p.formAnswers && typeof p.formAnswers === 'object') {
+        for (const [key, val] of Object.entries(p.formAnswers)) {
+          if (typeof val === 'string' && val.trim() && /photo|image|pic|picture|selfie|headshot/i.test(key)) {
+            return val.trim();
+          }
+        }
+        // 5. Scan formAnswers values for image URLs, base64, or cloudflare participant uploads
+        const imgExts = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|$)/i;
+        for (const [key, val] of Object.entries(p.formAnswers)) {
+          if (typeof val === 'string') {
+            const str = val.trim();
+            if (str.startsWith('data:image/') || str.includes('/api/participant/image/') || imgExts.test(str) || (str.includes('/participants/') && !str.endsWith('.mp3') && !str.endsWith('.wav') && !str.endsWith('.mp4'))) {
+              return str;
+            }
+          }
+        }
+      }
+
+      // 6. Fallback: Check knsdc_participant in localStorage if viewing self
+      try {
+        const rawLocalP = localStorage.getItem('knsdc_participant');
+        if (rawLocalP) {
+          const parsed = JSON.parse(rawLocalP);
+          if (parsed && String(parsed.id) === String(p.id)) {
+            const localPhoto = parsed.photo || parsed.photoUrl || parsed.selfieImage || parsed.avatar || parsed.image || '';
+            if (localPhoto) return localPhoto;
+          }
+        }
+      } catch(e) {}
+
+      return '';
+    }
+    window.getParticipantPhotoUrl = getParticipantPhotoUrl;
+
     function checkLiveStatus() {
 
       const outerCard = document.getElementById("live-card-outer");
@@ -7708,9 +7818,20 @@
       const bodyTopContainer = document.getElementById("live-card-body-top");
       const bodyBottomContainer = document.getElementById("live-card-body-bottom");
       
-      const state = syncEngine.getData();
-      const participants = state.participants || [];
-      const onStage = participants.find(p => p.eventId == ev.id && p.stageStatus === 'on-stage');
+      const state = syncEngine.getData() || {};
+      const allParticipants = [
+        ...(state.participants || []),
+        ...((state.public_registrations || []).filter(pr => !(state.participants || []).some(p => String(p.id) === String(pr.id))))
+      ];
+      let onStage = allParticipants.find(p => String(p.eventId) === String(ev.id) && p.stageStatus === 'on-stage');
+      if (onStage) {
+        const prMatch = (state.public_registrations || []).find(pr => String(pr.id) === String(onStage.id));
+        const pMatch = (state.participants || []).find(p => String(p.id) === String(onStage.id));
+        onStage = { ...(prMatch || {}), ...(pMatch || {}), ...onStage };
+        if ((prMatch?.formAnswers || pMatch?.formAnswers) && !onStage.formAnswers) {
+          onStage.formAnswers = { ...(prMatch?.formAnswers || {}), ...(pMatch?.formAnswers || {}) };
+        }
+      }
       
       const onStageName = onStage ? onStage.name : 'Transitioning Stage...';
       const onStageCat = onStage ? ((ev.categories?.find(c => c.id == onStage.catId)?.name || onStage.category || 'Participant') + ` · Round: ${onStage.round ? onStage.round.toUpperCase() : 'AUDITION'}`) : 'Please stay tuned for the next performance';
@@ -7754,65 +7875,20 @@
                 <!-- ★ PARTICIPANT PHOTO (left side) & INFO (right side) ★ -->
                 ${(() => {
                   if (!onStage) return '';
-                  // Find photo URL from formAnswers — look for fields of type 'photo' or 'file' with photo-like label
-                  const formFields = (state.eventFormFields && state.eventFormFields[ev.id]) || [];
-                  let photoUrl = '';
-                  
-                  // Strategy 1: Check form fields metadata for photo/file type with photo in label
-                  for (const f of formFields) {
-                    const fieldKey = f.label;
-                    if (!fieldKey) continue;
-                    const isPhotoField = f.type === 'photo' || (f.type === 'file' && /photo|image|pic|picture|selfie|headshot/i.test(f.label));
-                    if (isPhotoField && onStage.formAnswers && onStage.formAnswers[fieldKey]) {
-                      photoUrl = onStage.formAnswers[fieldKey];
-                      break;
-                    }
-                  }
-                  
-                  // Strategy 2: Fallback — scan formAnswers values for image URLs
-                  if (!photoUrl && onStage.formAnswers) {
-                    const imgExts = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|$)/i;
-                    for (const [key, val] of Object.entries(onStage.formAnswers)) {
-                      if (typeof val === 'string' && (val.startsWith('data:image/') || val.includes('/api/participant/image/') || imgExts.test(val))) {
-                        photoUrl = val;
-                        break;
-                      }
-                    }
-                  }
-
-                  // Strategy 3: Check photo or selfieImage directly
-                  if (!photoUrl && (onStage.photo || onStage.selfieImage)) {
-                    photoUrl = onStage.photo || onStage.selfieImage;
-                  }
-                  
-                  // Check 10-hour expiry: filename has timestamp like "participants/1782928700275_xxx.jpg"
-                  if (photoUrl) {
-                    const tsMatch = photoUrl.match(/\/(\d{13})_/);
-                    if (tsMatch) {
-                      const uploadTs = parseInt(tsMatch[1]);
-                      const tenHoursMs = 10 * 60 * 60 * 1000;
-                      if (Date.now() - uploadTs > tenHoursMs) {
-                        // Schedule auto-delete for expired photo
-                        if (typeof window._onstageDeletedAudios === 'undefined') window._onstageDeletedAudios = new Set();
-                        if (!window._onstageDeletedAudios.has(photoUrl)) {
-                          window._onstageDeletedAudios.add(photoUrl);
-                          window._scheduleAudioDelete && window._scheduleAudioDelete(photoUrl, 0);
-                        }
-                        photoUrl = ''; // Photo expired (>10 hours old), don't show
-                      }
-                    }
-                  }
-
+                  const photoUrl = getParticipantPhotoUrl(onStage, ev.id);
                   const hasPhoto = Boolean(photoUrl);
 
-                  const photoHtml = hasPhoto ? ('<div class="onstage-photo-frame" style="flex-shrink:0;position:relative;width:clamp(140px,25vw,220px);height:clamp(180px,32vw,280px);border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(124,58,237,0.2),0 0 0 3px rgba(139,92,246,0.15);animation:onstagePhotoIn 0.8s cubic-bezier(0.22,1,0.36,1) 0.3s both;">'
-                    + '<img src="' + photoUrl.replace(/'/g,'&apos;').replace(/"/g,'&quot;') + '" alt="' + (onStage.name || 'Performer') + '" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display=\'none\'; const em = document.getElementById(\'onstage-theater-emoji\'); if(em) em.style.display=\'block\';">'
-                    + '<div class="onstage-photo-shine"></div>'
-                    + '<div style="position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(transparent,rgba(15,23,42,0.8));pointer-events:none;">'
-                    + '<div style="font-size:0.7rem;font-weight:800;color:rgba(255,255,255,0.9);letter-spacing:1.5px;text-transform:uppercase;">📸 Live Photo</div>'
-                    + '</div>'
-                    + '<div class="onstage-photo-glow"></div>'
-                    + '</div>') : '';
+                  const photoHtml = hasPhoto ? (`
+                    <div class="onstage-photo-frame" onclick="if(window.openImageModal) openImageModal('${photoUrl.replace(/'/g, "\\'")}')" title="Tap to view full photo" style="flex-shrink:0; position:relative; width:clamp(160px,28vw,240px); height:clamp(200px,34vw,300px); border-radius:24px; overflow:hidden; box-shadow:0 14px 45px rgba(124,58,237,0.25), 0 0 0 3px rgba(139,92,246,0.25); animation:onstagePhotoIn 0.8s cubic-bezier(0.22,1,0.36,1) 0.3s both; cursor:pointer; background:#0f172a;">
+                      <img src="${photoUrl.replace(/'/g,'&apos;').replace(/"/g,'&quot;')}" alt="${(onStage.name || 'Performer')}" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.parentElement.style.display='none'; const em = document.getElementById('onstage-theater-emoji'); if(em) em.style.display='block';">
+                      <div class="onstage-photo-shine"></div>
+                      <div style="position:absolute; bottom:0; left:0; right:0; padding:12px 14px; background:linear-gradient(transparent, rgba(15,23,42,0.88)); pointer-events:none; display:flex; align-items:center; justify-content:space-between;">
+                        <div style="font-size:0.72rem; font-weight:800; color:#FFD23F; letter-spacing:1px; text-transform:uppercase; text-shadow:0 1px 4px rgba(0,0,0,0.8);">📸 Live Spotlight</div>
+                        <div style="font-size:0.65rem; color:#fff; opacity:0.85; font-weight:700;">TAP TO EXPAND</div>
+                      </div>
+                      <div class="onstage-photo-glow"></div>
+                    </div>
+                  `) : '';
 
                   const emojiHtml = `<div id="onstage-theater-emoji" style="font-size: 3.2rem; margin-bottom: 12px; filter: drop-shadow(0 5px 15px rgba(124,58,237,0.15)); animation: onstageEmojiPulse 3s ease-in-out infinite; display: ${hasPhoto ? 'none' : 'block'};">🎭</div>`;
 
@@ -7900,7 +7976,10 @@
                       <div style="position:absolute;bottom:-30px;left:-30px;font-size:100px;opacity:0.05;pointer-events:none;">🎭</div>
                       
                       <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
-                        <div style="width:48px;height:48px;background:linear-gradient(135deg,#FFD23F,#f59e0b);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;box-shadow:0 4px 15px rgba(255,210,63,0.35);">⭐</div>
+                        ${(() => {
+                          const pImg = getParticipantPhotoUrl(onStage, ev.id);
+                          return pImg ? `<img src="${pImg.replace(/'/g,'&apos;').replace(/"/g,'&quot;')}" alt="${onStage.name}" style="width:52px;height:52px;border-radius:14px;object-fit:cover;border:2px solid #f59e0b;box-shadow:0 4px 12px rgba(245,158,11,0.25);cursor:pointer;flex-shrink:0;" onclick="if(window.openImageModal) openImageModal(this.src)" onerror="this.style.display='none';">` : `<div style="width:48px;height:48px;background:linear-gradient(135deg,#FFD23F,#f59e0b);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;box-shadow:0 4px 15px rgba(255,210,63,0.35);flex-shrink:0;">⭐</div>`;
+                        })()}
                         <div>
                           <h4 style="color:#92400e;font-family:'Cinzel Decorative',cursive;font-size:1.1rem;margin:0;letter-spacing:1.5px;text-transform:uppercase;">Rate This Performance</h4>
                           <p style="color:#78716c;font-size:0.85rem;margin:4px 0 0;">Now performing: <strong style="color:#1e1b4b;">${onStage.name}</strong> · ${catN} · ${onStage.round.toUpperCase()}</p>
@@ -8103,15 +8182,18 @@
       if (!queueList) return;
       queueList.innerHTML = "";
 
-      const state = syncEngine.getData();
+      const state = syncEngine.getData() || {};
       const activeEventId = state.activeEventId;
-      const participants = state.participants || [];
+      const allParticipants = [
+        ...(state.participants || []),
+        ...((state.public_registrations || []).filter(pr => !(state.participants || []).some(p => String(p.id) === String(pr.id))))
+      ];
       const events = EVENTS || [];
       const ev = events.find(e => String(e.id) === String(activeEventId));
       const categories = ev ? (ev.categories || []) : [];
 
       // Find participants in queue for the active event
-      const liveQueue = sortQueue(participants.filter(p => p.eventId == activeEventId && p.stageStatus === 'queue'), categories);
+      const liveQueue = sortQueue(allParticipants.filter(p => String(p.eventId) === String(activeEventId) && p.stageStatus === 'queue'), categories);
 
       if (liveQueue.length > 0) {
         // Show queue section when there are queued performers
@@ -8119,10 +8201,21 @@
         liveQueue.forEach((p, i) => {
           const cat = categories.find(c => c.id == p.catId);
           const catName = cat ? cat.name : (p.category || 'Participant');
+          const qPhoto = getParticipantPhotoUrl(p, activeEventId);
           const div = document.createElement("div");
           div.className = "queue-item";
           div.style.animationDelay = `${i * 0.1}s`;
-          div.innerHTML = `<span class="queue-number">#${i + 2}</span><span class="queue-name">${p.name}</span><div class="queue-category">${catName}</div>`;
+          div.style.display = 'flex';
+          div.style.alignItems = 'center';
+          div.style.gap = '12px';
+          div.innerHTML = `
+            <span class="queue-number">#${i + 2}</span>
+            ${qPhoto ? `<img src="${qPhoto.replace(/"/g, '&quot;')}" alt="${p.name}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid #7C3AED;flex-shrink:0;box-shadow:0 2px 8px rgba(124,58,237,0.25);cursor:pointer;" onclick="if(window.openImageModal) openImageModal(this.src)" onerror="this.style.display='none';">` : ''}
+            <div style="flex:1;min-width:0;">
+              <span class="queue-name" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</span>
+              <div class="queue-category">${catName}</div>
+            </div>
+          `;
           queueList.appendChild(div);
         });
       } else {
