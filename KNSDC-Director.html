@@ -2241,6 +2241,78 @@
             </div>
           </div>
         `;
+      // Position 3 Check: Only in Position 3 do judge scores reveal on Director Portal
+      const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+      const switches = s.switchStates || activeEv.switchStates || {};
+      const liveStreamStep = switches.liveStreamStep !== undefined 
+        ? Number(switches.liveStreamStep) 
+        : (switches.directorJudgeScores ? 3 : (switches.liveStream ? 2 : 1));
+      const showScoresToDirector = (liveStreamStep === 3) || (switches.directorJudgeScores === true);
+
+      if (!showScoresToDirector) {
+        document.getElementById('stat-grand-total').textContent = '🔒 HIDDEN';
+        document.getElementById('stat-avg-score').textContent = '🔒 HIDDEN';
+        document.getElementById('stat-submitted-count').textContent = 'Scores Protected (Private)';
+
+        const bannerNotice = liveStreamStep === 2 
+          ? 'Live Broadcast is ON (Public View). Judge evaluation scores are kept private until revealed in Position 3.'
+          : 'Live Broadcast is OFF. Judge scores are confidential and will display when Monitor activates Position 3.';
+
+        const judgeCardsHtml = displayJudges.map((j, idx) => {
+          const jId = String(j.id);
+          const jScoresObj = roundScores[jId] || roundScores[j.name] || {};
+          const hasScores = Object.values(jScoresObj).length > 0;
+          const isLocked = onStage.judgeLocks && (onStage.judgeLocks[jId] === true || onStage.judgeLocks[j.name] === true);
+          const isSubmitted = hasScores && (isLocked || Object.values(jScoresObj).some(v => Number(v) > 0));
+
+          return `
+            <div class="judge-card ${isSubmitted ? 'submitted' : 'scoring'}" style="border-color: rgba(239,68,68,0.25);">
+              <div class="judge-top">
+                <div class="judge-avatar">
+                  ${j.avatar ? `<img src="${j.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:12px;">` : (idx === 0 ? '🧑‍⚖️' : idx === 1 ? '👩‍⚖️' : '⚖️')}
+                </div>
+                <div class="judge-meta">
+                  <div class="judge-name">${j.name || `Judge ${idx + 1}`}</div>
+                  <div class="judge-spec">${j.specialization || j.category || 'Official Panel'}</div>
+                </div>
+                <span class="judge-status-badge ${isSubmitted ? 'status-locked' : 'status-active'}">
+                  ${isSubmitted ? 'SUBMITTED ✅' : '<span class="status-pulse-dot"></span> SCORING...'}
+                </span>
+              </div>
+
+              <div class="judge-score-box" style="background: rgba(239,68,68,0.05); border: 1px dashed rgba(239,68,68,0.3);">
+                <div>
+                  <div class="score-label" style="color: #f87171;">JUDGE SCORE</div>
+                  <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Private Evaluation</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; font-weight:800; font-size:12px; color:#f87171; background:rgba(239,68,68,0.12); padding:4px 10px; border-radius:12px; border:1px solid rgba(239,68,68,0.25);">
+                  <span>🔒</span> <span>CONFIDENTIAL</span>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; margin-bottom: 6px; background: linear-gradient(135deg, rgba(239,68,68,0.1) 0%, rgba(15,23,42,0.85) 100%); border: 1px solid rgba(239,68,68,0.35); border-radius: 16px; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="font-size:24px;">🔒</div>
+              <div>
+                <div style="font-size:13px; font-weight:800; color:#ffffff; letter-spacing:0.8px; text-transform:uppercase;">
+                  Judge Scores Confidential · Position 3 Required
+                </div>
+                <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">
+                  ${bannerNotice}
+                </div>
+              </div>
+            </div>
+            <div style="display:inline-flex; align-items:center; gap:8px; padding:5px 12px; background:rgba(239,68,68,0.16); border:1px solid rgba(239,68,68,0.35); border-radius:20px; color:#fca5a5; font-size:10.5px; font-weight:800; letter-spacing:0.8px;">
+              <span class="status-pulse-dot" style="background:#ef4444; box-shadow:0 0 8px #ef4444;"></span>
+              SWITCH POS ${liveStreamStep} (SCORES HIDDEN)
+            </div>
+          </div>
+          ${judgeCardsHtml}
+        `;
         return;
       }
 
@@ -2307,7 +2379,21 @@
         `;
       }).join('');
 
-      grid.innerHTML = judgeCardsHtml || '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">No judges assigned for this stage.</div>';
+      const liveBanner = `
+        <div style="grid-column: 1 / -1; margin-bottom: 6px; background: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(15,23,42,0.85) 100%); border: 1px solid rgba(16,185,129,0.35); border-radius: 16px; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="font-size:20px;">⭐</div>
+            <div style="font-size:13px; font-weight:800; color:#ffffff; letter-spacing:0.8px; text-transform:uppercase;">
+              LIVE JUDGE EVALUATION ACTIVE · POSITION 3 BROADCAST REVEAL
+            </div>
+          </div>
+          <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 12px; background:rgba(16,185,129,0.16); border:1px solid rgba(16,185,129,0.35); border-radius:20px; color:#6ee7b7; font-size:10.5px; font-weight:800; letter-spacing:0.8px;">
+            <span class="status-pulse-dot" style="background:#10b981; box-shadow:0 0 8px #10b981;"></span>
+            STAGE 3 REVEAL ON
+          </div>
+        </div>
+      `;
+      grid.innerHTML = (liveBanner + judgeCardsHtml) || '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">No judges assigned for this stage.</div>';
 
       // Update Top Summary Stats
       const avgScore = submittedJudgesCount > 0 ? (grandTotal / submittedJudgesCount).toFixed(1) : '0.0';
