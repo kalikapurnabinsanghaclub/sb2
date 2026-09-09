@@ -3231,9 +3231,10 @@
         </div>
 
         <div id="epv-public-rating-container" style="display:none; margin-bottom: 40px;">
-          <h3 style="font-size:1.5rem; font-weight:800; color:#1e293b; margin-bottom:16px; padding-bottom:8px; border-bottom:2px solid #f1f5f9; display:flex; align-items:center; gap:8px;">
-            <span style="font-size:1.8rem;">🌟</span> Public Favorites
+          <h3 style="font-size:1.5rem; font-weight:800; color:#1e293b; margin-bottom:8px; padding-bottom:8px; border-bottom:2px solid #f1f5f9; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.8rem;">🌟</span> Performers (Audition Completed) · Public Favorites
           </h3>
+          <p style="font-size:0.9rem; color:#64748b; margin-top:0; margin-bottom:16px;">Performers who have completed their audition round. Rate and vote for your favorite talent!</p>
           <div id="epv-public-rating" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:20px;">
           </div>
         </div>
@@ -4817,7 +4818,7 @@
             }
           }
         }
-        // Clean up participants state to default undefined present to true
+        // Clean up participants state to default undefined present to true and normalize fields
         if (state && state.participants) {
           const seenIds = new Set();
           state.participants = state.participants.filter(p => {
@@ -4829,6 +4830,13 @@
           });
           state.participants.forEach(p => {
             if (p && p.present === undefined) p.present = false;
+            if (p) {
+              if (p.eventId === undefined && p.event_id !== undefined) p.eventId = p.event_id;
+              if (p.event_id === undefined && p.eventId !== undefined) p.event_id = p.eventId;
+              if (p.catId === undefined && (p.category_id || p.category)) p.catId = p.category_id || p.category;
+              if (p.stageStatus === undefined && p.stage_status !== undefined) p.stageStatus = p.stage_status;
+              if (p.roundScores === undefined && p.round_scores !== undefined) p.roundScores = p.round_scores;
+            }
           });
         }
 
@@ -10568,132 +10576,202 @@
         }
       }
       
-      // Public Favorites & Rating Logic
-      const allParts = state.participants || [];
-      const evParts = allParts.filter(p => String(p.eventId) === String(ev.id));
-      const pubVotes = state.publicVotes || {};
-      
-      const ratingData = [];
-      
-      evParts.forEach(p => {
-        let hasScores = false;
-        if (p.scores && typeof p.scores === 'object') {
-          hasScores = Object.keys(p.scores).length > 0;
-        }
-        if (p.roundScores && typeof p.roundScores === 'object') {
-          hasScores = hasScores || Object.keys(p.roundScores).length > 0;
-        }
-        
-        const isMonitorDone = p.stageStatus === 'done';
-        
-        // ONLY 1 FOLLOW: Show only if they have scores AND the monitor has marked them 'done'
-        if (hasScores && isMonitorDone) {
-          let currentRound = p.round || 'audition';
-          let allVotes = [];
-            
-          ['audition', 'qualified', 'semifinal', 'final', 'favorite'].forEach(round => {
-            const key = p.id + '_' + round;
-            if (pubVotes[key]) allVotes = allVotes.concat(pubVotes[key]);
-          });
-          
-          const uniquePhones = new Set();
-          let totalScore = 0;
-          let ratingCount = 0;
-          
-          allVotes.forEach(v => {
-            if (v.phone) uniquePhones.add(v.phone);
-            if (v.score !== undefined && v.score <= 10) {
-              totalScore += v.score;
-              ratingCount++;
-            }
-          });
-          
-          const likes = uniquePhones.size;
-          const avgScore = ratingCount > 0 ? (totalScore / ratingCount).toFixed(1) : '0.0';
-          
-          ratingData.push({
-            p: p,
-            likes: likes,
-            avg: avgScore,
-            round: currentRound
-          });
-        }
-      });
-      
+      // Public Favorites & Audition Completed Performers
       const pubCont = document.getElementById('epv-public-rating-container');
       const pubBody = document.getElementById('epv-public-rating');
-      
-      if (ratingData.length > 0) {
-        let pHtml = '';
-        ratingData.forEach(fav => {
-          const p = fav.p;
-          const pName = p.name || 'Participant';
-          const pAge = p.age ? `Age ${p.age}` : '';
-          const pCat = ev.categories?.find(c => String(c.id) === String(p.catId))?.name || 'General';
-          const pId = p.id;
-          const initials = pName.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
-          const photoUrl = window.getParticipantPhotoUrl ? window.getParticipantPhotoUrl(p, ev.id) : (p.photo || p.selfieImage || '');
-          
-          const avatarHtml = photoUrl ? `
-            <img src="${photoUrl.replace(/'/g, '&apos;').replace(/"/g, '&quot;')}" alt="${pName}" style="width:60px; height:60px; min-width:60px; border-radius:50%; object-fit:cover; border:2px solid #10b981; box-shadow:0 4px 10px rgba(16,185,129,0.3);" onerror="this.onerror=null; this.outerHTML='<div style=\\\'width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);\\\'>${initials || '🌟'}</div>'">
-          ` : `
-            <div style="width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);">
-              ${initials || '🌟'}
-            </div>
-          `;
-          
-          pHtml += `
-            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; box-shadow:0 4px 12px rgba(0,0,0,0.03); margin-bottom:20px; overflow:hidden;">
-              <div style="display:flex; align-items:center; gap:16px; margin-bottom: 16px;">
-                ${avatarHtml}
-                <div style="flex:1; overflow:hidden;">
-                  <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pName} ${pAge ? `(${pAge})` : ''}</div>
-                  <div style="font-size:0.8rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pCat} · ${fav.round.toUpperCase()}</div>
-                </div>
-                <div style="text-align:right;">
-                  <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
-                    <span style="font-size:1.3rem;">❤️</span>
-                    <span style="font-size:1.5rem; font-weight:900; color:#059669;">${fav.likes}</span>
-                  </div>
-                  <div style="font-size:0.8rem; color:#f59e0b; font-weight:800; margin-top:4px;">⭐ ${fav.avg} AVG</div>
-                </div>
-              </div>
 
-              <!-- Rating Section for Event View -->
-              <div style="background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 12px; padding: 16px; border: 1px solid #FFD23F; margin-top: 12px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                  <div style="font-weight: 800; color: #92400e; font-size: 0.9rem;">Rate ${pName}'s ${fav.round.toUpperCase()}</div>
-                  <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-weight:800; font-size:0.75rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote (Favorite) ❤️</button>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; background: #fff; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,210,63,0.4);">
-                  <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">1</div>
-                  <input type="range" id="vote-slider-epv-${pId}" class="premium-rating-slider" min="1" max="10" value="5" step="1" oninput="document.getElementById('vote-val-epv-${pId}').textContent=this.value;" style="flex:1;" />
-                  <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">10</div>
-                  <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 8px; padding: 4px 10px; min-width: 40px; text-align: center;">
-                    <span id="vote-val-epv-${pId}" style="font-size: 1.2rem; font-weight: 900; color: #1e1b4b;">5</span>
-                  </div>
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                  <div style="flex: 1; min-width: 120px;">
-                    <input type="text" id="vote-name-epv-${pId}" placeholder="Full name" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
-                  </div>
-                  <div style="flex: 1; min-width: 120px;">
-                    <input type="tel" id="vote-phone-epv-${pId}" placeholder="Phone" maxlength="15" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
-                  </div>
-                  <button onclick="window.submitPublicVoteEPV('${ev.id}','${pId}','${fav.round}')" style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:8px; padding:8px 16px; font-size:0.9rem; font-weight:900; cursor:pointer; flex: 1; min-width: 100px;">
-                    Submit ⭐
-                  </button>
-                </div>
-                <div id="vote-msg-epv-${pId}" style="font-size:0.8rem; font-weight:800; color:#92400e; margin-top:8px; min-height:16px; text-align:center;"></div>
-              </div>
-            </div>
-          `;
+      function renderAuditionCompletedPerformers(candidateParts) {
+        if (!pubCont || !pubBody) return;
+        const partsList = candidateParts || state.participants || [];
+        const pubVotes = state.publicVotes || {};
+
+        // Filter performers belonging to this event
+        const evParts = partsList.filter(p => {
+          if (!p) return false;
+          const pEvId = p.eventId !== undefined && p.eventId !== null ? p.eventId : p.event_id;
+          if (pEvId !== undefined && pEvId !== null && pEvId !== '') {
+            return String(pEvId) === String(ev.id);
+          }
+          // Fallback if there is only 1 event or if active event matches
+          return (state.events && state.events.length === 1) || String(ev.id) === String(state.activeEventId);
         });
-        
-        pubBody.innerHTML = pHtml;
-        pubCont.style.display = 'block';
-      } else {
-        pubCont.style.display = 'none';
+
+        const ratingData = [];
+
+        evParts.forEach(p => {
+          // Check if performer completed their audition round
+          const hasAuditionScores = Boolean(
+            (p.scores && typeof p.scores === 'object' && Object.keys(p.scores).length > 0) ||
+            (p.roundScores && p.roundScores['audition'] && typeof p.roundScores['audition'] === 'object' && Object.keys(p.roundScores['audition']).length > 0) ||
+            (p.round_scores && p.round_scores['audition'] && typeof p.round_scores['audition'] === 'object' && Object.keys(p.round_scores['audition']).length > 0) ||
+            (p.roundScores && typeof p.roundScores === 'object' && Object.keys(p.roundScores).length > 0) ||
+            (p.round_scores && typeof p.round_scores === 'object' && Object.keys(p.round_scores).length > 0)
+          );
+          const isMonitorDone = p.stageStatus === 'done' || p.stageStatus === 'completed' || p.stageStatus === 'scored' || p.stage_status === 'done';
+          const isRoundAdvanced = p.round && String(p.round).toLowerCase() !== 'audition';
+          const isAuditionCompletedFlag = p.auditionCompleted === true || p.audition_completed === true || p.status === 'done';
+
+          // A performer who has scores OR monitor marked done OR advanced round OR flagged completed has finished audition!
+          const isAuditionCompleted = hasAuditionScores || isMonitorDone || isRoundAdvanced || isAuditionCompletedFlag;
+
+          if (isAuditionCompleted) {
+            let currentRound = p.round || 'audition';
+            let allVotes = [];
+              
+            ['audition', 'qualified', 'semifinal', 'final', 'favorite'].forEach(round => {
+              const key = p.id + '_' + round;
+              if (pubVotes[key]) allVotes = allVotes.concat(pubVotes[key]);
+            });
+            
+            const uniquePhones = new Set();
+            let totalScore = 0;
+            let ratingCount = 0;
+            
+            allVotes.forEach(v => {
+              if (v.phone) uniquePhones.add(v.phone);
+              if (v.score !== undefined && v.score <= 10) {
+                totalScore += v.score;
+                ratingCount++;
+              }
+            });
+            
+            const likes = uniquePhones.size;
+            const avgScore = ratingCount > 0 ? (totalScore / ratingCount).toFixed(1) : '0.0';
+            
+            ratingData.push({
+              p: p,
+              likes: likes,
+              avg: avgScore,
+              round: currentRound
+            });
+          }
+        });
+
+        if (ratingData.length > 0) {
+          let pHtml = '';
+          ratingData.forEach(fav => {
+            const p = fav.p;
+            const pName = p.name || 'Participant';
+            const pAge = p.age ? `Age ${p.age}` : '';
+            const pCat = ev.categories?.find(c => String(c.id) === String(p.catId || p.category_id || p.category))?.name || p.category || 'General';
+            const pId = p.id;
+            const initials = pName.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
+            const photoUrl = window.getParticipantPhotoUrl ? window.getParticipantPhotoUrl(p, ev.id) : (p.photo || p.selfieImage || '');
+            
+            const avatarHtml = photoUrl ? `
+              <img src="${photoUrl.replace(/'/g, '&apos;').replace(/"/g, '&quot;')}" alt="${pName}" style="width:60px; height:60px; min-width:60px; border-radius:50%; object-fit:cover; border:2px solid #10b981; box-shadow:0 4px 10px rgba(16,185,129,0.3);" onerror="this.onerror=null; this.outerHTML='<div style=\\\'width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);\\\'>${initials || '🌟'}</div>'">
+            ` : `
+              <div style="width:60px; height:60px; min-width:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; box-shadow:0 4px 10px rgba(16,185,129,0.3);">
+                ${initials || '🌟'}
+              </div>
+            `;
+            
+            pHtml += `
+              <div style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; box-shadow:0 4px 12px rgba(0,0,0,0.03); margin-bottom:20px; overflow:hidden;">
+                <div style="display:flex; align-items:center; gap:16px; margin-bottom: 16px;">
+                  ${avatarHtml}
+                  <div style="flex:1; overflow:hidden;">
+                    <div style="font-weight:800; color:#1e293b; font-size:1.1rem; margin-bottom:4px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pName} ${pAge ? `(${pAge})` : ''}</div>
+                    <div style="font-size:0.8rem; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${pCat} · ${fav.round.toUpperCase()} <span style="background:#ecfdf5; color:#059669; font-size:0.7rem; padding:2px 6px; border-radius:4px; margin-left:4px; font-weight:800;">✓ AUDITION DONE</span></div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
+                      <span style="font-size:1.3rem;">❤️</span>
+                      <span style="font-size:1.5rem; font-weight:900; color:#059669;">${fav.likes}</span>
+                    </div>
+                    <div style="font-size:0.8rem; color:#f59e0b; font-weight:800; margin-top:4px;">⭐ ${fav.avg} AVG</div>
+                  </div>
+                </div>
+
+                <!-- Rating Section for Event View -->
+                <div style="background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 12px; padding: 16px; border: 1px solid #FFD23F; margin-top: 12px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="font-weight: 800; color: #92400e; font-size: 0.9rem;">Rate ${pName}'s Performance</div>
+                    <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-weight:800; font-size:0.75rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote (Favorite) ❤️</button>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; background: #fff; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,210,63,0.4);">
+                    <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">1</div>
+                    <input type="range" id="vote-slider-epv-${pId}" class="premium-rating-slider" min="1" max="10" value="5" step="1" oninput="document.getElementById('vote-val-epv-${pId}').textContent=this.value;" style="flex:1;" />
+                    <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">10</div>
+                    <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 8px; padding: 4px 10px; min-width: 40px; text-align: center;">
+                      <span id="vote-val-epv-${pId}" style="font-size: 1.2rem; font-weight: 900; color: #1e1b4b;">5</span>
+                    </div>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <div style="flex: 1; min-width: 120px;">
+                      <input type="text" id="vote-name-epv-${pId}" placeholder="Full name" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                    </div>
+                    <div style="flex: 1; min-width: 120px;">
+                      <input type="tel" id="vote-phone-epv-${pId}" placeholder="Phone" maxlength="15" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                    </div>
+                    <button onclick="window.submitPublicVoteEPV('${ev.id}','${pId}','${fav.round}')" style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:8px; padding:8px 16px; font-size:0.9rem; font-weight:900; cursor:pointer; flex: 1; min-width: 100px;">
+                      Submit ⭐
+                    </button>
+                  </div>
+                  <div id="vote-msg-epv-${pId}" style="font-size:0.8rem; font-weight:800; color:#92400e; margin-top:8px; min-height:16px; text-align:center;"></div>
+                </div>
+              </div>
+            `;
+          });
+          
+          pubBody.innerHTML = pHtml;
+          pubCont.style.display = 'block';
+        } else {
+          pubBody.innerHTML = '';
+          pubCont.style.display = 'none';
+        }
+      }
+
+      // Initial render with current state participants
+      renderAuditionCompletedPerformers(state.participants || []);
+
+      // If no audition performers found or participants array is empty, also fetch asynchronously from Supabase
+      if (window.supabase) {
+        const client = window.supabase.createClient(
+          "https://fjscpohgysbelzkrkrxm.supabase.co",
+          "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5"
+        );
+        client.from('public_registrations')
+          .select('*')
+          .eq('event_id', String(ev.id))
+          .then(({ data, error }) => {
+            if (data && data.length > 0) {
+              const mappedParts = data.map(r => ({
+                id: r.id,
+                name: r.name,
+                phone: r.phone,
+                email: r.email,
+                age: r.age,
+                gender: r.gender,
+                eventId: r.event_id,
+                event_id: r.event_id,
+                catId: r.category,
+                category: r.category,
+                venue: r.venue,
+                status: r.status,
+                scores: r.scores || {},
+                roundScores: r.round_scores || r.roundScores || {},
+                round_scores: r.round_scores || r.roundScores || {},
+                stageStatus: r.stage_status || (r.status === 'done' ? 'done' : 'waiting')
+              }));
+              
+              if (!state.participants) state.participants = [];
+              mappedParts.forEach(mp => {
+                const existing = state.participants.find(p => String(p.id) === String(mp.id));
+                if (!existing) {
+                  state.participants.push(mp);
+                } else {
+                  if (!existing.scores || Object.keys(existing.scores).length === 0) existing.scores = mp.scores;
+                  if (!existing.roundScores || Object.keys(existing.roundScores).length === 0) existing.roundScores = mp.roundScores;
+                  if (!existing.eventId) existing.eventId = mp.eventId;
+                  if (!existing.event_id) existing.event_id = mp.event_id;
+                }
+              });
+
+              renderAuditionCompletedPerformers(state.participants);
+            }
+          })
+          .catch(err => console.warn('[showEventDetail] Supabase registrations fetch error:', err));
       }
       
       const isRegOpen = (() => {
