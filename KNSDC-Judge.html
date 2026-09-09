@@ -1701,7 +1701,7 @@
 
       <div class="judge-footer-meta">
         <div class="judge-footer-pills">
-          <span class="footer-pill"><span class="footer-dot live"></span> Realtime Sync Active</span>
+          <span class="footer-pill" id="footer-sync-status"><span class="footer-dot live"></span> Realtime + 2s Sync Active</span>
           <span class="footer-pill">⚡ Screen WakeLock Active</span>
           <span class="footer-pill" id="footer-judge-identity">Judge Session: Active</span>
         </div>
@@ -4495,9 +4495,27 @@ async function saveScores() {
     if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
     p.roundComments[p.round][JUDGE.id] = document.getElementById('judge-comment').value;
 
+    // Calculate total score for celebration
+    const totalScoreVal = Object.values(p.scores[JUDGE.id] || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
+
+    // Immediate backup to local storage & offline queue
+    backupScoreToLocalStorage(p.id, p.scores[JUDGE.id], p.round, p.roundComments[p.round][JUDGE.id]);
+
     toast('Saving score...');
-    const success = await syncEngine.updateParticipant(p.id, p);
-    if(!success) { toast('❌ Error saving score to database'); return; }
+    let success = false;
+    try {
+      success = await syncEngine.updateParticipant(p.id, p);
+    } catch(netErr) {
+      console.warn('[saveScores] Network error, score is safely preserved locally:', netErr);
+      success = false;
+    }
+
+    if (success) {
+      dequeuePendingScore(p.id, p.round);
+      toast('✅ Score submitted successfully!');
+    } else {
+      toast('💾 Score saved to device! Auto-syncing in background...');
+    }
 
     renderParticipantsTable();
     updateStats();
@@ -4508,10 +4526,8 @@ async function saveScores() {
       setTimeout(() => scoringCard.classList.remove('save-success-anim'), 600);
     }
     
-    toast('✅ Score submitted successfully!');
-    setTimeout(() => {
-      clearScorePanel();
-    }, 1000);
+    // Play celebratory Fly video one time!
+    showScoreSavedFlyCelebration(p.name, totalScoreVal);
   } finally {
     isSavingScore = false;
     if (btn) { btn.disabled = false; btn.innerText = '💾 Save Scores'; }
@@ -4527,6 +4543,295 @@ function clearScorePanel() {
   document.getElementById('save-score-wrap').style.display = 'none';
   document.getElementById('score-total-preview').style.display = 'none';
 }
+
+// ════════════════════════════════════════
+// LOCAL STORAGE RESILIENCE & 2S PUSH/PULL ENGINE
+// ════════════════════════════════════════
+const OFFLINE_SCORES_KEY = 'knsdc_judge_local_scores_';
+const PENDING_QUEUE_KEY = 'knsdc_pending_score_queue';
+
+function getPendingScores() {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_QUEUE_KEY) || '[]');
+  } catch(e) {
+    return [];
+  }
+}
+
+function enqueuePendingScore(item) {
+  try {
+    const q = getPendingScores();
+    const idx = q.findIndex(x => x.participantId === item.participantId && x.round === item.round && x.judgeId === item.judgeId);
+    if (idx >= 0) {
+      q[idx] = item;
+    } else {
+      q.push(item);
+    }
+    localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(q));
+  } catch(e) {
+    console.warn('enqueuePendingScore error:', e);
+  }
+}
+
+function dequeuePendingScore(participantId, round) {
+  try {
+    let q = getPendingScores();
+    q = q.filter(x => !(x.participantId === participantId && (!round || x.round === round)));
+    localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(q));
+  } catch(e) {
+    console.warn('dequeuePendingScore error:', e);
+  }
+}
+
+function backupScoreToLocalStorage(participantId, scores, round, comment) {
+  try {
+    const key = OFFLINE_SCORES_KEY + (JUDGE.id || 'default');
+    const stored = JSON.parse(localStorage.getItem(key) || '{}');
+    if (!stored[participantId]) stored[participantId] = {};
+    
+    stored[participantId][round || 'audition'] = {
+      scores: { ...scores },
+      comment: comment || '',
+      savedAt: Date.now(),
+      judgeId: JUDGE.id
+    };
+    localStorage.setItem(key, JSON.stringify(stored));
+
+    enqueuePendingScore({
+      participantId,
+      round: round || 'audition',
+      judgeId: JUDGE.id,
+      scores: { ...scores },
+      comment: comment || '',
+      timestamp: Date.now()
+    });
+  } catch(e) {
+    console.warn('backupScoreToLocalStorage error:', e);
+  }
+}
+
+function restoreScoresFromLocalStorage() {
+  try {
+    const key = OFFLINE_SCORES_KEY + (JUDGE.id || 'default');
+    const stored = JSON.parse(localStorage.getItem(key) || '{}');
+    let restoredCount = 0;
+
+    Object.keys(stored).forEach(pid => {
+      const p = participants.find(x => x.id === pid);
+      if (p) {
+        const roundsData = stored[pid];
+        Object.keys(roundsData).forEach(rnd => {
+          const rData = roundsData[rnd];
+          if (rData && rData.scores) {
+            if (!p.roundScores) p.roundScores = {};
+            if (!p.roundScores[rnd]) p.roundScores[rnd] = {};
+            if (!p.roundScores[rnd][JUDGE.id] || Object.keys(p.roundScores[rnd][JUDGE.id]).length === 0) {
+              p.roundScores[rnd][JUDGE.id] = { ...rData.scores };
+              if (p.round === rnd) {
+                if (!p.scores) p.scores = {};
+                p.scores[JUDGE.id] = { ...rData.scores };
+              }
+              if (rData.comment) {
+                if (!p.roundComments) p.roundComments = {};
+                if (!p.roundComments[rnd]) p.roundComments[rnd] = {};
+                p.roundComments[rnd][JUDGE.id] = rData.comment;
+              }
+              restoredCount++;
+            }
+          }
+        });
+      }
+    });
+
+    if (restoredCount > 0) {
+      console.log(`[Judge LocalStore] Restored ${restoredCount} offline score records from device storage.`);
+    }
+  } catch(e) {
+    console.warn('restoreScoresFromLocalStorage error:', e);
+  }
+}
+
+// ─── Fly Video Celebration (Plays once on successful save) ───
+function showScoreSavedFlyCelebration(participantName, totalScore) {
+  let el = document.getElementById('score-saved-fly-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'score-saved-fly-overlay';
+    document.body.appendChild(el);
+  }
+
+  el.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:99999999; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(10,15,29,0.85); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); opacity:0; transition:opacity 0.4s ease; cursor:pointer;';
+
+  el.innerHTML = `
+    <div style="position:relative; width:92vw; max-width:540px; display:flex; flex-direction:column; align-items:center; cursor:default;" onclick="event.stopPropagation()">
+      <div style="position:relative; width:100%; border-radius:24px; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,0.6), 0 0 35px rgba(37,99,235,0.3); border:2px solid rgba(255,255,255,0.2); background:#000;">
+        <video id="score-fly-video" playsinline webkit-playsinline
+          style="width:100%; height:auto; display:block; object-fit:cover; max-height:65vh;">
+          <source src="fly.mp4" type="video/mp4">
+        </video>
+        
+        <button onclick="closeScoreSavedFlyCelebration()" style="position:absolute; top:12px; right:12px; background:rgba(0,0,0,0.5); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,0.3); color:#fff; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px; font-weight:700; transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.8)'" onmouseout="this.style.background='rgba(0,0,0,0.5)'" title="Close / Skip">✕</button>
+      </div>
+
+      <div style="margin-top:16px; text-align:center; animation:fadeSlideUp 0.4s ease forwards;">
+        <div style="display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg, rgba(37,99,235,0.3), rgba(16,185,129,0.3)); border:1px solid rgba(255,255,255,0.25); padding:8px 20px; border-radius:30px; box-shadow:0 4px 15px rgba(0,0,0,0.3);">
+          <span style="font-size:18px">🎉</span>
+          <span style="font-family:var(--fh); font-weight:900; font-size:15px; color:#ffffff; letter-spacing:0.5px; text-transform:uppercase;">
+            Score Submitted Successfully!
+          </span>
+          ${totalScore ? `<span style="background:var(--gold2); color:#000; font-weight:900; font-size:12px; padding:2px 8px; border-radius:10px;">${totalScore} pts</span>` : ''}
+        </div>
+        ${participantName ? `<div style="color:rgba(255,255,255,0.85); font-size:12px; margin-top:6px; font-weight:600;">Recorded for ${participantName}</div>` : ''}
+      </div>
+    </div>
+  `;
+
+  el.onclick = closeScoreSavedFlyCelebration;
+  el.style.display = 'flex';
+  requestAnimationFrame(() => {
+    el.style.opacity = '1';
+  });
+
+  const vid = document.getElementById('score-fly-video');
+  if (vid) {
+    vid.currentTime = 0;
+    vid.play().catch(err => {
+      console.warn('Fly video autoplay restricted, retrying muted:', err);
+      vid.muted = true;
+      vid.play().catch(() => {});
+    });
+
+    vid.onended = () => {
+      closeScoreSavedFlyCelebration();
+    };
+  }
+
+  if (window._flyVideoTimeout) clearTimeout(window._flyVideoTimeout);
+  window._flyVideoTimeout = setTimeout(closeScoreSavedFlyCelebration, 12000);
+}
+
+function closeScoreSavedFlyCelebration() {
+  const el = document.getElementById('score-saved-fly-overlay');
+  if (el && el.style.opacity !== '0') {
+    const vid = document.getElementById('score-fly-video');
+    if (vid) { vid.pause(); }
+    el.style.opacity = '0';
+    setTimeout(() => {
+      el.style.display = 'none';
+      if (typeof clearScorePanel === 'function') {
+        clearScorePanel();
+      }
+    }, 400);
+  }
+}
+window.showScoreSavedFlyCelebration = showScoreSavedFlyCelebration;
+window.closeScoreSavedFlyCelebration = closeScoreSavedFlyCelebration;
+
+// ─── 2-Second Background Push/Pull Sync Engine ───
+let _pushPullActive = false;
+async function runTwoSecondPushPull() {
+  if (_pushPullActive) return;
+  _pushPullActive = true;
+
+  try {
+    const isOnline = navigator.onLine !== false;
+
+    // 1. PUSH PHASE: Check and flush pending offline scores
+    const pending = getPendingScores();
+    if (pending.length > 0 && isOnline && window.syncEngine) {
+      let flushedAny = false;
+      for (const item of [...pending]) {
+        try {
+          const p = participants.find(x => x.id === item.participantId) || { id: item.participantId };
+          if (!p.roundScores) p.roundScores = {};
+          if (!p.roundScores[item.round]) p.roundScores[item.round] = {};
+          if (!p.roundScores[item.round][item.judgeId]) p.roundScores[item.round][item.judgeId] = {};
+
+          p.roundScores[item.round][item.judgeId] = { ...item.scores };
+          if (!p.scores) p.scores = {};
+          p.scores[item.judgeId] = { ...item.scores };
+
+          if (item.comment) {
+            if (!p.roundComments) p.roundComments = {};
+            if (!p.roundComments[item.round]) p.roundComments[item.round] = {};
+            p.roundComments[item.round][item.judgeId] = item.comment;
+          }
+
+          const ok = await syncEngine.updateParticipant(item.participantId, p);
+          if (ok) {
+            dequeuePendingScore(item.participantId, item.round);
+            flushedAny = true;
+            console.log(`[Judge 2s Sync] Successfully pushed pending score for participant ${item.participantId}`);
+          }
+        } catch (pushErr) {
+          console.warn(`[Judge 2s Sync] Push retry error for ${item.participantId}:`, pushErr);
+        }
+      }
+      if (flushedAny) {
+        if (getPendingScores().length === 0) {
+          toast('🟢 All offline scores synced to cloud database!');
+        }
+        if (typeof renderParticipantsTable === 'function') renderParticipantsTable();
+        if (typeof updateStats === 'function') updateStats();
+      }
+    }
+
+    // 2. PULL PHASE: Periodic 2-second reconciliation
+    if (isOnline && window.syncEngine) {
+      if (typeof syncEngine.fetchSupabaseState === 'function') {
+        syncEngine.fetchSupabaseState().catch(() => {});
+      }
+      if (typeof syncEngine.runHeartbeatSync === 'function') {
+        syncEngine.runHeartbeatSync().catch(() => {});
+      }
+    }
+
+    // 3. UI Status updates
+    updateSyncStatusPills();
+  } catch (e) {
+    console.warn('[Judge 2s Push/Pull Error]:', e);
+  } finally {
+    _pushPullActive = false;
+  }
+}
+
+function updateSyncStatusPills() {
+  const pending = getPendingScores();
+  const isOnline = navigator.onLine !== false;
+
+  const statusTxt = document.getElementById('judge-status-text');
+  const statusDot = document.getElementById('judge-status-dot');
+  if (statusTxt && statusDot) {
+    if (!isOnline) {
+      statusTxt.textContent = pending.length > 0 ? `Offline (${pending.length} unsynced)` : 'Offline';
+      statusDot.style.background = '#ef4444';
+      statusDot.style.boxShadow = '0 0 6px #ef4444';
+    } else if (pending.length > 0) {
+      statusTxt.textContent = `Syncing (${pending.length})...`;
+      statusDot.style.background = '#f59e0b';
+      statusDot.style.boxShadow = '0 0 6px #f59e0b';
+    } else {
+      statusTxt.textContent = 'Live (2s Sync Active)';
+      statusDot.style.background = '#10b981';
+      statusDot.style.boxShadow = '0 0 6px #10b981';
+    }
+  }
+
+  const footerSync = document.getElementById('footer-sync-status');
+  if (footerSync) {
+    if (!isOnline) {
+      footerSync.innerHTML = `<span class="footer-dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444"></span> Offline Mode (Local Storage Active)`;
+    } else if (pending.length > 0) {
+      footerSync.innerHTML = `<span class="footer-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b"></span> 🔄 Syncing ${pending.length} offline score(s)...`;
+    } else {
+      footerSync.innerHTML = `<span class="footer-dot live"></span> Realtime + 2s Sync Active`;
+    }
+  }
+}
+
+// Start 2s Background Sync
+setInterval(runTwoSecondPushPull, 2000);
+
 
 function toggleLockPasswordVisibility(inputId, btn) {
   const inp = document.getElementById(inputId);
@@ -5101,12 +5406,30 @@ async function saveModalScores() {
     p.isEdited = p.isEdited || {};
     p.isEdited[JUDGE.id] = true;
 
+    // Calculate total score for celebration
+    const totalScoreVal = Object.values(p.scores[JUDGE.id] || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
+
+    // Save to local storage backup & offline queue
+    backupScoreToLocalStorage(p.id, p.scores[JUDGE.id], p.round, p.roundComments[p.round][JUDGE.id]);
+
     const isGlobalLocked = switchStates['lock-score'] || switchStates['lockScore'];
     toast('Updating score...');
-    const success = await syncEngine.updateParticipant(p.id, p);
-    if(!success) { toast('❌ Error updating score'); return; }
+    let success = false;
+    try {
+      success = await syncEngine.updateParticipant(p.id, p);
+    } catch(netErr) {
+      console.warn('[saveModalScores] Network error, score saved to local storage:', netErr);
+      success = false;
+    }
 
-    if (isGlobalLocked) {
+    if (success) {
+      dequeuePendingScore(p.id, p.round);
+      toast('✅ Edit saved!');
+    } else {
+      toast('💾 Edit saved to device! Auto-syncing in background...');
+    }
+
+    if (isGlobalLocked && success) {
       switchStates['edit-score'] = false;
       switchStates['editScore'] = false;
       syncEngine.updateState({ switchStates });
@@ -5115,7 +5438,9 @@ async function saveModalScores() {
     closeEditModal();
     renderParticipantsTable();
     updateStats();
-    toast('✅ Edit saved!');
+
+    // Play celebratory Fly video one time!
+    showScoreSavedFlyCelebration(p.name, totalScoreVal);
   } finally {
     isSavingModalScore = false;
     if (btn) { btn.disabled = false; btn.innerText = '💾 Save Corrections'; }
@@ -5655,6 +5980,7 @@ syncEngine.subscribe((state) => {
   } else {
     participants = [];
   }
+  restoreScoresFromLocalStorage();
   
   // Prioritize event-specific configuration
   const activeEv = activeEvId 
