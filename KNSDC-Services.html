@@ -1087,27 +1087,53 @@ async function addMenuItem() {
   toast('📸 Processing photo...');
 
   const reader = new FileReader();
-  reader.onload = async function(e) {
-    const base64Image = e.target.result;
-    const id = 'f' + Date.now();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = async function() {
+      // Compress image to max 128x128 thumbnail
+      const canvas = document.createElement('canvas');
+      const maxDim = 128;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
-    window.syncEngine.setData(s => {
-      const foodMenu = s.foodMenu || [
-        { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
-        { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
-        { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
-        { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
-      ];
-      foodMenu.push({ id, name, price, image: base64Image });
-      return { ...s, foodMenu };
-    });
+      const id = 'f' + Date.now();
 
-    fileInput.value = '';
-    document.getElementById('new-menu-name').value = '';
-    document.getElementById('new-menu-price').value = '';
+      window.syncEngine.setData(s => {
+        const foodMenu = s.foodMenu || [
+          { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+          { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+          { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+          { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+        ];
+        foodMenu.push({ id, name, price, deliveryFee, image: compressedBase64 });
+        return { ...s, foodMenu };
+      });
 
-    toast('✅ Menu photo saved to MongoDB database!');
-    await window.syncEngine.forceSaveStateToSupabase();
+      fileInput.value = '';
+      document.getElementById('new-menu-name').value = '';
+      document.getElementById('new-menu-price').value = '';
+
+      toast('✅ Menu photo saved and compressed!');
+      await window.syncEngine.forceSaveStateToSupabase();
+    };
+    img.onerror = function() {
+      alert('Failed to process photo.');
+    };
+    img.src = e.target.result;
   };
 
   reader.onerror = function() {
