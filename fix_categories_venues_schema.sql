@@ -1,4 +1,4 @@
-﻿-- ==============================================================================
+-- ==============================================================================
 -- KNSDC SCHEMA PATCH: Categories, Venues & Scoring Subjects Persistence
 -- Run this in Supabase Dashboard -> SQL Editor -> Click "Run"
 -- ==============================================================================
@@ -17,7 +17,9 @@ ALTER TABLE public.venues ADD COLUMN IF NOT EXISTS event_id BIGINT;
 
 -- 3. Ensure scoring_subjects columns exist
 ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS subject_name TEXT;
 ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS max_marks INTEGER DEFAULT 10;
+ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS max_score INTEGER DEFAULT 10;
 ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS event_id BIGINT;
 

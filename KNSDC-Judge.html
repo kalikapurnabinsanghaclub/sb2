@@ -1508,7 +1508,10 @@
       <div id="score-total-preview" style="margin-top:10px;display:none">
         <div style="background:rgba(240,180,41,0.08);border:1px solid rgba(240,180,41,0.2);border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-size:12px;color:var(--tdim);font-family:var(--fm);text-transform:uppercase;letter-spacing:1px">My Total Score</span>
-          <span style="font-family:var(--fh);font-size:28px;font-weight:800;color:var(--gold2)" id="live-total">0</span>
+          <div style="display:flex;align-items:baseline;gap:4px">
+            <span style="font-family:var(--fh);font-size:28px;font-weight:800;color:var(--gold2)" id="live-total">0</span>
+            <span style="font-size:14px;color:var(--tmuted);font-weight:700">/ <span id="live-total-max">0</span></span>
+          </div>
         </div>
       </div>
     </div>
@@ -4108,28 +4111,47 @@ function loadScorePanel(id) {
 
   // Score inputs
   const wrap = document.getElementById('score-inputs-wrap');
+  const saveWrap = document.getElementById('save-score-wrap');
+  const scoreTotalPreview = document.getElementById('score-total-preview');
+
+  if (!SUBJECTS || SUBJECTS.length === 0) {
+    wrap.innerHTML = `
+      <div style="text-align:center;padding:36px 20px;background:rgba(239,68,68,0.05);border:1.5px dashed rgba(239,68,68,0.3);border-radius:14px;margin:15px 0">
+        <div style="font-size:32px;margin-bottom:8px">📋</div>
+        <div style="font-family:var(--fh);font-weight:800;font-size:17px;color:var(--red2);letter-spacing:0.5px;margin-bottom:6px">NO SCORING SUBJECTS CONFIGURED</div>
+        <div style="font-size:12px;color:var(--tmuted);max-width:380px;margin:0 auto;line-height:1.5">The Monitor has not added scoring subjects for this event yet.<br/>Once subjects (or Quick Pick templates) are added in Monitor Settings, they will appear here automatically in real time.</div>
+      </div>`;
+    if (saveWrap) saveWrap.style.display = 'none';
+    if (scoreTotalPreview) scoreTotalPreview.style.display = 'none';
+    return;
+  }
+
   wrap.innerHTML = SUBJECTS.map(s => {
-    // Use live in-progress value if the judge has moved the slider but not saved yet;
-    // fall back to the synced/saved value, then 0.
-    const savedVal = myScores[s.id] || 0;
+    const sMax = Number(s.maxMarks) || 10;
+    const savedVal = myScores[s.id] !== undefined ? Number(myScores[s.id]) : 0;
     const liveVal  = _liveValues.hasOwnProperty(String(s.id)) ? _liveValues[String(s.id)] : null;
-    const val      = (liveVal !== null) ? liveVal : savedVal;
-    const pct = Math.round(val/s.maxMarks*100);
-    const color = pct>=70?'var(--green2)':pct>=50?'var(--gold2)':'var(--red2)';
+    let val        = (liveVal !== null) ? liveVal : savedVal;
+    if (val > sMax) val = sMax;
+    if (val < 0) val = 0;
+    const pct = Math.round(val / sMax * 100);
+    const color = pct >= 70 ? 'var(--green2)' : pct >= 50 ? 'var(--gold2)' : 'var(--red2)';
     return `<div class="subj-score-card" id="subj-card-${s.id}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div>
-          <div style="font-family:var(--fh);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px">${s.name}</div>
-          <div style="font-size:10px;color:var(--tmuted)">${s.desc}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--fh);font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px">${s.name}</span>
+            <span class="badge" style="background:rgba(37,99,235,0.08);color:var(--blue2);border:1px solid rgba(37,99,235,0.25);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px">Limit: ${sMax} pts</span>
+          </div>
+          <div style="font-size:10px;color:var(--tmuted);margin-top:2px">${s.desc}</div>
         </div>
-        <input type="number" class="score-num-input" id="num-${s.id}" value="${val}" min="0" max="${s.maxMarks}" step="0.5"
-          oninput="syncSlider(${s.id},${s.maxMarks})" onchange="clampScore(${s.id},${s.maxMarks})" ${canEdit?'':'disabled'}/>
+        <input type="number" class="score-num-input" id="num-${s.id}" value="${val}" min="0" max="${sMax}" step="0.5"
+          oninput="syncSlider(${s.id},${sMax})" onchange="clampScore(${s.id},${sMax})" ${canEdit?'':'disabled'}/>
       </div>
       <div class="slider-wrap">
-        <input type="range" class="score-slider" id="slider-${s.id}" min="0" max="${s.maxMarks}" step="0.5" value="${val}"
+        <input type="range" class="score-slider" id="slider-${s.id}" min="0" max="${sMax}" step="0.5" value="${val}"
           oninput="syncNum(${s.id})" style="background:linear-gradient(90deg,${color} ${pct}%,var(--bd2) ${pct}%)!important" ${canEdit?'':'disabled'}/>
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--tmuted);font-family:var(--fm);margin-top:3px">
-          <span>0</span><span style="color:${color};font-weight:700">${val}</span><span>${s.maxMarks}</span>
+          <span>0</span><span style="color:${color};font-weight:700">${val}</span><span style="font-weight:700;color:var(--text)">${sMax}</span>
         </div>
       </div>
     </div>`;
@@ -4140,7 +4162,6 @@ function loadScorePanel(id) {
   document.getElementById('judge-comment').value = existingComment;
   document.getElementById('judge-comment').disabled = !canEdit;
   
-  const saveWrap = document.getElementById('save-score-wrap');
   saveWrap.style.display = 'flex';
   
   if (!canEdit) {
@@ -4153,17 +4174,17 @@ function loadScorePanel(id) {
       <button class="btn btn-ghost btn-sm" onclick="clearScorePanel()">Cancel</button>`;
   }
 
-  document.getElementById('score-total-preview').style.display = 'block';
+  scoreTotalPreview.style.display = 'block';
   updateLiveTotal();
 }
 
 function syncSlider(id, max) {
   const num = document.getElementById('num-'+id);
   const slider = document.getElementById('slider-'+id);
-  let val = parseFloat(num.value)||0;
-  if(val>max) { val=max; num.value=val; }
-  if(val<0) { val=0; num.value=val; }
-  slider.value = val;
+  let val = parseFloat(num?.value) || 0;
+  if (val > max) { val = max; if (num) num.value = val; }
+  if (val < 0) { val = 0; if (num) num.value = val; }
+  if (slider) slider.value = val;
   updateSliderColor(id, max, val);
   updateLiveTotal();
 }
@@ -4171,39 +4192,49 @@ function syncSlider(id, max) {
 function syncNum(id) {
   const num = document.getElementById('num-'+id);
   const slider = document.getElementById('slider-'+id);
-  const val = parseFloat(slider.value)||0;
-  num.value = val;
-  const max = parseFloat(slider.max);
+  const val = parseFloat(slider?.value) || 0;
+  if (num) num.value = val;
+  const max = parseFloat(slider?.max) || 10;
   updateSliderColor(id, max, val);
   updateLiveTotal();
 }
 
 function clampScore(id, max) {
   const num = document.getElementById('num-'+id);
-  let val = parseFloat(num.value)||0;
-  if(val>max) val=max;
-  if(val<0) val=0;
-  num.value = val;
+  let val = parseFloat(num?.value) || 0;
+  if (val > max) val = max;
+  if (val < 0) val = 0;
+  if (num) num.value = val;
   syncSlider(id, max);
 }
 
 function updateSliderColor(id, max, val) {
-  const pct = Math.round(val/max*100);
-  const color = pct>=70?'var(--green2)':pct>=50?'var(--gold2)':'var(--red2)';
+  const sMax = Number(max) || 10;
+  const pct = Math.round(val / sMax * 100);
+  const color = pct >= 70 ? 'var(--green2)' : pct >= 50 ? 'var(--gold2)' : 'var(--red2)';
   const slider = document.getElementById('slider-'+id);
-  if(slider) slider.style.background = `linear-gradient(90deg,${color} ${pct}%,var(--bd2) ${pct}%)`;
+  if (slider) slider.style.background = `linear-gradient(90deg,${color} ${pct}%,var(--bd2) ${pct}%)`;
   // Update card highlight
   const card = document.getElementById('subj-card-'+id);
-  if(card) card.classList.toggle('active-subj', val>0);
+  if (card) card.classList.toggle('active-subj', val > 0);
   // Update displayed val
   const labels = slider ? slider.nextElementSibling?.children : null;
-  if(labels && labels[1]) { labels[1].textContent = val; labels[1].style.color = color; }
+  if (labels && labels[1]) { labels[1].textContent = val; labels[1].style.color = color; }
 }
 
 function updateLiveTotal() {
   let total = 0;
-  SUBJECTS.forEach(s => { total += parseFloat(document.getElementById('num-'+s.id)?.value||0); });
-  document.getElementById('live-total').textContent = total;
+  let maxTotal = 0;
+  SUBJECTS.forEach(s => {
+    const sMax = Number(s.maxMarks) || 10;
+    maxTotal += sMax;
+    total += parseFloat(document.getElementById('num-'+s.id)?.value || 0);
+  });
+  total = Math.round(total * 10) / 10;
+  const liveTotalEl = document.getElementById('live-total');
+  if (liveTotalEl) liveTotalEl.textContent = total;
+  const liveMaxEl = document.getElementById('live-total-max');
+  if (liveMaxEl) liveMaxEl.textContent = maxTotal;
 }
 
 function updateStats() {
@@ -4259,7 +4290,10 @@ async function saveScores() {
     if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
 
     SUBJECTS.forEach(s => {
-      const val = parseFloat(document.getElementById('num-'+s.id)?.value||0);
+      const sMax = Number(s.maxMarks) || 10;
+      let val = parseFloat(document.getElementById('num-'+s.id)?.value || 0);
+      if (isNaN(val) || val < 0) val = 0;
+      if (val > sMax) val = sMax;
       p.scores[JUDGE.id][s.id] = val;
       p.roundScores[p.round][JUDGE.id][s.id] = val;
     });
@@ -4746,23 +4780,27 @@ function openEditModal(id) {
   
   const wrap = document.getElementById('modal-score-inputs');
   wrap.innerHTML = SUBJECTS.map(s => {
-    const val = myScores[s.id] || 0;
-    const pct = Math.round(val/s.maxMarks*100);
-    const color = pct>=70?'var(--green2)':pct>=50?'var(--gold2)':'var(--red2)';
+    const sMax = Number(s.maxMarks) || 10;
+    const val = myScores[s.id] !== undefined ? Number(myScores[s.id]) : 0;
+    const pct = Math.round(val / sMax * 100);
+    const color = pct >= 70 ? 'var(--green2)' : pct >= 50 ? 'var(--gold2)' : 'var(--red2)';
     return `<div class="subj-score-card" id="modal-subj-card-${s.id}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div>
-          <div style="font-family:var(--fh);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px">${s.name}</div>
-          <div style="font-size:10px;color:var(--tmuted)">${s.desc}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:var(--fh);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px">${s.name}</span>
+            <span class="badge" style="background:rgba(37,99,235,0.08);color:var(--blue2);border:1px solid rgba(37,99,235,0.25);font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px">Limit: ${sMax} pts</span>
+          </div>
+          <div style="font-size:10px;color:var(--tmuted);margin-top:2px">${s.desc}</div>
         </div>
-        <input type="number" class="score-num-input" id="modal-num-${s.id}" value="${val}" min="0" max="${s.maxMarks}" step="0.5"
-          oninput="modalSyncSlider(${s.id},${s.maxMarks})" onchange="modalClampScore(${s.id},${s.maxMarks})"/>
+        <input type="number" class="score-num-input" id="modal-num-${s.id}" value="${val}" min="0" max="${sMax}" step="0.5"
+          oninput="modalSyncSlider(${s.id},${sMax})" onchange="modalClampScore(${s.id},${sMax})"/>
       </div>
       <div class="slider-wrap">
-        <input type="range" class="score-slider" id="modal-slider-${s.id}" min="0" max="${s.maxMarks}" step="0.5" value="${val}"
+        <input type="range" class="score-slider" id="modal-slider-${s.id}" min="0" max="${sMax}" step="0.5" value="${val}"
           oninput="modalSyncNum(${s.id})" style="background:linear-gradient(90deg,${color} ${pct}%,var(--bd2) ${pct}%)!important"/>
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--tmuted);font-family:var(--fm);margin-top:3px">
-          <span>0</span><span style="color:${color};font-weight:700" id="modal-lbl-${s.id}">${val}</span><span>${s.maxMarks}</span>
+          <span>0</span><span style="color:${color};font-weight:700" id="modal-lbl-${s.id}">${val}</span><span style="font-weight:700;color:var(--text)">${sMax}</span>
         </div>
       </div>
     </div>`;
@@ -4856,7 +4894,10 @@ async function saveModalScores() {
     if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
 
     SUBJECTS.forEach(s => {
-      const val = parseFloat(document.getElementById('modal-num-'+s.id)?.value||0);
+      const sMax = Number(s.maxMarks) || 10;
+      let val = parseFloat(document.getElementById('modal-num-'+s.id)?.value || 0);
+      if (isNaN(val) || val < 0) val = 0;
+      if (val > sMax) val = sMax;
       p.scores[JUDGE.id][s.id] = val;
       p.roundScores[p.round][JUDGE.id][s.id] = val;
     });
@@ -5418,7 +5459,27 @@ syncEngine.subscribe((state) => {
   
   // Prioritize event-specific configuration
   const activeEv = activeEvId ? (state.events || []).find(e => String(e.id) === String(activeEvId)) : null;
-  SUBJECTS = (activeEvId && activeEv && activeEv.subjects && activeEv.subjects.length > 0) ? activeEv.subjects : (activeEvId ? (state.subjects || []).filter(sub => sub.eventId && String(sub.eventId) === String(activeEvId)) : []);
+
+  let rawSubs = [];
+  if (activeEv && activeEv.subjects && activeEv.subjects.length > 0) {
+    rawSubs = activeEv.subjects;
+  } else if (activeEv && activeEv.scoring_subjects && activeEv.scoring_subjects.length > 0) {
+    rawSubs = typeof activeEv.scoring_subjects === 'string' ? JSON.parse(activeEv.scoring_subjects) : activeEv.scoring_subjects;
+  } else if (activeEvId && state.subjects && state.subjects.length > 0) {
+    rawSubs = state.subjects.filter(sub => sub.eventId && String(sub.eventId) === String(activeEvId));
+    if (rawSubs.length === 0) rawSubs = state.subjects.filter(sub => !sub.eventId);
+  } else if (state.subjects && state.subjects.length > 0) {
+    rawSubs = state.subjects;
+  }
+
+  SUBJECTS = (rawSubs || []).map(s => ({
+    id: Number(s.id) || s.id,
+    name: s.name || s.subject_name || 'Subject',
+    maxMarks: Number(s.maxMarks || s.max_marks || s.max_score) || 10,
+    desc: s.desc || s.description || '',
+    eventId: s.eventId || s.event_id || activeEvId
+  }));
+
   CATEGORIES = (activeEvId && activeEv && activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (activeEvId ? (state.categories || []).filter(c => c.eventId && String(c.eventId) === String(activeEvId)) : []);
   
     if (activeEv) {

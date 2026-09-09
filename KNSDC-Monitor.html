@@ -5283,7 +5283,22 @@ function hydrate() {
   const eventDidChange = String(activeEventId) !== String(lastHydratedEventId);
 
   if (activeEventId) {
-    subjects = (activeEv && activeEv.subjects && activeEv.subjects.length > 0) ? activeEv.subjects : (s.subjects || []).filter(sub => sub.eventId && String(sub.eventId) === String(activeEventId));
+    let rawSubs = [];
+    if (activeEv && activeEv.subjects && activeEv.subjects.length > 0) {
+      rawSubs = activeEv.subjects;
+    } else if (activeEv && activeEv.scoring_subjects && activeEv.scoring_subjects.length > 0) {
+      rawSubs = typeof activeEv.scoring_subjects === 'string' ? JSON.parse(activeEv.scoring_subjects) : activeEv.scoring_subjects;
+    } else if (s.subjects && s.subjects.length > 0) {
+      rawSubs = s.subjects.filter(sub => sub.eventId && String(sub.eventId) === String(activeEventId));
+      if (rawSubs.length === 0) rawSubs = s.subjects.filter(sub => !sub.eventId);
+    }
+    subjects = (rawSubs || []).map(sub => ({
+      id: Number(sub.id) || sub.id,
+      name: sub.name || sub.subject_name || 'Subject',
+      maxMarks: Number(sub.maxMarks || sub.max_marks || sub.max_score) || 10,
+      desc: sub.desc || sub.description || '',
+      eventId: sub.eventId || sub.event_id || activeEventId
+    }));
     categories = (activeEv && activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (s.categories || []).filter(c => c.eventId && String(c.eventId) === String(activeEventId));
     venues = (activeEv && activeEv.venues && activeEv.venues.length > 0) ? activeEv.venues : (s.venues || []).filter(v => v.eventId && String(v.eventId) === String(activeEventId));
     // Only reload formFields from state if the event changed OR formFields is currently empty
@@ -5417,6 +5432,9 @@ function syncAll() {
 
     const otherVens = (s.venues || []).filter(v => String(v.eventId) !== String(activeEventId) && v.eventId);
     newState.venues = [...otherVens, ...venues];
+
+    const otherSubs = (s.subjects || []).filter(sub => String(sub.eventId) !== String(activeEventId) && sub.eventId);
+    newState.subjects = [...otherSubs, ...subjects];
     
     if (!newState.eventSwitches) newState.eventSwitches = {};
     if (activeEventId) newState.eventSwitches[activeEventId] = { ...switchStates };
@@ -12710,15 +12728,18 @@ function renderSubjects(){
   if(!el) return;
   const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId) || !s.eventId);
   el.innerHTML = filteredSubjs.map(s=>`
-    <div class="card glass-card card-hover" style="display:flex;align-items:center;gap:6px;padding:14px;border-radius:16px;margin-bottom:10px;background:#fff">
-      <div style="width:36px;height:36px;border-radius:10px;background:var(--amber2)20;color:var(--amber2);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px">${s.name[0]}</div>
+    <div class="card glass-card card-hover" style="display:flex;align-items:center;gap:10px;padding:14px;border-radius:16px;margin-bottom:10px;background:#fff">
+      <div style="width:38px;height:38px;border-radius:10px;background:rgba(217,119,6,0.1);color:var(--amber2);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px">${(s.name || '?')[0]}</div>
       <div style="flex:1">
-        <div style="font-weight:800;font-size:14px;color:var(--text)">${s.name}</div>
-        <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Max Marks: ${s.maxMarks}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:800;font-size:14px;color:var(--text)">${s.name}</span>
+          <span class="badge" style="background:rgba(37,99,235,0.08);color:var(--blue2,#2563eb);border:1px solid rgba(37,99,235,0.25);font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px">Limit: ${s.maxMarks || 10} pts</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.desc || 'No description provided'}</div>
       </div>
       <div style="display:flex;gap:4px">
-        <button class="btn btn-ghost btn-xs" onclick="openSubjectModal(${s.id})" style="padding:6px;min-width:32px">✏️</button>
-        <button class="btn-delete-fancy" onclick="deleteSubject(${s.id})" title="Delete">
+        <button class="btn btn-ghost btn-xs" onclick="openSubjectModal(${s.id})" style="padding:6px;min-width:32px" title="Edit Subject">✏️</button>
+        <button class="btn-delete-fancy" onclick="deleteSubject(${s.id})" title="Delete Subject">
           <svg viewBox="0 0 448 512" class="svgIcon"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
         </button>
       </div>
@@ -12735,26 +12756,27 @@ function renderSubjects(){
 }
 
 function renderScoreSheetPreview(){
-  const total = subjects.reduce((a,s)=>a+s.maxMarks,0);
+  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId) || !s.eventId);
+  const total = filteredSubjs.reduce((a,s)=>a+(Number(s.maxMarks)||10),0);
   const container = document.getElementById('score-sheet-preview');
   if(!container) return;
   container.innerHTML = `
     <div style="background:#fff;border:1px solid var(--border);border-radius:20px;padding:24px;box-shadow:0 10px 25px rgba(0,0,0,0.03)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-         <div style="font-size:8px;color:var(--text-muted);font-weight:800;text-transform:uppercase;letter-spacing:2px">KNSDC Live Scoreboard</div>
-         <span class="badge b-blue" style="font-size:9px">PREVIEW MODE</span>
+         <div style="font-size:10px;color:var(--text-muted);font-weight:800;text-transform:uppercase;letter-spacing:1.5px">Judge Scoreboard Preview</div>
+         <span class="badge b-blue" style="font-size:9px">LIVE LIMITS</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:14px">
-        ${subjects.map(s=>`
+        ${filteredSubjs.length ? filteredSubjs.map(s=>`
           <div>
             <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px">
               <span style="font-weight:700">${s.name}</span>
-              <span style="color:var(--text-muted)">0 / ${s.maxMarks}</span>
+              <span style="color:var(--text-muted);font-family:var(--fm)">0 / <strong style="color:var(--amber2)">${s.maxMarks || 10}</strong></span>
             </div>
             <div class="score-bar" style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
-              <div class="score-bar-fill" style="width:100%;background:linear-gradient(90deg, var(--amber2), var(--amber3));opacity:0.1"></div>
+              <div class="score-bar-fill" style="width:100%;background:linear-gradient(90deg, var(--amber2), var(--amber3));opacity:0.15"></div>
             </div>
-          </div>`).join('')}
+          </div>`).join('') : '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:15px 0">No subjects chosen yet. Add from Quick Pick or click + Custom Subject.</div>'}
       </div>
       <hr style="margin:20px 0;opacity:0.5"/>
       <div style="display:flex;justify-content:space-between;align-items:baseline">
@@ -12788,99 +12810,126 @@ const SUBJECT_TEMPLATES = [
 function renderTemplateChips() {
   const el = document.getElementById('template-chips');
   if (!el) return;
-  const activeNames = subjects.map(s => s.name.toLowerCase());
+  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId) || !s.eventId);
+  const activeNames = filteredSubjs.map(s => s.name.toLowerCase().trim());
   el.innerHTML = SUBJECT_TEMPLATES.map(t => {
-    const isAdded = activeNames.includes(t.name.toLowerCase());
+    const isAdded = activeNames.includes(t.name.toLowerCase().trim());
     return `<button class="btn btn-sm" onclick="${isAdded ? '' : "addFromTemplate('" + t.name.replace(/'/g, "\\'") + "')"}"
       style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;
       border:1.5px solid ${isAdded ? 'var(--green2,#10b981)' : 'var(--amber2)'};
       background:${isAdded ? 'rgba(16,185,129,0.08)' : 'rgba(217,119,6,0.06)'};
       color:${isAdded ? 'var(--green2,#10b981)' : 'var(--amber2)'};
       cursor:${isAdded ? 'default' : 'pointer'};
-      opacity:${isAdded ? '0.7' : '1'};
+      opacity:${isAdded ? '0.75' : '1'};
       transition:all 0.2s"
-      title="${t.desc}">
-      ${isAdded ? '✅' : '＋'} ${t.name}
+      title="${t.desc} (Limit: ${t.maxMarks} pts)">
+      ${isAdded ? '✅' : '＋'} ${t.name} <span style="font-size:10px;opacity:0.7">(${t.maxMarks})</span>
     </button>`;
   }).join('');
 }
 
 async function addFromTemplate(name) {
-  const template = SUBJECT_TEMPLATES.find(t => t.name === name);
+  const template = SUBJECT_TEMPLATES.find(t => t.name.toLowerCase().trim() === name.toLowerCase().trim());
   if (!template) return;
-  const obj = { id: Date.now(), name: template.name, maxMarks: template.maxMarks, desc: template.desc, eventId: activeEventId };
-  const success = await syncEngine.createSubject(obj);
-  if (!success) { toast('❌ Error adding subject'); return; }
+  const obj = {
+    id: Date.now(),
+    name: template.name,
+    maxMarks: Number(template.maxMarks) || 10,
+    desc: template.desc || '',
+    eventId: activeEventId ? (Number(activeEventId) || activeEventId) : null
+  };
+  // Push immediately to local state so UI updates with zero delay
+  if (!subjects.find(s => s.id === obj.id)) subjects.push(obj);
+  syncAll();
   renderSubjects();
   toast('✅ ' + name + ' added!');
-  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
+
+  const success = await syncEngine.createSubject(obj);
+  if (!success) {
+    console.warn('[Monitor] Background sync to Supabase failed for subject', obj);
+  }
 }
 
 async function clearAllSubjects() {
-  if (!confirm('Are you sure you want to remove ALL scoring subjects? This cannot be undone.')) return;
+  if (!confirm('Are you sure you want to remove ALL scoring subjects for this event? This cannot be undone.')) return;
   const allSubjs = [...subjects];
+  subjects = [];
+  syncAll();
+  renderSubjects();
+  toast('All subjects cleared');
+
   for (const s of allSubjs) {
     await syncEngine.deleteSubject(s.id);
   }
-  renderSubjects();
-  toast('All subjects cleared');
-  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
 }
 
 function openSubjectModal(id=null){
-  editingSubjId=id;
-  document.getElementById('subj-modal-title').textContent=id?'Edit Subject':'Add Subject';
-  if(id){const s=subjects.find(x=>x.id===id);
-    document.getElementById('sm-name').value=s.name;
-    document.getElementById('sm-max').value=s.maxMarks;
-    document.getElementById('sm-desc').value=s.desc;
-  } else{['sm-name','sm-max','sm-desc'].forEach(i=>document.getElementById(i).value='');}
+  editingSubjId = id;
+  document.getElementById('subj-modal-title').textContent = id ? 'Edit Subject' : 'Add Custom Subject';
+  if (id) {
+    const s = subjects.find(x => String(x.id) === String(id));
+    if (s) {
+      document.getElementById('sm-name').value = s.name || '';
+      document.getElementById('sm-max').value = s.maxMarks || 10;
+      document.getElementById('sm-desc').value = s.desc || '';
+    }
+  } else {
+    document.getElementById('sm-name').value = '';
+    document.getElementById('sm-max').value = '10';
+    document.getElementById('sm-desc').value = '';
+  }
   openM('subject-modal');
 }
 
 let isSavingSubject = false;
 async function saveSubject(){
   if (isSavingSubject) return;
-  const name=document.getElementById('sm-name').value.trim();
-  const max=parseInt(document.getElementById('sm-max').value);
-  if(!name||!max){toast('Name and max marks required!');return;}
+  const name = document.getElementById('sm-name').value.trim();
+  const max = parseInt(document.getElementById('sm-max').value);
+  if (!name || isNaN(max) || max <= 0) {
+    toast('⚠️ Valid name and maximum marks (greater than 0) are required!');
+    return;
+  }
   
   isSavingSubject = true;
   const btn = document.querySelector('#subject-modal .btn-amber');
   if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
 
   try {
-    const obj={name,maxMarks:max,desc:document.getElementById('sm-desc').value,eventId:activeEventId};
-    if(editingSubjId){
-      const success = await syncEngine.updateSubject(editingSubjId, obj);
-      if(!success){toast('❌ Error updating subject');return;}
-      const existing = subjects.find(s=>s.id===editingSubjId);
-      if(existing) Object.assign(existing, obj);
+    const desc = (document.getElementById('sm-desc').value || '').trim();
+    const evId = activeEventId ? (Number(activeEventId) || activeEventId) : null;
+    const obj = { name, maxMarks: max, desc, eventId: evId };
+
+    if (editingSubjId) {
+      const existing = subjects.find(s => String(s.id) === String(editingSubjId));
+      if (existing) Object.assign(existing, obj);
+      syncAll();
+      closeM('subject-modal');
+      renderSubjects();
+      toast('✅ Subject updated!');
+      await syncEngine.updateSubject(editingSubjId, obj);
     } else {
-      obj.id=Date.now();
-      const success = await syncEngine.createSubject(obj);
-      if(!success){toast('❌ Error creating subject');return;}
-      if(!subjects.find(s=>s.id===obj.id)) subjects.push(obj);
+      obj.id = Date.now();
+      if (!subjects.find(s => String(s.id) === String(obj.id))) subjects.push(obj);
+      syncAll();
+      closeM('subject-modal');
+      renderSubjects();
+      toast('✅ Custom subject added: ' + name + ' (Limit: ' + max + ' pts)');
+      await syncEngine.createSubject(obj);
     }
-    syncAll();
-    closeM('subject-modal');
-    renderSubjects();
-    toast('Subject saved!');
-    broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
   } finally {
     isSavingSubject = false;
     if (btn) { btn.disabled = false; btn.innerText = 'Save'; }
   }
 }
+
 async function deleteSubject(id){
-  if(!confirm('Delete this subject?')) return;
-  const success = await syncEngine.deleteSubject(id);
-  if(!success){toast('❌ Error deleting subject');return;}
-  subjects = subjects.filter(s => s.id !== id);
+  if (!confirm('Delete this subject?')) return;
+  subjects = subjects.filter(s => String(s.id) !== String(id));
   syncAll();
   renderSubjects();
   toast('Subject deleted');
-  broadcast('DATA_SYNC', { categories, subjects: syncEngine.getData().subjects });
+  await syncEngine.deleteSubject(id);
 }
 
 
