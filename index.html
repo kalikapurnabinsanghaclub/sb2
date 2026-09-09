@@ -5444,38 +5444,41 @@
               </div>
 
 
-              <!-- ★ Live Broadcast Section ★ -->
-              ${(ev.switchStates?.liveStream && ev.switchStates?.liveStreamUrl) ? `
-              <div style="margin-top: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 24px 32px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
-                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
-                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
-                  <div style="display: flex; align-items: center; gap: 16px;">
-                    <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: pulse 2s infinite;">🔴</div>
-                    <div style="position:relative; z-index:1;">
-                      <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.3rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
-                      <p style="color: rgba(255,255,255,0.9); font-size: 0.9rem; margin: 4px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is on!</p>
+              <!-- ★ Live Broadcast Section (Direct Link) ★ -->
+              ${(() => {
+                if (!ev.switchStates?.liveStream || !ev.switchStates?.liveStreamUrl) return '';
+                let rawLink = (ev.switchStates.liveStreamUrl || '').trim();
+                let directLink = rawLink;
+                if (directLink.toLowerCase().startsWith('<iframe')) {
+                  const m = directLink.match(/src=["']([^"']+)["']/i);
+                  if (m && m[1]) directLink = m[1];
+                }
+                const ytMatch = directLink.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+                if (ytMatch && ytMatch[1] && directLink.includes('/embed/')) {
+                  directLink = `https://www.youtube.com/watch?v=${ytMatch[1]}`;
+                }
+                return `
+                  <div style="margin-top: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 22px 28px; border: 2px solid rgba(255,255,255,0.25); position: relative; overflow: hidden; box-shadow: 0 8px 30px rgba(239, 68, 68, 0.35);">
+                    <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; position: relative; z-index: 1;">
+                      <div style="display: flex; align-items: center; gap: 16px;">
+                        <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.22); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.25); animation: pulse 2s infinite;">🔴</div>
+                        <div>
+                          <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.3rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
+                          <p style="color: rgba(255,255,255,0.92); font-size: 0.9rem; margin: 3px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is active!</p>
+                        </div>
+                      </div>
+                      <a href="${directLink.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 10px; background: #ffffff; color: #dc2626; padding: 13px 26px; border-radius: 12px; font-weight: 900; font-size: 0.95rem; text-decoration: none; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px) scale(1.02)';" onmouseout="this.style.transform='';">
+                        <span>🔴 Watch Live Stream</span>
+                        <span style="font-size: 1.1rem;">↗</span>
+                      </a>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 0.8rem; color: rgba(255,255,255,0.85); position: relative; z-index: 1; word-break: break-all;">
+                      🔗 Direct link: <a href="${directLink.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" style="color: #fff; text-decoration: underline; font-weight: 700;">${directLink}</a>
                     </div>
                   </div>
-                </div>
-                ${(() => {
-                  let input = ev.switchStates?.liveStreamUrl || '';
-                  if(!input) return '';
-                  let embedUrl = input;
-                  if (input.toLowerCase().startsWith('<iframe')) {
-                     return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">${input.replace('<iframe', '<iframe style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;"')}</div>`;
-                  }
-                  const ytMatch = input.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
-                  if (ytMatch && ytMatch[1]) {
-                    embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1`;
-                  } else if (input.includes('facebook.com') && input.includes('/videos/')) {
-                    embedUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(input)}&show_text=false&width=auto`;
-                  }
-                  return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">\n  <iframe src="${embedUrl}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>\n</div>\n<div style="margin-top: 12px; text-align: center;"><a href="${input.replace(/'/g, '&apos;').replace(/\"/g, '&quot;')}" target="_blank" style="color: rgba(255,255,255,0.95); text-decoration: underline; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.5px; transition: color 0.2s;" onmouseover="this.style.color=\'#fff\'" onmouseout="this.style.color=\'rgba(255,255,255,0.95)\'">⚠️ Not playing? Click here to watch directly</a></div>`;
-                })()}
-
-                </div>
-              </div>
-              ` : ''}
+                `;
+              })()}
 
               <!-- Public Rating Submission Section moved to Event Page View -->
               <!-- Rating Stats Mini -->
@@ -5596,37 +5599,40 @@
 
             ratingBox.style.display = 'block';
             // Build the live stream HTML if it's on
-            const liveStreamHtml = (evObj?.switchStates?.liveStream && evObj?.switchStates?.liveStreamUrl) ? `
-              <div style="margin-bottom: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 24px 32px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
-                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
-                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
-                  <div style="display: flex; align-items: center; gap: 16px;">
-                    <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: pulse 2s infinite;">🔴</div>
-                    <div style="position:relative; z-index:1;">
-                      <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.3rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
-                      <p style="color: rgba(255,255,255,0.9); font-size: 0.9rem; margin: 4px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is on!</p>
+            const liveStreamHtml = (() => {
+              if (!evObj?.switchStates?.liveStream || !evObj?.switchStates?.liveStreamUrl) return '';
+              let rawLink = (evObj.switchStates.liveStreamUrl || '').trim();
+              let directLink = rawLink;
+              if (directLink.toLowerCase().startsWith('<iframe')) {
+                const m = directLink.match(/src=["']([^"']+)["']/i);
+                if (m && m[1]) directLink = m[1];
+              }
+              const ytMatch = directLink.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+              if (ytMatch && ytMatch[1] && directLink.includes('/embed/')) {
+                directLink = `https://www.youtube.com/watch?v=${ytMatch[1]}`;
+              }
+              return `
+                <div style="margin-bottom: 24px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 22px 28px; border: 2px solid rgba(255,255,255,0.25); position: relative; overflow: hidden; box-shadow: 0 8px 30px rgba(239, 68, 68, 0.35);">
+                  <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
+                  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; position: relative; z-index: 1;">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                      <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.22); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.25); animation: pulse 2s infinite;">🔴</div>
+                      <div>
+                        <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.3rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
+                        <p style="color: rgba(255,255,255,0.92); font-size: 0.9rem; margin: 3px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is active!</p>
+                      </div>
                     </div>
+                    <a href="${directLink.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 10px; background: #ffffff; color: #dc2626; padding: 13px 26px; border-radius: 12px; font-weight: 900; font-size: 0.95rem; text-decoration: none; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px) scale(1.02)';" onmouseout="this.style.transform='';">
+                      <span>🔴 Watch Live Stream</span>
+                      <span style="font-size: 1.1rem;">↗</span>
+                    </a>
+                  </div>
+                  <div style="margin-top: 10px; font-size: 0.8rem; color: rgba(255,255,255,0.85); position: relative; z-index: 1; word-break: break-all;">
+                    🔗 Direct link: <a href="${directLink.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" style="color: #fff; text-decoration: underline; font-weight: 700;">${directLink}</a>
                   </div>
                 </div>
-                ${(() => {
-                  let input = evObj?.switchStates?.liveStreamUrl || '';
-                  if(!input) return '';
-                  let embedUrl = input;
-                  if (input.toLowerCase().startsWith('<iframe')) {
-                     return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">${input.replace('<iframe', '<iframe style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;"')}</div>`;
-                  }
-                  const ytMatch = input.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
-                  if (ytMatch && ytMatch[1]) {
-                    embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1`;
-                  } else if (input.includes('facebook.com') && input.includes('/videos/')) {
-                    embedUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(input)}&show_text=false&width=auto`;
-                  }
-                  return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">\n  <iframe src="${embedUrl}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>\n</div>\n<div style="margin-top: 12px; text-align: center;"><a href="${input.replace(/'/g, '&apos;').replace(/\"/g, '&quot;')}" target="_blank" style="color: rgba(255,255,255,0.95); text-decoration: underline; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.5px; transition: color 0.2s;" onmouseover="this.style.color=\'#fff\'" onmouseout="this.style.color=\'rgba(255,255,255,0.95)\'">⚠️ Not playing? Click here to watch directly</a></div>`;
-                })()}
-
-                </div>
-              </div>
-            ` : '';
+              `;
+            })();
 
             ratingBox.innerHTML = `
               ${liveStreamHtml}
@@ -7910,37 +7916,40 @@
 
 
             <!-- ★ Live Broadcast Section (Inside renderLiveUI) ★ -->
-            ${(ev.switchStates?.liveStream && ev.switchStates?.liveStreamUrl) ? `
-              <div style="margin-bottom: 40px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 24px; padding: 30px 40px; border: 2px solid rgba(255,255,255,0.2); position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);">
-                <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
-                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
-                  <div style="display: flex; align-items: center; gap: 20px;">
-                    <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: pulse 2s infinite;">🔴</div>
-                    <div style="position:relative; z-index:1; text-align: left;">
-                      <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.4rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
-                      <p style="color: rgba(255,255,255,0.9); font-size: 1rem; margin: 4px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is on!</p>
+            ${(() => {
+              if (!ev.switchStates?.liveStream || !ev.switchStates?.liveStreamUrl) return '';
+              let rawLink = (ev.switchStates.liveStreamUrl || '').trim();
+              let directLink = rawLink;
+              if (directLink.toLowerCase().startsWith('<iframe')) {
+                const m = directLink.match(/src=["']([^"']+)["']/i);
+                if (m && m[1]) directLink = m[1];
+              }
+              const ytMatch = directLink.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+              if (ytMatch && ytMatch[1] && directLink.includes('/embed/')) {
+                directLink = `https://www.youtube.com/watch?v=${ytMatch[1]}`;
+              }
+              return `
+                <div style="margin-bottom: 40px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border-radius: 20px; padding: 22px 28px; border: 2px solid rgba(255,255,255,0.25); position: relative; overflow: hidden; box-shadow: 0 8px 30px rgba(239, 68, 68, 0.35);">
+                  <div style="position:absolute; top:-40px; right:-40px; font-size:120px; opacity:0.1; pointer-events:none;">🎥</div>
+                  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; position: relative; z-index: 1;">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                      <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.22); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.25); animation: pulse 2s infinite;">🔴</div>
+                      <div>
+                        <h4 style="color: white; font-family: 'Cinzel Decorative', cursive; font-size: 1.3rem; margin: 0; letter-spacing: 1.5px; text-transform: uppercase;">Live Broadcast</h4>
+                        <p style="color: rgba(255,255,255,0.92); font-size: 0.9rem; margin: 3px 0 0; font-weight: 600;">Stream to YouTube / Facebook Live is active!</p>
+                      </div>
                     </div>
+                    <a href="${directLink.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 10px; background: #ffffff; color: #dc2626; padding: 13px 26px; border-radius: 12px; font-weight: 900; font-size: 0.95rem; text-decoration: none; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px) scale(1.02)';" onmouseout="this.style.transform='';">
+                      <span>🔴 Watch Live Stream</span>
+                      <span style="font-size: 1.1rem;">↗</span>
+                    </a>
+                  </div>
+                  <div style="margin-top: 10px; font-size: 0.8rem; color: rgba(255,255,255,0.85); position: relative; z-index: 1; word-break: break-all;">
+                    🔗 Direct link: <a href="${directLink.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer" style="color: #fff; text-decoration: underline; font-weight: 700;">${directLink}</a>
                   </div>
                 </div>
-                ${(() => {
-                  let input = ev.switchStates?.liveStreamUrl || '';
-                  if(!input) return '';
-                  let embedUrl = input;
-                  if (input.toLowerCase().startsWith('<iframe')) {
-                     return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">${input.replace('<iframe', '<iframe style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;"')}</div>`;
-                  }
-                  const ytMatch = input.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
-                  if (ytMatch && ytMatch[1]) {
-                    embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&mute=1`;
-                  } else if (input.includes('facebook.com') && input.includes('/videos/')) {
-                    embedUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(input)}&show_text=false&width=auto`;
-                  }
-                  return `\n<div style="margin-top: 20px; position:relative; width:100%; padding-bottom:56.25%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.3); background: #000;">\n  <iframe src="${embedUrl}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>\n</div>\n<div style="margin-top: 12px; text-align: center;"><a href="${input.replace(/'/g, '&apos;').replace(/\"/g, '&quot;')}" target="_blank" style="color: rgba(255,255,255,0.95); text-decoration: underline; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.5px; transition: color 0.2s;" onmouseover="this.style.color=\'#fff\'" onmouseout="this.style.color=\'rgba(255,255,255,0.95)\'">⚠️ Not playing? Click here to watch directly</a></div>`;
-                })()}
-
-                </div>
-              </div>
-            ` : ''}
+              `;
+            })()}
 
             <!-- ★ Public Rating Slider (Inside renderLiveUI) ★ -->
             <div id="liveRatingSection" style="margin-bottom: 40px;">
