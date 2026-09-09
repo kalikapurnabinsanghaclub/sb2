@@ -3826,7 +3826,7 @@
 
 <!-- EDIT REGISTRATION MODAL -->
 <div class="modal-overlay" id="edit-reg-modal" style="display:none" onclick="closeOnBg(event,'edit-reg-modal')">
-  <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal" style="max-width:680px; width:92%; max-height:88vh;" onclick="event.stopPropagation()">
     <div class="modal-head"><div class="modal-title">Edit Registration</div><button class="btn btn-icon btn-ghost" onclick="closeM('edit-reg-modal')">✕</button></div>
     <div class="modal-body">
       <input type="hidden" id="er-id"/>
@@ -7074,10 +7074,10 @@ function roundBadge(r){ return{audition:'b-amber',qualified:'b-cyan',semifinal:'
 
 async function handleFileEdit(input, hiddenId) {
   const file = input.files[0];
-  if(!file) return;
+  if (!file) return;
   
-  if (file.size > 20 * 1024 * 1024) {
-    alert("File is too large! Please upload a file smaller than 20MB.");
+  if (file.size > 50 * 1024 * 1024) {
+    toast("⚠️ File is too large! Please upload a file smaller than 50MB.");
     input.value = "";
     return;
   }
@@ -7085,101 +7085,304 @@ async function handleFileEdit(input, hiddenId) {
   input.disabled = true;
   const originalBg = input.style.background;
   input.style.background = 'rgba(255,210,63,0.2)'; // Amber tint for loading
+  toast("Uploading file... ⏳");
   
-  const url = await syncEngine.uploadFile(file);
+  let url = null;
+  try {
+    if (window.syncEngine && typeof window.syncEngine.uploadFile === 'function') {
+      url = await window.syncEngine.uploadFile(file, 'participants/');
+    }
+    if (!url) {
+      const fd = new FormData();
+      fd.append('pathPrefix', 'participants');
+      fd.append('file', file);
+      const r2Res = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', {
+        method: 'POST',
+        body: fd
+      });
+      if (r2Res.ok) {
+        const r2Json = await r2Res.json();
+        url = r2Json.fileUrl || r2Json.imageUrl;
+      }
+    }
+  } catch (err) {
+    console.error('[handleFileEdit] upload error:', err);
+  }
   
   input.disabled = false;
   input.style.background = originalBg;
   
   if (url) {
-     document.getElementById(hiddenId).value = url;
+    const targetEl = document.getElementById(hiddenId);
+    if (targetEl) targetEl.value = url;
+    
+    // Update preview container if present
+    const previewWrap = document.getElementById(hiddenId + '-preview');
+    if (previewWrap) {
+      const isImg = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)/i.test(file.name);
+      const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)/i.test(file.name);
+      if (isImg) {
+        previewWrap.innerHTML = `<img src="${url}" style="max-height:100px; border-radius:8px; align-self:flex-start; object-fit:contain;"/>`;
+      } else if (isAudio) {
+        previewWrap.innerHTML = `<audio controls src="${url}" style="width:100%; height:32px;"></audio>`;
+      } else {
+        previewWrap.innerHTML = `<a href="${url}" target="_blank" style="font-size:12px; color:var(--brand-blue);">🔗 Open Link</a>`;
+      }
+    }
+    toast("✅ File uploaded successfully!");
   } else {
-     alert("Error uploading file. Please try again.");
-     input.value = "";
+    toast("❌ Error uploading file. Please try again.");
+    input.value = "";
   }
 }
 
+window._currentEditingFields = [];
+
 function openEditReg(id){
-  const p = participants.find(x=>x.id===id);
+  const p = participants.find(x => String(x.id) === String(id));
   if (!p) return;
+  const ans = p.formAnswers || {};
+  const ansKeys = Object.keys(ans);
+
   document.getElementById('er-id').value = id;
-  document.getElementById('er-name').value = p.name || '';
-  document.getElementById('er-phone').value = p.phone || '';
-  document.getElementById('er-age').value = p.age !== undefined && p.age !== null ? p.age : '';
-  document.getElementById('er-present').value = String(p.present);
+  document.getElementById('er-name').value = p.name || ans['Full Name'] || ans['Name'] || '';
+  document.getElementById('er-phone').value = p.phone || ans['Phone Number'] || ans['Phone'] || ans['Mobile'] || '';
+  document.getElementById('er-age').value = (p.age !== undefined && p.age !== null && p.age !== 0) ? p.age : (ans['Age'] || '');
+  document.getElementById('er-present').value = String(p.present !== undefined ? p.present : false);
   
-  // Render Dynamic custom fields
-  const ev = EVENTS.find(e => String(e.id) === String(p.eventId));
+  // Resolve event form fields across all stores
+  const state = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : (window.syncEngine ? window.syncEngine.state : {});
+  const pEventId = p.eventId || activeEventId;
+  const ev = (state.events || EVENTS || []).find(e => String(e.id) === String(pEventId)) || (EVENTS || []).find(e => String(e.id) === String(pEventId));
+
   let fFields = [];
-  if (ev && ev.formFields) {
-    if (Array.isArray(ev.formFields)) fFields = ev.formFields;
-    else if (typeof ev.formFields === 'string') {
-      try { fFields = JSON.parse(ev.formFields); } catch(e) {}
+  if (state && state.eventFormFields && state.eventFormFields[pEventId] && state.eventFormFields[pEventId].length > 0) {
+    fFields = JSON.parse(JSON.stringify(state.eventFormFields[pEventId]));
+  } else if (activeEventId && String(pEventId) === String(activeEventId) && typeof formFields !== 'undefined' && formFields && formFields.length > 0) {
+    fFields = JSON.parse(JSON.stringify(formFields));
+  } else if (state && state.eventFormFields && activeEventId && state.eventFormFields[activeEventId] && state.eventFormFields[activeEventId].length > 0) {
+    fFields = JSON.parse(JSON.stringify(state.eventFormFields[activeEventId]));
+  }
+
+  if (!fFields.length) {
+    try {
+      const lsEff = localStorage.getItem('knsdc_eventFormFields');
+      if (lsEff) {
+        const parsed = JSON.parse(lsEff);
+        if (parsed[pEventId] && parsed[pEventId].length > 0) {
+          fFields = parsed[pEventId];
+        } else if (activeEventId && parsed[activeEventId] && parsed[activeEventId].length > 0) {
+          fFields = parsed[activeEventId];
+        }
+      }
+    } catch(e) {}
+  }
+
+  if (!fFields.length) {
+    const rawEvFields = (ev && (ev.formFields || ev.form_fields));
+    if (rawEvFields) {
+      if (Array.isArray(rawEvFields)) fFields = [...rawEvFields];
+      else if (typeof rawEvFields === 'string') {
+        try { fFields = JSON.parse(rawEvFields); } catch(e) {}
+      }
     }
   }
+
+  if (!fFields.length && state && state.formFields && state.formFields.length > 0) {
+    fFields = JSON.parse(JSON.stringify(state.formFields));
+  }
+
   if (!Array.isArray(fFields)) fFields = [];
+
+  // Track covered keys to also surface custom unlisted answers from p.formAnswers
+  const coveredKeys = new Set();
+  fFields.forEach(f => {
+    const lbl = (f.label || '').trim().toLowerCase();
+    if (lbl) coveredKeys.add(lbl);
+    if (f.id) coveredKeys.add(String(f.id).toLowerCase());
+    const match = ansKeys.find(k => k.trim().toLowerCase() === lbl);
+    if (match) coveredKeys.add(match.trim().toLowerCase());
+  });
+
+  // Built-in fixed fields in modal top
+  ['name', 'full name', 'phone', 'phone number', 'mobile', 'age', 'category', 'category field', 'venue', 'venue field', 'present'].forEach(k => coveredKeys.add(k));
+
+  // Synthesize extra fields from p.formAnswers so nothing is ever omitted
+  ansKeys.forEach(key => {
+    if (key.startsWith('_') || key.startsWith('$')) return;
+    const kLow = key.trim().toLowerCase();
+    if (coveredKeys.has(kLow)) return;
+
+    const val = ans[key];
+    let inferredType = 'text';
+    if (typeof val === 'boolean') {
+      inferredType = 'tc';
+    } else if (typeof val === 'string') {
+      if (val.startsWith('data:image') || val.includes('/api/participant/image/') || /\.(jpg|jpeg|png|webp|gif)/i.test(val) || /photo|image|pic|selfie/i.test(key)) {
+        inferredType = 'photo';
+      } else if (val.startsWith('data:audio') || /\.(mp3|wav|ogg|m4a|aac)/i.test(val) || /audio|music|sound|track/i.test(key)) {
+        inferredType = 'audio';
+      } else if (/\.(mp4|webm|mov)/i.test(val) || /video/i.test(key)) {
+        inferredType = 'video';
+      } else if (val.length > 60 || /address|desc|bio/i.test(key)) {
+        inferredType = 'textarea';
+      } else if (/date|dob|birth/i.test(key)) {
+        inferredType = 'date';
+      }
+    }
+    fFields.push({
+      label: key,
+      type: inferredType,
+      placeholder: key,
+      isSynthesized: true
+    });
+    coveredKeys.add(kLow);
+  });
+
+  window._currentEditingFields = fFields;
+
   let html = '';
   fFields.forEach((f, i) => {
-    if (f.type === 'category' || f.type === 'venue') return;
-    const labelUpper = (f.label || '').toUpperCase();
+    const labelUpper = (f.label || '').toUpperCase().trim();
+    if (f.type === 'category' || labelUpper === 'CATEGORY' || labelUpper === 'CATEGORY FIELD') return;
+    if (f.type === 'venue' || labelUpper === 'VENUE' || labelUpper === 'VENUE FIELD') return;
     if (labelUpper.includes('NAME') && f.type === 'text') return;
     if (labelUpper.includes('PHONE') || labelUpper.includes('MOBILE')) return;
-    if (labelUpper.includes('AGE') && f.type === 'number') return;
-    
-    const val = (p.formAnswers && p.formAnswers[f.label]) ? p.formAnswers[f.label] : '';
+    if (labelUpper === 'AGE' && f.type === 'number') return;
+
+    let val = '';
+    if (ans[f.label] !== undefined && ans[f.label] !== null) {
+      val = ans[f.label];
+    } else if (f.id && ans[f.id] !== undefined && ans[f.id] !== null) {
+      val = ans[f.id];
+    } else {
+      const matchKey = ansKeys.find(k => k.trim().toLowerCase() === (f.label || '').trim().toLowerCase());
+      if (matchKey && ans[matchKey] !== undefined && ans[matchKey] !== null) {
+        val = ans[matchKey];
+      }
+    }
+
+    const isPhotoField = f.type === 'photo' || f.type === 'file' || /photo|image|pic|picture|selfie/i.test(f.label || '');
+    const isAudioField = f.type === 'audio' || f.type === 'audio_link_or_file' || /audio|music|sound|track/i.test(f.label || '');
+    const isVideoField = f.type === 'video' || f.type === 'video_link_or_file' || /video/i.test(f.label || '');
+
+    if (!val && isPhotoField) {
+      if (p.photo) val = p.photo;
+      else if (p.selfieImage) val = p.selfieImage;
+      else {
+        for (const [k, v] of Object.entries(ans)) {
+          if (typeof v === 'string' && (v.startsWith('data:image/') || v.includes('/api/participant/image/') || /\.(jpg|jpeg|png|gif|webp|svg)/i.test(v))) {
+            val = v; break;
+          }
+        }
+      }
+    }
+
+    if (!val && isAudioField) {
+      if (p.musicUrl) val = p.musicUrl;
+      else if (p.audioUrl) val = p.audioUrl;
+      else {
+        for (const [k, v] of Object.entries(ans)) {
+          if (typeof v === 'string' && (v.startsWith('data:audio/') || /\.(mp3|wav|ogg|m4a|aac)/i.test(v))) {
+            val = v; break;
+          }
+        }
+      }
+    }
+
     const fieldId = `er-custom-${i}`;
-    
-    if (f.type === 'textarea') {
-      html += `<div class="fg" style="grid-column:1/-1"><label class="fl">${f.label}</label><textarea id="${fieldId}">${val}</textarea></div>`;
-    } else if (f.type === 'video' || f.type === 'video_link_or_file' || labelUpper.includes('VIDEO')) {
-      const previewHtml = val ? (val.startsWith('http') ? `<a href="${val}" target="_blank" style="font-size:12px; color:var(--brand-blue); display:block; margin-bottom:5px;">🔗 Open Link</a>` : `<div style="font-size:12px; color:var(--text-muted); margin-bottom:5px;">Current: ${val}</div>`) : '';
-      html += `<div class="fg" style="grid-column:1/-1"><label class="fl">${f.label}</label>
-        ${previewHtml}
-        <input type="text" id="${fieldId}" value="${val}" placeholder="Paste Video Link here"/>
+
+    if (f.type === 'textarea' || f.type === 'address' || labelUpper.includes('ADDRESS')) {
+      html += `<div class="fg" style="grid-column:1/-1">
+        <label class="fl">${f.label}</label>
+        <textarea id="${fieldId}" style="min-height:70px; resize:vertical;">${val || ''}</textarea>
       </div>`;
-    } else if (f.type === 'photo' || f.type === 'audio' || f.type === 'file' || f.type === 'audio_link_or_file' || labelUpper.includes('UPLOAD')) {
-      let acceptStr = '*/*';
-      if (f.type === 'photo' || labelUpper.includes('PHOTO') || labelUpper.includes('PICTURE') || labelUpper.includes('IMAGE')) acceptStr = 'image/*';
-      else if (f.type === 'audio' || f.type === 'audio_link_or_file' || labelUpper.includes('AUDIO') || labelUpper.includes('SOUND')) acceptStr = 'audio/*';
-      
-      const isImg = val && (val.startsWith('data:image') || val.includes('/api/participant/image/') || /\.(jpg|jpeg|png|gif|webp|svg)/i.test(val) || f.type === 'photo' || labelUpper.includes('PHOTO') || labelUpper.includes('PICTURE') || labelUpper.includes('IMAGE'));
-      const isAudio = val && val.startsWith('data:audio');
-      
+    } else if (isVideoField) {
+      const previewHtml = val ? (val.startsWith('http') ? `<a href="${val}" target="_blank" style="font-size:12px; color:var(--brand-blue); display:block; margin-bottom:5px;">🔗 Open Video Link</a>` : `<div style="font-size:12px; color:var(--text-muted); margin-bottom:5px;">Current: ${val}</div>`) : '';
+      html += `<div class="fg" style="grid-column:1/-1">
+        <label class="fl">${f.label}</label>
+        ${previewHtml}
+        <input type="text" id="${fieldId}" value="${val || ''}" placeholder="Paste Video Link here"/>
+      </div>`;
+    } else if (isPhotoField || isAudioField) {
+      const isImg = isPhotoField || (val && (val.startsWith('data:image') || val.includes('/api/participant/image/') || /\.(jpg|jpeg|png|gif|webp|svg)/i.test(val)));
+      const isAud = isAudioField || (val && (val.startsWith('data:audio') || /\.(mp3|wav|ogg|m4a|aac)/i.test(val)));
+      const acceptStr = isImg ? 'image/*' : (isAud ? 'audio/*' : '*/*');
+
       let previewHtml = '';
       if (val) {
-        if (isImg) previewHtml = `<img src="${val}" style="max-height:100px; border-radius:8px; align-self:flex-start;"/>`;
-        else if (isAudio) previewHtml = `<audio controls src="${val}" style="width:100%; height:30px;"></audio>`;
-        else if (val.startsWith('http')) previewHtml = `<a href="${val}" target="_blank" style="font-size:12px; color:var(--brand-blue);">🔗 Open Link</a>`;
-        else previewHtml = `<div style="font-size:12px; color:var(--text-muted);word-break:break-all;">Current: ${val.length > 30 ? val.substring(0,30)+'...' : val}</div>`;
+        if (isImg) previewHtml = `<img src="${val}" style="max-height:100px; border-radius:8px; align-self:flex-start; object-fit:contain;"/>`;
+        else if (isAud) previewHtml = `<audio controls src="${val}" style="width:100%; height:32px;"></audio>`;
+        else if (typeof val === 'string' && val.startsWith('http')) previewHtml = `<a href="${val}" target="_blank" style="font-size:12px; color:var(--brand-blue);">🔗 Open Link</a>`;
+        else previewHtml = `<div style="font-size:12px; color:var(--text-muted); word-break:break-all;">Current: ${typeof val === 'string' && val.length > 35 ? val.substring(0,35)+'...' : val}</div>`;
       }
-      
-      html += `<div class="fg" style="grid-column:1/-1"><label class="fl">${f.label}</label>
+
+      html += `<div class="fg" style="grid-column:1/-1">
+        <label class="fl">${f.label}</label>
         <div style="display:flex; flex-direction:column; gap:8px;">
-          ${previewHtml}
-          <input type="file" accept="${acceptStr}" onchange="handleFileEdit(this, '${fieldId}')" style="background:var(--bg-card); color:var(--text); padding:8px; border-radius:8px; border:1px dashed var(--border);"/>
-          <input type="hidden" id="${fieldId}" value="${val}"/>
+          <div id="${fieldId}-preview">${previewHtml}</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="file" accept="${acceptStr}" onchange="handleFileEdit(this, '${fieldId}')" style="background:var(--bg-card); color:var(--text); padding:8px; border-radius:8px; border:1px dashed var(--border); flex:1;"/>
+            <input type="text" id="${fieldId}" value="${val || ''}" placeholder="File URL / Link" style="flex:1;"/>
+          </div>
         </div>
       </div>`;
-    } else if (f.options && f.options.length) {
-      html += `<div class="fg"><label class="fl">${f.label}</label><select id="${fieldId}">
-        <option value="">--Select--</option>
-        ${f.options.map(opt => `<option value="${opt}" ${val===opt?'selected':''}>${opt}</option>`).join('')}
-      </select></div>`;
+    } else if (f.type === 'tc') {
+      const isChecked = val === true || val === 'true' || val === 'Yes' || val === 'yes' || val === '1';
+      html += `<div class="fg" style="grid-column:1/-1">
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; margin-top:5px;">
+          <input type="checkbox" id="${fieldId}" ${isChecked ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;"/>
+          <span>${f.tcText || f.label || 'Agreed to terms'}</span>
+        </label>
+      </div>`;
+    } else if ((f.options && f.options.length) || f.type === 'radio' || f.type === 'select' || labelUpper === 'GENDER') {
+      let opts = f.options;
+      if (!opts || !opts.length) {
+        if (labelUpper === 'GENDER') opts = ['Male', 'Female', 'Other'];
+        else opts = [];
+      }
+      html += `<div class="fg">
+        <label class="fl">${f.label}</label>
+        <select id="${fieldId}">
+          <option value="">--Select--</option>
+          ${opts.map(opt => `<option value="${opt}" ${String(val).toLowerCase() === String(opt).toLowerCase() ? 'selected' : ''}>${opt}</option>`).join('')}
+        </select>
+      </div>`;
     } else {
-      const typeAttr = f.type === 'email' ? 'email' : f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text';
-      html += `<div class="fg"><label class="fl">${f.label}</label><input type="${typeAttr}" id="${fieldId}" value="${val}"/></div>`;
+      let typeAttr = 'text';
+      if (f.type === 'email' || labelUpper.includes('EMAIL')) typeAttr = 'email';
+      else if (f.type === 'number') typeAttr = 'number';
+      else if (f.type === 'date' || f.type === 'dob' || labelUpper.includes('DATE') || labelUpper.includes('DOB') || labelUpper.includes('BIRTH')) typeAttr = 'date';
+      html += `<div class="fg">
+        <label class="fl">${f.label}</label>
+        <input type="${typeAttr}" id="${fieldId}" value="${val || ''}"/>
+      </div>`;
     }
   });
-  document.getElementById('er-dynamic-fields').innerHTML = html;
+
+  const dynContainer = document.getElementById('er-dynamic-fields');
+  if (dynContainer) {
+    dynContainer.innerHTML = html || `<div style="grid-column:1/-1; color:var(--text-muted); font-size:12px; font-style:italic;">No additional dynamic fields for this event.</div>`;
+  }
   
-  renderApplied(); // ensure selects populated
-  setTimeout(()=>{
+  // Populate categories & venues for the participant's specific event
+  renderApplied();
+  setTimeout(() => {
     const catEl = document.getElementById('er-cat');
     const venEl = document.getElementById('er-venue');
-    if (catEl && p.catId !== undefined) catEl.value = p.catId;
-    if (venEl && p.venueId !== undefined) venEl.value = p.venueId;
+    const evCats = (ev && ev.categories && ev.categories.length > 0) ? ev.categories : categories;
+    const evVens = (ev && ev.venues && ev.venues.length > 0) ? ev.venues : venues;
+
+    if (catEl && evCats && evCats.length) {
+      catEl.innerHTML = evCats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      if (p.catId !== undefined) catEl.value = p.catId;
+    }
+    if (venEl && evVens && evVens.length) {
+      venEl.innerHTML = evVens.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+      if (p.venueId !== undefined) venEl.value = p.venueId;
+    }
     openM('edit-reg-modal');
-  },50);
+  }, 50);
 }
 
 // ── APPLIED SECTION BUG-FIXES: Mutex guard, direct DB writes, optimistic lock stamp
@@ -7189,7 +7392,7 @@ let _isDeletingReg = false;
 async function saveEditReg(){
   if (_isSavingEditReg) return;
   const id = document.getElementById('er-id').value;
-  const p = participants.find(x=>String(x.id)===String(id));
+  const p = participants.find(x => String(x.id) === String(id));
   if (!p) { closeM('edit-reg-modal'); return; }
 
   _isSavingEditReg = true;
@@ -7208,43 +7411,75 @@ async function saveEditReg(){
     const parsedVenue = parseInt(document.getElementById('er-venue').value);
     p.venueId = isNaN(parsedVenue) ? (p.venueId || 1) : parsedVenue;
     
-    p.present = document.getElementById('er-present').value==='true';
+    p.present = document.getElementById('er-present').value === 'true';
     p.localMutatedAt = now; // Stamp optimistic lock so remote merge doesn't revert edits
-    
-    // Save Dynamic custom fields
-    const ev = EVENTS.find(e => String(e.id) === String(p.eventId));
-    let fFields = ev && ev.formFields ? ev.formFields : [];
-    if (typeof fFields === 'string') {
-      try { fFields = JSON.parse(fFields); } catch(e) { fFields = []; }
-    }
-    if (!Array.isArray(fFields)) fFields = [];
+
     if (!p.formAnswers) p.formAnswers = {};
+
+    // Keep formAnswers in sync with top fixed inputs
+    if (p.name) {
+      p.formAnswers['Full Name'] = p.name;
+      if (p.formAnswers['Name'] !== undefined) p.formAnswers['Name'] = p.name;
+    }
+    if (p.phone) {
+      p.formAnswers['Phone Number'] = p.phone;
+      if (p.formAnswers['Phone'] !== undefined) p.formAnswers['Phone'] = p.phone;
+      if (p.formAnswers['Mobile'] !== undefined) p.formAnswers['Mobile'] = p.phone;
+    }
+    if (p.age) {
+      p.formAnswers['Age'] = p.age;
+    }
     
+    // Save Dynamic custom fields using tracked fields
+    const fFields = window._currentEditingFields || [];
     fFields.forEach((f, i) => {
-      if (f.type === 'category' || f.type === 'venue') return;
-      const labelUpper = (f.label || '').toUpperCase();
+      const labelUpper = (f.label || '').toUpperCase().trim();
+      if (f.type === 'category' || labelUpper === 'CATEGORY' || labelUpper === 'CATEGORY FIELD') return;
+      if (f.type === 'venue' || labelUpper === 'VENUE' || labelUpper === 'VENUE FIELD') return;
       if (labelUpper.includes('NAME') && f.type === 'text') return;
       if (labelUpper.includes('PHONE') || labelUpper.includes('MOBILE')) return;
-      if (labelUpper.includes('AGE') && f.type === 'number') return;
+      if (labelUpper === 'AGE' && f.type === 'number') return;
       
       const fieldId = `er-custom-${i}`;
       const el = document.getElementById(fieldId);
       if (el) {
-         p.formAnswers[f.label] = el.value;
+        let val;
+        if (f.type === 'tc') {
+          val = el.checked;
+        } else {
+          val = el.value.trim ? el.value.trim() : el.value;
+        }
+        p.formAnswers[f.label] = val;
+
+        // Keep participant top-level media properties updated
+        const isPhotoField = f.type === 'photo' || f.type === 'file' || /photo|image|pic|picture|selfie/i.test(f.label || '');
+        const isAudioField = f.type === 'audio' || f.type === 'audio_link_or_file' || /audio|music|sound|track/i.test(f.label || '');
+        if (isPhotoField && val) {
+          p.photo = val;
+        }
+        if (isAudioField && val) {
+          p.musicUrl = val;
+        }
+        if (labelUpper === 'GENDER' && val) {
+          p.gender = val;
+        }
       }
     });
     
     closeM('edit-reg-modal');
 
-    // Direct write to Supabase
+    // Direct write to Sync Engine / Database
     if (window.syncEngine && window.syncEngine.updateParticipant) {
       await window.syncEngine.updateParticipant(p.id, {
         name: p.name,
         phone: p.phone,
         age: p.age,
+        gender: p.gender,
         catId: p.catId,
         venueId: p.venueId,
         present: p.present,
+        photo: p.photo,
+        musicUrl: p.musicUrl,
         formAnswers: p.formAnswers,
         localMutatedAt: now
       }).catch(e => console.error('[saveEditReg] DB error:', e));
