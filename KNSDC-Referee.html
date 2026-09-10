@@ -5884,43 +5884,20 @@
 
     async function checkAuth(requiredRoles) {
       document.body.style.visibility = 'hidden';
-      const localRole = localStorage.getItem('kns_role');
-      const localUser = localStorage.getItem('kns_user');
-      if (localRole && localUser) {
-        try {
-          const u = JSON.parse(localUser);
-          if (requiredRoles.includes(localRole)) {
-            document.body.style.visibility = 'visible';
-            console.log(`[AuthGuard] ✅ Authorized via localStorage: ${u.email} (Role: ${localRole})`);
-            return true;
-          }
-        } catch (e) { }
-      }
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 200));
       const engine = window.syncEngine;
-      if (engine) {
-        try {
-          const user = await engine.getCurrentUser();
-          if (user) {
-            const role = user.user_metadata?.role || localStorage.getItem('kns_role');
-            if (requiredRoles.includes(role)) {
-              localStorage.setItem('kns_role', role);
-              if (user.email) {
-                localStorage.setItem('kns_user', JSON.stringify({
-                  email: user.email,
-                  name: user.user_metadata?.fullname || user.user_metadata?.name || user.email.split('@')[0],
-                  role: role
-                }));
-              }
-              document.body.style.visibility = 'visible';
-              return true;
-            }
-            document.body.innerHTML = '';
-            document.body.style.visibility = 'visible';
-            showUnauthorizedOverlay(`You are logged in, but your role (${role}) is not authorized to access this portal.`);
-            return false;
-          }
-        } catch (e) { console.warn('[AuthGuard] error:', e); }
+      if (engine && engine.enforceStaffGuard) {
+        const isOk = await engine.enforceStaffGuard(requiredRoles);
+        if (isOk) {
+          document.body.style.visibility = 'visible';
+          return true;
+        }
+        return false;
+      }
+      const localRole = localStorage.getItem('kns_role');
+      if (localRole && requiredRoles.includes(localRole)) {
+        document.body.style.visibility = 'visible';
+        return true;
       }
       document.body.innerHTML = '';
       document.body.style.visibility = 'visible';

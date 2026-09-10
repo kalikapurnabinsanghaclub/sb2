@@ -2264,33 +2264,21 @@
 
     // ════════════════ AUTH GUARD ════════════════
     async function checkAuth(requiredRoles) {
+      await new Promise(r => setTimeout(r, 200));
+      const engine = window.syncEngine;
+      if (engine && engine.enforceStaffGuard) {
+        return await engine.enforceStaffGuard(requiredRoles);
+      }
       const localRole = localStorage.getItem('kns_role');
-      const localUser = localStorage.getItem('kns_user');
-      if (localRole && localUser) {
-        try {
-          if (requiredRoles.includes(localRole)) {
-            console.log(`[DirectorAuth] Authorized via localStorage: ${localRole}`);
-            return true;
-          }
-        } catch(e) {}
+      if (localRole && requiredRoles.includes(localRole)) {
+        return true;
       }
-      
-      // Wait for syncEngine to initialize
-      await new Promise(r => setTimeout(r, 600));
-      if (window.syncEngine && window.syncEngine.getCurrentUser) {
-        try {
-          const user = await window.syncEngine.getCurrentUser();
-          if (user) {
-            const role = user.user_metadata?.role || localStorage.getItem('kns_role');
-            if (requiredRoles.includes(role)) {
-              localStorage.setItem('kns_role', role);
-              return true;
-            }
-          }
-        } catch(e) { console.warn(e); }
+      if (engine && engine.lockoutUser) {
+        engine.lockoutUser('You must log in to access this portal.');
+      } else {
+        window.location.href = 'index.html';
       }
-      
-      return true;
+      return false;
     }
     checkAuth(['director', 'admin', 'monitor']);
 

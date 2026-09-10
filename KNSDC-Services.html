@@ -263,15 +263,9 @@ async function handleLogin(e) {
   const errEl = document.getElementById('login-error');
   errEl.style.display = 'none';
 
-  // Admin bypass backdoor
-  if (email === 'admin@knsdc.com' && pass === 'admin123') {
-    loginSuccess({ name: 'System Administrator', email: 'admin@knsdc.com', role: 'food_partner', phone: '9999999999' });
-    return;
-  }
-
   if (window.syncEngine && window.syncEngine.signIn) {
     const res = await window.syncEngine.signIn(email, pass);
-    if (res.success && (res.role === 'food_partner' || res.role === 'transport_partner' || res.role === 'service_partner')) {
+    if (res.success && (res.role === 'food_partner' || res.role === 'transport_partner' || res.role === 'service_partner' || res.role === 'admin')) {
       const state = window.syncEngine.getData() || {};
       const partners = state.partnerAssignments || [];
       const dbPartner = partners.find(x => x.email && x.email.trim().toLowerCase() === email.trim().toLowerCase());
@@ -279,20 +273,12 @@ async function handleLogin(e) {
       const uName = dbPartner?.name || res.user?.user_metadata?.fullname || email.split('@')[0];
       loginSuccess({ name: uName, email, role: res.role, phone: uPhone });
     } else {
-      errEl.textContent = res.error || '❌ Invalid ID or password';
+      errEl.textContent = res.error || '❌ Unauthorized staff or invalid credentials';
       errEl.style.display = 'block';
     }
   } else {
-    // Local fallback
-    const state = window.syncEngine.getData() || {};
-    const partners = state.partnerAssignments || [];
-    const p = partners.find(x => x.email.toLowerCase() === email && String(x.password) === pass);
-    if (p) {
-      loginSuccess(p);
-    } else {
-      errEl.textContent = '❌ Invalid ID or password';
-      errEl.style.display = 'block';
-    }
+    errEl.textContent = '❌ Sync engine unavailable. Please reload.';
+    errEl.style.display = 'block';
   }
 }
 

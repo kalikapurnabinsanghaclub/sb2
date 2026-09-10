@@ -379,25 +379,13 @@ async function checkAuth(requiredRoles) {
 
   await new Promise(r => setTimeout(r, 200));
   
-  if (window.syncEngine) {
-    const user = await window.syncEngine.getCurrentUser();
-    if (!user) {
-      document.body.innerHTML = '';
-      showUnauthorizedOverlay("You must log in to access this portal.", true);
-      return false;
+  if (window.syncEngine && window.syncEngine.enforceStaffGuard) {
+    const isOk = await window.syncEngine.enforceStaffGuard(requiredRoles);
+    if (isOk) {
+      if (mainContent) mainContent.style.visibility = 'visible';
+      return true;
     }
-    const role = user.user_metadata?.role;
-    if (!requiredRoles.includes(role)) {
-      document.body.innerHTML = '';
-      showUnauthorizedOverlay(`You are logged in, but your role (${role}) is not authorized to access this portal.`, false);
-      return false;
-    }
-    
-    if (mainContent) {
-      mainContent.style.visibility = 'visible';
-    }
-    console.log(`[AuthGuard] Authorized as ${user.email} (Role: ${role})`);
-    return true;
+    return false;
   }
   return false;
 }
