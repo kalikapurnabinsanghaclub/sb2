@@ -744,8 +744,19 @@
     <div id="sec-stage" class="section">
       <div id="on-stage-area"></div>
       <div class="card" style="margin-top:20px">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
-          <h3 style="font-family:var(--fh); font-size:16px; margin:0; display:flex; align-items:center; gap:8px">🔥 Upcoming Performers Queue</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <h3 style="font-family:var(--fh); font-size:16px; margin:0; display:flex; align-items:center; gap:8px">🔥 Upcoming Performers Queue</h3>
+            <div style="display:flex; align-items:center; gap:6px; background:var(--surface2); padding:4px 10px; border-radius:10px; border:1px solid var(--border);">
+              <label style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Round:</label>
+              <select id="host-stage-round-sel" onchange="hostChangeRound(this.value)" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border); font-size:12px; font-weight:700; background:var(--surface); color:var(--text); outline:none; cursor:pointer;">
+                <option value="audition">Audition</option>
+                <option value="qualified">Qualified</option>
+                <option value="semifinal">Semifinal</option>
+                <option value="final">Final</option>
+              </select>
+            </div>
+          </div>
           <div style="display:flex; gap:8px;">
             <input type="text" id="host-add-queue-id" placeholder="Enter ID" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); font-size:12px; outline:none; width: 120px;" onkeypress="if(event.key==='Enter') hostAddParticipantToQueue()">
             <button class="btn btn-blue btn-sm" onclick="hostAddParticipantToQueue()">+ Add</button>
@@ -1078,8 +1089,17 @@ window.hostChangeRound = function(val) {
   window._hostRoundManuallySet = true; // prevent auto-detect from overriding manual selection
   hostSelectedRound = val || 'audition';
   currentLeaderRound = val || 'audition';
+  const selDash = document.getElementById('host-round-sel');
+  if (selDash) selDash.value = hostSelectedRound;
+  const selStage = document.getElementById('host-stage-round-sel');
+  if (selStage) selStage.value = hostSelectedRound;
+  const lbBtns = document.querySelectorAll('#sec-leaderboard .btn-outline');
+  lbBtns.forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${hostSelectedRound}'`));
+  });
   renderDashboard();
   renderStage();
+  renderLeaderboard();
 };
 
 
@@ -1299,6 +1319,8 @@ syncEngine.subscribe((state) => {
       currentLeaderRound = dominantRound;
       const sel = document.getElementById('host-round-sel');
       if (sel) sel.value = dominantRound;
+      const stageSel = document.getElementById('host-stage-round-sel');
+      if (stageSel) stageSel.value = dominantRound;
       const lbBtns = document.querySelectorAll('#sec-leaderboard .btn-outline');
       lbBtns.forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${dominantRound}'`));
@@ -1554,7 +1576,15 @@ function renderStage() {
     onStage = filtered.find(p => p.stageStatus === 'on-stage') || scoped.find(p => p.stageStatus === 'on-stage') || null;
   }
   
-  const upcoming = sortQueue(scoped.filter(p => p.stageStatus === 'queue' && (!onStage || String(p.id) !== String(onStage.id)) && p.round === round));
+  let upcoming = sortQueue(scoped.filter(p => p.stageStatus === 'queue' && (!onStage || String(p.id) !== String(onStage.id)) && p.round === round));
+  let isCrossRoundFallback = false;
+  if (upcoming.length === 0) {
+    const crossRoundQueue = sortQueue(scoped.filter(p => p.stageStatus === 'queue' && (!onStage || String(p.id) !== String(onStage.id))));
+    if (crossRoundQueue.length > 0) {
+      upcoming = crossRoundQueue;
+      isCrossRoundFallback = true;
+    }
+  }
 
   const area = document.getElementById('on-stage-area');
   if(area) {
@@ -1627,7 +1657,14 @@ function renderStage() {
 
   const list = document.getElementById('full-queue');
   if(list) {
-    list.innerHTML = upcoming.map((p, idx) => {
+    let fallbackHeader = '';
+    if (isCrossRoundFallback && upcoming.length > 0) {
+      fallbackHeader = `<div style="padding:10px 14px; background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:12px; color:var(--amber); font-size:12px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <span>ℹ️ Showing queued performers from other rounds because current round (${round.toUpperCase()}) has no queue.</span>
+        <button onclick="hostChangeRound('${upcoming[0].round || 'audition'}')" style="padding:4px 10px; border-radius:6px; background:var(--surface); border:1px solid var(--border); font-size:11px; font-weight:800; cursor:pointer; color:var(--text);">Switch to ${(upcoming[0].round || 'audition').toUpperCase()}</button>
+      </div>`;
+    }
+    list.innerHTML = fallbackHeader + (upcoming.map((p, idx) => {
       return `
         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:16px 20px; border-radius:16px; background:var(--surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border:1px solid var(--border); margin-bottom:12px; box-shadow: 0 4px 15px rgba(15,23,42,0.03); transition: all 0.3s ease; animation: slideUpQueue 0.4s ease-out backwards; animation-delay: ${idx * 0.05}s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 25px rgba(15,23,42,0.06)'; this.style.borderColor='var(--blue)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(15,23,42,0.03)'; this.style.borderColor='var(--border)'">
           <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:#0ea5e9;width:36px;height:36px; border-radius:10px; background:rgba(14,165,233,0.1); display:flex; align-items:center; justify-content:center; flex-shrink:0;">#${idx + 1}</div>
@@ -1650,7 +1687,7 @@ function renderStage() {
             <button onclick="pushToStage('${p.id}')" style="padding:10px 20px;border-radius:12px;background:linear-gradient(135deg, #0ea5e9, #38bdf8);color:#fff;border:none;cursor:pointer;font-size:13px;font-weight:800; box-shadow: 0 4px 15px rgba(14,165,233,0.3); transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(14,165,233,0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(14,165,233,0.3)'">▶ Push</button>
           </div>
         </div>`;
-    }).join('') || '<div style="text-align:center;color:var(--muted);padding:20px">No upcoming performers in queue.</div>';
+    }).join('') || '<div style="text-align:center;color:var(--muted);padding:20px">No upcoming performers in queue.</div>');
   }
 }
 
@@ -1670,8 +1707,11 @@ window.moveQueueItem = (id, direction) => {
   const scoped = getHostScopedParticipants();
   let queueParts = scoped.filter(p => 
     p.stageStatus === 'queue' && 
-    p.round === (hostSelectedRound || 'audition')
+    (p.round === (hostSelectedRound || 'audition') || !p.round)
   );
+  if (queueParts.length === 0) {
+    queueParts = scoped.filter(p => p.stageStatus === 'queue');
+  }
   queueParts = sortQueue(queueParts);
   
   const currentIdx = queueParts.findIndex(p => String(p.id) === String(id));
@@ -1699,6 +1739,27 @@ window.moveQueueItem = (id, direction) => {
 
   currentP.localMutatedAt = now;
   targetP.localMutatedAt = now;
+
+  // Synchronously update top-level participants array
+  if (Array.isArray(participants)) {
+    participants = participants.map(p => {
+      if (String(p.id) === String(currentP.id)) return { ...p, queueOrder: currentP.queueOrder, localMutatedAt: now };
+      if (String(p.id) === String(targetP.id)) return { ...p, queueOrder: targetP.queueOrder, localMutatedAt: now };
+      return p;
+    });
+  }
+
+  // Update syncEngine local state immediately
+  syncEngine.setData(st => {
+    const parts = (st.participants || []).map(p => {
+      if (String(p.id) === String(currentP.id)) return { ...p, queueOrder: currentP.queueOrder, localMutatedAt: now };
+      if (String(p.id) === String(targetP.id)) return { ...p, queueOrder: targetP.queueOrder, localMutatedAt: now };
+      return p;
+    });
+    return { ...st, participants: parts };
+  });
+
+  renderStage();
   
   if (window.syncEngine && window.syncEngine.updateParticipant) {
     Promise.all([
@@ -1724,6 +1785,7 @@ window.pushToQueueFromList = (id) => {
 
   const p = participants.find(x => String(x.id) === String(id));
   if (!p) {
+    toast(`⚠️ Performer not found.`);
     _isHostQueueOpInProgress = false;
     return;
   }
@@ -1743,8 +1805,14 @@ window.pushToQueueFromList = (id) => {
   p.queueOrder = newOrder;
   p.queuedAt = now;
   p.localMutatedAt = now;
-  const round = p.round || 'audition';
+  const round = p.round || hostSelectedRound || 'audition';
+  p.round = round;
   setRoundPresent(p, round, true);
+
+  // Synchronously update top-level participants array
+  if (Array.isArray(participants)) {
+    participants = participants.map(x => String(x.id) === String(p.id) ? { ...p } : x);
+  }
 
   // Direct Supabase write
   if (window.syncEngine && window.syncEngine.updateParticipant) {
@@ -1753,6 +1821,7 @@ window.pushToQueueFromList = (id) => {
       queueOrder: newOrder,
       queuedAt: now,
       localMutatedAt: now,
+      round: p.round,
       roundPresence: p.roundPresence,
       present: true
     }).catch(e => console.error('[Host pushToQueueFromList] DB error:', e));
@@ -1805,8 +1874,14 @@ window.hostAddParticipantToQueue = () => {
   p.queueOrder = newOrder;
   p.queuedAt = now;
   p.localMutatedAt = now;
-  const round = p.round || 'audition';
+  const round = p.round || hostSelectedRound || 'audition';
+  p.round = round;
   setRoundPresent(p, round, true);
+
+  // Synchronously update top-level participants array
+  if (Array.isArray(participants)) {
+    participants = participants.map(x => String(x.id) === String(p.id) ? { ...p } : x);
+  }
 
   if (window.syncEngine && window.syncEngine.updateParticipant) {
     window.syncEngine.updateParticipant(p.id, {
@@ -1814,6 +1889,7 @@ window.hostAddParticipantToQueue = () => {
       queueOrder: newOrder,
       queuedAt: now,
       localMutatedAt: now,
+      round: p.round,
       roundPresence: p.roundPresence,
       present: true
     }).catch(e => console.error('[Host hostAddParticipantToQueue] DB error:', e));
