@@ -14604,11 +14604,28 @@ window.saveHost = async function() {
     hostAssignments = hostAssignments.filter(h => h.email.toLowerCase() !== email.toLowerCase());
     hostAssignments.push(newHost);
 
+    // Link host email to event staff array so event-level access works flawlessly
+    if (activeEv) {
+      if (!Array.isArray(activeEv.staff)) activeEv.staff = [];
+      if (!activeEv.staff.map(x => (x || '').toLowerCase()).includes(email.toLowerCase())) {
+        activeEv.staff.push(email.toLowerCase());
+      }
+    }
+
     syncEngine.setData(state => ({
       ...state,
       hostAssignments: hostAssignments
     }));
     syncAll();
+
+    // Broadcast immediate realtime update to other tabs/portals
+    if (syncEngine.broadcastChannel) {
+      syncEngine.broadcastChannel.send({
+        type: 'broadcast',
+        event: 'state_update',
+        payload: { hostAssignments: hostAssignments }
+      }).catch(() => {});
+    }
 
     // Sync credentials to staff DB so host can login
     if (syncEngine.addStaffMember) {
@@ -14648,6 +14665,13 @@ window.deleteHost = async function(id) {
     hostAssignments: hostAssignments
   }));
   syncAll();
+  if (syncEngine.broadcastChannel) {
+    syncEngine.broadcastChannel.send({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: { hostAssignments: hostAssignments }
+    }).catch(() => {});
+  }
   if (syncEngine.forceSaveStateToSupabase) {
     await syncEngine.forceSaveStateToSupabase().catch(e=>console.warn(e));
   }

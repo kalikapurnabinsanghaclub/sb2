@@ -1384,26 +1384,54 @@ setInterval(() => {
 }, 1000);
 
 setTimeout(() => {
-  const initHost = () => {
+  const initHost = async () => {
+    try {
+      if (typeof syncEngine.loadEvents === 'function') await syncEngine.loadEvents();
+      if (typeof syncEngine.loadParticipants === 'function') await syncEngine.loadParticipants();
+    } catch(e) { console.warn('[Host init] load error:', e); }
     const data = syncEngine.getData();
     if(data) { hydrateChat(data); renderDashboard(); renderStage(); renderLeaderboard(); }
   };
-  if (typeof syncEngine.loadEvents === 'function') {
-    syncEngine.loadEvents().then(() => initHost());
-  } else {
-    initHost();
+  initHost();
+}, 100);
+
+// Realtime reconcile polling every 3 seconds to stay synced with Monitor changes
+setInterval(() => {
+  if (syncEngine && typeof syncEngine.loadParticipants === 'function') {
+    syncEngine.loadParticipants().catch(() => {});
   }
-}, 200);
+}, 3000);
+
+function getHostScopedParticipants() {
+  const data = syncEngine.getData() || {};
+  const activeEvId = hostAssignedEventId || data.activeEventId;
+  
+  // Base event filter
+  let evParts = participants.filter(p => !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId));
+  
+  // If host is assigned to a specific venue, try to match by venue ID or venue name
+  if (hostAssignedVenueId) {
+    const matched = evParts.filter(p => {
+      const pVen = String(p.venueId || p.venue || '');
+      if (pVen && pVen === String(hostAssignedVenueId)) return true;
+      if (hostAssignedVenueName) {
+        const vField = String(p.formAnswers?.['Venue Field'] || p.formAnswers?.venue || p.venueName || '').toLowerCase();
+        if (vField && (vField.includes(hostAssignedVenueName.toLowerCase()) || hostAssignedVenueName.toLowerCase().includes(vField))) return true;
+      }
+      return false;
+    });
+    if (matched.length > 0) {
+      return matched;
+    }
+  }
+  return evParts;
+}
 
 function renderDashboard() {
-  const data = syncEngine.getData();
-  const activeEvId = data.activeEventId;
+  const data = syncEngine.getData() || {};
   const round = hostSelectedRound || 'audition';
-  const filtered = participants.filter(p => 
-    (!activeEvId || !p.eventId || String(p.eventId) === String(activeEvId)) &&
-    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
-    p.round === round
-  );
+  const scoped = getHostScopedParticipants();
+  const filtered = scoped.filter(p => p.round === round);
   
   const total = filtered.length;
   const done = filtered.filter(p => p.stageStatus === 'done').length;
@@ -1419,7 +1447,7 @@ function renderDashboard() {
   const waitingPerformers = filtered.filter(p => p.stageStatus === 'waiting');
   let pickerHtml = '';
   if (waitingPerformers.length === 0) {
-    pickerHtml = '<div style="color:var(--text-muted);text-align:center;padding:20px;font-size:13px">No waiting performers at this venue.</div>';
+    pickerHtml = '<div style="color:var(--text-muted);text-align:center;padding:20px;font-size:13px">No waiting performers for this round.</div>';
   } else {
     pickerHtml = `
       <div style="display:flex; flex-direction:column; gap:10px; max-height: 400px; overflow-y: auto; padding-right:5px;">
@@ -1506,17 +1534,16 @@ function sortQueue(queueArray) {
 }
 
 function renderStage() {
-  const data = syncEngine.getData();
-  const activeEvId = data.activeEventId;
+  const data = syncEngine.getData() || {};
   const round = hostSelectedRound || 'audition';
-  const filtered = participants.filter(p => 
-    (!activeEvId || !p.eventId || String(p.eventId) === String(activeEvId)) &&
-    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
-    p.round === round
-  );
+  const scoped = getHostScopedParticipants();
+  const filtered = scoped.filter(p => p.round === round);
   
-  const onStage = filtered.find(p => p.stageStatus === 'on-stage');
-  const upcoming = sortQueue(filtered.filter(p => p.stageStatus === 'queue'));
+  // Authoritative live on stage: check data.currentOnStage or venueStageState first!
+  const curStageId = (data.venueStageState && (data.venueStageState[hostAssignedVenueId]?.currentOnStage || data.venueStageState.global?.currentOnStage)) || data.currentOnStage;
+  let onStage = (curStageId ? participants.find(p => String(p.id) === String(curStageId)) : null) || filtered.find(p => p.stageStatus === 'on-stage') || scoped.find(p => p.stageStatus === 'on-stage');
+  
+  const upcoming = sortQueue(filtered.filter(p => p.stageStatus === 'queue' && (!onStage || String(p.id) !== String(onStage.id))));
 
   const area = document.getElementById('on-stage-area');
   if(area) {
@@ -1629,10 +1656,9 @@ window.moveQueueItem = (id, direction) => {
   const activeEvId = s.activeEventId;
   const now = Date.now();
   
-  let queueParts = participants.filter(p => 
+  const scoped = getHostScopedParticipants();
+  let queueParts = scoped.filter(p => 
     p.stageStatus === 'queue' && 
-    (!activeEvId || String(p.eventId) === String(activeEvId)) &&
-    (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId)) &&
     p.round === (hostSelectedRound || 'audition')
   );
   queueParts = sortQueue(queueParts);
@@ -1748,8 +1774,9 @@ window.hostAddParticipantToQueue = () => {
     _isHostQueueOpInProgress = false;
     return;
   }
-  if (hostAssignedVenueId && String(p.venueId) !== String(hostAssignedVenueId)) {
-    toast(`⚠️ Participant ${p.name} is registered for another venue.`);
+  const activeEvId = hostAssignedEventId || syncEngine.state?.activeEventId;
+  if (activeEvId && p.eventId && String(p.eventId) !== String(activeEvId)) {
+    toast(`⚠️ Participant ${p.name} is registered for another event.`);
     _isHostQueueOpInProgress = false;
     return;
   }
@@ -1853,11 +1880,11 @@ window.pushToStage = async (id) => {
   _hostStageOpInProgress = true;
   try {
     if (syncEngine && typeof syncEngine.stagePush === 'function') {
-      syncEngine.stagePush(id).catch(e => console.error('[Host pushToStage] error:', e));
+      await syncEngine.stagePush(id, hostAssignedVenueId).catch(e => console.error('[Host pushToStage] error:', e));
     } else {
       const now = Date.now();
       syncEngine.setData(s => {
-        const participants = s.participants.map(p => {
+        const participants = (s.participants || []).map(p => {
           if(p.id === id) return { ...p, stageStatus: 'on-stage', present: true, localMutatedAt: now };
           if(p.stageStatus === 'on-stage') return { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now };
           return p;
@@ -1865,6 +1892,8 @@ window.pushToStage = async (id) => {
         return { ...s, participants, currentOnStage: id };
       });
     }
+    renderStage();
+    renderDashboard();
   } catch(e) {
     console.error('[Host pushToStage] error:', e);
   } finally {
@@ -1877,14 +1906,16 @@ window.markDone = async (id) => {
   _hostStageOpInProgress = true;
   try {
     if (syncEngine && typeof syncEngine.stageComplete === 'function') {
-      syncEngine.stageComplete(id).catch(e => console.error('[Host markDone] error:', e));
+      await syncEngine.stageComplete(id, hostAssignedVenueId).catch(e => console.error('[Host markDone] error:', e));
     } else {
       const now = Date.now();
       syncEngine.setData(s => {
-        const participants = s.participants.map(p => p.id === id ? { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now } : p);
+        const participants = (s.participants || []).map(p => p.id === id ? { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now } : p);
         return { ...s, participants, currentOnStage: null };
       });
     }
+    renderStage();
+    renderDashboard();
   } catch(e) {
     console.error('[Host markDone] error:', e);
   } finally {
@@ -1897,14 +1928,16 @@ window.dropToQueue = async (id) => {
   _hostStageOpInProgress = true;
   try {
     if (syncEngine && typeof syncEngine.stageDrop === 'function') {
-      syncEngine.stageDrop(id).catch(e => console.error('[Host dropToQueue] error:', e));
+      await syncEngine.stageDrop(id, hostAssignedVenueId).catch(e => console.error('[Host dropToQueue] error:', e));
     } else {
       const now = Date.now();
       syncEngine.setData(s => {
-        const participants = s.participants.map(p => p.id === id ? { ...p, stageStatus: 'queue', localMutatedAt: now } : p);
+        const participants = (s.participants || []).map(p => p.id === id ? { ...p, stageStatus: 'queue', localMutatedAt: now } : p);
         return { ...s, participants, currentOnStage: null };
       });
     }
+    renderStage();
+    renderDashboard();
   } catch(e) {
     console.error('[Host dropToQueue] error:', e);
   } finally {
