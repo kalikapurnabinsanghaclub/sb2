@@ -1539,11 +1539,22 @@ function renderStage() {
   const scoped = getHostScopedParticipants();
   const filtered = scoped.filter(p => p.round === round);
   
-  // Authoritative live on stage: check data.currentOnStage or venueStageState first!
-  const curStageId = (data.venueStageState && (data.venueStageState[hostAssignedVenueId]?.currentOnStage || data.venueStageState.global?.currentOnStage)) || data.currentOnStage;
-  let onStage = (curStageId ? participants.find(p => String(p.id) === String(curStageId)) : null) || filtered.find(p => p.stageStatus === 'on-stage') || scoped.find(p => p.stageStatus === 'on-stage');
+  // Live stage resolution:
+  const stageVen = (data.venueStageState && (data.venueStageState[hostAssignedVenueId] || data.venueStageState.global)) || null;
+  const isExplicitEmpty = (stageVen && (stageVen.stageStatus === 'empty' || stageVen.currentOnStage === null) && !data.currentOnStage);
   
-  const upcoming = sortQueue(filtered.filter(p => p.stageStatus === 'queue' && (!onStage || String(p.id) !== String(onStage.id))));
+  let onStage = null;
+  if (!isExplicitEmpty) {
+    const curStageId = (stageVen && stageVen.currentOnStage) || data.currentOnStage;
+    if (curStageId) {
+      onStage = participants.find(p => String(p.id) === String(curStageId));
+    }
+  }
+  if (!onStage && !isExplicitEmpty && !stageVen) {
+    onStage = filtered.find(p => p.stageStatus === 'on-stage') || scoped.find(p => p.stageStatus === 'on-stage') || null;
+  }
+  
+  const upcoming = sortQueue(scoped.filter(p => p.stageStatus === 'queue' && (!onStage || String(p.id) !== String(onStage.id)) && p.round === round));
 
   const area = document.getElementById('on-stage-area');
   if(area) {
@@ -1879,19 +1890,30 @@ window.pushToStage = async (id) => {
   if (_hostStageOpInProgress) return;
   _hostStageOpInProgress = true;
   try {
+    const now = Date.now();
+    const pidStr = String(id);
+    // Instant local state update
+    if (Array.isArray(participants)) {
+      participants = participants.map(p => {
+        if (String(p.id) === pidStr) return { ...p, stageStatus: 'on-stage', present: true, localMutatedAt: now };
+        if (p.stageStatus === 'on-stage') return { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now };
+        return p;
+      });
+    }
     if (syncEngine && typeof syncEngine.stagePush === 'function') {
       await syncEngine.stagePush(id, hostAssignedVenueId).catch(e => console.error('[Host pushToStage] error:', e));
     } else {
-      const now = Date.now();
       syncEngine.setData(s => {
-        const participants = (s.participants || []).map(p => {
-          if(p.id === id) return { ...p, stageStatus: 'on-stage', present: true, localMutatedAt: now };
+        const parts = (s.participants || []).map(p => {
+          if(String(p.id) === pidStr) return { ...p, stageStatus: 'on-stage', present: true, localMutatedAt: now };
           if(p.stageStatus === 'on-stage') return { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now };
           return p;
         });
-        return { ...s, participants, currentOnStage: id };
+        return { ...s, participants: parts, currentOnStage: id };
       });
     }
+    const performer = (participants || []).find(p => String(p.id) === pidStr);
+    toast(`🎤 ${performer ? performer.name : id} is now ON STAGE!`);
     renderStage();
     renderDashboard();
   } catch(e) {
@@ -1905,15 +1927,25 @@ window.markDone = async (id) => {
   if (_hostStageOpInProgress) return;
   _hostStageOpInProgress = true;
   try {
+    const now = Date.now();
+    const pidStr = String(id);
+    // Instant local state update
+    if (Array.isArray(participants)) {
+      participants = participants.map(p => {
+        if (String(p.id) === pidStr) return { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now };
+        return p;
+      });
+    }
     if (syncEngine && typeof syncEngine.stageComplete === 'function') {
       await syncEngine.stageComplete(id, hostAssignedVenueId).catch(e => console.error('[Host markDone] error:', e));
     } else {
-      const now = Date.now();
       syncEngine.setData(s => {
-        const participants = (s.participants || []).map(p => p.id === id ? { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now } : p);
-        return { ...s, participants, currentOnStage: null };
+        const parts = (s.participants || []).map(p => String(p.id) === pidStr ? { ...p, stageStatus: 'done', isReady: false, localMutatedAt: now } : p);
+        return { ...s, participants: parts, currentOnStage: null };
       });
     }
+    const performer = (participants || []).find(p => String(p.id) === pidStr);
+    toast(`✅ Performance completed for ${performer ? performer.name : id}`);
     renderStage();
     renderDashboard();
   } catch(e) {
@@ -1927,15 +1959,30 @@ window.dropToQueue = async (id) => {
   if (_hostStageOpInProgress) return;
   _hostStageOpInProgress = true;
   try {
+    const now = Date.now();
+    const pidStr = String(id);
+    // Determine new queue order
+    const currentQueue = (participants || []).filter(p => p.stageStatus === 'queue' && String(p.id) !== pidStr);
+    const maxOrder = currentQueue.reduce((max, p) => (typeof p.queueOrder === 'number' && p.queueOrder > max ? p.queueOrder : max), -1);
+    const newOrder = maxOrder + 1;
+
+    // Instant local state update
+    if (Array.isArray(participants)) {
+      participants = participants.map(p => {
+        if (String(p.id) === pidStr) return { ...p, stageStatus: 'queue', queueOrder: newOrder, queuedAt: now, localMutatedAt: now };
+        return p;
+      });
+    }
     if (syncEngine && typeof syncEngine.stageDrop === 'function') {
       await syncEngine.stageDrop(id, hostAssignedVenueId).catch(e => console.error('[Host dropToQueue] error:', e));
     } else {
-      const now = Date.now();
       syncEngine.setData(s => {
-        const participants = (s.participants || []).map(p => p.id === id ? { ...p, stageStatus: 'queue', localMutatedAt: now } : p);
-        return { ...s, participants, currentOnStage: null };
+        const parts = (s.participants || []).map(p => String(p.id) === pidStr ? { ...p, stageStatus: 'queue', queueOrder: newOrder, queuedAt: now, localMutatedAt: now } : p);
+        return { ...s, participants: parts, currentOnStage: null };
       });
     }
+    const performer = (participants || []).find(p => String(p.id) === pidStr);
+    toast(`↩️ Dropped ${performer ? performer.name : id} back to queue (Position #${newOrder + 1})`);
     renderStage();
     renderDashboard();
   } catch(e) {
