@@ -3168,32 +3168,41 @@ async function uploadJudgeAvatar(event) {
   document.getElementById('pm-avatar-loading').style.display = 'flex';
   
   const oldAvatar = JUDGE.avatar;
+  const ext = file.name ? file.name.split('.').pop().toLowerCase() : 'jpg';
+  const cleanExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg';
+  const judgeIdentifier = JUDGE.id || 'profile';
+  const customKey = `judges/judge_${judgeIdentifier}_avatar.${cleanExt}`;
   
   try {
-    const url = await syncEngine.uploadFile(file);
-    if (url) {
-      JUDGE.avatar = url;
+    // 1. Delete previous avatar from Cloudflare R2 if it existed
+    if (oldAvatar && typeof syncEngine.deleteFile === 'function') {
+      try {
+        await syncEngine.deleteFile(oldAvatar);
+      } catch (delErr) {
+        console.warn("Notice: Old avatar deletion check:", delErr);
+      }
+    }
+
+    // 2. Upload directly to Cloudflare R2 under deterministic key (same place)
+    const uploadedUrl = await syncEngine.uploadFile(file, 'judges', customKey);
+    if (uploadedUrl) {
+      // Append cache buster if URL doesn't already have one to force immediate image reload
+      const freshUrl = uploadedUrl.startsWith('data:') 
+        ? uploadedUrl 
+        : (uploadedUrl.split('?')[0] + '?v=' + Date.now());
+
+      JUDGE.avatar = freshUrl;
       
       // Update local state and save to server
       syncEngine.setData(state => {
         const jList = [...(state.judges || [])];
         const idx = jList.findIndex(j => j.id === JUDGE.id);
         if (idx !== -1) {
-          jList[idx] = { ...jList[idx], avatar: url };
+          jList[idx] = { ...jList[idx], avatar: freshUrl };
         }
         return { ...state, judges: jList };
       });
       await syncEngine.forceSaveStateToSupabase();
-      
-      // Delete old photo from Supabase storage if it existed
-      if (oldAvatar && typeof syncEngine.deleteFile === 'function') {
-        try {
-          await syncEngine.deleteFile(oldAvatar);
-        } catch (e) {
-          console.error("Failed to delete old avatar file:", e);
-        }
-
-      }
       
       // Update UI
       showJudgeProfileModal();
@@ -3201,13 +3210,13 @@ async function uploadJudgeAvatar(event) {
       // Update top header avatar if it exists
       const headerAvatar = document.getElementById('jav');
       if (headerAvatar) {
-        headerAvatar.style.backgroundImage = `url('${url}')`;
+        headerAvatar.style.backgroundImage = `url('${freshUrl}')`;
         headerAvatar.style.backgroundSize = 'cover';
         headerAvatar.style.backgroundPosition = 'center';
         headerAvatar.textContent = '';
       }
       
-      toast("✅ Profile picture updated successfully!");
+      toast("✅ Profile picture updated and saved to Cloudflare R2!");
     } else {
       toast("❌ Failed to upload image.");
     }
@@ -3217,6 +3226,7 @@ async function uploadJudgeAvatar(event) {
   } finally {
     document.getElementById('pm-avatar-loading').style.display = 'none';
     event.target.value = "";
+    isUploadingAvatar = false;
   }
 }
 
