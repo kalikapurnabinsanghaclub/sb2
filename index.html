@@ -4473,7 +4473,7 @@
             ...stateSwitches
           };
           
-          const eventCats = catData
+          let eventCats = catData
             .filter(c => String(c.event_id) === String(dbEv.id))
             .map(c => {
               let colorVal = c.color || 'b-amber';
@@ -4490,22 +4490,59 @@
                 name: c.name,
                 color: colorVal,
                 prizes: prizesVal,
-                ageMin: Number(c.age_min),
-                ageMax: Number(c.age_max),
-                eventId: c.event_id
+                ageMin: Number(c.age_min ?? c.ageMin ?? 0),
+                ageMax: Number(c.age_max ?? c.ageMax ?? 999),
+                eventId: c.event_id || dbEv.id
               };
             });
 
-          const eventVens = venData
+          // Fallback to dbEv.categories JSON if categories table has no rows for this event
+          if (eventCats.length === 0 && dbEv.categories) {
+            let rawCats = dbEv.categories;
+            if (typeof rawCats === 'string') {
+              try { rawCats = JSON.parse(rawCats); } catch(e) { rawCats = []; }
+            }
+            if (Array.isArray(rawCats)) {
+              eventCats = rawCats.map(c => ({
+                id: Number(c.id),
+                name: c.name,
+                color: c.color || 'b-amber',
+                prizes: c.prizes || [],
+                ageMin: Number(c.ageMin ?? c.age_min ?? 0),
+                ageMax: Number(c.ageMax ?? c.age_max ?? 999),
+                eventId: c.eventId || dbEv.id
+              }));
+            }
+          }
+
+          let eventVens = venData
             .filter(v => String(v.event_id) === String(dbEv.id))
             .map(v => ({
               id: Number(v.id),
               name: v.name,
               location: v.location,
-              eventId: v.event_id,
+              eventId: v.event_id || dbEv.id,
               capacity: Number(v.capacity) || 0,
               dates: Array.isArray(v.dates) ? v.dates : (v.dates ? [v.dates] : [])
             }));
+
+          // Fallback to dbEv.venues JSON if venues table has no rows for this event
+          if (eventVens.length === 0 && dbEv.venues) {
+            let rawVens = dbEv.venues;
+            if (typeof rawVens === 'string') {
+              try { rawVens = JSON.parse(rawVens); } catch(e) { rawVens = []; }
+            }
+            if (Array.isArray(rawVens)) {
+              eventVens = rawVens.map(v => ({
+                id: Number(v.id),
+                name: v.name,
+                location: v.location || '',
+                eventId: v.eventId || dbEv.id,
+                capacity: Number(v.capacity) || 0,
+                dates: Array.isArray(v.dates) ? v.dates : (v.dates ? [v.dates] : [])
+              }));
+            }
+          }
 
           const eventJudges = judgeData
             .filter(j => String(j.event_id) === String(dbEv.id))
@@ -4980,44 +5017,74 @@
               }
             }
 
-            return {
-              ...ev,
-              // Merge core fields from fresh DB data so admin updates appear immediately
-              name: freshData.name || ev.name,
-              date: freshData.startDate || freshData.date || ev.date,
-              startDate: freshData.startDate || freshData.date || ev.startDate,
-              startTime: freshData.startTime || ev.startTime,
-              endDate: freshData.endDate || ev.endDate,
-              endTime: freshData.endTime || ev.endTime,
-              disp: displayDate,
-              cat: freshData.type || freshData.cat || ev.cat,
-              venue: freshData.venue || ev.venue,
-              banner: freshData.banner || ev.banner,
-              whatsapp: freshData.whatsapp || ev.whatsapp || (freshData.roundSchedules && freshData.roundSchedules.whatsapp) || (ev.roundSchedules && ev.roundSchedules.whatsapp) || '',
-              facebook: freshData.facebook || ev.facebook || (freshData.roundSchedules && freshData.roundSchedules.facebook) || (ev.roundSchedules && ev.roundSchedules.facebook) || '',
-              allowDonations: (freshData.allowDonations !== undefined ? freshData.allowDonations : (ev.allowDonations !== undefined ? ev.allowDonations : true)),
-              targetGoal: Number(freshData.targetGoal) || Number(ev.targetGoal) || 50000,
-              raisedAmount: Number(freshData.raisedAmount) || Number(ev.raisedAmount) || 0,
-              upiId: freshData.upiId || ev.upiId || 'kalikapurnabinsangha@sbi',
-              description: freshData.description || ev.description,
-              org: freshData.org || ev.org,
-              capacity: freshData.capacity !== undefined ? freshData.capacity : ev.capacity,
-              formFields: (state.eventFormFields && state.eventFormFields[ev.id] && state.eventFormFields[ev.id].length > 0) ? state.eventFormFields[ev.id] : (freshData.formFields || ev.formFields || null),
-              publicReg: (freshData.publicReg === true || ev.publicReg === true || dictSwitches.publicReg === true || merged.publicReg === true),
-              switchStates: {
-                publicReg: merged.publicReg !== false,
-                stagePreview: merged.stagePreview !== false,
-                resultPublic: merged.resultPublic !== false,
-                promoPublic: merged.promoPublic !== false,
-                downloadPublic: merged.downloadPublic !== false,
-                publicVoting: merged.publicVoting === true,
-                ...merged
-              },
-              categories: (freshData.categories && freshData.categories.length > 0) ? freshData.categories : ((ev.categories && ev.categories.length > 0) ? ev.categories : (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id))),
-              otherPrizes: freshData.otherPrizes || ev.otherPrizes || [],
-              venues: (ev.venues && ev.venues.length > 0) ? ev.venues : (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id)),
-              judges: (ev.judges && ev.judges.length > 0) ? ev.judges : []
-            };
+              let mergedCats = [];
+              if (freshData.categories && (Array.isArray(freshData.categories) ? freshData.categories.length > 0 : true)) {
+                let fc = freshData.categories;
+                if (typeof fc === 'string') { try { fc = JSON.parse(fc); } catch(e) { fc = []; } }
+                if (Array.isArray(fc) && fc.length > 0) mergedCats = fc;
+              }
+              if (mergedCats.length === 0 && ev.categories && (Array.isArray(ev.categories) ? ev.categories.length > 0 : true)) {
+                let ec = ev.categories;
+                if (typeof ec === 'string') { try { ec = JSON.parse(ec); } catch(e) { ec = []; } }
+                if (Array.isArray(ec) && ec.length > 0) mergedCats = ec;
+              }
+              if (mergedCats.length === 0) {
+                mergedCats = (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id));
+              }
+
+              let mergedVens = [];
+              if (freshData.venues && (Array.isArray(freshData.venues) ? freshData.venues.length > 0 : true)) {
+                let fv = freshData.venues;
+                if (typeof fv === 'string') { try { fv = JSON.parse(fv); } catch(e) { fv = []; } }
+                if (Array.isArray(fv) && fv.length > 0) mergedVens = fv;
+              }
+              if (mergedVens.length === 0 && ev.venues && (Array.isArray(ev.venues) ? ev.venues.length > 0 : true)) {
+                let evV = ev.venues;
+                if (typeof evV === 'string') { try { evV = JSON.parse(evV); } catch(e) { evV = []; } }
+                if (Array.isArray(evV) && evV.length > 0) mergedVens = evV;
+              }
+              if (mergedVens.length === 0) {
+                mergedVens = (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id));
+              }
+
+              return {
+                ...ev,
+                // Merge core fields from fresh DB data so admin updates appear immediately
+                name: freshData.name || ev.name,
+                date: freshData.startDate || freshData.date || ev.date,
+                startDate: freshData.startDate || freshData.date || ev.startDate,
+                startTime: freshData.startTime || ev.startTime,
+                endDate: freshData.endDate || ev.endDate,
+                endTime: freshData.endTime || ev.endTime,
+                disp: displayDate,
+                cat: freshData.type || freshData.cat || ev.cat,
+                venue: freshData.venue || ev.venue,
+                banner: freshData.banner || ev.banner,
+                whatsapp: freshData.whatsapp || ev.whatsapp || (freshData.roundSchedules && freshData.roundSchedules.whatsapp) || (ev.roundSchedules && ev.roundSchedules.whatsapp) || '',
+                facebook: freshData.facebook || ev.facebook || (freshData.roundSchedules && freshData.roundSchedules.facebook) || (ev.roundSchedules && ev.roundSchedules.facebook) || '',
+                allowDonations: (freshData.allowDonations !== undefined ? freshData.allowDonations : (ev.allowDonations !== undefined ? ev.allowDonations : true)),
+                targetGoal: Number(freshData.targetGoal) || Number(ev.targetGoal) || 50000,
+                raisedAmount: Number(freshData.raisedAmount) || Number(ev.raisedAmount) || 0,
+                upiId: freshData.upiId || ev.upiId || 'kalikapurnabinsangha@sbi',
+                description: freshData.description || ev.description,
+                org: freshData.org || ev.org,
+                capacity: freshData.capacity !== undefined ? freshData.capacity : ev.capacity,
+                formFields: (state.eventFormFields && state.eventFormFields[ev.id] && state.eventFormFields[ev.id].length > 0) ? state.eventFormFields[ev.id] : (freshData.formFields || ev.formFields || null),
+                publicReg: (freshData.publicReg === true || ev.publicReg === true || dictSwitches.publicReg === true || merged.publicReg === true),
+                switchStates: {
+                  publicReg: merged.publicReg !== false,
+                  stagePreview: merged.stagePreview !== false,
+                  resultPublic: merged.resultPublic !== false,
+                  promoPublic: merged.promoPublic !== false,
+                  downloadPublic: merged.downloadPublic !== false,
+                  publicVoting: merged.publicVoting === true,
+                  ...merged
+                },
+                categories: mergedCats,
+                otherPrizes: freshData.otherPrizes || ev.otherPrizes || [],
+                venues: mergedVens,
+                judges: (ev.judges && ev.judges.length > 0) ? ev.judges : []
+              };
           });
           // Helper to parse dates formatted as dd-mm-yyyy or yyyy-mm-dd safely
           const parseCustomDateLocal = (dateStr, timeStr = '23:59') => {
@@ -5095,8 +5162,18 @@
                 },
                 icon: evType === 'Cultural' ? '💃' : evType === 'Sports' ? '⚽' : '📅',
                 col: evType === 'Cultural' ? '#E91E8C' : evType === 'Sports' ? '#0ea5e9' : '#8b5cf6',
-                categories: (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id)),
-                venues: (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id)),
+                categories: (() => {
+                  let cList = ev.categories;
+                  if (typeof cList === 'string') { try { cList = JSON.parse(cList); } catch(e) { cList = []; } }
+                  if (Array.isArray(cList) && cList.length > 0) return cList;
+                  return (state.categories || []).filter(c => !c.eventId || String(c.eventId) === String(ev.id));
+                })(),
+                venues: (() => {
+                  let vList = ev.venues;
+                  if (typeof vList === 'string') { try { vList = JSON.parse(vList); } catch(e) { vList = []; } }
+                  if (Array.isArray(vList) && vList.length > 0) return vList;
+                  return (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id));
+                })(),
                 judges: (ev.judges && ev.judges.length > 0) ? ev.judges : []
               };
             });
@@ -9592,6 +9669,16 @@
           { type: 'number', label: 'Phone Number', required: true, placeholder: '98XXXXXXXX' }
         ];
       }
+
+      // If event has categories defined and fields list does not contain a category field, include it
+      if (ev.categories && ev.categories.length > 0 && !fields.some(f => f.type === 'category')) {
+        fields.push({ type: 'category', label: 'Category', required: true });
+      }
+
+      // If event has venues defined and fields list does not contain a venue field, include it
+      if (ev.venues && ev.venues.length > 0 && !fields.some(f => f.type === 'venue')) {
+        fields.push({ type: 'venue', label: 'Venue', required: false });
+      }
       
       // Override explicitly for Sports Events to match the Sports Manager layout
       if (window.isSportsEvent && window.isSportsEvent(ev)) {
@@ -9780,6 +9867,14 @@
           }
         });
       }
+
+      // Initialize Category Dropdown with available categories and current age filter if available
+      const catEl = container.querySelector(".su-df-cat");
+      if (catEl) {
+        const ageInput = container.querySelector('input.su-df[type="number"][data-label*="Age" i], input.su-df[type="number"][data-label*="AGE"]');
+        const currentAge = ageInput ? parseInt(ageInput.value) : 0;
+        window.updatePublicCategoryOptions(currentAge || 0);
+      }
     }
 
     window.getParticipantPhotoUrl = function(p, eventId) {
@@ -9852,7 +9947,9 @@
       const catEl = document.querySelector(".su-df-cat");
       if (!catEl) return;
       
-      const currentEvId = window.currentEpvEventId || (window.location.search.match(/event=([^&]+)/) ? window.location.search.match(/event=([^&]+)/)[1] : '');
+      const currentEvId = (typeof suSelectedEventId !== 'undefined' && suSelectedEventId) 
+        ? suSelectedEventId 
+        : (window.currentEpvEventId || (window.location.search.match(/event=([^&]+)/) ? window.location.search.match(/event=([^&]+)/)[1] : ''));
       const ev = (typeof EVENTS !== 'undefined' ? EVENTS : []).find(e => String(e.id) === String(currentEvId)) || {};
       const cats = ev.categories || [];
       if (!cats || cats.length === 0) return;
@@ -11162,16 +11259,16 @@
       });
 
       // 4. Categories & Venues
-      let catId = 1; let venueId = 1;
+      let catId = null; let venueId = null;
       const catEl = document.querySelector(".su-df-cat");
       if (catEl && catEl.value) {
-        catId = parseInt(catEl.value);
-        formData[catEl.getAttribute("data-label")] = catEl.value; // Store value for validation check
+        catId = isNaN(Number(catEl.value)) ? catEl.value : Number(catEl.value);
+        formData[catEl.getAttribute("data-label") || 'Category'] = catEl.value; // Store value for validation check
       }
       const venEl = document.querySelector(".su-df-ven");
       if (venEl && venEl.value) {
-        venueId = parseInt(venEl.value);
-        formData[venEl.getAttribute("data-label")] = venEl.value; // Store value for validation check
+        venueId = isNaN(Number(venEl.value)) ? venEl.value : Number(venEl.value);
+        formData[venEl.getAttribute("data-label") || 'Venue'] = venEl.value; // Store value for validation check
       }
 
       // T&C Check
@@ -11250,6 +11347,29 @@
       });
       
       if (!name) { showToast("Name Required", "Please fill in your Name!", "⚠️"); return; }
+
+      // Validate or resolve Category
+      const eventCats = ev.categories || [];
+      if (eventCats.length > 0) {
+        if (!catId) {
+          // If not selected, try finding eligible category for participant age
+          const eligibleCat = eventCats.find(c => {
+            const min = parseInt(c.ageMin) || 0;
+            const max = parseInt(c.ageMax) || 999;
+            return age <= 0 || (age >= min && age <= max);
+          }) || eventCats[0];
+          if (eligibleCat) {
+            catId = eligibleCat.id;
+          }
+        }
+      } else {
+        if (!catId) catId = 1;
+      }
+
+      if (!venueId) {
+        const eventVens = ev.venues || [];
+        venueId = eventVens.length > 0 ? eventVens[0].id : 1;
+      }
 
       // Validate Age against Category limits
       const catObj = (ev.categories || []).find(c => String(c.id) === String(catId));
