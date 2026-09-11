@@ -5418,6 +5418,49 @@ let categories = [];
 let judges = [];
 let subjects = [];
 let venues = [];
+
+function resolveParticipantVenue(p, venList) {
+  if (!p) return null;
+  const list = (Array.isArray(venList) && venList.length > 0) ? venList : (venues || []);
+  // 1. Match by venueId
+  if (p.venueId !== undefined && p.venueId !== null && p.venueId !== '') {
+    const v = list.find(x => String(x.id) === String(p.venueId));
+    if (v) return v;
+  }
+  // 2. Match by venue property
+  if (p.venue !== undefined && p.venue !== null && p.venue !== '') {
+    const v = list.find(x => String(x.id) === String(p.venue) || (x.name && String(x.name).trim().toLowerCase() === String(p.venue).trim().toLowerCase()));
+    if (v) return v;
+  }
+  // 3. Match from formAnswers['Venue Field'] / formAnswers['Venue']
+  const rawVen = p.formAnswers && (p.formAnswers['Venue Field'] || p.formAnswers['Venue'] || p.formAnswers['venue'] || p.formAnswers['venue_field']);
+  if (rawVen) {
+    const v = list.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+    if (v) return v;
+  }
+  // 4. Match if p.venueId is actually a name string
+  if (p.venueId && typeof p.venueId === 'string' && isNaN(Number(p.venueId))) {
+    const v = list.find(x => x.name && String(x.name).trim().toLowerCase() === String(p.venueId).trim().toLowerCase());
+    if (v) return v;
+  }
+  return null;
+}
+
+function getParticipantVenueName(p, venList) {
+  if (!p) return '—';
+  const v = resolveParticipantVenue(p, venList);
+  if (v && v.name) return v.name;
+  if (p.formAnswers && (p.formAnswers['Venue Field'] || p.formAnswers['Venue'] || p.formAnswers['venue'] || p.formAnswers['venue_field'])) {
+    return p.formAnswers['Venue Field'] || p.formAnswers['Venue'] || p.formAnswers['venue'] || p.formAnswers['venue_field'];
+  }
+  if (p.venue && isNaN(Number(p.venue))) return p.venue;
+  const s = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : (window.syncEngine ? window.syncEngine.state : {});
+  const activeEv = (s.events || []).find(e => String(e.id) === String(p.eventId || activeEventId));
+  if (activeEv && (activeEv.venue || activeEv.location)) return activeEv.venue || activeEv.location;
+  return '—';
+}
+window.resolveParticipantVenue = resolveParticipantVenue;
+window.getParticipantVenueName = getParticipantVenueName;
 let activeEventId = null;
 let currentOnStage = null;
 let stageQueue = [];
@@ -5679,6 +5722,21 @@ function hydrate() {
     }));
     categories = (activeEv && activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (s.categories || []).filter(c => (c.eventId || c.event_id) && String(c.eventId || c.event_id) === String(activeEventId));
     venues = (activeEv && activeEv.venues && activeEv.venues.length > 0) ? activeEv.venues : (s.venues || []).filter(v => (v.eventId || v.event_id) && String(v.eventId || v.event_id) === String(activeEventId));
+    if (venues.length === 0 && s.venues && s.venues.length > 0) {
+      venues = s.venues.filter(v => !v.eventId || String(v.eventId) === String(activeEventId));
+      if (venues.length === 0) venues = [...s.venues];
+    }
+    if (venues.length === 0 && activeEv && (activeEv.venue || activeEv.location)) {
+      const vName = activeEv.venue || activeEv.location;
+      venues = [{
+        id: 1788864913467,
+        name: vName,
+        location: vName,
+        eventId: activeEventId,
+        capacity: Number(activeEv.capacity) || 150,
+        dates: activeEv.date ? [activeEv.date] : (activeEv.startDate ? [activeEv.startDate] : [])
+      }];
+    }
     // Only reload formFields from state if the event changed OR formFields is currently empty
     if (eventDidChange || !formFields || formFields.length === 0) {
       if (s && s.eventFormFields && s.eventFormFields[activeEventId] && s.eventFormFields[activeEventId].length > 0) {
@@ -7443,7 +7501,13 @@ function renderApplied(){
   }
   
   if(catFilter) data = data.filter(p=>String(p.catId)===String(catFilter));
-  if(venueFilter) data = data.filter(p=>String(p.venueId)===String(venueFilter));
+  if(venueFilter) {
+    data = data.filter(p => {
+      if (String(p.venueId) === String(venueFilter)) return true;
+      const v = resolveParticipantVenue(p, venues);
+      return v && String(v.id) === String(venueFilter);
+    });
+  }
 
   const countEl = document.getElementById('reg-count');
   if(countEl) countEl.textContent = data.length;
@@ -7452,7 +7516,7 @@ function renderApplied(){
   if (!tbody) return;
   tbody.innerHTML = data.map(p=>{
     const cat = categories.find(c=>String(c.id)===String(p.catId));
-    const ven = venues.find(v=>String(v.id)===String(p.venueId));
+    const venName = getParticipantVenueName(p, venues);
     const ageGrp = p.age ? `<span style="font-family:var(--fm); font-weight:700">${p.age}</span>` : '<span style="color:var(--text-muted); font-size:9px; font-weight:700">N/A</span>';
     
     // Check if participant has custom form answers
@@ -7473,7 +7537,7 @@ function renderApplied(){
       <td style="font-size:12px;color:var(--text-dim);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.formAnswers?.Address || ''}">${p.formAnswers?.Address || '—'}</td>
       <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
       <td>${ageGrp}</td>
-      <td style="font-size:12px">${ven?ven.name:'—'}</td>
+      <td style="font-size:12px">${venName}</td>
       <td><div style="display:flex;align-items:center;gap:6px;font-size:10px">${hasReachedRound(p, 'audition') ? '🟢' : '🔴'}<span class="badge ${getRoundPresent(p, 'audition')?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', 'audition')">${getRoundPresent(p, 'audition')?'✓ Yes':'✗ No'}</span></div></td>
       <td><div style="display:flex;align-items:center;gap:6px;font-size:10px">${hasReachedRound(p, 'qualified') ? '🟢' : '🔴'}<span class="badge ${getRoundPresent(p, 'qualified')?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', 'qualified')">${getRoundPresent(p, 'qualified')?'✓ Yes':'✗ No'}</span></div></td>
       <td><div style="display:flex;align-items:center;gap:6px;font-size:10px">${hasReachedRound(p, 'semifinal') ? '🟢' : '🔴'}<span class="badge ${getRoundPresent(p, 'semifinal')?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', 'semifinal')">${getRoundPresent(p, 'semifinal')?'✓ Yes':'✗ No'}</span></div></td>
@@ -7880,7 +7944,12 @@ function openEditReg(id){
     }
     if (venEl && evVens && evVens.length) {
       venEl.innerHTML = evVens.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
-      if (p.venueId !== undefined) venEl.value = p.venueId;
+      const matchedVen = resolveParticipantVenue(p, evVens);
+      if (matchedVen) {
+        venEl.value = matchedVen.id;
+      } else if (p.venueId !== undefined) {
+        venEl.value = p.venueId;
+      }
     }
     openM('edit-reg-modal');
   }, 50);
@@ -7909,8 +7978,20 @@ async function saveEditReg(){
     const parsedCat = parseInt(document.getElementById('er-cat').value);
     p.catId = isNaN(parsedCat) ? (p.catId || 1) : parsedCat;
     
-    const parsedVenue = parseInt(document.getElementById('er-venue').value);
-    p.venueId = isNaN(parsedVenue) ? (p.venueId || 1) : parsedVenue;
+    const venEl = document.getElementById('er-venue');
+    if (venEl && venEl.value) {
+      const parsedVenue = parseInt(venEl.value);
+      p.venueId = isNaN(parsedVenue) ? venEl.value : parsedVenue;
+      const matchedVen = (venues || []).find(v => String(v.id) === String(p.venueId));
+      if (matchedVen) {
+        p.venue = matchedVen.name;
+        if (!p.formAnswers) p.formAnswers = {};
+        p.formAnswers['Venue Field'] = matchedVen.name;
+        p.formAnswers['Venue'] = matchedVen.name;
+      }
+    } else {
+      p.venueId = p.venueId || 1;
+    }
     
     p.present = document.getElementById('er-present').value === 'true';
     p.localMutatedAt = now; // Stamp optimistic lock so remote merge doesn't revert edits
@@ -7978,6 +8059,7 @@ async function saveEditReg(){
         gender: p.gender,
         catId: p.catId,
         venueId: p.venueId,
+        venue: p.venue || p.venueId,
         present: p.present,
         photo: p.photo,
         musicUrl: p.musicUrl,
@@ -8071,8 +8153,8 @@ function sendWhatsAppReg(id) {
   const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
   const eventName = activeEv?.name || 'Our Event';
   const organizerName = 'KNSDC';
-  const ven = venues.find(v => String(v.id) === String(p.venueId));
-  const venueName = ven?.name || 'Venue TBA';
+  const venName = getParticipantVenueName(p, venues);
+  const venueName = (venName && venName !== '—') ? venName : (activeEv?.venue || 'Venue TBA');
   const eventDate = activeEv?.date || activeEv?.startDate || 'Date TBA';
 
   // Build message using template (plain text, no broken emojis)
@@ -8120,8 +8202,8 @@ function openBulkWhatsApp() {
   list.forEach((p, i) => {
     const phone = (p.phone || '').replace(/\D/g, '');
     const intlPhone = phone.length === 10 ? '91' + phone : phone;
-    const ven = venues.find(v => String(v.id) === String(p.venueId));
-    const venueName = ven?.name || 'Venue TBA';
+    const venName = getParticipantVenueName(p, venues);
+    const venueName = (venName && venName !== '—') ? venName : (activeEv?.venue || 'Venue TBA');
     const msg = encodeURIComponent(
 `Hi ${p.name},
 
@@ -8458,11 +8540,11 @@ async function saveNewRegAsync() {
     closeM('add-reg-modal');
     
     // Show Success Modal
-    const ven = (activeEv.venues || []).find(v => String(v.id) === String(venueId));
+    const ven = (venues || []).find(v => String(v.id) === String(venueId)) || (activeEv.venues || []).find(v => String(v.id) === String(venueId));
     document.getElementById('rs-id').textContent = newId;
     document.getElementById('rs-event').textContent = activeEv.name;
     document.getElementById('rs-date').textContent = date;
-    document.getElementById('rs-venue').textContent = ven ? ven.name : 'Main Venue';
+    document.getElementById('rs-venue').textContent = ven ? ven.name : (activeEv.venue || 'Main Venue');
     
     openM('reg-success-modal');
   } catch(err) {
@@ -8493,7 +8575,13 @@ async function downloadRegs(format = 'excel') {
     );
   }
   if(catFilter) eventParticipants = eventParticipants.filter(p=>String(p.catId)===String(catFilter));
-  if(venueFilter) eventParticipants = eventParticipants.filter(p=>String(p.venueId)===String(venueFilter));
+  if(venueFilter) {
+    eventParticipants = eventParticipants.filter(p => {
+      if (String(p.venueId) === String(venueFilter)) return true;
+      const v = resolveParticipantVenue(p, venues);
+      return v && String(v.id) === String(venueFilter);
+    });
+  }
   
   // 1. Identify all file-based fields to exclude them from export
   const fileFieldLabels = new Set();
@@ -8545,7 +8633,7 @@ async function downloadRegs(format = 'excel') {
 
   eventParticipants.forEach(p => {
     const cat = categories.find(c => String(c.id) === String(p.catId));
-    const ven = venues.find(v => String(v.id) === String(p.venueId));
+    const venName = getParticipantVenueName(p, venues);
     
     // Attempt to extract Address safely
     let addressVal = '';
@@ -8557,7 +8645,7 @@ async function downloadRegs(format = 'excel') {
     
     const standardData = [
       p.id, p.name, p.phone, addressVal, p.age,
-      cat ? cat.name : '', ven ? ven.name : '',
+      cat ? cat.name : '', venName !== '—' ? venName : '',
       p.round,
       getRoundPresent(p, 'audition') ? 'Yes' : 'No',
       getRoundPresent(p, 'qualified') ? 'Yes' : 'No',
@@ -9298,7 +9386,13 @@ async function deleteOtherPrize(idx) {
 function renderVenueDates(){
   const filteredVenues = venues.filter(v => String(v.eventId) === String(activeEventId) || !v.eventId);
   document.getElementById('venue-date-list').innerHTML = filteredVenues.map(v=>{
-    const regs = participants.filter(p=>(String(p.venueId)===String(v.id) && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
+    const regs = participants.filter(p => {
+      const isEv = String(p.eventId) === String(activeEventId) || !p.eventId;
+      if (!isEv) return false;
+      if (String(p.venueId) === String(v.id)) return true;
+      const r = resolveParticipantVenue(p, venues);
+      return r && String(r.id) === String(v.id);
+    }).length;
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <strong style="font-size:14px;font-family:var(--fh);text-transform:uppercase;letter-spacing:0.3px">🏛 ${v.name}</strong>
@@ -9317,7 +9411,13 @@ function renderVenueDates(){
 
   let statsHtml = '';
   filteredVenues.forEach(v=>{
-    const vr = participants.filter(p=>(String(p.venueId)===String(v.id) && (String(p.eventId) === String(activeEventId) || !p.eventId)));
+    const vr = participants.filter(p => {
+      const isEv = String(p.eventId) === String(activeEventId) || !p.eventId;
+      if (!isEv) return false;
+      if (String(p.venueId) === String(v.id)) return true;
+      const r = resolveParticipantVenue(p, venues);
+      return r && String(r.id) === String(v.id);
+    });
     const present = vr.filter(p=>p.present).length;
     statsHtml += `<div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
@@ -10141,7 +10241,11 @@ function renderVenueParticipants(){
   
   // Master participant list for venue/event across ALL rounds
   let allParts = participants.filter(p => (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if(venId) allParts = allParts.filter(p=>String(p.venueId)===String(venId));
+  if(venId) allParts = allParts.filter(p => {
+    if (String(p.venueId) === String(venId)) return true;
+    const r = resolveParticipantVenue(p, venues);
+    return r && String(r.id) === String(venId);
+  });
   if(selectedDate) allParts = allParts.filter(p=>p.date===selectedDate);
 
   // On stage (Resolved across ANY round)
