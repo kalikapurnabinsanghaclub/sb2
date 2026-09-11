@@ -7992,16 +7992,37 @@ async function handleFileEdit(input, hiddenId) {
   const originalBg = input.style.background;
   input.style.background = 'rgba(255,210,63,0.2)'; // Amber tint for loading
   toast("Uploading file... ⏳");
+
+  const targetEl = document.getElementById(hiddenId);
+  const oldUrl = targetEl ? targetEl.value : null;
+
+  // Delete previous file from cloud if present
+  if (oldUrl && window.syncEngine && typeof window.syncEngine.deleteFile === 'function') {
+    try {
+      await window.syncEngine.deleteFile(oldUrl);
+    } catch (delErr) {
+      console.warn('[handleFileEdit] Delete old file notice:', delErr);
+    }
+  }
+
+  const pId = document.getElementById('er-id')?.value || 'participant';
+  const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)$/i.test(file.name);
+  const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name);
+  const ext = file.name ? file.name.split('.').pop().toLowerCase() : 'bin';
+  const customKey = isAudio 
+    ? `participants/p_${pId}_audio.${ext}` 
+    : (isVideo ? `participants/p_${pId}_video.${ext}` : `participants/p_${pId}_photo.${ext}`);
   
   let url = null;
   try {
     if (window.syncEngine && typeof window.syncEngine.uploadFile === 'function') {
-      url = await window.syncEngine.uploadFile(file, 'participants/');
+      url = await window.syncEngine.uploadFile(file, 'participants/', customKey);
     }
     if (!url) {
       const fd = new FormData();
       fd.append('pathPrefix', 'participants');
       fd.append('file', file);
+      if (customKey) fd.append('customKey', customKey);
       const r2Res = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', {
         method: 'POST',
         body: fd
