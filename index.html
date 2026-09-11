@@ -5095,6 +5095,7 @@
                   promoPublic: merged.promoPublic !== false,
                   downloadPublic: merged.downloadPublic !== false,
                   publicVoting: merged.publicVoting === true,
+                  publicRatingPos: merged.publicRatingPos !== undefined ? Number(merged.publicRatingPos) : (merged.publicVoting === true ? 3 : 0),
                   ...merged
                 },
                 categories: mergedCats,
@@ -5175,6 +5176,7 @@
                   promoPublic: merged.promoPublic !== false,
                   downloadPublic: merged.downloadPublic !== false,
                   publicVoting: merged.publicVoting === true,
+                  publicRatingPos: merged.publicRatingPos !== undefined ? Number(merged.publicRatingPos) : (merged.publicVoting === true ? 3 : 0),
                   ...merged
                 },
                 icon: evType === 'Cultural' ? '💃' : evType === 'Sports' ? '⚽' : '📅',
@@ -5440,7 +5442,10 @@
         activeEventIds.forEach(eid => {
           const ev = events.find(e => String(e.id) === String(eid));
           if (!ev || ev.switchStates?.stagePreview === false) return;
-          const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
+          const evRatingPos = ev.switchStates?.publicRatingPos !== undefined 
+            ? Number(ev.switchStates.publicRatingPos) 
+            : (ev.publicVoting === true || ev.switchStates?.publicVoting === true ? 3 : 0);
+          const liveSectionRatingOn = (evRatingPos === 2 || evRatingPos === 3);
 
           visibleCount++;
           const eventCats = ev.categories || categories;
@@ -5449,7 +5454,7 @@
 
           let publicVoteAvg = '—';
           let publicVoteCount = 0;
-          if (publicVotingOn && onStage) {
+          if (liveSectionRatingOn && onStage) {
              const voteKey = onStage.id + '_' + onStage.round;
              const votes = (state.publicVotes || {})[voteKey] || [];
              publicVoteCount = votes.length;
@@ -5479,14 +5484,14 @@
                     ` : `
                       <div style="color:#64748B;padding:20px;border:1px dashed rgba(139,92,246,0.2);border-radius:12px; background: #ffffff;">
                         Transitioning...
-                        ${publicVotingOn ? '<div style="margin-top:10px;font-size:0.75rem;color:rgba(124,58,237,0.6);">⏳ Rating opens when performer takes the stage</div>' : ''}
+                        ${liveSectionRatingOn ? '<div style="margin-top:10px;font-size:0.75rem;color:rgba(124,58,237,0.6);">⏳ Rating opens when performer takes the stage</div>' : ''}
                       </div>
                     `}
                   </div>
                 </div>
 
                 <!-- Live Rating Stats Card -->
-                ${(onStage && publicVotingOn) ? `
+                ${(onStage && liveSectionRatingOn) ? `
                   <div style="background: #ffffff; padding: 25px; border-radius: 16px; border: 1px solid rgba(245,158,11,0.15); display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; overflow: hidden; box-shadow: 0 4px 16px rgba(245,158,11,0.06);">
                      <div style="position: absolute; top: -20px; right: -20px; font-size: 100px; opacity: 0.04; pointer-events: none;">🌟</div>
                      <h3 style="color: #D97706; font-family: 'Cinzel Decorative', cursive; font-size: 1rem; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase;">Audience Rating</h3>
@@ -5606,49 +5611,86 @@
         // --- Live Voting Banner Toast & Auto-Scroll Controller ---
         let activeVotingPerformer = null;
         let activeVotingRound = null;
+        let activeToastPerformer = null;
+        let activeToastRound = null;
+        let activeToastPos = 0;
+
         activeEventIds.forEach(eid => {
           const ev = events.find(e => String(e.id) === String(eid));
           if (!ev || ev.switchStates?.stagePreview === false) return;
-          const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
-          if (publicVotingOn) {
-            const allP = [
-              ...(participants || []),
-              ...((state.public_registrations || []).filter(pr => !(participants || []).some(p => String(p.id) === String(pr.id))))
-            ];
-            const onStage = allP.find(p => String(p.eventId) === String(eid) && p.stageStatus === 'on-stage');
-            if (onStage) {
-              const prMatch = (state.public_registrations || []).find(pr => String(pr.id) === String(onStage.id));
-              const pMatch = (state.participants || []).find(p => String(p.id) === String(onStage.id));
-              activeVotingPerformer = { ...(prMatch || {}), ...(pMatch || {}), ...onStage };
+          const pos = ev.switchStates?.publicRatingPos !== undefined 
+            ? Number(ev.switchStates.publicRatingPos) 
+            : (ev.publicVoting === true || ev.switchStates?.publicVoting === true ? 3 : 0);
+
+          const liveSectionRatingOn = (pos === 2 || pos === 3);
+          const liveToastOn = (pos === 2 || pos === 3 || pos === 5);
+
+          const allP = [
+            ...(participants || []),
+            ...((state.public_registrations || []).filter(pr => !(participants || []).some(p => String(p.id) === String(pr.id))))
+          ];
+          const onStage = allP.find(p => String(p.eventId) === String(eid) && p.stageStatus === 'on-stage');
+          if (onStage) {
+            const prMatch = (state.public_registrations || []).find(pr => String(pr.id) === String(onStage.id));
+            const pMatch = (state.participants || []).find(p => String(p.id) === String(onStage.id));
+            const performerObj = { ...(prMatch || {}), ...(pMatch || {}), ...onStage };
+            
+            if (liveSectionRatingOn && !activeVotingPerformer) {
+              activeVotingPerformer = performerObj;
               activeVotingRound = onStage.round;
+            }
+            if (liveToastOn && !activeToastPerformer) {
+              activeToastPerformer = performerObj;
+              activeToastRound = onStage.round;
+              activeToastPos = pos;
             }
           }
         });
 
         const toastEl = document.getElementById('live-voting-toast');
         if (toastEl) {
-          if (activeVotingPerformer) {
-            const hasVoted = localStorage.getItem(`knsdc_vote_${activeVotingPerformer.id}_${activeVotingRound}`);
+          if (activeToastPerformer) {
+            const hasVoted = localStorage.getItem(`knsdc_vote_${activeToastPerformer.id}_${activeToastRound}`) ||
+                             (activeToastPos === 5 && localStorage.getItem(`knsdc_fav_vote_${activeToastPerformer.id}`));
             if (!hasVoted) {
               const descEl = document.getElementById('live-voting-toast-desc');
               if (descEl) {
-                const toastPhoto = getParticipantPhotoUrl(activeVotingPerformer, activeVotingPerformer.eventId);
+                const toastPhoto = getParticipantPhotoUrl(activeToastPerformer, activeToastPerformer.eventId);
+                const toastText = activeToastPos === 5 
+                  ? `Vote for favorite <strong>${activeToastPerformer.name}</strong> now!`
+                  : `Rate performance of <strong>${activeToastPerformer.name}</strong> now!`;
                 descEl.innerHTML = `
                   <div style="display:flex;align-items:center;gap:8px;">
-                    ${toastPhoto ? `<img src="${toastPhoto.replace(/"/g, '&quot;')}" alt="${activeVotingPerformer.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1.5px solid #FFD23F;flex-shrink:0;">` : ''}
-                    <span>Rate performance of <strong>${activeVotingPerformer.name}</strong> now!</span>
+                    ${toastPhoto ? `<img src="${toastPhoto.replace(/"/g, '&quot;')}" alt="${activeToastPerformer.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1.5px solid #FFD23F;flex-shrink:0;">` : ''}
+                    <span>${toastText}</span>
                   </div>
                 `;
               }
+              const toastBtn = toastEl.querySelector('button[onclick*="scrollToLiveEvents"]');
+              if (toastBtn) {
+                if (activeToastPos === 5) {
+                  toastBtn.textContent = 'Vote ❤️';
+                  toastBtn.onclick = () => {
+                    if (window.showFavoriteVoteModal) {
+                      showFavoriteVoteModal(activeToastPerformer.eventId, activeToastPerformer.id);
+                    }
+                  };
+                } else {
+                  toastBtn.textContent = 'Vote Now ⚡';
+                  toastBtn.onclick = () => { window.scrollToLiveEvents(); };
+                }
+              }
               toastEl.style.display = 'flex';
 
-              // Auto scroll down to stage card once per performer-round combination
-              const scrollKey = `${activeVotingPerformer.id}_${activeVotingRound}`;
-              if (window.lastAutoScrolledPerformerRound !== scrollKey) {
-                window.lastAutoScrolledPerformerRound = scrollKey;
-                setTimeout(() => {
-                  window.scrollToLiveEvents();
-                }, 800);
+              // Auto scroll down to stage card once per performer-round combination if live section rating is on
+              if (activeToastPos === 2 || activeToastPos === 3) {
+                const scrollKey = `${activeToastPerformer.id}_${activeToastRound}`;
+                if (window.lastAutoScrolledPerformerRound !== scrollKey) {
+                  window.lastAutoScrolledPerformerRound = scrollKey;
+                  setTimeout(() => {
+                    window.scrollToLiveEvents();
+                  }, 800);
+                }
               }
             } else {
               toastEl.style.display = 'none';
@@ -5662,10 +5704,14 @@
         // --- Standalone Public Rating Section (white area below results) ---
         const ratingBox = document.getElementById('publicRatingStandalone');
         if (ratingBox) {
-          // Check if public voting is enabled at all
+          // Check if live section rating is enabled
           const anyVotingOn = activeEventIds.some(eid => {
             const ev = events.find(e => String(e.id) === String(eid));
-            return ev && (ev.publicVoting === true || ev.switchStates?.publicVoting === true);
+            if (!ev) return false;
+            const pos = ev.switchStates?.publicRatingPos !== undefined 
+              ? Number(ev.switchStates.publicRatingPos) 
+              : (ev.publicVoting === true || ev.switchStates?.publicVoting === true ? 3 : 0);
+            return (pos === 2 || pos === 3);
           });
 
           if (activeVotingPerformer && activeVotingRound) {
@@ -8051,8 +8097,11 @@
             <!-- ★ Public Rating Slider (Inside renderLiveUI) ★ -->
             <div id="liveRatingSection" style="margin-bottom: 40px;">
               ${(() => {
-                const publicVotingOn = ev.publicVoting === true || ev.switchStates?.publicVoting === true;
-                if (!publicVotingOn) return '';
+                const evRatingPos = ev.switchStates?.publicRatingPos !== undefined 
+                  ? Number(ev.switchStates.publicRatingPos) 
+                  : (ev.publicVoting === true || ev.switchStates?.publicVoting === true ? 3 : 0);
+                const liveSectionRatingOn = (evRatingPos === 2 || evRatingPos === 3);
+                if (!liveSectionRatingOn) return '';
                 
                 const lsKey = onStage ? `knsdc_vote_${onStage.id}_${onStage.round}` : '';
                 const alreadyVoted = onStage ? localStorage.getItem(lsKey) : false;
@@ -10844,6 +10893,18 @@
 
       function renderAuditionCompletedPerformers(candidateParts) {
         if (!pubCont || !pubBody) return;
+        const evRatingPos = ev.switchStates?.publicRatingPos !== undefined 
+          ? Number(ev.switchStates.publicRatingPos) 
+          : (ev.publicVoting === true || ev.switchStates?.publicVoting === true ? 3 : 0);
+        const bannerFavoriteVoteOn = (evRatingPos === 1 || evRatingPos === 3 || evRatingPos === 4 || evRatingPos === 5);
+        const bannerRating1To10On = (evRatingPos === 3 || evRatingPos === 4);
+
+        if (!bannerFavoriteVoteOn && !bannerRating1To10On) {
+          pubBody.innerHTML = '';
+          pubCont.style.display = 'none';
+          return;
+        }
+
         const partsList = candidateParts || state.participants || [];
         const pubVotes = state.publicVotes || {};
 
@@ -10945,32 +11006,38 @@
                   </div>
                 </div>
 
-                <!-- Rating Section for Event View -->
+                <!-- Favorite / Rating Section for Event View -->
                 <div style="background: linear-gradient(135deg, #fffdf5 0%, #fff8e1 50%, #fff3cd 100%); border-radius: 12px; padding: 16px; border: 1px solid #FFD23F; margin-top: 12px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                    <div style="font-weight: 800; color: #92400e; font-size: 0.9rem;">Rate ${pName}'s Performance</div>
-                    <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-weight:800; font-size:0.75rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote (Favorite) ❤️</button>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; background: #fff; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,210,63,0.4);">
-                    <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">1</div>
-                    <input type="range" id="vote-slider-epv-${pId}" class="premium-rating-slider" min="1" max="10" value="5" step="1" oninput="document.getElementById('vote-val-epv-${pId}').textContent=this.value;" style="flex:1;" />
-                    <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">10</div>
-                    <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 8px; padding: 4px 10px; min-width: 40px; text-align: center;">
-                      <span id="vote-val-epv-${pId}" style="font-size: 1.2rem; font-weight: 900; color: #1e1b4b;">5</span>
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: ${bannerRating1To10On ? '12px' : '0'};">
+                    <div style="font-weight: 800; color: #92400e; font-size: 0.9rem;">
+                      ${bannerRating1To10On ? `Rate ${pName}'s Performance` : `Support ${pName} with your vote ❤️`}
                     </div>
+                    ${bannerFavoriteVoteOn ? `
+                      <button onclick="showFavoriteVoteModal('${ev.id}', '${fav.p.id}')" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:7px 16px; border-radius:8px; font-weight:800; font-size:0.8rem; cursor:pointer; box-shadow:0 4px 10px rgba(16,185,129,0.25); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">Vote (Favorite) ❤️</button>
+                    ` : ''}
                   </div>
-                  <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    <div style="flex: 1; min-width: 120px;">
-                      <input type="text" id="vote-name-epv-${pId}" placeholder="Full name" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                  ${bannerRating1To10On ? `
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; background: #fff; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,210,63,0.4);">
+                      <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">1</div>
+                      <input type="range" id="vote-slider-epv-${pId}" class="premium-rating-slider" min="1" max="10" value="5" step="1" oninput="document.getElementById('vote-val-epv-${pId}').textContent=this.value;" style="flex:1;" />
+                      <div style="font-size: 0.8rem; color: #92400e; font-weight: 800;">10</div>
+                      <div style="background: linear-gradient(135deg, #FFD23F, #f59e0b); border-radius: 8px; padding: 4px 10px; min-width: 40px; text-align: center;">
+                        <span id="vote-val-epv-${pId}" style="font-size: 1.2rem; font-weight: 900; color: #1e1b4b;">5</span>
+                      </div>
                     </div>
-                    <div style="flex: 1; min-width: 120px;">
-                      <input type="tel" id="vote-phone-epv-${pId}" placeholder="Phone" maxlength="15" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                      <div style="flex: 1; min-width: 120px;">
+                        <input type="text" id="vote-name-epv-${pId}" placeholder="Full name" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                      </div>
+                      <div style="flex: 1; min-width: 120px;">
+                        <input type="tel" id="vote-phone-epv-${pId}" placeholder="Phone" maxlength="15" style="width:100%; padding:8px 12px; border:2px solid #fbbf24; border-radius:8px; font-size:0.85rem; font-weight:700; outline:none;" />
+                      </div>
+                      <button onclick="window.submitPublicVoteEPV('${ev.id}','${pId}','${fav.round}')" style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:8px; padding:8px 16px; font-size:0.9rem; font-weight:900; cursor:pointer; flex: 1; min-width: 100px;">
+                        Submit ⭐
+                      </button>
                     </div>
-                    <button onclick="window.submitPublicVoteEPV('${ev.id}','${pId}','${fav.round}')" style="background: linear-gradient(135deg, #FFD23F, #f59e0b); color:#1e1b4b; border:none; border-radius:8px; padding:8px 16px; font-size:0.9rem; font-weight:900; cursor:pointer; flex: 1; min-width: 100px;">
-                      Submit ⭐
-                    </button>
-                  </div>
-                  <div id="vote-msg-epv-${pId}" style="font-size:0.8rem; font-weight:800; color:#92400e; margin-top:8px; min-height:16px; text-align:center;"></div>
+                    <div id="vote-msg-epv-${pId}" style="font-size:0.8rem; font-weight:800; color:#92400e; margin-top:8px; min-height:16px; text-align:center;"></div>
+                  ` : ''}
                 </div>
               </div>
             `;
