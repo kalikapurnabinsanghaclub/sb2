@@ -4532,9 +4532,9 @@
             if (typeof rawVens === 'string') {
               try { rawVens = JSON.parse(rawVens); } catch(e) { rawVens = []; }
             }
-            if (Array.isArray(rawVens)) {
+            if (Array.isArray(rawVens) && rawVens.length > 0) {
               eventVens = rawVens.map(v => ({
-                id: Number(v.id),
+                id: Number(v.id) || 1,
                 name: v.name,
                 location: v.location || '',
                 eventId: v.eventId || dbEv.id,
@@ -4542,6 +4542,19 @@
                 dates: Array.isArray(v.dates) ? v.dates : (v.dates ? [v.dates] : [])
               }));
             }
+          }
+
+          // Fallback to single dbEv.venue string if eventVens is still empty
+          if (eventVens.length === 0) {
+            const defaultVenName = dbEv.venue || 'Kalikapur Community Hall';
+            eventVens = [{
+              id: 1,
+              name: defaultVenName,
+              location: defaultVenName,
+              eventId: dbEv.id,
+              capacity: Number(dbEv.capacity) || 0,
+              dates: []
+            }];
           }
 
           const eventJudges = judgeData
@@ -5046,6 +5059,10 @@
               if (mergedVens.length === 0) {
                 mergedVens = (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id));
               }
+              if (mergedVens.length === 0 && (freshData.venue || ev.venue)) {
+                const vName = freshData.venue || ev.venue;
+                mergedVens = [{ id: 1, name: vName, location: vName, eventId: ev.id, capacity: Number(freshData.capacity || ev.capacity || 0), dates: [] }];
+              }
 
               return {
                 ...ev,
@@ -5172,7 +5189,10 @@
                   let vList = ev.venues;
                   if (typeof vList === 'string') { try { vList = JSON.parse(vList); } catch(e) { vList = []; } }
                   if (Array.isArray(vList) && vList.length > 0) return vList;
-                  return (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id));
+                  const fromState = (state.venues || []).filter(v => !v.eventId || String(v.eventId) === String(ev.id));
+                  if (fromState.length > 0) return fromState;
+                  if (ev.venue) return [{ id: 1, name: ev.venue, location: ev.venue, eventId: ev.id, capacity: Number(ev.capacity || 0), dates: [] }];
+                  return [];
                 })(),
                 judges: (ev.judges && ev.judges.length > 0) ? ev.judges : []
               };
@@ -9676,7 +9696,7 @@
       }
 
       // If event has venues defined and fields list does not contain a venue field, include it
-      if (ev.venues && ev.venues.length > 0 && !fields.some(f => f.type === 'venue')) {
+      if (((ev.venues && ev.venues.length > 0) || ev.venue) && !fields.some(f => f.type === 'venue')) {
         fields.push({ type: 'venue', label: 'Venue', required: false });
       }
       
@@ -9814,13 +9834,17 @@
             </div>
           `;
         } else if (f.type === 'venue') {
-          const vens = ev.venues || [];
+          let vens = ev.venues || [];
+          if (!vens || vens.length === 0) {
+            const fallbackVenName = ev.venue || 'Kalikapur Community Hall';
+            vens = [{ id: 1, name: fallbackVenName, location: fallbackVenName }];
+          }
           html += `
             <div class="fg" style="margin-bottom:20px;">
               <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
               <select class="inp su-df-ven" data-label="${f.label}" style="${inputStyle} width:100%;">
                 <option value="">— Select Venue —</option>
-                ${vens.map(v => `<option value="${v.id}">${v.name}</option>`).join('')}
+                ${vens.map(v => `<option value="${v.id}">${v.name}${v.location && v.location !== v.name ? ` (${v.location})` : ''}</option>`).join('')}
               </select>
             </div>
           `;
@@ -9874,6 +9898,12 @@
         const ageInput = container.querySelector('input.su-df[type="number"][data-label*="Age" i], input.su-df[type="number"][data-label*="AGE"]');
         const currentAge = ageInput ? parseInt(ageInput.value) : 0;
         window.updatePublicCategoryOptions(currentAge || 0);
+      }
+
+      // Initialize Venue Dropdown with available venues
+      const venEl = container.querySelector(".su-df-ven");
+      if (venEl) {
+        window.updatePublicVenueOptions();
       }
     }
 
@@ -9976,6 +10006,39 @@
       catEl.innerHTML = html;
       if (!hasMatchingSelected && !isNaN(numericAge) && numericAge > 0 && firstEligibleId !== null) {
         catEl.value = firstEligibleId;
+      }
+    };
+
+    window.updatePublicVenueOptions = function() {
+      const venEl = document.querySelector(".su-df-ven");
+      if (!venEl) return;
+
+      const currentEvId = (typeof suSelectedEventId !== 'undefined' && suSelectedEventId) 
+        ? suSelectedEventId 
+        : (window.currentEpvEventId || (window.location.search.match(/event=([^&]+)/) ? window.location.search.match(/event=([^&]+)/)[1] : ''));
+      const ev = (typeof EVENTS !== 'undefined' ? EVENTS : []).find(e => String(e.id) === String(currentEvId)) || {};
+      let vens = ev.venues || [];
+
+      if (!vens || vens.length === 0) {
+        const fallbackName = ev.venue || 'Kalikapur Community Hall';
+        vens = [{ id: 1, name: fallbackName, location: fallbackName }];
+      }
+
+      const currentVal = venEl.value;
+      let html = '<option value="">— Select Venue —</option>';
+      let hasMatchingSelected = false;
+
+      vens.forEach(v => {
+        const isSelected = String(v.id) === String(currentVal) || String(v.name) === String(currentVal);
+        if (isSelected) hasMatchingSelected = true;
+        const locNote = v.location && v.location !== v.name ? ` (${v.location})` : '';
+        html += `<option value="${v.id}" ${isSelected ? 'selected' : ''}>${v.name}${locNote}</option>`;
+      });
+
+      venEl.innerHTML = html;
+      if (!hasMatchingSelected && vens.length > 0) {
+        // Auto-select first venue if only one venue exists or none selected
+        venEl.value = vens[0].id;
       }
     };
 
@@ -11368,7 +11431,17 @@
 
       if (!venueId) {
         const eventVens = ev.venues || [];
-        venueId = eventVens.length > 0 ? eventVens[0].id : 1;
+        if (eventVens.length > 0) {
+          venueId = eventVens[0].id;
+          if (!formData['Venue'] && !formData['venue']) {
+            formData['Venue'] = eventVens[0].name;
+          }
+        } else {
+          venueId = 1;
+          if (!formData['Venue'] && !formData['venue']) {
+            formData['Venue'] = ev.venue || 'Kalikapur Community Hall';
+          }
+        }
       }
 
       // Validate Age against Category limits
