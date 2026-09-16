@@ -7206,9 +7206,15 @@
         const bannerList = typeof window.parseBanners === 'function' 
           ? window.parseBanners(ev.banner) 
           : (Array.isArray(ev.banner) ? ev.banner.filter(Boolean) : (typeof ev.banner === 'string' && ev.banner ? [ev.banner] : []));
-        const topMedia = bannerList.length > 0
-          ? `<img src="${bannerList[0]}" alt="${ev.name} Banner" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:12px; margin-bottom:12px;">`
-          : `<div style="font-size:2.5rem;margin-bottom:12px;animation:float 3s ease-in-out infinite;animation-delay:${i * 0.25}s">${ev.icon}</div>`;
+        const hasBanner = bannerList.length > 0 && typeof bannerList[0] === 'string' && bannerList[0].trim().length > 0;
+        const topMedia = hasBanner
+          ? `<div style="position:relative; width:100%; aspect-ratio:16/9; margin-bottom:12px; border-radius:12px; overflow:hidden; background:rgba(0,0,0,0.15);">
+               <img src="${bannerList[0]}" alt="${ev.name} Banner" style="width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;" onerror="this.style.display='none'; const fb = this.parentElement.querySelector('.event-icon-fallback'); if(fb) fb.style.display='flex';">
+               <div class="event-icon-fallback" style="display:none; width:100%; height:100%; position:absolute; inset:0; flex-direction:column; align-items:center; justify-content:center; background:linear-gradient(135deg, rgba(255,255,255,0.15), rgba(0,0,0,0.2)); border-radius:12px;">
+                 <div style="font-size:2.5rem;animation:float 3s ease-in-out infinite;animation-delay:${i * 0.25}s">${ev.icon || '🏆'}</div>
+               </div>
+             </div>`
+          : `<div style="font-size:2.5rem;margin-bottom:12px;animation:float 3s ease-in-out infinite;animation-delay:${i * 0.25}s">${ev.icon || '🏆'}</div>`;
 
           const rawWA = ev.whatsapp || ev.whatsapp_number || (ev.roundSchedules && ev.roundSchedules.whatsapp) || '';
           let waUrl = '';
@@ -10598,13 +10604,21 @@
         ? window.parseBanners(ev.banner)
         : (Array.isArray(ev.banner) ? ev.banner.filter(Boolean) : (typeof ev.banner === 'string' && ev.banner ? [ev.banner] : []));
       
+      const isSports = (evType === 'sports');
+      const catColor = isSports ? '#0ea5e9' : (ev.col || '#E91E8C');
+      const fallbackGradient = `linear-gradient(135deg, ${catColor}dd 0%, #1e1b4b 60%, #0f172a 100%)`;
+      
       if (banners.length > 0) {
         if (bannerImg) {
           bannerImg.src = banners[0];
           bannerImg.style.display = 'block';
+          bannerImg.onerror = function() {
+            this.style.display = 'none';
+            if (bannerEl) bannerEl.style.backgroundImage = fallbackGradient;
+          };
         }
         if (bannerEl) {
-          bannerEl.style.backgroundImage = `url('${banners[0]}')`;
+          bannerEl.style.backgroundImage = `url('${banners[0]}'), ${fallbackGradient}`;
         }
         if (bannerDots) {
           if (banners.length > 1) {
@@ -10616,8 +10630,11 @@
             let currentIdx = 0;
             window.switchEpvBanner = (targetIdx) => {
               currentIdx = targetIdx;
-              if (bannerImg) bannerImg.src = banners[currentIdx];
-              if (bannerEl) bannerEl.style.backgroundImage = `url('${banners[currentIdx]}')`;
+              if (bannerImg) {
+                bannerImg.src = banners[currentIdx];
+                bannerImg.style.display = 'block';
+              }
+              if (bannerEl) bannerEl.style.backgroundImage = `url('${banners[currentIdx]}'), ${fallbackGradient}`;
               document.querySelectorAll('.epv-dot').forEach((d, di) => {
                 d.style.background = (di === currentIdx) ? '#ffffff' : 'rgba(255,255,255,0.4)';
               });
@@ -10638,7 +10655,7 @@
           bannerImg.style.display = 'none';
         }
         if (bannerEl) {
-          bannerEl.style.backgroundImage = 'linear-gradient(135deg, #1e293b, #334155)';
+          bannerEl.style.backgroundImage = fallbackGradient;
         }
         if (bannerDots) {
           bannerDots.innerHTML = '';
@@ -10647,8 +10664,6 @@
       }
       
       
-      const isSports = (evType === 'sports');
-      const catColor = isSports ? '#0ea5e9' : '#E91E8C';
       const epvCatEl = document.getElementById('epv-cat');
       if (epvCatEl) {
         epvCatEl.textContent = ev.cat || 'Event';

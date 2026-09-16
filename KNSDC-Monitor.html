@@ -3999,7 +3999,18 @@
           </div>
           
           <div class="fg"><label class="fl">Global Event Name</label><input id="set-ev-name" type="text" placeholder="Event Name" style="font-weight:700; border: 2px solid transparent; background: var(--surface2); transition: all 0.3s ease;" onfocus="this.style.border='2px solid var(--accent)'; this.style.background='#fff'" onblur="this.style.border='2px solid transparent'; this.style.background='var(--surface2)'"/></div>
-          <div class="fg"><label class="fl">Logo URL</label><input id="set-ev-logo" type="url" placeholder="https://…" style="border: 2px solid transparent; background: var(--surface2); transition: all 0.3s ease;" onfocus="this.style.border='2px solid var(--accent)'; this.style.background='#fff'" onblur="this.style.border='2px solid transparent'; this.style.background='var(--surface2)'"/></div>
+          <div class="fg">
+            <label class="fl">Event Banner Image</label>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; gap:10px; align-items:center;">
+                <input id="set-ev-banner-file" type="file" accept="image/*" style="flex:1; padding:10px; border:1px dashed var(--border2); border-radius:8px; background: var(--surface2); cursor: pointer; transition: all 0.3s ease;" onchange="previewEventBanner(this)" />
+              </div>
+              <input id="set-ev-logo" type="url" placeholder="Or enter Banner Image URL (https://…)" style="border: 2px solid transparent; background: var(--surface2); transition: all 0.3s ease;" onfocus="this.style.border='2px solid var(--accent)'; this.style.background='#fff'" onblur="this.style.border='2px solid transparent'; this.style.background='var(--surface2)'" oninput="updateBannerPreviewFromUrl(this.value)"/>
+              <div id="set-ev-banner-preview-wrap" style="display:none; width:100%; aspect-ratio:16/9; max-height:160px; border-radius:10px; overflow:hidden; border:1px solid var(--border); position:relative; background:#0f172a;">
+                <img id="set-ev-banner-preview-img" src="" style="width:100%; height:100%; object-fit:cover;" onerror="this.parentElement.style.display='none'" />
+              </div>
+            </div>
+          </div>
           <div class="fg"><label class="fl">Public Description</label><textarea id="set-ev-desc" placeholder="About this event…" style="min-height:100px; border: 2px solid transparent; background: var(--surface2); transition: all 0.3s ease;" onfocus="this.style.border='2px solid var(--accent)'; this.style.background='#fff'" onblur="this.style.border='2px solid transparent'; this.style.background='var(--surface2)'"></textarea></div>
           
           <button id="save-ev-btn" class="btn" style="background: linear-gradient(135deg, var(--blue), var(--blue2)); color:#fff; width:100%; border-radius:12px; font-weight:800; margin-top:10px; display:flex; justify-content:center; align-items:center; gap:8px; box-shadow: 0 4px 14px rgba(37,99,235,0.25); transition: all 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(37,99,235,0.35)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 14px rgba(37,99,235,0.25)'" onclick="saveEventSettings()">
@@ -14278,18 +14289,52 @@ function renderEventSettings() {
   const descInp = document.getElementById('set-ev-desc');
   
   if (nameInp) nameInp.value = activeEv.name || '';
-  if (logoInp) logoInp.value = activeEv.banner || ''; // Using banner as logo for now
   if (descInp) descInp.value = activeEv.description || '';
   
+  const parsedBanner = typeof window.parseBanners === 'function' ? window.parseBanners(activeEv.banner) : (activeEv.banner ? [activeEv.banner] : []);
+  const bannerUrl = parsedBanner.length > 0 ? parsedBanner[0] : (activeEv.banner || '');
+  if (logoInp) logoInp.value = bannerUrl;
+  updateBannerPreviewFromUrl(bannerUrl);
+  
   renderSponsors();
+}
+
+function updateBannerPreviewFromUrl(url) {
+  const wrap = document.getElementById('set-ev-banner-preview-wrap');
+  const img = document.getElementById('set-ev-banner-preview-img');
+  if (!wrap || !img) return;
+  if (url && typeof url === 'string' && url.trim().length > 0) {
+    img.src = url.trim();
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
+function previewEventBanner(input) {
+  const wrap = document.getElementById('set-ev-banner-preview-wrap');
+  const img = document.getElementById('set-ev-banner-preview-img');
+  if (!wrap || !img) return;
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      img.src = e.target.result;
+      wrap.style.display = 'block';
+    };
+    reader.readAsDataURL(input.files[0]);
+  } else {
+    const logoInp = document.getElementById('set-ev-logo');
+    updateBannerPreviewFromUrl(logoInp ? logoInp.value : '');
+  }
 }
 
 let isSavingEvent = false;
 async function saveEventSettings() {
   if (isSavingEvent) return;
   const name = document.getElementById('set-ev-name').value.trim();
-  const banner = document.getElementById('set-ev-logo').value.trim();
+  let banner = document.getElementById('set-ev-logo').value.trim();
   const description = document.getElementById('set-ev-desc').value.trim();
+  const bannerFileInput = document.getElementById('set-ev-banner-file');
 
   if (!name) {
     toast('Event name is required!');
@@ -14308,6 +14353,17 @@ async function saveEventSettings() {
   }
 
   try {
+    if (bannerFileInput && bannerFileInput.files && bannerFileInput.files[0]) {
+      if (btnText) btnText.innerText = 'UPLOADING BANNER...';
+      toast('Uploading banner image...');
+      const uploadedUrl = await syncEngine.uploadFile(bannerFileInput.files[0], `events/${activeEventId}/banners/`);
+      if (uploadedUrl) {
+        banner = uploadedUrl;
+        const logoInp = document.getElementById('set-ev-logo');
+        if (logoInp) logoInp.value = uploadedUrl;
+      }
+    }
+
     const success = await syncEngine.updateEvent(activeEventId, { name, banner, description });
     if(!success) {
       toast('❌ Error saving event settings');
