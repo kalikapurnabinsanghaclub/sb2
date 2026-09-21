@@ -5965,6 +5965,94 @@
         }
       }
 
+      // ─── Resolve Venue matching Monitor venue mapping ───
+      const realP = (state && state.participants) 
+        ? (state.participants.find(x => String(x.id) === String(p.id) || (p.name && x.name.toLowerCase() === p.name.toLowerCase())) || p) 
+        : p;
+
+      const allVenues = (activeEv && activeEv.venues && activeEv.venues.length > 0)
+        ? activeEv.venues
+        : ((state && state.venues) ? state.venues.filter(v => (v.eventId || v.event_id) ? String(v.eventId || v.event_id) === String(activeEv?.id) : true) : []);
+
+      function resolveVenue(part, venList) {
+        if (!part) return null;
+        const list = (Array.isArray(venList) && venList.length > 0) ? venList : ((state && state.venues) ? state.venues : []);
+        if (part.venueId !== undefined && part.venueId !== null && part.venueId !== '') {
+          let v = list.find(x => String(x.id) === String(part.venueId));
+          if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venueId));
+          if (v) return v;
+        }
+        if (part.venue !== undefined && part.venue !== null && part.venue !== '') {
+          let v = list.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
+          if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
+          if (v) return v;
+        }
+        const rawVen = part.formAnswers && (part.formAnswers['Venue Field'] || part.formAnswers['Venue'] || part.formAnswers['venue'] || part.formAnswers['venue_field']);
+        if (rawVen) {
+          let v = list.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+          if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+          if (v) return v;
+        }
+        if (part.venueId && typeof part.venueId === 'string' && isNaN(Number(part.venueId))) {
+          let v = list.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
+          if (!v && state && state.venues) v = state.venues.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
+          if (v) return v;
+        }
+        return null;
+      }
+
+      const venObj = resolveVenue(realP, allVenues);
+      let certVenue = '';
+      if (venObj) {
+        const vName = (venObj.name || '').trim();
+        const vLoc = (venObj.location || venObj.loc || '').trim();
+        if (vName && vLoc && !vName.toLowerCase().includes(vLoc.toLowerCase())) {
+          certVenue = `${vName}, ${vLoc}`;
+        } else {
+          certVenue = vName || vLoc || '';
+        }
+      }
+      if (!certVenue) {
+        const rawVen = realP.formAnswers && (realP.formAnswers['Venue Field'] || realP.formAnswers['Venue'] || realP.formAnswers['venue'] || realP.formAnswers['venue_field']);
+        if (rawVen) certVenue = String(rawVen).trim();
+      }
+      if (!certVenue && realP.venue && isNaN(Number(realP.venue))) {
+        certVenue = String(realP.venue).trim();
+      }
+      if (!certVenue && realP.venueId && typeof realP.venueId === 'string' && isNaN(Number(realP.venueId))) {
+        certVenue = String(realP.venueId).trim();
+      }
+      if (!certVenue) {
+        const evVen = (activeEv?.venue || '').trim();
+        const evLoc = (activeEv?.location || '').trim();
+        if (evVen && evLoc && !evVen.toLowerCase().includes(evLoc.toLowerCase())) {
+          certVenue = `${evVen}, ${evLoc}`;
+        } else {
+          certVenue = evVen || evLoc || 'Kalikapur, Kolkata';
+        }
+      }
+
+      let certDate = '';
+      if (realP.date) {
+        const parsed = new Date(realP.date.includes('T') ? realP.date : realP.date + 'T00:00:00');
+        certDate = !isNaN(parsed.getTime()) 
+          ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) 
+          : realP.date;
+      } else if (event.disp) {
+        certDate = event.disp;
+      } else if (activeEv?.disp) {
+        certDate = activeEv.disp;
+      } else if (activeEv?.date) {
+        const parsed = new Date(activeEv.date.includes('T') ? activeEv.date : activeEv.date + 'T00:00:00');
+        certDate = !isNaN(parsed.getTime()) 
+          ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) 
+          : activeEv.date;
+      } else if (venObj && Array.isArray(venObj.dates) && venObj.dates.length > 0) {
+        certDate = venObj.dates[0];
+      } else {
+        certDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+      }
+
       content.innerHTML = `
         <div style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:30px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
           <!-- Top Logo -->
@@ -5982,7 +6070,7 @@
             Participant ID: <strong style="color:#1A237E;">${p.id || 'N/A'}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; Category: <strong style="color:#1A237E;">${catName}</strong> <br>
             has successfully participated in the <br>
             <strong style="color:#1A237E; font-size:1.2rem;">${event.name}</strong> <br>
-            held on <strong style="color:#444;">${event.disp}</strong> at <strong>Kalikapur, Kolkata</strong>.
+            held on <strong style="color:#444;">${certDate}</strong> at <strong>${certVenue}</strong>.
           </div>
 
           <div style="margin-top:35px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 40px;">

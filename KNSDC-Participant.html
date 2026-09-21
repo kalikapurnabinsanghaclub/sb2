@@ -2835,6 +2835,92 @@ function generateParticipantCertificateHTML() {
   const cat = (ev.categories || []).find(c => String(c.id) === String(p.catId));
   const catName = cat ? cat.name.toUpperCase() : 'OPEN CATEGORY';
 
+  // ─── Resolve Venue matching Monitor venue mapping ───
+  const eventVenues = (ev.venues && ev.venues.length > 0)
+    ? ev.venues
+    : (state.venues || []).filter(v => (v.eventId || v.event_id) ? String(v.eventId || v.event_id) === String(ev.id) : true);
+
+  function resolveVenue(part, venList) {
+    if (!part) return null;
+    const list = (Array.isArray(venList) && venList.length > 0) ? venList : ((state && state.venues) ? state.venues : []);
+    // 1. Match by venueId
+    if (part.venueId !== undefined && part.venueId !== null && part.venueId !== '') {
+      let v = list.find(x => String(x.id) === String(part.venueId));
+      if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venueId));
+      if (v) return v;
+    }
+    // 2. Match by venue property
+    if (part.venue !== undefined && part.venue !== null && part.venue !== '') {
+      let v = list.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
+      if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
+      if (v) return v;
+    }
+    // 3. Match from formAnswers['Venue Field'] / formAnswers['Venue']
+    const rawVen = part.formAnswers && (part.formAnswers['Venue Field'] || part.formAnswers['Venue'] || part.formAnswers['venue'] || part.formAnswers['venue_field']);
+    if (rawVen) {
+      let v = list.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+      if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+      if (v) return v;
+    }
+    // 4. Match if part.venueId is actually a name string
+    if (part.venueId && typeof part.venueId === 'string' && isNaN(Number(part.venueId))) {
+      let v = list.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
+      if (!v && state && state.venues) v = state.venues.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
+      if (v) return v;
+    }
+    return null;
+  }
+
+  const venObj = resolveVenue(p, eventVenues);
+  let certVenue = '';
+  if (venObj) {
+    const vName = (venObj.name || '').trim();
+    const vLoc = (venObj.location || venObj.loc || '').trim();
+    if (vName && vLoc && !vName.toLowerCase().includes(vLoc.toLowerCase())) {
+      certVenue = `${vName}, ${vLoc}`;
+    } else {
+      certVenue = vName || vLoc || '';
+    }
+  }
+  if (!certVenue) {
+    const rawVen = p.formAnswers && (p.formAnswers['Venue Field'] || p.formAnswers['Venue'] || p.formAnswers['venue'] || p.formAnswers['venue_field']);
+    if (rawVen) certVenue = String(rawVen).trim();
+  }
+  if (!certVenue && p.venue && isNaN(Number(p.venue))) {
+    certVenue = String(p.venue).trim();
+  }
+  if (!certVenue && p.venueId && typeof p.venueId === 'string' && isNaN(Number(p.venueId))) {
+    certVenue = String(p.venueId).trim();
+  }
+  if (!certVenue) {
+    const evVen = (ev.venue || '').trim();
+    const evLoc = (ev.location || '').trim();
+    if (evVen && evLoc && !evVen.toLowerCase().includes(evLoc.toLowerCase())) {
+      certVenue = `${evVen}, ${evLoc}`;
+    } else {
+      certVenue = evVen || evLoc || 'Kalikapur, Kolkata';
+    }
+  }
+
+  let certDate = '';
+  if (p.date) {
+    const parsed = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00');
+    certDate = !isNaN(parsed.getTime()) 
+      ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) 
+      : p.date;
+  } else if (ev.disp) {
+    certDate = ev.disp;
+  } else if (ev.date) {
+    const parsed = new Date(ev.date.includes('T') ? ev.date : ev.date + 'T00:00:00');
+    certDate = !isNaN(parsed.getTime()) 
+      ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) 
+      : ev.date;
+  } else if (venObj && Array.isArray(venObj.dates) && venObj.dates.length > 0) {
+    certDate = venObj.dates[0];
+  } else {
+    certDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
   let secSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">Secretary</div>`;
   let presSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">President</div>`;
   let judgeSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-bottom:10px; font-size:0.75rem;">Judge</div>`;
@@ -2877,7 +2963,7 @@ function generateParticipantCertificateHTML() {
         Participant ID: <strong style="color:#1A237E;">${p.id || 'N/A'}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; Category: <strong style="color:#1A237E;">${catName}</strong> <br>
         has successfully participated in the <br>
         <strong style="color:#1A237E; font-size:1.2rem;">${ev.name || 'Event'}</strong> <br>
-        held on <strong style="color:#444;">${ev.disp || (ev.date ? new Date(ev.date).toLocaleDateString() : '')}</strong> at <strong>Kalikapur, Kolkata</strong>.
+        held on <strong style="color:#444;">${certDate}</strong> at <strong>${certVenue}</strong>.
       </div>
 
       <div style="margin-top:35px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 40px;">
