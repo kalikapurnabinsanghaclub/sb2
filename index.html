@@ -5895,9 +5895,16 @@
       const content = document.getElementById('certContent');
       if (!overlay || !content) return;
 
-      const certNo = `KNSDC-${Date.now().toString().slice(-6)}-${p.name.slice(0, 2).toUpperCase()}`;
       const todayStr = new Date().toISOString().split('T')[0];
       const event = (typeof EVENTS !== 'undefined' && EVENTS.length > 0) ? (EVENTS.find(e => e.date === todayStr) || EVENTS[0]) : { name: "Cultural Festival", disp: new Date().toLocaleDateString() };
+
+      let certYear = new Date().getFullYear();
+      if (event && event.date) {
+        const y = new Date(event.date.includes('T') ? event.date : event.date + 'T00:00:00').getFullYear();
+        if (!isNaN(y) && y > 2000) certYear = y;
+      }
+      const partId = String(p.id || 'PART').toUpperCase();
+      const certNo = `KNSDC-${certYear}-${partId}`;
 
       // Retrieve dynamic Category Name
       let catName = p.cat || p.category || 'Participant';
@@ -6126,18 +6133,45 @@
             <title>KNSDC Certificate</title>
             <style>
               @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); 
+              * { box-sizing: border-box; }
               body { margin:0; padding:20px; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #e2e8f0; }
-              #cert-wrapper { width: 1056px; height: 750px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; }
+              #cert-wrapper { width: 1050px; height: 742px; max-width: 100%; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; box-sizing: border-box; }
               #controls { display: flex; gap: 15px; margin-bottom: 20px; }
               .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; display: flex; align-items: center; gap: 8px; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s; }
               .btn:active { opacity: 0.8; }
               .btn-print { background: #7c3aed; }
               .btn-jpg { background: #ea580c; }
+              @page {
+                size: A4 landscape;
+                margin: 0;
+              }
               @media print {
-                @page { size: landscape; margin: 0; }
-                body { padding: 0; background: white; align-items: flex-start; justify-content: flex-start; }
+                html, body {
+                  width: 297mm !important;
+                  height: 210mm !important;
+                  max-width: 297mm !important;
+                  max-height: 210mm !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  overflow: hidden !important;
+                  background: #ffffff !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
                 #controls { display: none !important; }
-                #cert-wrapper { width: 100%; height: 100%; box-shadow: none; margin: 0; }
+                #cert-wrapper {
+                  width: 297mm !important;
+                  height: 210mm !important;
+                  max-width: 297mm !important;
+                  max-height: 210mm !important;
+                  box-shadow: none !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  overflow: hidden !important;
+                  page-break-after: avoid !important;
+                  page-break-inside: avoid !important;
+                  break-inside: avoid !important;
+                }
               }
             </style>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
@@ -6156,7 +6190,13 @@
                 btn.textContent = 'Generating...';
                 btn.disabled = true;
                 
-                html2canvas(document.getElementById('cert-wrapper'), { scale: 2, useCORS: true }).then(canvas => {
+                html2canvas(document.getElementById('cert-wrapper'), {
+                  scale: 2,
+                  useCORS: true,
+                  allowTaint: true,
+                  logging: false,
+                  imageTimeout: 15000
+                }).then(canvas => {
                   const link = document.createElement('a');
                   link.download = 'Participant_Certificate.jpg';
                   link.href = canvas.toDataURL('image/jpeg', 0.95);

@@ -2820,7 +2820,7 @@ async function submitParticipantFeedback() {
     _isSubmittingFeedback = false;
   }
 }
-function generateParticipantCertificateHTML() {
+async function generateParticipantCertificateHTML() {
   if (!CURRENT_USER) return;
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
@@ -2830,7 +2830,17 @@ function generateParticipantCertificateHTML() {
   const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev.id] : state.switchStates) || {};
   const certSetup = eventSwitches.certificateSetup || {};
 
-  const certNo = `KNSDC-${Date.now().toString().slice(-6)}-${(p.name || 'P').slice(0, 2).toUpperCase()}`;
+  // ─── Format Certificate Number as KNSDC-{YEAR}-{ID} ───
+  let certYear = new Date().getFullYear();
+  if (p.date) {
+    const y = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00').getFullYear();
+    if (!isNaN(y) && y > 2000) certYear = y;
+  } else if (ev.date) {
+    const y = new Date(ev.date.includes('T') ? ev.date : ev.date + 'T00:00:00').getFullYear();
+    if (!isNaN(y) && y > 2000) certYear = y;
+  }
+  const partId = String(p.id || 'PART').toUpperCase();
+  const certNo = `KNSDC-${certYear}-${partId}`;
   
   const cat = (ev.categories || []).find(c => String(c.id) === String(p.catId));
   const catName = cat ? cat.name.toUpperCase() : 'OPEN CATEGORY';
@@ -2921,71 +2931,100 @@ function generateParticipantCertificateHTML() {
     certDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
-  let secSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">Secretary</div>`;
-  let presSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:30px; font-size:0.75rem;">President</div>`;
-  let judgeSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-bottom:10px; font-size:0.75rem;">Judge</div>`;
+  let secSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:20px; font-size:0.75rem;">Secretary</div>`;
+  let presSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-top:20px; font-size:0.75rem;">President</div>`;
+  let judgeSigHtml = `<div style="border-top:1px solid #333; width:120px; margin-bottom:8px; font-size:0.75rem;">Judge</div>`;
 
   if (certSetup.secretary) {
-    secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
-                    <img src="${certSetup.secretary}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+    secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:6px;">
+                    <img src="${certSetup.secretary}" crossorigin="anonymous" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
                     <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Secretary</div>
                   </div>`;
   }
   if (certSetup.president) {
-    presSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:10px;">
-                    <img src="${certSetup.president}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+    presSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:6px;">
+                    <img src="${certSetup.president}" crossorigin="anonymous" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
                     <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">President</div>
                   </div>`;
   }
   if (certSetup.judge) {
     judgeSigHtml = `<div style="text-align:center;">
-                      <div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-bottom:10px;">
-                        <img src="${certSetup.judge}" style="max-height:50px; max-width:100px; object-fit:contain; margin-bottom:5px;">
+                      <div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-bottom:8px;">
+                        <img src="${certSetup.judge}" crossorigin="anonymous" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
                         <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Judge</div>
                       </div>
                     </div>`;
   }
 
-  // ev.banner is stored as a JSON array string like '["https://..."]' or '|||'-delimited
-  // so we must parse it — never use it raw as an img src
+  // ─── Extract and Parse Banner URL ───
   const _parsedBanners = typeof window.parseBanners === 'function'
     ? window.parseBanners(ev.banner || ev.image || ev.logo || ev.logoUrl || '')
     : (ev.banner ? [ev.banner] : []);
   const eventLogoUrl = (_parsedBanners.length > 0) ? _parsedBanners[0] : '';
-  const eventLogoHtml = eventLogoUrl
+
+  // ─── Pre-convert images to Base64 DataURLs to prevent CORS tainting in html2canvas (Download JPG) ───
+  async function imgToDataUrl(url) {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        } catch (e) {
+          resolve(url);
+        }
+      };
+      img.onerror = () => resolve(url);
+      img.src = url;
+    });
+  }
+
+  const [knsLogoDataUrl, eventLogoDataUrl] = await Promise.all([
+    imgToDataUrl('logo.png'),
+    eventLogoUrl ? imgToDataUrl(eventLogoUrl) : Promise.resolve('')
+  ]);
+
+  const eventLogoHtml = eventLogoDataUrl
     ? `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-         <img src="${eventLogoUrl}" style="max-height:100px;max-width:180px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="Event Banner">
+         <img src="${eventLogoDataUrl}" crossorigin="anonymous" style="max-height:86px;max-width:180px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="Event Banner">
          <div style="font-size:0.6rem;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Event</div>
        </div>`
     : '';
 
   const content = `
-    <div style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:30px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+    <div class="cert-card" style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:22px 28px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
       <!-- Top Logos: KNS logo + Event banner side by side -->
-      <div style="display:flex; align-items:center; justify-content:center; gap:${eventLogoUrl ? '30px' : '0'}; margin-bottom:15px;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:${eventLogoDataUrl ? '28px' : '0'}; margin-bottom:10px;">
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <img src="logo.png" style="max-height:100px;max-width:100px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="KNS Logo">
+          <img src="${knsLogoDataUrl || 'logo.png'}" crossorigin="anonymous" style="max-height:86px;max-width:100px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="KNS Logo">
           <div style="font-size:0.6rem;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Organiser</div>
         </div>
-        ${eventLogoUrl ? `<div style="width:1px;height:80px;background:linear-gradient(to bottom,transparent,#1A237E44,transparent);"></div>` : ''}
+        ${eventLogoDataUrl ? `<div style="width:1px;height:72px;background:linear-gradient(to bottom,transparent,#1A237E44,transparent);"></div>` : ''}
         ${eventLogoHtml}
       </div>
 
-      <div style="font-family:'Cinzel Decorative', cursive; font-size:1.1rem; color:#1A237E; margin-bottom:5px; font-weight:800;">Kalikapur Nabin Sangha</div>
-      <div style="font-size:2rem; font-weight:900; color:#1A237E; margin-bottom:15px; font-family:'Playfair Display', serif; text-transform:uppercase; letter-spacing:1px;">Certificate of Participation</div>
+      <div style="font-family:'Cinzel Decorative', cursive; font-size:1.05rem; color:#1A237E; margin-bottom:4px; font-weight:800;">Kalikapur Nabin Sangha</div>
+      <div style="font-size:1.85rem; font-weight:900; color:#1A237E; margin-bottom:10px; font-family:'Playfair Display', serif; text-transform:uppercase; letter-spacing:1px;">Certificate of Participation</div>
       
-      <div style="margin:10px 0; font-size:1.1rem; color:#555;">This is to certify that</div>
-      <div style="font-size:2.5rem; font-weight:900; color:#FF6B35; font-family:'Playfair Display', serif; border-bottom:2px solid #eee; display:inline-block; padding:0 40px; margin-bottom:15px; letter-spacing:0.5px;">${p.name || 'Participant'}</div>
+      <div style="margin:6px 0; font-size:1.05rem; color:#555;">This is to certify that</div>
+      <div style="font-size:2.3rem; font-weight:900; color:#FF6B35; font-family:'Playfair Display', serif; border-bottom:2px solid #eee; display:inline-block; padding:0 35px; margin-bottom:10px; letter-spacing:0.5px;">${p.name || 'Participant'}</div>
       
-      <div style="margin:10px 0; font-size:1.1rem; color:#333; line-height:1.6;">
+      <div style="margin:6px 0; font-size:1.05rem; color:#333; line-height:1.5;">
         Participant ID: <strong style="color:#1A237E;">${p.id || 'N/A'}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; Category: <strong style="color:#1A237E;">${catName}</strong> <br>
         has successfully participated in the <br>
-        <strong style="color:#1A237E; font-size:1.2rem;">${ev.name || 'Event'}</strong> <br>
+        <strong style="color:#1A237E; font-size:1.15rem;">${ev.name || 'Event'}</strong> <br>
         held on <strong style="color:#444;">${certDate}</strong> at <strong>${certVenue}</strong>.
       </div>
 
-      <div style="margin-top:35px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 40px;">
-        <div style="display:flex; gap:50px; align-items:flex-end; text-align:center;">
+      <div style="margin-top:24px; width:100%; display:flex; justify-content:space-between; align-items:flex-end; padding:0 35px; box-sizing:border-box;">
+        <div style="display:flex; gap:40px; align-items:flex-end; text-align:center;">
           <div>
             ${secSigHtml}
           </div>
@@ -2994,22 +3033,22 @@ function generateParticipantCertificateHTML() {
           </div>
         </div>
         
-        <div style="display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;">
+        <div style="display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;">
           ${judgeSigHtml}
           <div>
-            <div style="font-size:0.65rem; color:#777; margin-bottom:5px; font-weight:600;">Certificate No: ${certNo}</div>
-            <div style="background:linear-gradient(135deg, #1A237E, #3949AB); color:#fff; padding:5px 14px; font-size:0.75rem; font-weight:800; border-radius:6px; letter-spacing:1.5px; box-shadow:0 2px 4px rgba(0,0,0,0.15);">KNSDC OFFICIAL</div>
+            <div style="font-size:0.65rem; color:#777; margin-bottom:4px; font-weight:600;">Certificate No: ${certNo}</div>
+            <div style="background:linear-gradient(135deg, #1A237E, #3949AB); color:#fff; padding:4px 12px; font-size:0.75rem; font-weight:800; border-radius:6px; letter-spacing:1.5px; box-shadow:0 2px 4px rgba(0,0,0,0.15);">KNSDC OFFICIAL</div>
           </div>
         </div>
       </div>
       
-      <!-- Power By Footer -->
-      <div style="margin-top:25px; font-size:0.65rem; color:#9ca3af; text-transform:uppercase; letter-spacing:2px; font-weight:700;">
+      <!-- Powered By Footer -->
+      <div style="margin-top:16px; font-size:0.62rem; color:#9ca3af; text-transform:uppercase; letter-spacing:2px; font-weight:700;">
         Powered by Kalikapur Nabin Sangha
       </div>
       
       <!-- Logo Watermark -->
-      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:15rem; opacity:0.02; pointer-events:none; font-weight:900;">KNS</div>
+      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:14rem; opacity:0.02; pointer-events:none; font-weight:900;">KNS</div>
     </div>
   `;
 
@@ -3021,23 +3060,62 @@ function generateParticipantCertificateHTML() {
   
   win.document.write(`
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
       <head>
-        <title>KNSDC Certificate</title>
+        <meta charset="UTF-8" />
+        <title>KNSDC Certificate — ${p.name || 'Participant'}</title>
         <style>
           @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cinzel+Decorative:wght@700&display=swap"); 
+          * { box-sizing: border-box; }
           body { margin:0; padding:20px; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #e2e8f0; }
-          #cert-wrapper { width: 1056px; height: 750px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; }
+          #cert-wrapper { width: 1050px; height: 742px; max-width: 100%; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 20px; box-sizing: border-box; }
           #controls { display: flex; gap: 15px; margin-bottom: 20px; }
           .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; display: flex; align-items: center; gap: 8px; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s; }
           .btn:active { opacity: 0.8; }
           .btn-print { background: #7c3aed; }
           .btn-jpg { background: #ea580c; }
+          @page {
+            size: A4 landscape;
+            margin: 0;
+          }
           @media print {
-            @page { size: landscape; margin: 0; }
-            body { padding: 0; background: white; align-items: flex-start; justify-content: flex-start; }
+            html, body {
+              width: 297mm !important;
+              height: 210mm !important;
+              max-width: 297mm !important;
+              max-height: 210mm !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+              background: #ffffff !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
             #controls { display: none !important; }
-            #cert-wrapper { width: 100%; height: 100%; box-shadow: none; margin: 0; }
+            #cert-wrapper {
+              width: 297mm !important;
+              height: 210mm !important;
+              max-width: 297mm !important;
+              max-height: 210mm !important;
+              box-shadow: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+              page-break-after: avoid !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .cert-card {
+              width: 297mm !important;
+              height: 210mm !important;
+              max-width: 297mm !important;
+              max-height: 210mm !important;
+              padding: 20px 26px !important;
+              box-sizing: border-box !important;
+              overflow: hidden !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
           }
         </style>
       </head>
@@ -3062,7 +3140,13 @@ function generateParticipantCertificateHTML() {
       btnJpg.onclick = function() {
         btnJpg.textContent = 'Generating...';
         btnJpg.disabled = true;
-        win.html2canvas(win.document.getElementById('cert-wrapper'), { scale: 2, useCORS: true }).then(canvas => {
+        win.html2canvas(win.document.getElementById('cert-wrapper'), {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          imageTimeout: 15000
+        }).then(canvas => {
           const link = win.document.createElement('a');
           link.download = ((p.name || 'Participant').replace(/\s+/g,'_')) + '_Certificate.jpg';
           link.href = canvas.toDataURL('image/jpeg', 0.95);
@@ -3070,6 +3154,7 @@ function generateParticipantCertificateHTML() {
           btnJpg.textContent = '🖼️ Download JPG';
           btnJpg.disabled = false;
         }).catch(err => {
+          console.error(err);
           alert('Failed to generate JPG.');
           btnJpg.textContent = '🖼️ Download JPG';
           btnJpg.disabled = false;
