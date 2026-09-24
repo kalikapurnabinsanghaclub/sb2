@@ -2854,56 +2854,73 @@ async function generateParticipantCertificateHTML() {
     return;
   }
 
-  // ─── Resolve Certificate Signatures / Setup from Monitor Portal ───
+  // ─── Comprehensive Certificate Signatures & Setup Resolution ───
   let certSetup = {};
+
+  const mergeSetup = (src) => {
+    if (!src) return;
+    let obj = src;
+    if (typeof src === 'string') {
+      try { obj = JSON.parse(src); } catch(e) { return; }
+    }
+    if (obj && typeof obj === 'object') {
+      if (obj.certificateSetup) {
+        mergeSetup(obj.certificateSetup);
+      }
+      const sec = obj.secretary || obj.sec || obj.secretarySig || obj.secSig || obj.secretary_signature || obj.secretarySignature || obj.sec_signature || obj.Secretary;
+      const pres = obj.president || obj.pres || obj.presidentSig || obj.presSig || obj.president_signature || obj.presidentSignature || obj.pres_signature || obj.President;
+      const judge = obj.judge || obj.judgeSig || obj.convener || obj.judge_signature || obj.judgeSignature || obj.Judge;
+      if (sec && !certSetup.secretary) certSetup.secretary = sec;
+      if (pres && !certSetup.president) certSetup.president = pres;
+      if (judge && !certSetup.judge) certSetup.judge = judge;
+    }
+  };
+
+  // 1. Check ev.certificateSetup & ev.certificate_setup & ev.switchStates
+  if (ev) {
+    mergeSetup(ev.certificateSetup);
+    mergeSetup(ev.certificate_setup);
+    if (ev.switchStates || ev.switch_states) mergeSetup(ev.switchStates || ev.switch_states);
+  }
+
+  // 2. Check state.eventSwitches for matching event ID / name
   if (state.eventSwitches) {
-    if (ev && ev.id && state.eventSwitches[ev.id] && state.eventSwitches[ev.id].certificateSetup) {
-      certSetup = state.eventSwitches[ev.id].certificateSetup;
-    } else if (pEventId && state.eventSwitches[pEventId] && state.eventSwitches[pEventId].certificateSetup) {
-      certSetup = state.eventSwitches[pEventId].certificateSetup;
-    } else if (state.activeEventId && state.eventSwitches[state.activeEventId] && state.eventSwitches[state.activeEventId].certificateSetup) {
-      certSetup = state.eventSwitches[state.activeEventId].certificateSetup;
-    } else {
-      for (const k of Object.keys(state.eventSwitches)) {
-        if (state.eventSwitches[k] && state.eventSwitches[k].certificateSetup) {
-          certSetup = state.eventSwitches[k].certificateSetup;
-          break;
+    if (ev && ev.id) {
+      mergeSetup(state.eventSwitches[ev.id]);
+      mergeSetup(state.eventSwitches[String(ev.id)]);
+    }
+    if (pEventId) {
+      mergeSetup(state.eventSwitches[pEventId]);
+      mergeSetup(state.eventSwitches[String(pEventId)]);
+    }
+    if (state.activeEventId) {
+      mergeSetup(state.eventSwitches[state.activeEventId]);
+      mergeSetup(state.eventSwitches[String(state.activeEventId)]);
+    }
+    for (const k of Object.keys(state.eventSwitches)) {
+      if (state.eventSwitches[k]) mergeSetup(state.eventSwitches[k]);
+    }
+  }
+
+  // 3. Check state.switchStates
+  if (state.switchStates) {
+    mergeSetup(state.switchStates);
+  }
+
+  // 4. Check localStorage fallback
+  try {
+    const lsSw = localStorage.getItem('knsdc_eventSwitches');
+    if (lsSw) {
+      const parsed = JSON.parse(lsSw);
+      if (parsed && typeof parsed === 'object') {
+        if (ev && ev.id && parsed[ev.id]) mergeSetup(parsed[ev.id]);
+        if (pEventId && parsed[pEventId]) mergeSetup(parsed[pEventId]);
+        for (const k of Object.keys(parsed)) {
+          if (parsed[k]) mergeSetup(parsed[k]);
         }
       }
     }
-  }
-  if (!certSetup.secretary && !certSetup.president && !certSetup.judge) {
-    const sw = (ev && (ev.switchStates || ev.switch_states)) || state.switchStates;
-    if (sw) {
-      const swObj = typeof sw === 'string' ? JSON.parse(sw) : sw;
-      if (swObj && swObj.certificateSetup) certSetup = swObj.certificateSetup;
-    }
-    if (!certSetup.secretary && !certSetup.president && !certSetup.judge && ev && ev.certificateSetup) {
-      certSetup = typeof ev.certificateSetup === 'string' ? JSON.parse(ev.certificateSetup) : ev.certificateSetup;
-    }
-  }
-  if (!certSetup.secretary && !certSetup.president && !certSetup.judge) {
-    try {
-      const lsSw = localStorage.getItem('knsdc_eventSwitches');
-      if (lsSw) {
-        const parsed = JSON.parse(lsSw);
-        if (parsed) {
-          const match = (ev && ev.id && parsed[ev.id]) || (pEventId && parsed[pEventId]) || (state.activeEventId && parsed[state.activeEventId]);
-          if (match && match.certificateSetup) {
-            certSetup = match.certificateSetup;
-          } else {
-            for (const k of Object.keys(parsed)) {
-              if (parsed[k] && parsed[k].certificateSetup) {
-                certSetup = parsed[k].certificateSetup;
-                break;
-              }
-            }
-          }
-        }
-      }
-    } catch(e) {}
-  }
-  if (!certSetup) certSetup = {};
+  } catch(e) {}
 
   // ─── Format Certificate Number as KNSDC-{YEAR}-{ID} ───
   let certYear = new Date().getFullYear();
@@ -3137,9 +3154,9 @@ async function generateParticipantCertificateHTML() {
     eventLogoUrl = 'cultural/photo_6118659175400280599_y.jpg';
   }
 
-  const secSigUrl = certSetup.secretary || certSetup.sec || certSetup.secretarySig || certSetup.secSig || '';
-  const presSigUrl = certSetup.president || certSetup.pres || certSetup.presidentSig || certSetup.presSig || '';
-  const judgeSigUrl = certSetup.judge || certSetup.judgeSig || certSetup.convener || certSetup.judge_signature || '';
+  const secSigUrl = certSetup.secretary || certSetup.sec || certSetup.secretarySig || certSetup.secSig || certSetup.secretary_signature || certSetup.secretarySignature || certSetup.sec_signature || certSetup.Secretary || '';
+  const presSigUrl = certSetup.president || certSetup.pres || certSetup.presidentSig || certSetup.presSig || certSetup.president_signature || certSetup.presidentSignature || certSetup.pres_signature || certSetup.President || '';
+  const judgeSigUrl = certSetup.judge || certSetup.judgeSig || certSetup.convener || certSetup.judge_signature || certSetup.judgeSignature || certSetup.Judge || '';
 
   // Pre-convert to DataURLs for 100% reliable rendering in HTML2Canvas and PDF/JPG
   const [knsLogoDataUrl, eventLogoDataUrl, secSigDataUrl, presSigDataUrl, judgeSigDataUrl] = await Promise.all([
@@ -3626,19 +3643,19 @@ async function generateParticipantCertificateHTML() {
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 110px;
+            width: 120px;
             text-align: center;
           }
           .cert-sig-img-wrap {
-            height: 38px;
+            height: 46px;
             display: flex;
             align-items: flex-end;
             justify-content: center;
             margin-bottom: 3px;
           }
           .cert-sig-img {
-            max-height: 38px;
-            max-width: 100px;
+            max-height: 46px;
+            max-width: 115px;
             object-fit: contain;
           }
           .cert-sig-line {
