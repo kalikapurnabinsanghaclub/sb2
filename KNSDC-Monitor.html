@@ -5924,15 +5924,35 @@ function hydrate() {
     });
   }
 
-  // ── Restore switch states: prioritize per-event cloud data, then global fallback ──
+  // ── Restore switch states & certificate setup: prioritize per-event cloud data, then global fallback ──
   if (s && s.switchStates) {
     switchStates = { ...switchStates, ...s.switchStates };
   }
   if (activeEv && activeEv.switchStates) {
     switchStates = { ...switchStates, ...activeEv.switchStates };
   }
-  if (s && s.eventSwitches && s.eventSwitches[activeEventId]) {
-    switchStates = { ...switchStates, ...s.eventSwitches[activeEventId] };
+  if (s && s.eventSwitches) {
+    if (activeEventId && s.eventSwitches[activeEventId]) switchStates = { ...switchStates, ...s.eventSwitches[activeEventId] };
+    if (activeEventId && s.eventSwitches[String(activeEventId)]) switchStates = { ...switchStates, ...s.eventSwitches[String(activeEventId)] };
+    if (activeEv && activeEv.name && s.eventSwitches[activeEv.name]) switchStates = { ...switchStates, ...s.eventSwitches[activeEv.name] };
+  }
+
+  // Restore certificateSetup from activeEv or state if missing in switchStates
+  if (!switchStates.certificateSetup || (!switchStates.certificateSetup.secretary && !switchStates.certificateSetup.president && !switchStates.certificateSetup.judge)) {
+    let certSetup = null;
+    if (activeEv) {
+      certSetup = activeEv.certificateSetup || activeEv.certificate_setup;
+      if (typeof certSetup === 'string') {
+        try { certSetup = JSON.parse(certSetup); } catch(e) { certSetup = null; }
+      }
+    }
+    if (!certSetup && s && s.eventSwitches) {
+      const match = (activeEventId && s.eventSwitches[activeEventId]) || (activeEventId && s.eventSwitches[String(activeEventId)]) || (activeEv && activeEv.name && s.eventSwitches[activeEv.name]);
+      if (match && match.certificateSetup) certSetup = match.certificateSetup;
+    }
+    if (certSetup) {
+      switchStates.certificateSetup = { ...certSetup };
+    }
   }
 
   // ── Guard: only reload formFields when the active event actually changes ──
@@ -13883,9 +13903,31 @@ function renderCertificateSettings() {
     if (btn) btn.style.display = 'none';
   });
 
-  const setup = switchStates.certificateSetup;
+  const state = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : (window.syncEngine ? window.syncEngine.state : {});
+  const activeEv = (state.events || []).find(e => String(e.id) === String(activeEventId));
+
+  let setup = (switchStates && switchStates.certificateSetup) || null;
+  if (!setup || (!setup.secretary && !setup.president && !setup.judge)) {
+    if (activeEv) {
+      setup = activeEv.certificateSetup || activeEv.certificate_setup;
+      if (typeof setup === 'string') {
+        try { setup = JSON.parse(setup); } catch(e) { setup = null; }
+      }
+    }
+  }
+  if (!setup || (!setup.secretary && !setup.president && !setup.judge)) {
+    if (state.eventSwitches) {
+      const match = (activeEventId && state.eventSwitches[activeEventId]) || (activeEventId && state.eventSwitches[String(activeEventId)]) || (activeEv && activeEv.name && state.eventSwitches[activeEv.name]);
+      if (match && match.certificateSetup) setup = match.certificateSetup;
+    }
+  }
   if (!setup) return;
-  
+
+  // Make sure switchStates is synced so saving will retain existing signatures
+  if (switchStates) {
+    switchStates.certificateSetup = { ...setup };
+  }
+
   if (setup.secretary) {
     const img = document.getElementById('preview-sig-sec');
     const btn = document.getElementById('clear-sig-sec');
@@ -15459,7 +15501,7 @@ window.savePartner = async function() {
 };
 
 window.deletePartner = async function(id) {
-  if (!confirm('Delete this service partner?')) return;
+  if (!confirm('Delete this service partner and all their associated food menu listings?')) return;
   const partner = (partnerAssignments || []).find(p => String(p.id) === String(id));
   if (partner && partner.email) {
     if (syncEngine.deleteStaffMember) {
@@ -15467,16 +15509,35 @@ window.deletePartner = async function(id) {
     }
   }
   partnerAssignments = partnerAssignments.filter(p => String(p.id) !== String(id));
-  syncEngine.setData(state => ({
-    ...state,
-    partnerAssignments: partnerAssignments
-  }));
+  
+  syncEngine.setData(state => {
+    const updatedPartners = (state.partnerAssignments || []).filter(p => String(p.id) !== String(id));
+    const currentMenu = state.foodMenu || [];
+    const partnerEmail = (partner?.email || '').toLowerCase();
+    const partnerIdStr = String(id);
+    const partnerNameStr = (partner?.name || '').toLowerCase();
+
+    // Filter out menu items that belong to or were created by this deleted partner
+    const updatedFoodMenu = currentMenu.filter(m => {
+      if (partnerIdStr && m.partnerId && String(m.partnerId) === partnerIdStr) return false;
+      if (partnerEmail && m.partnerEmail && m.partnerEmail.toLowerCase() === partnerEmail) return false;
+      if (partnerNameStr && m.partnerName && m.partnerName.toLowerCase() === partnerNameStr) return false;
+      return true;
+    });
+
+    return {
+      ...state,
+      partnerAssignments: updatedPartners,
+      foodMenu: updatedFoodMenu
+    };
+  });
+
   syncAll();
   if (syncEngine.forceSaveStateToSupabase) {
     await syncEngine.forceSaveStateToSupabase().catch(e=>console.warn(e));
   }
   renderPartnerAssign();
-  toast('Service partner deleted successfully!');
+  toast('Service partner and associated menu listing deleted successfully!');
 };
 
 function renderPartnerAssign() {
