@@ -2824,8 +2824,28 @@ async function generateParticipantCertificateHTML() {
   if (!CURRENT_USER) return;
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  if (!p || !ev) return toast('Error: Participant or Event not found.');
+  if (!p) return toast('Error: Participant record not found.');
+
+  // ─── Robust Event Resolution (supports eventId, event_id, activeEventId, formAnswers) ───
+  const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
+  let ev = (state.events || []).find(e => String(e.id) === String(pEventId) || String(e.event_id) === String(pEventId));
+  if (!ev && state.activeEventId) {
+    ev = (state.events || []).find(e => String(e.id) === String(state.activeEventId) || String(e.event_id) === String(state.activeEventId));
+  }
+  if (!ev && state.events && state.events.length > 0) {
+    ev = state.events[0];
+  }
+  if (!ev) {
+    ev = { name: 'Cultural Competition', org: 'Kalikapur Nabin Sangha' };
+  }
+
+  // Open window immediately synchronously to avoid browser popup blockers during async image conversion
+  const win = window.open('', '', 'height=800,width=1200');
+  if (!win) {
+    toast("⚠️ Please allow popups to view and print your certificate.");
+    return;
+  }
+  win.document.write('<!DOCTYPE html><html><head><title>Loading Certificate...</title></head><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;color:#475569;"><div style="text-align:center;"><h2>⏳ Preparing Your Certificate...</h2><p>Loading logos and details...</p></div></body></html>');
 
   const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev.id] : state.switchStates) || {};
   const certSetup = eventSwitches.certificateSetup || {};
@@ -2842,8 +2862,9 @@ async function generateParticipantCertificateHTML() {
   const partId = String(p.id || 'PART').toUpperCase();
   const certNo = `KNSDC-${certYear}-${partId}`;
   
-  const cat = (ev.categories || []).find(c => String(c.id) === String(p.catId));
-  const catName = cat ? cat.name.toUpperCase() : 'OPEN CATEGORY';
+  const pCatId = p.catId || p.category_id || p.category;
+  const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
+  const catName = cat ? cat.name.toUpperCase() : (p.category ? String(p.category).toUpperCase() : 'OPEN CATEGORY');
 
   // ─── Resolve Venue matching Monitor venue mapping ───
   const eventVenues = (ev.venues && ev.venues.length > 0)
@@ -2937,35 +2958,70 @@ async function generateParticipantCertificateHTML() {
 
   if (certSetup.secretary) {
     secSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:6px;">
-                    <img src="${certSetup.secretary}" crossorigin="anonymous" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
+                    <img src="${certSetup.secretary}" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
                     <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Secretary</div>
                   </div>`;
   }
   if (certSetup.president) {
     presSigHtml = `<div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-top:6px;">
-                    <img src="${certSetup.president}" crossorigin="anonymous" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
+                    <img src="${certSetup.president}" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
                     <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">President</div>
                   </div>`;
   }
   if (certSetup.judge) {
     judgeSigHtml = `<div style="text-align:center;">
                       <div style="display:flex; flex-direction:column; align-items:center; width:120px; margin-bottom:8px;">
-                        <img src="${certSetup.judge}" crossorigin="anonymous" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
+                        <img src="${certSetup.judge}" style="max-height:46px; max-width:96px; object-fit:contain; margin-bottom:4px;">
                         <div style="border-top:1px solid #333; width:100%; font-size:0.75rem; padding-top:2px;">Judge</div>
                       </div>
                     </div>`;
   }
 
-  // ─── Extract and Parse Banner URL ───
-  const _parsedBanners = typeof window.parseBanners === 'function'
-    ? window.parseBanners(ev.banner || ev.image || ev.logo || ev.logoUrl || '')
-    : (ev.banner ? [ev.banner] : []);
-  const eventLogoUrl = (_parsedBanners.length > 0) ? _parsedBanners[0] : '';
+  // ─── Extract and Parse Banner URL from All Possible Properties ───
+  const rawBanner = ev.banner || ev.image || ev.banner_url || ev.bannerUrl || ev.cover || ev.coverImage || (ev.social_links && ev.social_links.banner) || (ev.roundSchedules && ev.roundSchedules.banner) || '';
+  
+  let eventLogoUrl = '';
+  if (typeof window.parseBanners === 'function') {
+    const list = window.parseBanners(rawBanner);
+    if (list && list.length > 0) eventLogoUrl = list[0];
+  }
+  if (!eventLogoUrl && typeof rawBanner === 'string' && rawBanner.trim()) {
+    const trimmed = rawBanner.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const arr = JSON.parse(trimmed);
+        if (Array.isArray(arr) && arr.length > 0) eventLogoUrl = arr[0];
+      } catch(e) {}
+    }
+    if (!eventLogoUrl) {
+      eventLogoUrl = trimmed.split('|||')[0].split(',')[0].trim();
+    }
+  }
 
-  // ─── Pre-convert images to Base64 DataURLs to prevent CORS tainting in html2canvas (Download JPG) ───
+  // ─── Pre-convert images to Base64 DataURLs where possible for reliable JPG export ───
   async function imgToDataUrl(url) {
     if (!url) return '';
     if (url.startsWith('data:')) return url;
+    
+    let fetchUrl = url;
+    if (fetchUrl.includes('.r2.dev/')) {
+      const key = fetchUrl.replace(/^https?:\/\/[^\/]+\//, '');
+      fetchUrl = `https://sb2.kalikapurnabinsanghaclub.workers.dev/?key=${encodeURIComponent(key)}`;
+    }
+
+    try {
+      const res = await fetch(fetchUrl, { mode: 'cors' });
+      if (res.ok) {
+        const blob = await res.blob();
+        return await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => resolve(url);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch (e) {}
+
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -2982,7 +3038,7 @@ async function generateParticipantCertificateHTML() {
         }
       };
       img.onerror = () => resolve(url);
-      img.src = url;
+      img.src = fetchUrl;
     });
   }
 
@@ -2991,9 +3047,11 @@ async function generateParticipantCertificateHTML() {
     eventLogoUrl ? imgToDataUrl(eventLogoUrl) : Promise.resolve('')
   ]);
 
-  const eventLogoHtml = eventLogoDataUrl
+  const finalEventBannerSrc = eventLogoDataUrl || eventLogoUrl;
+
+  const eventLogoHtml = finalEventBannerSrc
     ? `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-         <img src="${eventLogoDataUrl}" crossorigin="anonymous" style="max-height:86px;max-width:180px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="Event Banner">
+         <img src="${finalEventBannerSrc}" style="max-height:86px;max-width:180px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="Event Banner">
          <div style="font-size:0.6rem;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Event</div>
        </div>`
     : '';
@@ -3001,12 +3059,12 @@ async function generateParticipantCertificateHTML() {
   const content = `
     <div class="cert-card" style="background:#fff; width:100%; height:100%; border:15px double #1A237E; padding:22px 28px; text-align:center; position:relative; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center;">
       <!-- Top Logos: KNS logo + Event banner side by side -->
-      <div style="display:flex; align-items:center; justify-content:center; gap:${eventLogoDataUrl ? '28px' : '0'}; margin-bottom:10px;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:${finalEventBannerSrc ? '28px' : '0'}; margin-bottom:10px;">
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <img src="${knsLogoDataUrl || 'logo.png'}" crossorigin="anonymous" style="max-height:86px;max-width:100px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="KNS Logo">
+          <img src="${knsLogoDataUrl || 'logo.png'}" style="max-height:86px;max-width:100px;width:auto;height:auto;object-fit:contain;box-shadow:0 4px 10px rgba(0,0,0,0.12);" alt="KNS Logo">
           <div style="font-size:0.6rem;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Organiser</div>
         </div>
-        ${eventLogoDataUrl ? `<div style="width:1px;height:72px;background:linear-gradient(to bottom,transparent,#1A237E44,transparent);"></div>` : ''}
+        ${finalEventBannerSrc ? `<div style="width:1px;height:72px;background:linear-gradient(to bottom,transparent,#1A237E44,transparent);"></div>` : ''}
         ${eventLogoHtml}
       </div>
 
@@ -3052,11 +3110,7 @@ async function generateParticipantCertificateHTML() {
     </div>
   `;
 
-  const win = window.open('', '', 'height=800,width=1200');
-  if (!win) {
-    toast("⚠️ Please allow popups to view and print your certificate.");
-    return;
-  }
+  win.document.open();
   
   win.document.write(`
     <!DOCTYPE html>

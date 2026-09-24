@@ -71,8 +71,27 @@ export default {
       }
     }
 
-    // 3. Handle GET / Ping
+    // 3. Handle GET / Ping / File Download with CORS
     if (request.method === "GET") {
+      const keyParam = urlObj.searchParams.get("key") || urlObj.searchParams.get("fileUrl") || urlObj.pathname;
+      const key = extractKey(keyParam);
+
+      if (key && key !== "/" && key !== "" && env.MY_BUCKET) {
+        try {
+          const object = await env.MY_BUCKET.get(key);
+          if (object) {
+            const headers = new Headers();
+            object.writeHttpMetadata(headers);
+            headers.set("Access-Control-Allow-Origin", "*");
+            headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+            headers.set("Cache-Control", "public, max-age=31536000, immutable");
+            return new Response(object.body, { headers });
+          }
+        } catch (getErr) {
+          console.warn("[R2] GET file error:", getErr);
+        }
+      }
+
       return new Response(JSON.stringify({ status: "ok", message: "KNSDC Cloudflare R2 Storage Worker is live!" }), {
         headers: corsHeaders,
       });
