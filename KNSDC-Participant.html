@@ -2854,8 +2854,56 @@ async function generateParticipantCertificateHTML() {
     return;
   }
 
-  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev.id] : state.switchStates) || {};
-  const certSetup = eventSwitches.certificateSetup || {};
+  // ─── Resolve Certificate Signatures / Setup from Monitor Portal ───
+  let certSetup = {};
+  if (state.eventSwitches) {
+    if (ev && ev.id && state.eventSwitches[ev.id] && state.eventSwitches[ev.id].certificateSetup) {
+      certSetup = state.eventSwitches[ev.id].certificateSetup;
+    } else if (pEventId && state.eventSwitches[pEventId] && state.eventSwitches[pEventId].certificateSetup) {
+      certSetup = state.eventSwitches[pEventId].certificateSetup;
+    } else if (state.activeEventId && state.eventSwitches[state.activeEventId] && state.eventSwitches[state.activeEventId].certificateSetup) {
+      certSetup = state.eventSwitches[state.activeEventId].certificateSetup;
+    } else {
+      for (const k of Object.keys(state.eventSwitches)) {
+        if (state.eventSwitches[k] && state.eventSwitches[k].certificateSetup) {
+          certSetup = state.eventSwitches[k].certificateSetup;
+          break;
+        }
+      }
+    }
+  }
+  if (!certSetup.secretary && !certSetup.president && !certSetup.judge) {
+    const sw = (ev && (ev.switchStates || ev.switch_states)) || state.switchStates;
+    if (sw) {
+      const swObj = typeof sw === 'string' ? JSON.parse(sw) : sw;
+      if (swObj && swObj.certificateSetup) certSetup = swObj.certificateSetup;
+    }
+    if (!certSetup.secretary && !certSetup.president && !certSetup.judge && ev && ev.certificateSetup) {
+      certSetup = typeof ev.certificateSetup === 'string' ? JSON.parse(ev.certificateSetup) : ev.certificateSetup;
+    }
+  }
+  if (!certSetup.secretary && !certSetup.president && !certSetup.judge) {
+    try {
+      const lsSw = localStorage.getItem('knsdc_eventSwitches');
+      if (lsSw) {
+        const parsed = JSON.parse(lsSw);
+        if (parsed) {
+          const match = (ev && ev.id && parsed[ev.id]) || (pEventId && parsed[pEventId]) || (state.activeEventId && parsed[state.activeEventId]);
+          if (match && match.certificateSetup) {
+            certSetup = match.certificateSetup;
+          } else {
+            for (const k of Object.keys(parsed)) {
+              if (parsed[k] && parsed[k].certificateSetup) {
+                certSetup = parsed[k].certificateSetup;
+                break;
+              }
+            }
+          }
+        }
+      }
+    } catch(e) {}
+  }
+  if (!certSetup) certSetup = {};
 
   // ─── Format Certificate Number as KNSDC-{YEAR}-{ID} ───
   let certYear = new Date().getFullYear();
@@ -3089,34 +3137,39 @@ async function generateParticipantCertificateHTML() {
     eventLogoUrl = 'cultural/photo_6118659175400280599_y.jpg';
   }
 
+  const secSigUrl = certSetup.secretary || certSetup.sec || certSetup.secretarySig || certSetup.secSig || '';
+  const presSigUrl = certSetup.president || certSetup.pres || certSetup.presidentSig || certSetup.presSig || '';
+  const judgeSigUrl = certSetup.judge || certSetup.judgeSig || certSetup.convener || certSetup.judge_signature || '';
+
   // Pre-convert to DataURLs for 100% reliable rendering in HTML2Canvas and PDF/JPG
   const [knsLogoDataUrl, eventLogoDataUrl, secSigDataUrl, presSigDataUrl, judgeSigDataUrl] = await Promise.all([
     imgToDataUrl('logo.png'),
     eventLogoUrl ? imgToDataUrl(eventLogoUrl) : Promise.resolve(''),
-    certSetup.secretary ? imgToDataUrl(certSetup.secretary) : Promise.resolve(''),
-    certSetup.president ? imgToDataUrl(certSetup.president) : Promise.resolve(''),
-    certSetup.judge ? imgToDataUrl(certSetup.judge) : Promise.resolve('')
+    secSigUrl ? imgToDataUrl(secSigUrl) : Promise.resolve(''),
+    presSigUrl ? imgToDataUrl(presSigUrl) : Promise.resolve(''),
+    judgeSigUrl ? imgToDataUrl(judgeSigUrl) : Promise.resolve('')
   ]);
 
   const finalKnsLogoSrc = knsLogoDataUrl || 'logo.png';
   const finalEventBannerSrc = eventLogoDataUrl || eventLogoUrl;
+  const finalSecSigSrc = secSigDataUrl || secSigUrl || '';
+  const finalPresSigSrc = presSigDataUrl || presSigUrl || '';
+  const finalJudgeSigSrc = judgeSigDataUrl || judgeSigUrl || '';
 
   const makeSigHtml = (imgSrc, title) => {
     return `
       <div class="cert-sig-box">
         <div class="cert-sig-img-wrap">
-          ${imgSrc ? `<img src="${imgSrc}" class="cert-sig-img" alt="${title} Signature">` : `<span style="font-family:'Playfair Display', serif; font-style:italic; font-size:1.05rem; color:#475569;">Signature</span>`}
+          ${imgSrc ? `<img src="${imgSrc}" class="cert-sig-img" alt="${title} Signature">` : ''}
         </div>
         <div class="cert-sig-line">${title}</div>
       </div>
     `;
   };
 
-  const secSigHtml = makeSigHtml(secSigDataUrl || certSetup.secretary, 'Secretary');
-  const presSigHtml = makeSigHtml(presSigDataUrl || certSetup.president, 'President');
-  const judgeSigHtml = (judgeSigDataUrl || certSetup.judge) 
-    ? makeSigHtml(judgeSigDataUrl || certSetup.judge, 'Judge / Convener')
-    : `<div class="cert-sig-box" style="visibility:hidden;"><div class="cert-sig-line">Official</div></div>`;
+  const secSigHtml = makeSigHtml(finalSecSigSrc, 'Secretary');
+  const presSigHtml = makeSigHtml(finalPresSigSrc, 'President');
+  const judgeSigHtml = makeSigHtml(finalJudgeSigSrc, 'Judge / Convener');
 
   const content = `
     <div class="cert-card">
