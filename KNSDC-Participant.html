@@ -3030,14 +3030,19 @@ async function generateParticipantCertificateHTML() {
       fullUrl = new URL(url, window.location.href).href;
     } catch(e) {}
 
-    if (fullUrl.includes('.r2.dev/')) {
-      const key = fullUrl.replace(/^https?:\/\/[^\/]+\//, '');
-      fullUrl = `https://sb2.kalikapurnabinsanghaclub.workers.dev/?key=${encodeURIComponent(key)}`;
+    if ((fullUrl.includes('.r2.dev') || fullUrl.includes('workers.dev') || fullUrl.includes('kalikapurnabinsanghaclub')) && !fullUrl.includes('?key=')) {
+      try {
+        const u = new URL(fullUrl);
+        const key = u.pathname.replace(/^\/+/, '');
+        if (key && key !== 'api/upload') {
+          fullUrl = `https://sb2.kalikapurnabinsanghaclub.workers.dev/?key=${encodeURIComponent(key)}`;
+        }
+      } catch(e) {}
     }
 
     try {
       const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 2000);
+      const tid = setTimeout(() => ctrl.abort(), 3000);
       const res = await fetch(fullUrl, { mode: 'cors', signal: ctrl.signal });
       clearTimeout(tid);
       if (res.ok) {
@@ -3056,7 +3061,7 @@ async function generateParticipantCertificateHTML() {
       const b64 = await new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        const tid = setTimeout(() => resolve(''), 2000);
+        const tid = setTimeout(() => resolve(''), 3000);
         img.onload = () => {
           clearTimeout(tid);
           try {
@@ -3177,7 +3182,7 @@ async function generateParticipantCertificateHTML() {
     return `
       <div class="cert-sig-box">
         <div class="cert-sig-img-wrap">
-          ${imgSrc ? `<img src="${imgSrc}" class="cert-sig-img" alt="${title} Signature">` : ''}
+          ${imgSrc ? `<img src="${imgSrc}" class="cert-sig-img" alt="${title} Signature" onerror="this.style.display='none';">` : ''}
         </div>
         <div class="cert-sig-line">${title}</div>
       </div>
