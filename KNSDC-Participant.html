@@ -2955,41 +2955,167 @@ async function generateParticipantCertificateHTML() {
     certDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
-  // ─── Extract Banner URL cleanly ───
-  const rawBanner = ev.banner || ev.image || ev.banner_url || ev.bannerUrl || ev.cover || ev.coverImage || (ev.social_links && ev.social_links.banner) || (ev.roundSchedules && ev.roundSchedules.banner) || '';
-  let eventLogoUrl = '';
-  if (typeof window.parseBanners === 'function') {
-    const list = window.parseBanners(rawBanner);
-    if (list && list.length > 0) eventLogoUrl = list[0];
+  // ─── Convert image to DataURL safely with fast timeout ───
+  async function imgToDataUrl(url) {
+    if (!url) return '';
+    if (url.startsWith('data:image')) return url;
+    
+    let fullUrl = url;
+    try {
+      fullUrl = new URL(url, window.location.href).href;
+    } catch(e) {}
+
+    if (fullUrl.includes('.r2.dev/')) {
+      const key = fullUrl.replace(/^https?:\/\/[^\/]+\//, '');
+      fullUrl = `https://sb2.kalikapurnabinsanghaclub.workers.dev/?key=${encodeURIComponent(key)}`;
+    }
+
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 2000);
+      const res = await fetch(fullUrl, { mode: 'cors', signal: ctrl.signal });
+      clearTimeout(tid);
+      if (res.ok) {
+        const blob = await res.blob();
+        const b64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(blob);
+        });
+        if (b64 && b64.startsWith('data:image')) return b64;
+      }
+    } catch(e) {}
+
+    try {
+      const b64 = await new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const tid = setTimeout(() => resolve(''), 2000);
+        img.onload = () => {
+          clearTimeout(tid);
+          try {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth || img.width || 100;
+            c.height = img.naturalHeight || img.height || 100;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            resolve(c.toDataURL('image/png'));
+          } catch(err) {
+            resolve('');
+          }
+        };
+        img.onerror = () => {
+          clearTimeout(tid);
+          resolve('');
+        };
+        img.src = fullUrl;
+      });
+      if (b64 && b64.startsWith('data:image')) return b64;
+    } catch(e) {}
+
+    return fullUrl;
   }
-  if (!eventLogoUrl && typeof rawBanner === 'string' && rawBanner.trim()) {
+
+  // ─── Extract Banner URL cleanly and exhaustively ───
+  let rawBanner = ev.banner || ev.image || ev.banner_url || ev.bannerUrl || ev.cover || ev.coverImage || '';
+  
+  if (!rawBanner && ev.social_links) {
+    let sl = ev.social_links;
+    if (typeof sl === 'string') {
+      try { sl = JSON.parse(sl); } catch(e) { sl = {}; }
+    }
+    if (sl && typeof sl === 'object') rawBanner = sl.banner || sl.image || '';
+  }
+  
+  if (!rawBanner && ev.roundSchedules) {
+    let rs = ev.roundSchedules;
+    if (typeof rs === 'string') {
+      try { rs = JSON.parse(rs); } catch(e) { rs = {}; }
+    }
+    if (rs && typeof rs === 'object') rawBanner = rs.banner || rs.image || '';
+  }
+
+  if (!rawBanner && state.eventBanners) {
+    rawBanner = state.eventBanners[ev.id] || (pEventId && state.eventBanners[pEventId]) || '';
+  }
+
+  if (!rawBanner && certSetup) {
+    rawBanner = certSetup.banner || certSetup.eventBanner || certSetup.logo || certSetup.eventLogo || '';
+  }
+
+  if (!rawBanner && p.banner) {
+    rawBanner = p.banner;
+  }
+
+  if (!rawBanner && Array.isArray(state.events)) {
+    for (const otherEv of state.events) {
+      const ob = otherEv.banner || otherEv.image;
+      if (ob) { rawBanner = ob; break; }
+    }
+  }
+
+  if (!rawBanner) {
+    rawBanner = 'cultural/photo_6118659175400280599_y.jpg';
+  }
+
+  let eventLogoUrl = '';
+  if (Array.isArray(rawBanner) && rawBanner.length > 0) {
+    eventLogoUrl = rawBanner[0];
+  } else if (typeof rawBanner === 'string' && rawBanner.trim()) {
     const trimmed = rawBanner.trim();
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    if (trimmed.startsWith('data:image')) {
+      eventLogoUrl = trimmed;
+    } else if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       try {
         const arr = JSON.parse(trimmed);
         if (Array.isArray(arr) && arr.length > 0) eventLogoUrl = arr[0];
       } catch(e) {}
+    } else if (typeof window.parseBanners === 'function') {
+      const list = window.parseBanners(trimmed);
+      if (list && list.length > 0) eventLogoUrl = list[0];
     }
     if (!eventLogoUrl) {
-      eventLogoUrl = trimmed.split('|||')[0].split(',')[0].trim();
+      if (trimmed.includes('|||')) {
+        eventLogoUrl = trimmed.split('|||')[0].trim();
+      } else if (!trimmed.startsWith('data:')) {
+        eventLogoUrl = trimmed.split(',')[0].trim();
+      } else {
+        eventLogoUrl = trimmed;
+      }
     }
   }
+  if (!eventLogoUrl) {
+    eventLogoUrl = 'cultural/photo_6118659175400280599_y.jpg';
+  }
+
+  // Pre-convert to DataURLs for 100% reliable rendering in HTML2Canvas and PDF/JPG
+  const [knsLogoDataUrl, eventLogoDataUrl, secSigDataUrl, presSigDataUrl, judgeSigDataUrl] = await Promise.all([
+    imgToDataUrl('logo.png'),
+    eventLogoUrl ? imgToDataUrl(eventLogoUrl) : Promise.resolve(''),
+    certSetup.secretary ? imgToDataUrl(certSetup.secretary) : Promise.resolve(''),
+    certSetup.president ? imgToDataUrl(certSetup.president) : Promise.resolve(''),
+    certSetup.judge ? imgToDataUrl(certSetup.judge) : Promise.resolve('')
+  ]);
+
+  const finalKnsLogoSrc = knsLogoDataUrl || 'logo.png';
+  const finalEventBannerSrc = eventLogoDataUrl || eventLogoUrl;
 
   const makeSigHtml = (imgSrc, title) => {
     return `
       <div class="cert-sig-box">
         <div class="cert-sig-img-wrap">
-          ${imgSrc ? `<img src="${imgSrc}" class="cert-sig-img" alt="${title} Signature" crossorigin="anonymous">` : `<span style="font-family:'Playfair Display', serif; font-style:italic; font-size:1.05rem; color:#475569;">Signature</span>`}
+          ${imgSrc ? `<img src="${imgSrc}" class="cert-sig-img" alt="${title} Signature">` : `<span style="font-family:'Playfair Display', serif; font-style:italic; font-size:1.05rem; color:#475569;">Signature</span>`}
         </div>
         <div class="cert-sig-line">${title}</div>
       </div>
     `;
   };
 
-  const secSigHtml = makeSigHtml(certSetup.secretary, 'Secretary');
-  const presSigHtml = makeSigHtml(certSetup.president, 'President');
-  const judgeSigHtml = certSetup.judge 
-    ? makeSigHtml(certSetup.judge, 'Judge / Convener')
+  const secSigHtml = makeSigHtml(secSigDataUrl || certSetup.secretary, 'Secretary');
+  const presSigHtml = makeSigHtml(presSigDataUrl || certSetup.president, 'President');
+  const judgeSigHtml = (judgeSigDataUrl || certSetup.judge) 
+    ? makeSigHtml(judgeSigDataUrl || certSetup.judge, 'Judge / Convener')
     : `<div class="cert-sig-box" style="visibility:hidden;"><div class="cert-sig-line">Official</div></div>`;
 
   const content = `
@@ -3027,13 +3153,13 @@ async function generateParticipantCertificateHTML() {
       <div class="cert-header">
         <div class="cert-logos">
           <div class="cert-logo-item">
-            <img src="logo.png" alt="KNS Logo" class="cert-logo-img" crossorigin="anonymous">
+            <img src="${finalKnsLogoSrc}" alt="KNS Logo" class="cert-logo-img">
             <span class="cert-logo-label">Organiser</span>
           </div>
-          ${eventLogoUrl ? `
+          ${finalEventBannerSrc ? `
             <div class="cert-logo-divider"></div>
             <div class="cert-logo-item">
-              <img src="${eventLogoUrl}" alt="Event Banner" class="cert-banner-img" crossorigin="anonymous">
+              <img src="${finalEventBannerSrc}" alt="Event Banner" class="cert-banner-img" onerror="if(this.src!=='cultural/photo_6118659175400280599_y.jpg'){this.src='cultural/photo_6118659175400280599_y.jpg';}">
               <span class="cert-logo-label">Event</span>
             </div>
           ` : ''}
@@ -3132,6 +3258,7 @@ async function generateParticipantCertificateHTML() {
     <html lang="en">
       <head>
         <meta charset="UTF-8" />
+        <base href="${window.location.href}" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>KNSDC Certificate — ${p.name || 'Participant'}</title>
         <style>
@@ -3673,6 +3800,18 @@ async function generateParticipantCertificateHTML() {
 
               try {
                 const certEl = document.getElementById('cert-wrapper');
+
+                // Wait for all images inside cert-wrapper to finish loading
+                const imgs = Array.from(certEl.querySelectorAll('img'));
+                await Promise.all(imgs.map(img => {
+                  if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                  return new Promise(resolve => {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                    setTimeout(resolve, 2500);
+                  });
+                }));
+
                 const prevTransform = certEl.style.transform;
                 certEl.style.transform = 'none';
 
@@ -3719,6 +3858,18 @@ async function generateParticipantCertificateHTML() {
 
               try {
                 const certEl = document.getElementById('cert-wrapper');
+
+                // Wait for all images inside cert-wrapper to finish loading
+                const imgs = Array.from(certEl.querySelectorAll('img'));
+                await Promise.all(imgs.map(img => {
+                  if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                  return new Promise(resolve => {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                    setTimeout(resolve, 2500);
+                  });
+                }));
+
                 const prevTransform = certEl.style.transform;
                 certEl.style.transform = 'none';
 
