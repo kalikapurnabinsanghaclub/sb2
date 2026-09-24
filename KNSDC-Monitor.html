@@ -14416,17 +14416,30 @@ function previewSignature(input, previewId, clearBtnId) {
   }
 }
 
-function clearSignature(inputId, previewId, clearBtnId) {
+async function clearSignature(inputId, previewId, clearBtnId) {
   const inp = document.getElementById(inputId);
   const img = document.getElementById(previewId);
   const btn = document.getElementById(clearBtnId);
+  const oldSrc = img ? img.getAttribute('src') : null;
+
   if (inp) inp.value = '';
   if (img) { img.removeAttribute('src'); img.style.display = 'none'; }
   if (btn) btn.style.display = 'none';
+
   if (switchStates.certificateSetup) {
     if (inputId.includes('sec')) switchStates.certificateSetup.secretary = null;
     if (inputId.includes('judge')) switchStates.certificateSetup.judge = null;
     if (inputId.includes('pres')) switchStates.certificateSetup.president = null;
+  }
+
+  // Delete previous signature from Cloudflare R2 if present
+  if (oldSrc && (oldSrc.includes('r2.dev') || oldSrc.includes('workers.dev') || oldSrc.includes('sb2.kalikapurnabinsanghaclub')) && window.syncEngine && typeof window.syncEngine.deleteFile === 'function') {
+    try {
+      console.log('[Monitor] Automatically deleting cleared signature from Cloudflare R2:', oldSrc);
+      await window.syncEngine.deleteFile(oldSrc);
+    } catch(err) {
+      console.warn('[Monitor] Non-fatal notice deleting cleared signature:', err);
+    }
   }
 }
 
@@ -14440,11 +14453,32 @@ async function saveCertificateSignatures() {
   toast('Processing signatures...');
   
   try {
-    const getUrl = async (inputId, previewId) => {
+    const currentSetup = (switchStates && switchStates.certificateSetup) || {};
+    const existingEvSetup = (state && state.eventSwitches && state.eventSwitches[activeEventId] && state.eventSwitches[activeEventId].certificateSetup) || {};
+
+    const prevSec = currentSetup.secretary || existingEvSetup.secretary || null;
+    const prevJudge = currentSetup.judge || existingEvSetup.judge || null;
+    const prevPres = currentSetup.president || existingEvSetup.president || null;
+
+    const getUrl = async (inputId, previewId, oldUrl, sigType) => {
       const input = document.getElementById(inputId);
       const preview = document.getElementById(previewId);
+      
       if (input && input.files && input.files[0]) {
-        const url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`);
+        // Monitor has selected a NEW signature file for this position
+        // 1. Automatically delete previous signature file from Cloudflare R2
+        if (oldUrl && (oldUrl.includes('r2.dev') || oldUrl.includes('workers.dev') || oldUrl.includes('sb2.kalikapurnabinsanghaclub')) && window.syncEngine && typeof window.syncEngine.deleteFile === 'function') {
+          try {
+            console.log(`[Monitor] Automatically deleting previous ${sigType} signature from Cloudflare R2:`, oldUrl);
+            await window.syncEngine.deleteFile(oldUrl);
+          } catch(delErr) {
+            console.warn(`[Monitor] Notice deleting previous ${sigType} signature:`, delErr);
+          }
+        }
+        // 2. Upload new signature file to Cloudflare R2
+        const ext = input.files[0].name.split('.').pop() || 'png';
+        const customKey = `events/${activeEventId}/certificates/${sigType}_sig_${Date.now()}.${ext}`;
+        const url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`, customKey);
         if (!url) throw new Error("Failed to upload signature file for " + inputId.replace('cert-sig-', ''));
         return url;
       } else if (preview && preview.style.display !== 'none') {
@@ -14453,12 +14487,20 @@ async function saveCertificateSignatures() {
           return src;
         }
       }
+      
+      // If preview is hidden or empty, and oldUrl existed on Cloudflare R2, delete oldUrl
+      if (oldUrl && (oldUrl.includes('r2.dev') || oldUrl.includes('workers.dev') || oldUrl.includes('sb2.kalikapurnabinsanghaclub')) && window.syncEngine && typeof window.syncEngine.deleteFile === 'function') {
+        try {
+          console.log(`[Monitor] Deleting removed ${sigType} signature from Cloudflare R2:`, oldUrl);
+          await window.syncEngine.deleteFile(oldUrl);
+        } catch(delErr) {}
+      }
       return null;
     };
 
-    const sec = await getUrl('cert-sig-sec', 'preview-sig-sec');
-    const judge = await getUrl('cert-sig-judge', 'preview-sig-judge');
-    const pres = await getUrl('cert-sig-pres', 'preview-sig-pres');
+    const sec = await getUrl('cert-sig-sec', 'preview-sig-sec', prevSec, 'secretary');
+    const judge = await getUrl('cert-sig-judge', 'preview-sig-judge', prevJudge, 'judge');
+    const pres = await getUrl('cert-sig-pres', 'preview-sig-pres', prevPres, 'president');
 
     switchStates.certificateSetup = {
       secretary: sec || null,
@@ -14470,6 +14512,7 @@ async function saveCertificateSignatures() {
       window.syncEngine.setData(state => {
         if (!state.eventSwitches) state.eventSwitches = {};
         state.eventSwitches[activeEventId] = { ...switchStates };
+        state.eventSwitches[String(activeEventId)] = { ...switchStates };
         state.switchStates = { ...switchStates };
         if (state.events) {
           const idx = state.events.findIndex(e => String(e.id) === String(activeEventId));
@@ -14491,7 +14534,7 @@ async function saveCertificateSignatures() {
         }
       }
     }
-    toast('✅ Signatures saved successfully!');
+    toast('✅ Signatures updated & saved successfully!');
   } catch(e) {
     console.error(e);
     toast('❌ Error: ' + e.message);
