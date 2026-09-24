@@ -3445,7 +3445,7 @@ async function generateParticipantCertificateHTML() {
             outline: 2px solid #dfba73;
             outline-offset: -7px;
             box-shadow: inset 0 0 0 9px #ffffff, inset 0 0 0 11px #d4af37;
-            padding: 16px 26px 12px;
+            padding: 10px 24px 8px;
             text-align: center;
             display: flex;
             flex-direction: column;
@@ -3496,8 +3496,8 @@ async function generateParticipantCertificateHTML() {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 20px;
-            margin-bottom: 4px;
+            gap: 22px;
+            margin-bottom: 6px;
           }
           .cert-logo-item {
             display: flex;
@@ -3506,21 +3506,21 @@ async function generateParticipantCertificateHTML() {
             gap: 2px;
           }
           .cert-logo-img {
-            height: 52px;
+            height: 68px;
             width: auto;
-            max-width: 80px;
+            max-width: 105px;
             object-fit: contain;
           }
           .cert-banner-img {
-            height: 52px;
+            height: 68px;
             width: auto;
-            max-width: 140px;
+            max-width: 180px;
             object-fit: contain;
-            border-radius: 4px;
+            border-radius: 5px;
           }
           .cert-logo-divider {
-            width: 1px;
-            height: 42px;
+            width: 1.5px;
+            height: 56px;
             background: linear-gradient(to bottom, transparent, #d4af37, transparent);
           }
           .cert-logo-label {
@@ -3533,11 +3533,12 @@ async function generateParticipantCertificateHTML() {
 
           .cert-org-name {
             font-family: 'Cinzel Decorative', 'Cinzel', serif;
-            font-size: 1.05rem;
+            font-size: 1.08rem;
             color: #1a237e;
             font-weight: 800;
             letter-spacing: 3px;
             text-transform: uppercase;
+            margin-top: 4px;
             margin-bottom: 2px;
           }
           .cert-ornament-line {
@@ -3558,24 +3559,25 @@ async function generateParticipantCertificateHTML() {
           }
           .cert-main-title {
             font-family: 'Playfair Display', serif;
-            font-size: 1.7rem;
+            font-size: 1.72rem;
             font-weight: 900;
             color: #0f172a;
             letter-spacing: 2px;
             text-transform: uppercase;
-            margin-bottom: 2px;
+            margin-bottom: 3px;
           }
           .cert-subtitle {
             font-family: 'Playfair Display', Georgia, serif;
             font-style: italic;
             font-size: 0.88rem;
             color: #64748b;
+            margin-bottom: 8px;
           }
 
           /* Body Section */
           .cert-body {
             width: 100%;
-            margin: 2px 0;
+            margin: 4px 0 10px;
             position: relative;
             z-index: 2;
           }
@@ -3588,16 +3590,16 @@ async function generateParticipantCertificateHTML() {
             border-bottom: 2px solid #d4af37;
             display: inline-block;
             padding: 0 30px 2px;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
             text-transform: capitalize;
           }
           .cert-citation {
             font-family: 'Playfair Display', Georgia, serif;
-            font-size: 0.92rem;
+            font-size: 0.93rem;
             color: #334155;
             line-height: 1.48;
-            max-width: 740px;
-            margin: 0 auto;
+            max-width: 750px;
+            margin: 4px auto 0;
           }
           .cert-meta-item {
             font-size: 0.9rem;
@@ -5311,12 +5313,33 @@ function renderChatMessages() {
 // ==========================================
 function getFoodMenu() {
   const state = window.syncEngine.getData() || {};
-  return state.foodMenu || [
+  const menu = state.foodMenu || [
     { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
     { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
     { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
     { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
   ];
+  const partners = state.partnerAssignments || [];
+  const activePartnerEmails = new Set(partners.map(p => (p.email || '').toLowerCase()));
+  const activePartnerIds = new Set(partners.map(p => String(p.id)));
+  const activePartnerNames = new Set(partners.map(p => (p.name || '').toLowerCase()));
+
+  return menu.filter(item => {
+    if (!item || !item.name) return false;
+    // Remove any item named "t" or "T"
+    if (item.name.trim().toLowerCase() === 't') return false;
+
+    // If item is associated with a partner, verify partner is still assigned
+    if (item.partnerId || item.partnerEmail || item.partnerName) {
+      const matchId = item.partnerId && activePartnerIds.has(String(item.partnerId));
+      const matchEmail = item.partnerEmail && activePartnerEmails.has(item.partnerEmail.toLowerCase());
+      const matchName = item.partnerName && activePartnerNames.has(item.partnerName.toLowerCase());
+      if (!matchId && !matchEmail && !matchName) {
+        return false; // Exclude menu items from deleted partners
+      }
+    }
+    return true;
+  });
 }
 
 
