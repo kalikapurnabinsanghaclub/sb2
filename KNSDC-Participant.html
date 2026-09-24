@@ -3163,13 +3163,39 @@ async function generateParticipantCertificateHTML() {
   const presSigUrl = certSetup.president || certSetup.pres || certSetup.presidentSig || certSetup.presSig || certSetup.president_signature || certSetup.presidentSignature || certSetup.pres_signature || certSetup.President || '';
   const judgeSigUrl = certSetup.judge || certSetup.judgeSig || certSetup.convener || certSetup.judge_signature || certSetup.judgeSignature || certSetup.Judge || '';
 
+  // ─── Resolve Participant Photo ───
+  let participantPhotoUrl = p.photo || p.photoUrl || p.photo_url || p.avatar || p.picture || p.selfieImage || '';
+  if (!participantPhotoUrl && p.formAnswers) {
+    const photoField = (ev.formFields || []).find(f => f.type === 'photo');
+    if (photoField && p.formAnswers[photoField.id]) {
+      participantPhotoUrl = p.formAnswers[photoField.id];
+    }
+    if (!participantPhotoUrl) {
+      for (const [k, v] of Object.entries(p.formAnswers)) {
+        if (/photo|image|pic|picture|selfie|headshot/i.test(k) && typeof v === 'string') {
+          participantPhotoUrl = v;
+          break;
+        }
+      }
+    }
+    if (!participantPhotoUrl) {
+      for (const [k, v] of Object.entries(p.formAnswers)) {
+        if (typeof v === 'string' && (v.startsWith('data:image/') || v.includes('/api/participant/image/') || /\.(jpg|jpeg|png|gif|webp|svg)/i.test(v) || v.includes('workers.dev') || v.includes('r2.dev'))) {
+          participantPhotoUrl = v;
+          break;
+        }
+      }
+    }
+  }
+
   // Pre-convert to DataURLs for 100% reliable rendering in HTML2Canvas and PDF/JPG
-  const [knsLogoDataUrl, eventLogoDataUrl, secSigDataUrl, presSigDataUrl, judgeSigDataUrl] = await Promise.all([
+  const [knsLogoDataUrl, eventLogoDataUrl, secSigDataUrl, presSigDataUrl, judgeSigDataUrl, participantPhotoDataUrl] = await Promise.all([
     imgToDataUrl('logo.png'),
     eventLogoUrl ? imgToDataUrl(eventLogoUrl) : Promise.resolve(''),
     secSigUrl ? imgToDataUrl(secSigUrl) : Promise.resolve(''),
     presSigUrl ? imgToDataUrl(presSigUrl) : Promise.resolve(''),
-    judgeSigUrl ? imgToDataUrl(judgeSigUrl) : Promise.resolve('')
+    judgeSigUrl ? imgToDataUrl(judgeSigUrl) : Promise.resolve(''),
+    participantPhotoUrl ? imgToDataUrl(participantPhotoUrl) : Promise.resolve('')
   ]);
 
   const finalKnsLogoSrc = knsLogoDataUrl || 'logo.png';
@@ -3177,6 +3203,7 @@ async function generateParticipantCertificateHTML() {
   const finalSecSigSrc = secSigDataUrl || secSigUrl || '';
   const finalPresSigSrc = presSigDataUrl || presSigUrl || '';
   const finalJudgeSigSrc = judgeSigDataUrl || judgeSigUrl || '';
+  const finalParticipantPhotoSrc = participantPhotoDataUrl || participantPhotoUrl || '';
 
   const makeSigHtml = (imgSrc, title) => {
     return `
@@ -3286,6 +3313,15 @@ async function generateParticipantCertificateHTML() {
           <div class="cert-sigs-left">
             ${secSigHtml}
             ${presSigHtml}
+          </div>
+
+          <!-- Middle: Participant Photo in Circle Frame (Blank if not uploaded) -->
+          <div class="cert-participant-photo-wrap">
+            ${finalParticipantPhotoSrc ? `
+              <div class="cert-participant-photo-frame">
+                <img src="${finalParticipantPhotoSrc}" alt="${p.name || 'Participant'}" class="cert-participant-photo-img" onerror="this.parentElement.style.display='none';">
+              </div>
+            ` : ''}
           </div>
 
           <!-- Right: Judge Signature -->
@@ -3698,6 +3734,35 @@ async function generateParticipantCertificateHTML() {
             letter-spacing: 1px;
           }
 
+          /* Participant Photo in Center */
+          .cert-participant-photo-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+          }
+          .cert-participant-photo-frame {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            border: 3px solid #d4af37;
+            outline: 2px solid #b8860b;
+            outline-offset: 2px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 0 6px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 6px;
+          }
+          .cert-participant-photo-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            display: block;
+          }
 
           .cert-sigs-right {
             display: flex;
