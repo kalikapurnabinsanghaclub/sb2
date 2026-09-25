@@ -650,14 +650,23 @@
         <button onclick="closeShareModal()" style="position:absolute; top:15px; right:15px; background:rgba(255,255,255,0.1); border:none; color:var(--text); font-size:24px; cursor:pointer; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;">&times;</button>
         <h2 style="margin:0 0 15px 0; font-size:1.3rem; color:var(--text); text-align:center;">Share Your Poster</h2>
 
-        <!-- Poster Preview (Canvas) -->
-        <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); margin-bottom:15px;" id="poster-preview-container">
+        <!-- Poster Preview (Canvas) with Swipe Support -->
+        <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); margin-bottom:15px; cursor:grab; touch-action:pan-y;" id="poster-preview-container">
           <canvas id="poster-canvas" style="width:100%; height:100%; display:block; position:relative; z-index:2; pointer-events:none;"></canvas>
           <!-- Live camera overlay -->
           <video id="selfie-video" autoplay playsinline muted style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:16px; z-index:1;"></video>
           <div id="camera-overlay" style="display:none; position:absolute; bottom:15px; left:0; right:0; justify-content:center; gap:12px; z-index:10;">
             <button onclick="captureFromCamera()" style="background:#fff; color:#000; border:none; border-radius:50%; width:60px; height:60px; font-size:26px; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.4);">📷</button>
             <button onclick="stopCamera()" style="background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:50%; width:60px; height:60px; font-size:22px; cursor:pointer;">✕</button>
+          </div>
+
+          <!-- Navigation chevrons (left / right) for swipe & click -->
+          <button onclick="prevPosterTheme()" style="position:absolute; left:8px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; background:rgba(15,23,42,0.7); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,0.25); color:#ffffff; font-size:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:15; box-shadow:0 4px 12px rgba(0,0,0,0.4);">&lsaquo;</button>
+          <button onclick="nextPosterTheme()" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; background:rgba(15,23,42,0.7); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,0.25); color:#ffffff; font-size:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:15; box-shadow:0 4px 12px rgba(0,0,0,0.4);">&rsaquo;</button>
+
+          <!-- Floating Theme Indicator Pill -->
+          <div id="poster-theme-pill" style="position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.8); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.3); color:#ffffff; font-size:11px; font-weight:800; padding:4px 12px; border-radius:20px; z-index:15; pointer-events:none; white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,0.4); display:flex; align-items:center; gap:6px;">
+            <span>✨ Swipe ↔️ for Font & Color</span>
           </div>
         </div>
 
@@ -1212,8 +1221,135 @@ function adjustColorBrightness(hex, percent) {
   return `#${rHex}${gHex}${bHex}`;
 }
 
+const POSTER_THEMES = [
+  {
+    name: "Royal Violet",
+    font: "'Outfit', sans-serif",
+    nameColor: "#FFFFFF",
+    eventColor: "#FFFFFF",
+    accent: "#8B5CF6",
+    catGradient: ["rgba(139, 92, 246, 0.6)", "rgba(236, 72, 153, 0.6)"],
+    glow: "#8B5CF6",
+    watermarkColor: "#A78BFA"
+  },
+  {
+    name: "Golden Glamour",
+    font: "'Cinzel', serif",
+    nameColor: "#FDE047",
+    eventColor: "#FEF08A",
+    accent: "#EAB308",
+    catGradient: ["rgba(234, 179, 8, 0.6)", "rgba(245, 158, 11, 0.6)"],
+    glow: "#EAB308",
+    watermarkColor: "#FDE047"
+  },
+  {
+    name: "Cyber Neon Blue",
+    font: "'Montserrat', sans-serif",
+    nameColor: "#38BDF8",
+    eventColor: "#E0F2FE",
+    accent: "#0EA5E9",
+    catGradient: ["rgba(14, 165, 233, 0.6)", "rgba(59, 130, 246, 0.6)"],
+    glow: "#38BDF8",
+    watermarkColor: "#7DD3FC"
+  },
+  {
+    name: "Hot Pink Diamond",
+    font: "'Playfair Display', serif",
+    nameColor: "#F472B6",
+    eventColor: "#FDF2F8",
+    accent: "#EC4899",
+    catGradient: ["rgba(236, 72, 153, 0.6)", "rgba(244, 63, 94, 0.6)"],
+    glow: "#EC4899",
+    watermarkColor: "#F472B6"
+  },
+  {
+    name: "Emerald Flame",
+    font: "'Outfit', sans-serif",
+    nameColor: "#34D399",
+    eventColor: "#ECFDF5",
+    accent: "#10B981",
+    catGradient: ["rgba(16, 185, 129, 0.6)", "rgba(5, 150, 105, 0.6)"],
+    glow: "#34D399",
+    watermarkColor: "#6EE7B7"
+  },
+  {
+    name: "Sunset Crimson",
+    font: "'Montserrat', sans-serif",
+    nameColor: "#FB923C",
+    eventColor: "#FFF7ED",
+    accent: "#F97316",
+    catGradient: ["rgba(249, 115, 22, 0.6)", "rgba(239, 68, 68, 0.6)"],
+    glow: "#FB923C",
+    watermarkColor: "#FDBA74"
+  }
+];
+
+let currentThemeIndex = 0;
+let _swipeListenersBound = false;
+
+function nextPosterTheme() {
+  currentThemeIndex = (currentThemeIndex + 1) % POSTER_THEMES.length;
+  applyCurrentPosterTheme();
+}
+
+function prevPosterTheme() {
+  currentThemeIndex = (currentThemeIndex - 1 + POSTER_THEMES.length) % POSTER_THEMES.length;
+  applyCurrentPosterTheme();
+}
+
+function applyCurrentPosterTheme() {
+  const t = POSTER_THEMES[currentThemeIndex];
+  const pill = document.getElementById('poster-theme-pill');
+  if (pill) {
+    pill.innerHTML = `<span>✨ Style: <b>${t.name}</b></span>`;
+    pill.style.borderColor = t.accent;
+  }
+  selectFrame(t.accent);
+}
+
+function initPosterSwipeListeners() {
+  if (_swipeListenersBound) return;
+  const container = document.getElementById('poster-preview-container');
+  if (!container) return;
+  _swipeListenersBound = true;
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  container.addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+  }, { passive: true });
+
+  container.addEventListener('touchend', e => {
+    const diffX = e.changedTouches[0].screenX - touchStartX;
+    const diffY = e.changedTouches[0].screenY - touchStartY;
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 35) {
+      if (diffX < 0) nextPosterTheme();
+      else prevPosterTheme();
+    }
+  }, { passive: true });
+
+  let isDown = false;
+  let mouseStartX = 0;
+  container.addEventListener('mousedown', e => {
+    isDown = true;
+    mouseStartX = e.clientX;
+  });
+  window.addEventListener('mouseup', e => {
+    if (!isDown) return;
+    isDown = false;
+    const diffX = e.clientX - mouseStartX;
+    if (Math.abs(diffX) > 35) {
+      if (diffX < 0) nextPosterTheme();
+      else prevPosterTheme();
+    }
+  });
+}
+
 function openShareModal() {
   document.getElementById('share-modal').style.display = 'flex';
+  initPosterSwipeListeners();
   selectBorder(currentBorderStyle);
   openCamera(); // Automatically launch selfie camera inside the frame
 }
@@ -1546,8 +1682,9 @@ function drawPosterOnCanvas(frame, pData) {
   const ctx = canvas.getContext('2d');
   _posterCanvas = null;
 
-  const accent = frame || '#7c3aed';
-  const border = frame || '#7c3aed';
+  const theme = POSTER_THEMES[currentThemeIndex] || POSTER_THEMES[0];
+  const accent = theme.accent || frame || '#7c3aed';
+  const border = theme.accent || frame || '#7c3aed';
   const shadow = hexToRgba(accent, 0.8);
   const grad1 = adjustColorBrightness(accent, -110);
   const grad2 = adjustColorBrightness(accent, -60);
@@ -1729,15 +1866,16 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.fillText(pData.orgName, badgeX + badgeW / 2, rowCenterY);
     ctx.restore();
 
-    // Event name (5% smaller font size, exactly 15px space below organizer / logo row)
+    // Event name (from theme font & color, 15px below top row)
     const rowBottom = Math.max(rowCenterY + logoRadius, badgeY + badgeH);
     const eventFontSize = W * 0.075 * 0.95; // 5% less px
     const eventY = rowBottom + 15;
     ctx.save();
-    ctx.font = `900 ${eventFontSize}px 'Outfit', sans-serif`;
+    ctx.font = `900 ${eventFontSize}px ${theme.font}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = theme.eventColor || '#ffffff';
+    ctx.shadowColor = theme.glow || 'rgba(0,0,0,0.8)';
     ctx.shadowBlur = 12;
     ctx.fillText(pData.eventName, W / 2, eventY);
     ctx.restore();
@@ -1746,14 +1884,14 @@ function drawPosterOnCanvas(frame, pData) {
     const accentLineY = eventY + eventFontSize + 8;
     ctx.save();
     const lineGrad = ctx.createLinearGradient(W / 2 - W * 0.18, accentLineY, W / 2 + W * 0.18, accentLineY);
-    lineGrad.addColorStop(0, 'rgba(168, 85, 247, 0)');
-    lineGrad.addColorStop(0.3, '#A855F7');
-    lineGrad.addColorStop(0.5, '#EC4899');
-    lineGrad.addColorStop(0.7, '#38BDF8');
-    lineGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    lineGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    lineGrad.addColorStop(0.3, theme.accent);
+    lineGrad.addColorStop(0.5, theme.nameColor);
+    lineGrad.addColorStop(0.7, theme.accent);
+    lineGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.strokeStyle = lineGrad;
     ctx.lineWidth = 3;
-    ctx.shadowColor = '#EC4899';
+    ctx.shadowColor = theme.glow;
     ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(W / 2 - W * 0.18, accentLineY);
@@ -1764,26 +1902,29 @@ function drawPosterOnCanvas(frame, pData) {
     // ---- BOTTOM SECTION ----
     let currentY = H * 0.81;
 
-    // Participant Name (Crisp & High Contrast with 3D Shadow)
-    ctx.font = `900 ${W * 0.088}px 'Outfit', sans-serif`;
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0,0,0,0.95)';
+    // Participant Name (Theme font and theme color!)
+    ctx.save();
+    ctx.font = `900 ${W * 0.088}px ${theme.font}`;
+    ctx.fillStyle = theme.nameColor;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = theme.glow || 'rgba(0,0,0,0.95)';
     ctx.shadowBlur = 18;
     ctx.fillText(pData.name, W / 2, currentY);
+    ctx.restore();
     
     currentY += H * 0.024;
 
-    // Category pill (Vibrant Glassmorphic Neon Gradient)
+    // Category pill (Vibrant Glassmorphic Neon Gradient from theme)
     const catW = W * 0.64;
     const catH = H * 0.044;
     const catX = (W - catW) / 2;
     
     ctx.save();
     const catGrad = ctx.createLinearGradient(catX, currentY, catX + catW, currentY + catH);
-    catGrad.addColorStop(0, 'rgba(124, 58, 237, 0.55)');
-    catGrad.addColorStop(1, 'rgba(236, 72, 153, 0.55)');
+    catGrad.addColorStop(0, theme.catGradient[0]);
+    catGrad.addColorStop(1, theme.catGradient[1]);
     ctx.fillStyle = catGrad;
-    ctx.shadowColor = 'rgba(124, 58, 237, 0.5)';
+    ctx.shadowColor = theme.glow;
     ctx.shadowBlur = 12;
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(catX, currentY, catW, catH, catH / 2);
@@ -1795,56 +1936,24 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
     
-    ctx.font = `800 ${W * 0.036}px 'Outfit', sans-serif`;
+    ctx.font = `800 ${W * 0.036}px ${theme.font}`;
     ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     ctx.fillText(`✨ ${pData.catName} ✨`, W / 2, currentY + catH / 2);
     ctx.restore();
     
-    currentY += catH + H * 0.015;
+    currentY += catH + H * 0.022;
 
-    // Score box (Championship Gold / Amber Glow Badge)
-    if (pData.scoreText) {
-      const scoreW = W * 0.72;
-      const scoreH = H * 0.046;
-      const scoreX = (W - scoreW) / 2;
-      
-      ctx.save();
-      const scoreGrad = ctx.createLinearGradient(scoreX, currentY, scoreX + scoreW, currentY + scoreH);
-      scoreGrad.addColorStop(0, 'rgba(245, 158, 11, 0.35)');
-      scoreGrad.addColorStop(0.5, 'rgba(234, 179, 8, 0.45)');
-      scoreGrad.addColorStop(1, 'rgba(245, 158, 11, 0.35)');
-      ctx.fillStyle = scoreGrad;
-      ctx.shadowColor = 'rgba(245, 158, 11, 0.6)';
-      ctx.shadowBlur = 14;
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(scoreX, currentY, scoreW, scoreH, 12);
-      else ctx.rect(scoreX, currentY, scoreW, scoreH);
-      ctx.fill();
-      
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = '#FCD34D';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      
-      ctx.font = `900 ${W * 0.04}px 'Outfit', sans-serif`;
-      ctx.fillStyle = '#FEF08A';
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'center';
-      ctx.fillText(`🏆 ${pData.scoreText}`, W / 2, currentY + scoreH / 2);
-      ctx.restore();
-      
-      currentY += scoreH + H * 0.015;
-    }
-
-    // Official Verification Watermark / Footer
+    // Official Footer: Vote and Watch me at knsdc.in (Replaced per user request!)
     ctx.save();
-    ctx.font = `700 ${W * 0.029}px 'Outfit', sans-serif`;
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = `800 ${W * 0.033}px ${theme.font}`;
+    ctx.fillStyle = theme.watermarkColor || '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.95)';
+    ctx.shadowBlur = 10;
     ctx.textAlign = 'center';
     if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '0.5px';
-    ctx.fillText('⚡ OFFICIAL VERIFIED POSTER • knsdc.in', W / 2, currentY + H * 0.015);
+    ctx.fillText('🗳️ Vote & Watch me at knsdc.in', W / 2, currentY + H * 0.015);
     ctx.restore();
 
     // Save the final canvas reference for download/share
