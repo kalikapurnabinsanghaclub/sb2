@@ -1632,33 +1632,70 @@ function drawPosterOnCanvas(frame, pData) {
     }
 
     // ---- TOP SECTION ----
-    const topY = H * 0.065;
+    const topY = H * 0.055;
 
-    // Club / Organizer Name + Logo on the left
+    // Club / Organizer Name + Big Logo on the left
     const orgFont = `800 ${W * 0.032}px 'Cinzel', 'Montserrat', 'Outfit', sans-serif`;
     ctx.font = orgFont;
     const orgMetrics = ctx.measureText(pData.orgName);
     
-    const badgePadX = W * 0.035;
-    const badgePadY = H * 0.008;
-    const badgeH = Math.max(W * 0.032 + badgePadY * 2.4, 34);
+    const badgePadX = W * 0.04;
+    const badgeH = Math.max(Math.round(W * 0.032 + H * 0.02), 34);
+    const badgeW = orgMetrics.width + badgePadX * 2;
     
-    // Logo dimensions (positioned inside white circle on the left beside organizer name)
-    const logoRadius = (badgeH - 8) / 2;
-    const logoDia = logoRadius * 2;
-    const logoSpacing = logoImg ? (logoDia + W * 0.02) : 0;
+    // Big prominent Logo on the left side of organizer
+    const logoDia = logoImg ? Math.round(W * 0.135) : 0;
+    const logoRadius = logoDia / 2;
+    const gap = logoImg ? 12 : 0;
     
-    const badgeW = Math.min(W * 0.92, orgMetrics.width + logoSpacing + badgePadX * 2);
-    const badgeX = (W - badgeW) / 2;
-    const badgeY = topY;
-    const badgeCenterY = badgeY + badgeH / 2;
+    const totalGroupW = logoDia + gap + badgeW;
+    const startX = (W - totalGroupW) / 2;
+    
+    const rowCenterY = topY + (logoImg ? logoRadius : badgeH / 2);
+    const logoCenterX = startX + logoRadius;
+    const badgeX = startX + logoDia + gap;
+    const badgeY = rowCenterY - badgeH / 2;
 
-    // Draw Glassmorphic Badge Background
+    // 1. Draw Big Logo in White Circle on the left
+    if (logoImg) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 2;
+
+      // Solid White Circle Background
+      ctx.beginPath();
+      ctx.arc(logoCenterX, rowCenterY, logoRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // Logo Image
+      ctx.save();
+      const pad = logoRadius * 0.08;
+      const drawR = logoRadius - pad;
+      ctx.beginPath();
+      ctx.arc(logoCenterX, rowCenterY, drawR, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(logoImg, logoCenterX - drawR, rowCenterY - drawR, drawR * 2, drawR * 2);
+      ctx.restore();
+
+      // Crisp White Border Ring
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.beginPath();
+      ctx.arc(logoCenterX, rowCenterY, logoRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 2. Draw Glassmorphic Badge Background for Organizer Name
     ctx.save();
     const badgeGrad = ctx.createLinearGradient(badgeX, badgeY, badgeX + badgeW, badgeY + badgeH);
-    badgeGrad.addColorStop(0, 'rgba(15, 23, 42, 0.82)');
-    badgeGrad.addColorStop(0.5, 'rgba(30, 27, 75, 0.9)');
-    badgeGrad.addColorStop(1, 'rgba(15, 23, 42, 0.82)');
+    badgeGrad.addColorStop(0, 'rgba(15, 23, 42, 0.85)');
+    badgeGrad.addColorStop(0.5, 'rgba(30, 27, 75, 0.92)');
+    badgeGrad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
     ctx.fillStyle = badgeGrad;
     ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
     ctx.shadowBlur = 10;
@@ -1676,51 +1713,23 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Draw Logo in White Circle on the left beside organizer name
-    if (logoImg) {
-      const logoCenterX = badgeX + badgePadX + logoRadius;
-      
-      // White Circle Background for Logo
-      ctx.beginPath();
-      ctx.arc(logoCenterX, badgeCenterY, logoRadius, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-      
-      // Draw Logo Image inside clipped white circle
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(logoCenterX, badgeCenterY, logoRadius - 1.5, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(logoImg, logoCenterX - logoRadius + 1.5, badgeCenterY - logoRadius + 1.5, (logoRadius - 1.5) * 2, (logoRadius - 1.5) * 2);
-      ctx.restore();
-
-      // White Border Ring
-      ctx.beginPath();
-      ctx.arc(logoCenterX, badgeCenterY, logoRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
     // Render Organizer Name Text
     ctx.font = orgFont;
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
     ctx.fillStyle = '#FFFFFF';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
     ctx.shadowBlur = 6;
     if (ctx.letterSpacing !== undefined) {
       ctx.letterSpacing = '1px';
     }
-    
-    // Center the text in the remaining badge area (or offset by logo on left)
-    const textCenterX = logoImg ? (badgeX + badgePadX + logoDia + W * 0.02 + orgMetrics.width / 2) : (W / 2);
-    ctx.textAlign = 'center';
-    ctx.fillText(pData.orgName, textCenterX, badgeCenterY);
+    ctx.fillText(pData.orgName, badgeX + badgeW / 2, rowCenterY);
     ctx.restore();
 
-    // Event name (5% smaller font size, exactly 15px space below organizer badge)
+    // Event name (5% smaller font size, exactly 15px space below organizer / logo row)
+    const rowBottom = Math.max(rowCenterY + logoRadius, badgeY + badgeH);
     const eventFontSize = W * 0.075 * 0.95; // 5% less px
-    const eventY = (badgeY + badgeH) + 15;
+    const eventY = rowBottom + 15;
     ctx.save();
     ctx.font = `900 ${eventFontSize}px 'Outfit', sans-serif`;
     ctx.textAlign = 'center';
