@@ -1688,14 +1688,55 @@ app.get('/api/ws-ping', (req, res) => {
 
 
 app.get(/(.*)/, (req, res) => {
-  const reqPath = req.params[0] || '';
-  const localFile = path.join(__dirname, reqPath);
-  if (reqPath && fs.existsSync(localFile) && fs.statSync(localFile).isFile()) {
-    return res.sendFile(localFile);
+  let reqPath = req.params[0] || '';
+  if (reqPath.startsWith('/')) reqPath = reqPath.slice(1);
+
+  // Friendly aliases for portals
+  const aliases = {
+    'monitor': 'KNSDC-Monitor.html',
+    'knsdc-monitor': 'KNSDC-Monitor.html',
+    'judge': 'KNSDC-Judge.html',
+    'knsdc-judge': 'KNSDC-Judge.html',
+    'participant': 'KNSDC-Participant.html',
+    'knsdc-participant': 'KNSDC-Participant.html',
+    'admin': 'KNSDC-Admin.html',
+    'knsdc-admin': 'KNSDC-Admin.html',
+    'host': 'KNSDC-Host.html',
+    'knsdc-host': 'KNSDC-Host.html',
+    'referee': 'KNSDC-Referee.html',
+    'knsdc-referee': 'KNSDC-Referee.html',
+    'portal': 'portal.html'
+  };
+
+  const resolvedName = aliases[reqPath.toLowerCase()] || reqPath;
+
+  if (resolvedName) {
+    // 1. Direct file in root
+    const localFile = path.join(__dirname, resolvedName);
+    if (fs.existsSync(localFile) && fs.statSync(localFile).isFile()) {
+      return res.sendFile(localFile);
+    }
+    // 2. Direct file + '.html' in root
+    const localHtml = path.join(__dirname, resolvedName + '.html');
+    if (fs.existsSync(localHtml) && fs.statSync(localHtml).isFile()) {
+      return res.sendFile(localHtml);
+    }
+    // 3. File in dist/
+    const distTarget = path.join(__dirname, 'dist', resolvedName);
+    if (fs.existsSync(distTarget) && fs.statSync(distTarget).isFile()) {
+      return res.sendFile(distTarget);
+    }
+    // 4. File + '.html' in dist/
+    const distHtml = path.join(__dirname, 'dist', resolvedName + '.html');
+    if (fs.existsSync(distHtml) && fs.statSync(distHtml).isFile()) {
+      return res.sendFile(distHtml);
+    }
   }
-  const distFile = path.join(__dirname, 'dist', 'index.html');
-  if (fs.existsSync(distFile)) {
-    return res.sendFile(distFile);
+
+  // Fallback to index.html
+  const distIndex = path.join(__dirname, 'dist', 'index.html');
+  if (fs.existsSync(distIndex)) {
+    return res.sendFile(distIndex);
   }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
