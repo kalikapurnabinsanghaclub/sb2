@@ -1701,8 +1701,8 @@ app.get(/(.*)/, (req, res) => {
 });
 
 // Use `server.listen` (not `app.listen`) so WebSocket upgrades are handled
-server.listen(PORT, () => {
-  console.log(`[KNSDC] Server + WebSocket running on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[KNSDC] Server + WebSocket running on 0.0.0.0:${PORT}`);
   console.log(`[KNSDC] Webhook endpoint: POST /api/webhook/payment`);
-  console.log(`[KNSDC] WebSocket endpoint: ws://localhost:${PORT}/ws?orderId=DON-XXXXXX`);
+  console.log(`[KNSDC] WebSocket endpoint: ws://0.0.0.0:${PORT}/ws?orderId=DON-XXXXXX`);
 });
