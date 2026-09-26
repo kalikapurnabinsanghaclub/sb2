@@ -34,4 +34,21 @@ entries.forEach(item => {
   }
 });
 
-console.log('✅ [Build] Successfully generated dist/ directory for Render deployment!');
+// Create directory aliases for clean URLs on static hosting
+const staticAliases = [
+  { src: 'KNSDC-Monitor.html', dir: 'monitor' },
+  { src: 'KNSDC-Judge.html', dir: 'judge' },
+  { src: 'KNSDC-Participant.html', dir: 'participant' }
+];
+
+staticAliases.forEach(({ src, dir }) => {
+  const srcPath = path.join(__dirname, src);
+  if (fs.existsSync(srcPath)) {
+    const targetDir = path.join(dist, dir);
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+    fs.copyFileSync(srcPath, path.join(targetDir, 'index.html'));
+    fs.copyFileSync(srcPath, path.join(dist, `${dir}.html`));
+  }
+});
+
+console.log('✅ [Build] Successfully generated dist/ directory with clean static aliases!');
