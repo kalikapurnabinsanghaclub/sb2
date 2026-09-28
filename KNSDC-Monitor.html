@@ -7736,10 +7736,9 @@ function toggleSwitch(sw, cb){
   const row = document.getElementById('sw-'+sw);
   if(!row) return;
 
+  // Auto-promote system to LIVE if offline
   const state = syncEngine.getData() || {};
-  // If system was flagged offline, auto-promote to LIVE when monitor toggles switches
   if (state.systemStatus === 'offline') {
-    state.systemStatus = 'live';
     const toggleEl = document.getElementById('system-status-toggle');
     if (toggleEl) toggleEl.checked = true;
     const dotEl = document.getElementById('system-status-dot');
@@ -7748,10 +7747,9 @@ function toggleSwitch(sw, cb){
     if (textEl) textEl.textContent = 'LIVE';
   }
 
-  // Update visual state immediately (instant UX feedback)
+  // Capture checked value
   const checkedValue = Boolean(cb.checked);
-  if(checkedValue) row.classList.add('on'); else row.classList.remove('on');
-  
+
   const stateMap = {
     'public-reg':'publicReg',
     'stage-preview':'stagePreview',
@@ -7786,40 +7784,42 @@ function toggleSwitch(sw, cb){
     switchStates['liveStreamUrl'] = '';
   }
 
+  // 1. Update in-memory switchStates immediately
   switchStates[stateKey] = checkedValue;
 
-  // 1. Instantly write to syncEngine in-memory so hydrate() / subscriptions never revert it
-  syncEngine.setData(st => {
-    st.systemStatus = 'live';
-    st.switchStates = { ...(st.switchStates || {}), ...switchStates };
-    st.eventSwitches = st.eventSwitches || {};
-    if (activeEventId) {
-      st.eventSwitches[activeEventId] = { ...(st.eventSwitches[activeEventId] || {}), ...switchStates };
-      st.eventSwitches[String(activeEventId)] = st.eventSwitches[activeEventId];
-    }
-    const evIdx = (st.events || []).findIndex(e => String(e.id) === String(activeEventId));
-    if (evIdx !== -1) {
-      st.events[evIdx].switchStates = { ...(st.events[evIdx].switchStates || {}), ...switchStates };
-    }
-    return st;
-  });
+  // 2. Set a render lock so renderSwitches() won't override the UI for 1.5s
+  _switchRenderLockUntil[stateKey] = Date.now() + 1500;
 
-  // 2. Keep activeEv in memory in sync immediately
+  // 3. Apply UI instantly without waiting for anything
+  if(checkedValue) row.classList.add('on'); else row.classList.remove('on');
+  cb.checked = checkedValue; // Force checkbox DOM state to match
+
+  // 4. Patch syncEngine internal state directly (no notify/hydrate triggered)
+  const _st = syncEngine.getData() || {};
+  _st.systemStatus = 'live';
+  _st.switchStates = { ...(_st.switchStates || {}), ...switchStates };
+  _st.eventSwitches = _st.eventSwitches || {};
+  if (activeEventId) {
+    _st.eventSwitches[activeEventId] = { ...(_st.eventSwitches[activeEventId] || {}), ...switchStates };
+    _st.eventSwitches[String(activeEventId)] = _st.eventSwitches[activeEventId];
+  }
+  const evIdx = (_st.events || []).findIndex(e => String(e.id) === String(activeEventId));
+  if (evIdx !== -1) {
+    _st.events[evIdx].switchStates = { ...(_st.events[evIdx].switchStates || {}), ...switchStates };
+  }
+
+  // 5. Keep EVENTS[] in sync
   const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
   if (activeEv) {
     activeEv.switchStates = { ...(activeEv.switchStates || {}), ...switchStates };
   }
 
-  // 3. Fast cloud persist
+  // 6. Debounced cloud persist
   clearTimeout(_switchDebounceTimers[sw]);
   _switchDebounceTimers[sw] = setTimeout(() => {
     syncAll();
-
-    // Persist switch changes directly to the Supabase event columns for public view
     if (activeEventId && typeof syncEngine.updateEvent === 'function') {
-      const eventUpdate = {
-        switchStates: { ...switchStates }
-      };
+      const eventUpdate = { switchStates: { ...switchStates } };
       if (stateKey === 'publicReg') eventUpdate.publicReg = checkedValue;
       if (stateKey === 'stagePreview') eventUpdate.stagePreview = checkedValue;
       if (stateKey === 'resultPublic') eventUpdate.resultPublic = checkedValue;
@@ -7827,14 +7827,15 @@ function toggleSwitch(sw, cb){
       if (stateKey === 'downloadPublic') eventUpdate.downloadPublic = checkedValue;
       if (stateKey === 'certificatePublic') eventUpdate.certificatePublic = checkedValue;
       if (stateKey === 'servicesToggle') eventUpdate.servicesToggle = checkedValue;
-
       syncEngine.updateEvent(activeEventId, eventUpdate).catch(err => {
-        console.error('[Monitor] Failed to sync event switches to Supabase events table:', err);
+        console.error('[Monitor] Failed to sync event switches:', err);
       });
     }
-  }, 100);
+    // Release lock after cloud sync is done
+    delete _switchRenderLockUntil[stateKey];
+  }, 800);
 
-  toast(`${checkedValue ? '✅ Enabled' : '🔒 Disabled'}: ${sw.replace('-', ' ')}`);
+  toast(`${checkedValue ? '✅ ON' : '🔒 OFF'}: ${sw.replace(/-/g, ' ')}`);
 }
 
 // Click delegation for switch rows to toggle when clicking anywhere on the row
@@ -15131,9 +15132,17 @@ async function renderChatOnlineList(){
   }).join('');
 }
 
+// Per-switch render lock: prevent hydrate() from reverting a switch UI for 1.5s after toggle
+var _switchRenderLockUntil = window._switchRenderLockUntil || {};
+window._switchRenderLockUntil = _switchRenderLockUntil;
+
 function renderSwitches() {
+  const now = Date.now();
   const keys = ['publicReg', 'stagePreview', 'lockScore', 'editScore', 'resultPublic', 'promoPublic', 'downloadPublic', 'certificatePublic', 'publicVoting', 'liveStream', 'whatsapp', 'prevScoresViewer', 'servicesToggle'];
   keys.forEach(k => {
+    // Skip rendering this switch if it was recently toggled (lock window = 1500ms)
+    if (_switchRenderLockUntil[k] && now < _switchRenderLockUntil[k]) return;
+
     if (k === 'liveStream') {
       const step = switchStates.liveStreamStep !== undefined 
         ? Number(switchStates.liveStreamStep) 
