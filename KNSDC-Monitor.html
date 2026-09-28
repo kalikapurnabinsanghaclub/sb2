@@ -5927,16 +5927,28 @@ function hydrate() {
   }
 
   // ── Restore switch states & certificate setup: prioritize per-event cloud data, then global fallback ──
+  // LOCK: keys that were recently toggled by the monitor user must NOT be overwritten by stale cloud data
+  function _mergeWithLock(target, source) {
+    if (!source) return target;
+    const now = Date.now();
+    const merged = { ...target };
+    Object.keys(source).forEach(k => {
+      // Skip if this key is locked (recently toggled by user, waiting for cloud confirm)
+      if (window._switchRenderLockUntil && window._switchRenderLockUntil[k] && now < window._switchRenderLockUntil[k]) return;
+      merged[k] = source[k];
+    });
+    return merged;
+  }
   if (s && s.switchStates) {
-    switchStates = { ...switchStates, ...s.switchStates };
+    switchStates = _mergeWithLock(switchStates, s.switchStates);
   }
   if (activeEv && activeEv.switchStates) {
-    switchStates = { ...switchStates, ...activeEv.switchStates };
+    switchStates = _mergeWithLock(switchStates, activeEv.switchStates);
   }
   if (s && s.eventSwitches) {
-    if (activeEventId && s.eventSwitches[activeEventId]) switchStates = { ...switchStates, ...s.eventSwitches[activeEventId] };
-    if (activeEventId && s.eventSwitches[String(activeEventId)]) switchStates = { ...switchStates, ...s.eventSwitches[String(activeEventId)] };
-    if (activeEv && activeEv.name && s.eventSwitches[activeEv.name]) switchStates = { ...switchStates, ...s.eventSwitches[activeEv.name] };
+    if (activeEventId && s.eventSwitches[activeEventId]) switchStates = _mergeWithLock(switchStates, s.eventSwitches[activeEventId]);
+    if (activeEventId && s.eventSwitches[String(activeEventId)]) switchStates = _mergeWithLock(switchStates, s.eventSwitches[String(activeEventId)]);
+    if (activeEv && activeEv.name && s.eventSwitches[activeEv.name]) switchStates = _mergeWithLock(switchStates, s.eventSwitches[activeEv.name]);
   }
 
   // Restore certificateSetup from activeEv or state if missing in switchStates
