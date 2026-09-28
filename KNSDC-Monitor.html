@@ -7866,19 +7866,31 @@ function toggleSwitch(sw, cb){
   toast(`${checkedValue ? '✅ ON' : '🔒 OFF'}: ${sw.replace(/-/g, ' ')}`);
 }
 
-// Click delegation for switch rows — fires when clicking outside the label/input area (e.g. row padding)
+// Click delegation for switch rows — fires when clicking outside the switch widget area (e.g. row padding/label area)
 // Calls toggleSwitch() directly instead of dispatchEvent to avoid double-fire with onchange attribute
 document.addEventListener('click', function(e) {
   const row = e.target.closest('.sw-row');
   if (!row) return;
-  // If click landed on any interactive element, native event handles it
-  if (e.target.closest('label, input, button, a, select, textarea, .rating-stepper-wrapper, .rating-stepper, .live-stepper-wrapper')) return;
+  // Block if click is inside any interactive element OR any switch widget container/child
+  // This covers: uv-mb-switch (edit-score), uv-an-toggle (result/promo/download/cert/services),
+  //              uv-st-tgl (lock-score), uv-nj-toggle-container (stage-preview), love-heart (whatsapp),
+  //              plus native inputs, labels, buttons and steppers
+  if (e.target.closest([
+    'label', 'input', 'button', 'a', 'select', 'textarea',
+    '.uv-mb-switch', '.uv-mb-slider',
+    '.uv-an-toggle', '.uv-an-label', '.uv-an-checkbox',
+    '.uv-st-tgl', '.uv-ag-container', '.uv-ag-input',
+    '.uv-nj-toggle-container',
+    '.love-heart',
+    '.rating-stepper-wrapper', '.rating-stepper',
+    '.live-stepper-wrapper'
+  ].join(', '))) return;
   const swId = row.id ? row.id.replace(/^sw-/, '') : null;
   if (!swId) return;
   const chk = row.querySelector('input[type="checkbox"]');
   if (chk && swId) {
     chk.checked = !chk.checked;
-    toggleSwitch(swId, chk); // direct call — cooldown guard inside will block duplicates
+    toggleSwitch(swId, chk); // direct call — cooldown guard inside blocks any duplicates
   }
 });
 
