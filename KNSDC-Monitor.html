@@ -5708,7 +5708,7 @@ window.getParticipantVenueName = getParticipantVenueName;
 let activeEventId = null;
 let currentOnStage = null;
 let stageQueue = [];
-let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, downloadPublic: false, certificatePublic: false, publicVoting: false, publicRatingPos: 0, whatsapp: false, prevScoresViewer: false, servicesToggle: false };
+let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, downloadPublic: false, certificatePublic: false, publicVoting: false, publicRatingPos: 0, liveStream: false, liveStreamStep: 1, liveStreamUrl: '', directorJudgeScores: false, whatsapp: false, prevScoresViewer: false, servicesToggle: false };
 let nxtId = { reg: 1, cat: 1, venue: 1, subj: 1, agr: 1 };
 let formFields = [];
 let agreements = [];
@@ -7572,9 +7572,26 @@ function handlePublicRatingPosChange(pos) {
   const row = document.getElementById('sw-public-voting');
   const stepper = document.getElementById('rating-stepper');
 
+  // Auto-promote system to LIVE if offline
+  const state = (window.syncEngine && typeof syncEngine.getData === 'function') ? syncEngine.getData() : {};
+  if (state.systemStatus === 'offline') {
+    state.systemStatus = 'live';
+    const toggleEl = document.getElementById('system-status-toggle');
+    if (toggleEl) toggleEl.checked = true;
+    const dotEl = document.getElementById('system-status-dot');
+    if (dotEl) dotEl.classList.remove('dot-offline');
+    const textEl = document.getElementById('system-status-text');
+    if (textEl) textEl.textContent = 'LIVE';
+  }
+
   switchStates['publicRatingPos'] = pos;
   switchStates['publicVoting'] = (pos > 0);
 
+  // 1. Set render & hydrate lock for 5s — prevents hydrate() from reverting stepper
+  _switchRenderLockUntil['publicVoting'] = Date.now() + 5000;
+  _switchRenderLockUntil['publicRatingPos'] = Date.now() + 5000;
+
+  // 2. Immediate visual update
   const radio = document.getElementById('rating-step-' + pos);
   if (radio) radio.checked = true;
   if (stepper) stepper.style.setProperty('--rating-pos', pos);
@@ -7582,8 +7599,31 @@ function handlePublicRatingPosChange(pos) {
   if (row) row.classList.toggle('on', pos > 0);
   updatePublicRatingStatusBadge(pos);
 
+  // 3. Patch syncEngine in-memory immediately (prevents local race conditions)
+  const _st = syncEngine.getData() || {};
+  _st.systemStatus = 'live';
+  _st.switchStates = { ...(_st.switchStates || {}), ...switchStates };
+  _st.eventSwitches = _st.eventSwitches || {};
+  if (activeEventId) {
+    _st.eventSwitches[activeEventId] = { ...(_st.eventSwitches[activeEventId] || {}), ...switchStates };
+    _st.eventSwitches[String(activeEventId)] = _st.eventSwitches[activeEventId];
+  }
+  const evIdx = (_st.events || []).findIndex(e => String(e.id) === String(activeEventId));
+  if (evIdx !== -1) {
+    _st.events[evIdx].switchStates = { ...(_st.events[evIdx].switchStates || {}), ...switchStates };
+  }
+
+  // 4. Keep activeEv in memory in sync
+  const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
+  if (activeEv) {
+    activeEv.switchStates = { ...(activeEv.switchStates || {}), ...switchStates };
+  }
+
+  // 5. Debounced cloud persist with lock re-extension
   clearTimeout(_switchDebounceTimers['public-voting']);
   _switchDebounceTimers['public-voting'] = setTimeout(() => {
+    _switchRenderLockUntil['publicVoting'] = Date.now() + 5000;
+    _switchRenderLockUntil['publicRatingPos'] = Date.now() + 5000;
     syncAll();
     if (activeEventId) {
       const eventUpdate = {
@@ -7597,7 +7637,7 @@ function handlePublicRatingPosChange(pos) {
     if (typeof broadcastControlsToPublic === 'function') {
       broadcastControlsToPublic();
     }
-  }, 300);
+  }, 500);
 
   const msgs = {
     0: "🔒 Public Rating & Voting OFF",
@@ -7661,12 +7701,17 @@ function updateLiveStreamStatusBadge(step) {
 
 function handleLiveStreamStepChange(step) {
   const row = document.getElementById('sw-live-stream');
+  
+  // Auto-promote system to LIVE if offline
   const state = (window.syncEngine && typeof syncEngine.getData === 'function') ? syncEngine.getData() : {};
-  if (state.systemStatus === 'offline' && step > 1) {
-    const radio1 = document.getElementById('step-1');
-    if (radio1) radio1.checked = true;
-    toast('⚠️ Please turn the system LIVE first before enabling live broadcast!');
-    return;
+  if (state.systemStatus === 'offline') {
+    state.systemStatus = 'live';
+    const toggleEl = document.getElementById('system-status-toggle');
+    if (toggleEl) toggleEl.checked = true;
+    const dotEl = document.getElementById('system-status-dot');
+    if (dotEl) dotEl.classList.remove('dot-offline');
+    const textEl = document.getElementById('system-status-text');
+    if (textEl) textEl.textContent = 'LIVE';
   }
 
   step = Number(step);
@@ -7698,10 +7743,42 @@ function handleLiveStreamStepChange(step) {
     if (row) row.classList.remove('on');
   }
 
+  // 1. Set render & hydrate lock for 5s — prevents hydrate() from reverting stepper
+  _switchRenderLockUntil['liveStream'] = Date.now() + 5000;
+  _switchRenderLockUntil['liveStreamStep'] = Date.now() + 5000;
+  _switchRenderLockUntil['liveStreamUrl'] = Date.now() + 5000;
+  _switchRenderLockUntil['directorJudgeScores'] = Date.now() + 5000;
+
+  // 2. Immediate visual update
+  const radio = document.getElementById('step-' + step);
+  if (radio) radio.checked = true;
   updateLiveStreamStatusBadge(step);
 
+  // 3. Patch syncEngine in-memory immediately (prevents local race conditions)
+  const _st = syncEngine.getData() || {};
+  _st.systemStatus = 'live';
+  _st.switchStates = { ...(_st.switchStates || {}), ...switchStates };
+  _st.eventSwitches = _st.eventSwitches || {};
+  if (activeEventId) {
+    _st.eventSwitches[activeEventId] = { ...(_st.eventSwitches[activeEventId] || {}), ...switchStates };
+    _st.eventSwitches[String(activeEventId)] = _st.eventSwitches[activeEventId];
+  }
+  const evIdx = (_st.events || []).findIndex(e => String(e.id) === String(activeEventId));
+  if (evIdx !== -1) {
+    _st.events[evIdx].switchStates = { ...(_st.events[evIdx].switchStates || {}), ...switchStates };
+  }
+
+  // 4. Keep activeEv in memory in sync
+  const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
+  if (activeEv) {
+    activeEv.switchStates = { ...(activeEv.switchStates || {}), ...switchStates };
+  }
+
+  // 5. Debounced cloud persist with lock re-extension
   clearTimeout(_switchDebounceTimers['live-stream']);
   _switchDebounceTimers['live-stream'] = setTimeout(() => {
+    _switchRenderLockUntil['liveStream'] = Date.now() + 5000;
+    _switchRenderLockUntil['liveStreamStep'] = Date.now() + 5000;
     syncAll();
     if (activeEventId) {
       const eventUpdate = {
@@ -7714,7 +7791,7 @@ function handleLiveStreamStepChange(step) {
     if (typeof broadcastControlsToPublic === 'function') {
       broadcastControlsToPublic();
     }
-  }, 300);
+  }, 500);
 
   if (step === 1) {
     toast("🔒 Live Broadcast OFF · Judge Scores Hidden in Director");
@@ -7888,6 +7965,7 @@ document.addEventListener('click', function(e) {
     '.uv-nj-toggle-container',
     '.love-heart',
     '.rating-stepper-wrapper', '.rating-stepper',
+    '.capsule-toggle-wrapper', '.capsule-toggle', '.capsule-toggle__body', '.capsule-toggle__point', '.capsule-toggle__lever',
     '.live-stepper-wrapper'
   ].join(', '))) return;
   const swId = row.id ? row.id.replace(/^sw-/, '') : null;
