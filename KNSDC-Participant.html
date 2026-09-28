@@ -303,55 +303,6 @@
     0% { transform: rotate(-15deg); }
     100% { transform: rotate(18deg); }
   }
-
-  /* STAGE MESSAGE FLASHER BANNER FOR PARTICIPANT */
-  #participant-stage-flash-banner {
-    margin-bottom: 20px;
-    position: relative;
-    z-index: 100;
-  }
-  .part-flash-banner {
-    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-    color: #ffffff;
-    padding: 16px 20px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4), 0 8px 10px -6px rgba(99, 102, 241, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    animation: slideDownPartFlash 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    position: relative;
-    overflow: hidden;
-  }
-  @keyframes slideDownPartFlash {
-    from { transform: translateY(-16px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-  .part-flash-banner::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: radial-gradient(circle at top right, rgba(255,255,255,0.18) 0%, transparent 60%);
-    pointer-events: none;
-  }
-  .part-flash-banner.flash-theme-goodluck { background: linear-gradient(135deg, #059669 0%, #10b981 100%); box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.4); }
-  .part-flash-banner.flash-theme-break { background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%); box-shadow: 0 10px 25px -5px rgba(139, 92, 246, 0.4); }
-  .part-flash-banner.flash-theme-prize { background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.4); }
-  .part-flash-banner.flash-theme-congrats { background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%); box-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.4); }
-  .part-flash-banner.flash-theme-thanks { background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4); }
-  .part-flash-banner.flash-theme-thankyou_emotion { background: linear-gradient(135deg, #db2777 0%, #ec4899 100%); box-shadow: 0 10px 25px -5px rgba(236, 72, 153, 0.4); }
-  .part-flash-banner.flash-theme-lakshmi_puja { background: linear-gradient(135deg, #991b1b 0%, #d97706 50%, #ca8a04 100%); box-shadow: 0 10px 25px -5px rgba(217, 119, 6, 0.45); }
-  .part-flash-banner.flash-theme-custom { background: linear-gradient(135deg, #1e293b 0%, #475569 100%); box-shadow: 0 10px 25px -5px rgba(71, 85, 105, 0.4); }
-
-  .part-flash-icon { font-size: 2.2rem; line-height: 1; animation: pulseEmojiPart 2s infinite ease-in-out; flex-shrink: 0; }
-  @keyframes pulseEmojiPart { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
-
-  .part-flash-body { flex: 1; min-width: 0; }
-  .part-flash-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; color: rgba(255, 255, 255, 0.9); margin-bottom: 4px; }
-  .part-flash-text { font-size: 14px; font-weight: 700; line-height: 1.45; color: #ffffff; }
-  .part-flash-close { background: rgba(0,0,0,0.22); border: none; color: #fff; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: background 0.2s; }
-  .part-flash-close:hover { background: rgba(0,0,0,0.45); }
 </style>
 </head>
 <body>
@@ -376,9 +327,6 @@
 
 <main id="main" class="container">
   
-  <!-- STAGE MESSAGE FLASHER BANNER FOR PARTICIPANT -->
-  <div id="participant-stage-flash-banner" style="display:none;"></div>
-
   <!-- LOGIN VIEW -->
   <div id="login-view" class="card">
     <h1>KNSDC Participant Portal</h1>
@@ -4659,83 +4607,7 @@ if (window.syncEngine) {
       }
     }
   });
-
-  // Stage Message Flasher Subscriber for Participant (Matches same event)
-  syncEngine.subscribe(state => {
-    if (typeof syncParticipantStageFlashMessage === 'function') {
-      syncParticipantStageFlashMessage(state);
-    }
-  });
 }
-
-let _lastSeenParticipantFlashTimestamp = 0;
-let _dismissedParticipantFlashTimestamp = 0;
-
-function syncParticipantStageFlashMessage(state) {
-  if (!state) return;
-  const container = document.getElementById('participant-stage-flash-banner');
-  if (!container) return;
-
-  // Resolve current participant and their assigned event
-  const p = CURRENT_USER ? ((state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {}) : {};
-  const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
-
-  // Find flash message for participant's event
-  let flash = null;
-  if (pEventId && state.eventFlashMessages && (state.eventFlashMessages[pEventId] || state.eventFlashMessages[String(pEventId)])) {
-    flash = state.eventFlashMessages[pEventId] || state.eventFlashMessages[String(pEventId)];
-  } else if (state.flashMessage) {
-    const f = state.flashMessage;
-    // Show if flash is global/all, or matches participant's event, or if no event assigned
-    if (!f.eventId || f.eventId === 'all' || !pEventId || String(f.eventId) === String(pEventId)) {
-      flash = f;
-    }
-  }
-
-  if (flash && flash.active && flash.text && _dismissedParticipantFlashTimestamp !== flash.timestamp) {
-    let emoji = '📢';
-    let title = 'STAGE ANNOUNCEMENT';
-    if (flash.type === 'goodluck') { emoji = '🍀'; title = 'GOOD LUCK!'; }
-    else if (flash.type === 'break') { emoji = '☕'; title = 'JUDGES TAKE A BREAK / INTERMISSION'; }
-    else if (flash.type === 'prize') { emoji = '🏆'; title = 'PRIZE CEREMONY'; }
-    else if (flash.type === 'congrats') { emoji = '🎉'; title = 'CONGRATULATIONS!'; }
-    else if (flash.type === 'thanks') { emoji = '🤝'; title = 'THANK YOU'; }
-    else if (flash.type === 'thankyou_emotion') { emoji = '❤️'; title = 'BEST WISHES FROM KNS'; }
-    else if (flash.type === 'lakshmi_puja') { emoji = '🪔'; title = 'শুভ শারদীয়া ও কোজাগরী লক্ষ্মী পুজো'; }
-
-    // Alert sound & gentle vibration on fresh incoming announcement
-    if (flash.timestamp && flash.timestamp !== _lastSeenParticipantFlashTimestamp) {
-      _lastSeenParticipantFlashTimestamp = flash.timestamp;
-      if ('vibrate' in navigator) {
-        try { navigator.vibrate([200, 100, 200]); } catch(e) {}
-      }
-    }
-
-    const eventBadge = flash.eventName ? `<span style="opacity:0.85;font-weight:600;font-size:10px;margin-left:6px;background:rgba(0,0,0,0.25);padding:2px 8px;border-radius:12px;">${flash.eventName}</span>` : '';
-
-    container.innerHTML = `
-      <div class="part-flash-banner flash-theme-${flash.type || 'custom'}">
-        <div class="part-flash-icon">${emoji}</div>
-        <div class="part-flash-body">
-          <div class="part-flash-title">${emoji} ${title} ${eventBadge}</div>
-          <div class="part-flash-text" style="white-space: pre-line;">${flash.text}</div>
-        </div>
-        <button class="part-flash-close" onclick="dismissParticipantFlash(${flash.timestamp})" title="Dismiss announcement">✕</button>
-      </div>
-    `;
-    container.style.display = 'block';
-  } else {
-    container.style.display = 'none';
-    container.innerHTML = '';
-  }
-}
-window.syncParticipantStageFlashMessage = syncParticipantStageFlashMessage;
-
-window.dismissParticipantFlash = function(ts) {
-  _dismissedParticipantFlashTimestamp = ts;
-  const c = document.getElementById('participant-stage-flash-banner');
-  if (c) c.style.display = 'none';
-};
 
 function showGoldenRibbonCelebration(participantName, judgeName) {
   let el = document.getElementById('golden-ribbon-celebration-overlay');
