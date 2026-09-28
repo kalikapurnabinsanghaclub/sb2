@@ -46,12 +46,17 @@ if (fs.existsSync(path.join(__dirname, 'dist'))) {
 }
 
 // MongoDB Configuration
-const mongoUri = process.env.MONGODB_URI || "mongodb+srv://kalikapurnabinsanghaclub_db_user:Sb%40210617@knsdc.ewmcdmb.mongodb.net/knsdc?appName=Knsdc";
-const client = new MongoClient(mongoUri);
-let db;
+const mongoUri = process.env.MONGODB_URI;
+let client = null;
+let db = null;
 
 async function connectDB() {
+  if (!mongoUri) {
+    console.log('[MongoDB] MONGODB_URI environment variable not configured. Skipping MongoDB connection.');
+    return;
+  }
   try {
+    client = new MongoClient(mongoUri);
     await client.connect();
     db = client.db('knsdc');
     console.log('[MongoDB] Connected successfully to Atlas cluster!');
