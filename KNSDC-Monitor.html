@@ -616,13 +616,15 @@
     margin-bottom: 12px; 
     transition: all 0.25s ease; 
     box-shadow: 0 2px 4px rgba(0,0,0,0.01); 
+    cursor: pointer;
+    user-select: none;
   }
   .sw-row:hover {
     background: var(--surface2);
-    border-color: rgba(255, 107, 53, 0.2);
+    border-color: rgba(46, 204, 113, 0.3);
     box-shadow: 0 4px 12px rgba(0,0,0,0.02);
   }
-  .sw-row.on { border-color: rgba(255,107,53,0.3); background: rgba(255,107,53,0.03); }
+  .sw-row.on { border-color: rgba(46, 204, 113, 0.4); background: rgba(46, 204, 113, 0.05); }
   .sw-left { display: flex; align-items: center; gap: 14px; }
   .sw-icon { font-size: 20px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05)); }
   .sw-label { font-size: 13px; font-weight: 700; font-family: var(--fh); letter-spacing: 0.5px; text-transform: uppercase; color: var(--text); }
@@ -1111,14 +1113,14 @@
   .uv-ag-input:checked ~ .uv-ag-base .uv-ag-base-inside::after { opacity: 1; }
   /* Uiverse custom anand_4957 switch */
   .uv-an-toggle { position: relative; display: block; width: 90px; height: 40px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; margin-bottom: 3px; margin-right: 3px; margin-top: 5px; }
-  .uv-an-checkbox { display: none; }
-  .uv-an-track { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #2ecc71; border: 4px solid #000000; box-sizing: border-box; box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease; }
+  .uv-an-checkbox { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+  .uv-an-track { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #e74c3c; border: 4px solid #000000; box-sizing: border-box; box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.1); transition: background-color 0.3s ease; }
   .uv-an-knob { position: absolute; top: 50%; left: 0; transform: translate(-4px, -50%); width: 40px; height: 46px; background: white; border: 4px solid #000000; box-shadow: 3px 3px 0 #000000; display: flex; align-items: center; justify-content: center; z-index: 2; transition: transform 0.3s cubic-bezier(0.7, -0.4, 0.4, 1.4); }
   .uv-an-toggle:active .uv-an-knob { box-shadow: 1px 1px 0 #000000; margin-top: 2px; margin-left: 2px; }
-  .uv-an-knob::after { content: ":)"; font-weight: 900; font-size: 24px; color: black; transform: rotate(90deg); }
-  .uv-an-checkbox:checked + .uv-an-track { background-color: #e74c3c; }
+  .uv-an-knob::after { content: ":("; font-weight: 900; font-size: 24px; color: black; transform: rotate(90deg); }
+  .uv-an-checkbox:checked + .uv-an-track { background-color: #2ecc71; }
   .uv-an-checkbox:checked ~ .uv-an-knob { transform: translate(50px, -50%); }
-  .uv-an-checkbox:checked ~ .uv-an-knob::after { content: ":("; }
+  .uv-an-checkbox:checked ~ .uv-an-knob::after { content: ":)"; }
   /* Uiverse custom Saiyed-Tanvir switch */
   .uv-st-tgl { position: relative; display: inline-block; width: 5em; height: 1em; font-size: 10px; margin-right: 15px; margin-top: 5px; margin-bottom: 5px;}
   .uv-st-tgl input { display: none; }
@@ -5706,7 +5708,7 @@ window.getParticipantVenueName = getParticipantVenueName;
 let activeEventId = null;
 let currentOnStage = null;
 let stageQueue = [];
-let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, certificatePublic: false, publicVoting: false, publicRatingPos: 0, whatsapp: false, prevScoresViewer: false, servicesToggle: false };
+let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, downloadPublic: false, certificatePublic: false, publicVoting: false, publicRatingPos: 0, whatsapp: false, prevScoresViewer: false, servicesToggle: false };
 let nxtId = { reg: 1, cat: 1, venue: 1, subj: 1, agr: 1 };
 let formFields = [];
 let agreements = [];
@@ -7734,17 +7736,21 @@ function toggleSwitch(sw, cb){
   const row = document.getElementById('sw-'+sw);
   if(!row) return;
 
-  // Public Registration can always be toggled, even when offline
   const state = syncEngine.getData() || {};
-  if (state.systemStatus === 'offline' && sw !== 'public-reg') {
-    cb.checked = false;
-    row.classList.remove('on');
-    toast('⚠️ Please turn the system LIVE first before enabling switches!');
-    return;
+  // If system was flagged offline, auto-promote to LIVE when monitor toggles switches
+  if (state.systemStatus === 'offline') {
+    state.systemStatus = 'live';
+    const toggleEl = document.getElementById('system-status-toggle');
+    if (toggleEl) toggleEl.checked = true;
+    const dotEl = document.getElementById('system-status-dot');
+    if (dotEl) dotEl.classList.remove('dot-offline');
+    const textEl = document.getElementById('system-status-text');
+    if (textEl) textEl.textContent = 'LIVE';
   }
 
   // Update visual state immediately (instant UX feedback)
-  if(cb.checked) row.classList.add('on'); else row.classList.remove('on');
+  const checkedValue = Boolean(cb.checked);
+  if(checkedValue) row.classList.add('on'); else row.classList.remove('on');
   
   const stateMap = {
     'public-reg':'publicReg',
@@ -7758,16 +7764,17 @@ function toggleSwitch(sw, cb){
     'public-voting':'publicVoting',
     'live-stream':'liveStream',
     'prev-scores-viewer':'prevScoresViewer',
-    'services-toggle':'servicesToggle'
+    'services-toggle':'servicesToggle',
+    'whatsapp':'whatsapp'
   };
   const stateKey = stateMap[sw] || sw;
 
   if (sw === 'public-voting') {
-    handlePublicRatingPosChange(cb.checked ? 3 : 0);
+    handlePublicRatingPosChange(checkedValue ? 3 : 0);
     return;
   }
 
-  if (sw === 'live-stream' && cb.checked) {
+  if (sw === 'live-stream' && checkedValue) {
     const link = prompt("Enter YouTube / Facebook Live URL or Embed Code:");
     if (!link) {
       cb.checked = false;
@@ -7775,22 +7782,41 @@ function toggleSwitch(sw, cb){
       return;
     }
     switchStates['liveStreamUrl'] = link;
-  } else if (sw === 'live-stream' && !cb.checked) {
+  } else if (sw === 'live-stream' && !checkedValue) {
     switchStates['liveStreamUrl'] = '';
   }
 
-  // Capture the latest checked value at the time of this call
-  const checkedValue = cb.checked;
   switchStates[stateKey] = checkedValue;
 
-  // BUG-FIX: Debounce — cancel any pending write for this switch and schedule a fresh one.
-  // Only the LAST click in a rapid burst will reach syncAll + updateEvent.
+  // 1. Instantly write to syncEngine in-memory so hydrate() / subscriptions never revert it
+  syncEngine.setData(st => {
+    st.systemStatus = 'live';
+    st.switchStates = { ...(st.switchStates || {}), ...switchStates };
+    st.eventSwitches = st.eventSwitches || {};
+    if (activeEventId) {
+      st.eventSwitches[activeEventId] = { ...(st.eventSwitches[activeEventId] || {}), ...switchStates };
+      st.eventSwitches[String(activeEventId)] = st.eventSwitches[activeEventId];
+    }
+    const evIdx = (st.events || []).findIndex(e => String(e.id) === String(activeEventId));
+    if (evIdx !== -1) {
+      st.events[evIdx].switchStates = { ...(st.events[evIdx].switchStates || {}), ...switchStates };
+    }
+    return st;
+  });
+
+  // 2. Keep activeEv in memory in sync immediately
+  const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
+  if (activeEv) {
+    activeEv.switchStates = { ...(activeEv.switchStates || {}), ...switchStates };
+  }
+
+  // 3. Fast cloud persist
   clearTimeout(_switchDebounceTimers[sw]);
   _switchDebounceTimers[sw] = setTimeout(() => {
     syncAll();
 
     // Persist switch changes directly to the Supabase event columns for public view
-    if (activeEventId) {
+    if (activeEventId && typeof syncEngine.updateEvent === 'function') {
       const eventUpdate = {
         switchStates: { ...switchStates }
       };
@@ -7798,15 +7824,31 @@ function toggleSwitch(sw, cb){
       if (stateKey === 'stagePreview') eventUpdate.stagePreview = checkedValue;
       if (stateKey === 'resultPublic') eventUpdate.resultPublic = checkedValue;
       if (stateKey === 'promoPublic') eventUpdate.promoPublic = checkedValue;
+      if (stateKey === 'downloadPublic') eventUpdate.downloadPublic = checkedValue;
+      if (stateKey === 'certificatePublic') eventUpdate.certificatePublic = checkedValue;
+      if (stateKey === 'servicesToggle') eventUpdate.servicesToggle = checkedValue;
 
       syncEngine.updateEvent(activeEventId, eventUpdate).catch(err => {
         console.error('[Monitor] Failed to sync event switches to Supabase events table:', err);
       });
     }
-  }, 400); // 400ms debounce — only the final click in a rapid burst writes to DB
+  }, 100);
 
-  toast(`${checkedValue?'✅ Enabled':'🔒 Disabled'}: ${sw.replace('-',' ')}`);
+  toast(`${checkedValue ? '✅ Enabled' : '🔒 Disabled'}: ${sw.replace('-', ' ')}`);
 }
+
+// Click delegation for switch rows to toggle when clicking anywhere on the row
+document.addEventListener('click', function(e) {
+  const row = e.target.closest('.sw-row');
+  if (!row) return;
+  // If clicked inside interactive controls or steppers, let native action handle it
+  if (e.target.closest('label, input, button, a, select, textarea, .rating-stepper-wrapper, .rating-stepper, .live-stepper-wrapper')) return;
+  const chk = row.querySelector('input[type="checkbox"]');
+  if (chk) {
+    chk.checked = !chk.checked;
+    chk.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+});
 
 // ══════════════════════════════════════════
 // REGISTRATION
