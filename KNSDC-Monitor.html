@@ -7779,6 +7779,21 @@ function toggleSwitch(sw, cb){
   };
   const stateKey = stateMap[sw] || sw;
 
+  // ── COOLDOWN GUARD ──────────────────────────────────────────────────────────
+  // CSS transform:scale(0.55) causes the same physical click to fire BOTH:
+  //   (a) a native checkbox change event, AND
+  //   (b) the .sw-row click delegation below
+  // This means toggleSwitch() fires TWICE per click → ON→OFF→ON flicker.
+  // Solution: ignore any second call for the same switch within 500ms.
+  if (!window._switchCooldown) window._switchCooldown = {};
+  const _now = Date.now();
+  if (window._switchCooldown[sw] && _now < window._switchCooldown[sw]) {
+    cb.checked = !!switchStates[stateKey]; // snap to correct state
+    return;
+  }
+  window._switchCooldown[sw] = _now + 500;
+  // ────────────────────────────────────────────────────────────────────────────
+
   if (sw === 'public-voting') {
     handlePublicRatingPosChange(checkedValue ? 3 : 0);
     return;
@@ -7798,6 +7813,7 @@ function toggleSwitch(sw, cb){
 
   // 1. Update in-memory switchStates immediately
   switchStates[stateKey] = checkedValue;
+
 
   // 2. Set a render lock so renderSwitches() won't override the UI for 1.5s
   _switchRenderLockUntil[stateKey] = Date.now() + 1500;
@@ -7850,16 +7866,19 @@ function toggleSwitch(sw, cb){
   toast(`${checkedValue ? '✅ ON' : '🔒 OFF'}: ${sw.replace(/-/g, ' ')}`);
 }
 
-// Click delegation for switch rows to toggle when clicking anywhere on the row
+// Click delegation for switch rows — fires when clicking outside the label/input area (e.g. row padding)
+// Calls toggleSwitch() directly instead of dispatchEvent to avoid double-fire with onchange attribute
 document.addEventListener('click', function(e) {
   const row = e.target.closest('.sw-row');
   if (!row) return;
-  // If clicked inside interactive controls or steppers, let native action handle it
+  // If click landed on any interactive element, native event handles it
   if (e.target.closest('label, input, button, a, select, textarea, .rating-stepper-wrapper, .rating-stepper, .live-stepper-wrapper')) return;
+  const swId = row.id ? row.id.replace(/^sw-/, '') : null;
+  if (!swId) return;
   const chk = row.querySelector('input[type="checkbox"]');
-  if (chk) {
+  if (chk && swId) {
     chk.checked = !chk.checked;
-    chk.dispatchEvent(new Event('change', { bubbles: true }));
+    toggleSwitch(swId, chk); // direct call — cooldown guard inside will block duplicates
   }
 });
 
