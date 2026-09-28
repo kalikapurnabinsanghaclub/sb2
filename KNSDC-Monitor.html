@@ -9957,16 +9957,21 @@ window.renderVenueMonitor = renderVenueMonitor;
 
 function updateFlashStatusUI() {
   const s = syncEngine.getData();
-  const flash = s ? (s.flashMessage || {}) : {};
+  const curEvId = activeEventId ? String(activeEventId) : null;
+  let flash = s ? (s.flashMessage || {}) : {};
+  if (curEvId && s && s.eventFlashMessages && (s.eventFlashMessages[curEvId] || s.eventFlashMessages[String(curEvId)])) {
+    flash = s.eventFlashMessages[curEvId] || s.eventFlashMessages[String(curEvId)];
+  }
   const txtArea = document.getElementById('flash-msg-text');
   const pill = document.getElementById('flash-status-pill');
-  if (flash.active && flash.text) {
+  if (flash && flash.active && flash.text) {
     if (txtArea && document.activeElement !== txtArea) {
       txtArea.value = flash.text || '';
     }
     if (pill) {
       pill.style.display = 'inline-block';
-      pill.textContent = `📢 Active: "${flash.text.substring(0, 25)}${flash.text.length > 25 ? '...' : ''}"`;
+      const eventTag = flash.eventName ? ` [${flash.eventName}]` : '';
+      pill.textContent = `📢 Active on Stage${eventTag}: "${flash.text.substring(0, 22)}${flash.text.length > 22 ? '...' : ''}"`;
       pill.style.background = 'rgba(16, 185, 129, 0.15)';
       pill.style.color = '#10B981';
       pill.style.border = '1px solid rgba(16, 185, 129, 0.3)';
@@ -10006,29 +10011,49 @@ function triggerFlashMessage() {
     return;
   }
   
+  const curEvId = activeEventId ? String(activeEventId) : null;
+  const activeEv = (EVENTS || []).find(e => String(e.id) === curEvId);
+  const evName = activeEv ? activeEv.name : (window.eventName || '');
+
+  const flashPayload = {
+    text: text,
+    type: activeFlashType || 'custom',
+    active: true,
+    eventId: curEvId,
+    eventName: evName,
+    timestamp: Date.now()
+  };
+
   syncEngine.setData(state => {
-    state.flashMessage = {
-      text: text,
-      type: activeFlashType || 'custom',
-      active: true,
-      timestamp: Date.now()
-    };
+    state.flashMessage = flashPayload;
+    state.eventFlashMessages = state.eventFlashMessages || {};
+    if (curEvId) {
+      state.eventFlashMessages[curEvId] = flashPayload;
+      state.eventFlashMessages[String(curEvId)] = flashPayload;
+    }
     return state;
   });
   
-  toast('⚡ Message flashed to Stage & Judges!');
+  toast(`⚡ Message flashed to Stage, Judges & Participants${evName ? ' (' + evName + ')' : ''}!`);
   updateFlashStatusUI();
 }
 window.triggerFlashMessage = triggerFlashMessage;
 
 function clearFlashMessage() {
+  const curEvId = activeEventId ? String(activeEventId) : null;
   syncEngine.setData(state => {
-    state.flashMessage = {
+    const clearPayload = {
       text: '',
       type: '',
       active: false,
+      eventId: curEvId,
       timestamp: Date.now()
     };
+    state.flashMessage = clearPayload;
+    if (curEvId && state.eventFlashMessages) {
+      state.eventFlashMessages[curEvId] = clearPayload;
+      state.eventFlashMessages[String(curEvId)] = clearPayload;
+    }
     return state;
   });
   const txtArea = document.getElementById('flash-msg-text');
