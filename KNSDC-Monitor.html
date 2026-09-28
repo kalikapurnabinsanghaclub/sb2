@@ -5706,7 +5706,7 @@ window.getParticipantVenueName = getParticipantVenueName;
 let activeEventId = null;
 let currentOnStage = null;
 let stageQueue = [];
-let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, certificatePublic: false, publicVoting: false, publicRatingPos: 0, whatsapp: false, prevScoresViewer: false, servicesToggle: false };
+let switchStates = { publicReg: false, stagePreview: false, lockScore: false, editScore: false, resultPublic: false, promoPublic: false, downloadPublic: false, certificatePublic: false, publicVoting: false, publicRatingPos: 0, whatsapp: false, prevScoresViewer: false, servicesToggle: false };
 let nxtId = { reg: 1, cat: 1, venue: 1, subj: 1, agr: 1 };
 let formFields = [];
 let agreements = [];
@@ -7734,17 +7734,21 @@ function toggleSwitch(sw, cb){
   const row = document.getElementById('sw-'+sw);
   if(!row) return;
 
-  // Public Registration can always be toggled, even when offline
   const state = syncEngine.getData() || {};
-  if (state.systemStatus === 'offline' && sw !== 'public-reg') {
-    cb.checked = false;
-    row.classList.remove('on');
-    toast('⚠️ Please turn the system LIVE first before enabling switches!');
-    return;
+  // If system was flagged offline, auto-promote to LIVE when monitor toggles switches
+  if (state.systemStatus === 'offline') {
+    state.systemStatus = 'live';
+    const toggleEl = document.getElementById('system-status-toggle');
+    if (toggleEl) toggleEl.checked = true;
+    const dotEl = document.getElementById('system-status-dot');
+    if (dotEl) dotEl.classList.remove('dot-offline');
+    const textEl = document.getElementById('system-status-text');
+    if (textEl) textEl.textContent = 'LIVE';
   }
 
   // Update visual state immediately (instant UX feedback)
-  if(cb.checked) row.classList.add('on'); else row.classList.remove('on');
+  const checkedValue = Boolean(cb.checked);
+  if(checkedValue) row.classList.add('on'); else row.classList.remove('on');
   
   const stateMap = {
     'public-reg':'publicReg',
@@ -7758,16 +7762,17 @@ function toggleSwitch(sw, cb){
     'public-voting':'publicVoting',
     'live-stream':'liveStream',
     'prev-scores-viewer':'prevScoresViewer',
-    'services-toggle':'servicesToggle'
+    'services-toggle':'servicesToggle',
+    'whatsapp':'whatsapp'
   };
   const stateKey = stateMap[sw] || sw;
 
   if (sw === 'public-voting') {
-    handlePublicRatingPosChange(cb.checked ? 3 : 0);
+    handlePublicRatingPosChange(checkedValue ? 3 : 0);
     return;
   }
 
-  if (sw === 'live-stream' && cb.checked) {
+  if (sw === 'live-stream' && checkedValue) {
     const link = prompt("Enter YouTube / Facebook Live URL or Embed Code:");
     if (!link) {
       cb.checked = false;
@@ -7775,22 +7780,41 @@ function toggleSwitch(sw, cb){
       return;
     }
     switchStates['liveStreamUrl'] = link;
-  } else if (sw === 'live-stream' && !cb.checked) {
+  } else if (sw === 'live-stream' && !checkedValue) {
     switchStates['liveStreamUrl'] = '';
   }
 
-  // Capture the latest checked value at the time of this call
-  const checkedValue = cb.checked;
   switchStates[stateKey] = checkedValue;
 
-  // BUG-FIX: Debounce — cancel any pending write for this switch and schedule a fresh one.
-  // Only the LAST click in a rapid burst will reach syncAll + updateEvent.
+  // 1. Instantly write to syncEngine in-memory so hydrate() / subscriptions never revert it
+  syncEngine.setData(st => {
+    st.systemStatus = 'live';
+    st.switchStates = { ...(st.switchStates || {}), ...switchStates };
+    st.eventSwitches = st.eventSwitches || {};
+    if (activeEventId) {
+      st.eventSwitches[activeEventId] = { ...(st.eventSwitches[activeEventId] || {}), ...switchStates };
+      st.eventSwitches[String(activeEventId)] = st.eventSwitches[activeEventId];
+    }
+    const evIdx = (st.events || []).findIndex(e => String(e.id) === String(activeEventId));
+    if (evIdx !== -1) {
+      st.events[evIdx].switchStates = { ...(st.events[evIdx].switchStates || {}), ...switchStates };
+    }
+    return st;
+  });
+
+  // 2. Keep activeEv in memory in sync immediately
+  const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
+  if (activeEv) {
+    activeEv.switchStates = { ...(activeEv.switchStates || {}), ...switchStates };
+  }
+
+  // 3. Fast cloud persist
   clearTimeout(_switchDebounceTimers[sw]);
   _switchDebounceTimers[sw] = setTimeout(() => {
     syncAll();
 
     // Persist switch changes directly to the Supabase event columns for public view
-    if (activeEventId) {
+    if (activeEventId && typeof syncEngine.updateEvent === 'function') {
       const eventUpdate = {
         switchStates: { ...switchStates }
       };
@@ -7803,9 +7827,9 @@ function toggleSwitch(sw, cb){
         console.error('[Monitor] Failed to sync event switches to Supabase events table:', err);
       });
     }
-  }, 400); // 400ms debounce — only the final click in a rapid burst writes to DB
+  }, 120);
 
-  toast(`${checkedValue?'✅ Enabled':'🔒 Disabled'}: ${sw.replace('-',' ')}`);
+  toast(`${checkedValue ? '✅ Enabled' : '🔒 Disabled'}: ${sw.replace('-', ' ')}`);
 }
 
 // ══════════════════════════════════════════
@@ -16608,50 +16632,52 @@ try {
 let _systemStatusDebounce = null;
 
 function toggleSystemStatus(isLive) {
+  // 1. Instant UI update (0ms lag)
+  const toggleEl = document.getElementById('system-status-toggle');
+  const dotEl = document.getElementById('system-status-dot');
+  const textEl = document.getElementById('system-status-text');
+  if (toggleEl) toggleEl.checked = isLive;
+  if (dotEl) {
+    if (!isLive) dotEl.classList.add('dot-offline');
+    else dotEl.classList.remove('dot-offline');
+  }
+  if (textEl) textEl.textContent = isLive ? 'LIVE' : 'OFFLINE';
+
+  if (!isLive) {
+    // Master switch OFF → turn off switches EXCEPT publicReg
+    const savedPublicReg = switchStates.publicReg;
+    Object.keys(switchStates).forEach(k => {
+      if (k !== 'publicReg') switchStates[k] = false;
+    });
+    switchStates.publicReg = savedPublicReg;
+    switchStates.liveStream = false;
+    switchStates.liveStreamStep = 1;
+    switchStates.directorJudgeScores = false;
+    switchStates.liveStreamUrl = '';
+  }
+
+  // 2. Instant synchronous memory write
+  syncEngine.setData(st => {
+    st.systemStatus = isLive ? 'live' : 'offline';
+    st.switchStates = { ...(st.switchStates || {}), ...switchStates };
+    if (activeEventId) {
+      st.eventSwitches = st.eventSwitches || {};
+      st.eventSwitches[activeEventId] = { ...(st.eventSwitches[activeEventId] || {}), ...switchStates };
+      st.eventSwitches[String(activeEventId)] = st.eventSwitches[activeEventId];
+    }
+    return st;
+  });
+
+  renderSwitches();
+
+  // 3. Fast cloud persist
   clearTimeout(_systemStatusDebounce);
   _systemStatusDebounce = setTimeout(() => {
-    if (!isLive) {
-      // Master switch OFF → turn off EVERY switch EXCEPT publicReg
-      const savedPublicReg = switchStates.publicReg;
-      const allKeys = Object.keys(switchStates);
-      allKeys.forEach(k => {
-        if (k !== 'publicReg') switchStates[k] = false;
-      });
-      // Ensure publicReg stays as it was
-      switchStates.publicReg = savedPublicReg;
-      // Also clear live stream URL and reset 3-position step
-      switchStates.liveStream = false;
-      switchStates.liveStreamStep = 1;
-      switchStates.directorJudgeScores = false;
-      switchStates.liveStreamUrl = '';
-    }
-
-    // Set the systemStatus directly in syncEngine
-    syncEngine.setData(st => {
-      const newState = {
-        ...st,
-        systemStatus: isLive ? 'live' : 'offline',
-        switchStates: { ...switchStates }
-      };
-      // Also update per-event switches so reload picks up the OFF state
-      if (activeEventId) {
-        if (!newState.eventSwitches) newState.eventSwitches = {};
-        newState.eventSwitches[activeEventId] = { ...switchStates };
-      }
-      return newState;
-    });
-
-    // Save all memory states including the newly turned off switches
     syncAll();
-    
-    // Visually update the switches on the monitor screen
-    renderSwitches();
-    
-    // Broadcast controls update to public interface
     if (typeof broadcastControlsToPublic === 'function') {
       broadcastControlsToPublic();
     }
-  }, 400); // 400ms debounce — prevents rapid toggle from flooding DB
+  }, 150);
 }
 
 // =========== EXPOSE REST TO WINDOW ===========
