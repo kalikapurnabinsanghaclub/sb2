@@ -7814,13 +7814,15 @@ function toggleSwitch(sw, cb){
   // 1. Update in-memory switchStates immediately
   switchStates[stateKey] = checkedValue;
 
+  // 2. Set a render + hydrate lock for 5s — covers full Supabase round-trip
+  //    syncAll() calls setData() → notify() → hydrate() which would revert the UI.
+  //    The lock in _mergeWithLock (inside hydrate) blocks cloud data from overwriting
+  //    the user's intended value until Supabase has confirmed the new value.
+  _switchRenderLockUntil[stateKey] = Date.now() + 5000;
 
-  // 2. Set a render lock so renderSwitches() won't override the UI for 1.5s
-  _switchRenderLockUntil[stateKey] = Date.now() + 1500;
-
-  // 3. Apply UI instantly without waiting for anything
+  // 3. Apply UI instantly
   if(checkedValue) row.classList.add('on'); else row.classList.remove('on');
-  cb.checked = checkedValue; // Force checkbox DOM state to match
+  cb.checked = checkedValue;
 
   // 4. Patch syncEngine internal state directly (no notify/hydrate triggered)
   const _st = syncEngine.getData() || {};
@@ -7842,10 +7844,14 @@ function toggleSwitch(sw, cb){
     activeEv.switchStates = { ...(activeEv.switchStates || {}), ...switchStates };
   }
 
-  // 6. Debounced cloud persist
+  // 6. Debounced cloud persist — extend lock right before calling syncAll()
+  //    so that setData() → notify() → hydrate() inside syncAll() is still blocked.
+  //    Lock auto-expires after 5s — DO NOT delete it early.
   clearTimeout(_switchDebounceTimers[sw]);
   _switchDebounceTimers[sw] = setTimeout(() => {
-    syncAll();
+    // Re-extend lock to cover Supabase network round-trip (can take 1-3s on free tier)
+    _switchRenderLockUntil[stateKey] = Date.now() + 5000;
+    syncAll(); // ← this calls setData() → notify() → hydrate(); lock blocks the revert
     if (activeEventId && typeof syncEngine.updateEvent === 'function') {
       const eventUpdate = { switchStates: { ...switchStates } };
       if (stateKey === 'publicReg') eventUpdate.publicReg = checkedValue;
@@ -7859,9 +7865,8 @@ function toggleSwitch(sw, cb){
         console.error('[Monitor] Failed to sync event switches:', err);
       });
     }
-    // Release lock after cloud sync is done
-    delete _switchRenderLockUntil[stateKey];
-  }, 800);
+    // Lock auto-expires at 5s — no early deletion needed
+  }, 500);
 
   toast(`${checkedValue ? '✅ ON' : '🔒 OFF'}: ${sw.replace(/-/g, ' ')}`);
 }
