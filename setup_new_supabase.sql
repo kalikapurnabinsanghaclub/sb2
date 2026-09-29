@@ -36,9 +36,13 @@ CREATE TABLE IF NOT EXISTS public.judge_credentials (
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     name TEXT NOT NULL,
+    event_id TEXT,
+    agreement_id BIGINT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.judge_credentials ADD COLUMN IF NOT EXISTS event_id TEXT;
+ALTER TABLE public.judge_credentials ADD COLUMN IF NOT EXISTS agreement_id BIGINT;
 ALTER TABLE public.judge_credentials ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "judge_credentials_all" ON public.judge_credentials;
 CREATE POLICY "judge_credentials_all" ON public.judge_credentials FOR ALL USING (true) WITH CHECK (true);
