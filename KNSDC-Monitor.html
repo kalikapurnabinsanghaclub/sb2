@@ -3274,8 +3274,9 @@
 
   <!-- ════════════════ CHAT ════════════════ -->
   <div class="pp" id="pp-chat">
-    <div style="display:grid;grid-template-columns:1fr;gap:20px;height:calc(100vh - 120px)">
-      <div class="card glass-card" style="display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:24px">
+    <div class="chat-hub-layout" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:20px;height:calc(100vh - 120px)">
+      <!-- Main Chat Panel -->
+      <div class="card glass-card" style="display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:24px;min-height:480px">
         <div style="padding:18px 24px;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:space-between">
           <div>
             <div class="card-title" style="font-size:16px;display:flex;align-items:center;gap:8px">
@@ -3301,6 +3302,28 @@
         </div>
       </div>
 
+      <!-- Staff Presence & SOS Sidebar -->
+      <div class="card glass-card" style="display:flex;flex-direction:column;gap:16px;padding:20px;border-radius:24px;overflow-y:auto;max-width:340px">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:6px">
+              <span>👥</span> Online Staff
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="renderChatOnlineList()" title="Refresh online status" style="font-size:10px;padding:2px 6px">↺</button>
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:12px">Active staff logged into this event</div>
+          <div id="chat-online-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <hr style="border:none;border-top:1px dashed var(--border);margin:0"/>
+        <div>
+          <div style="font-size:12px;font-weight:800;color:var(--red2);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+            <span>🚨</span> SOS Alert Log
+          </div>
+          <div id="sos-history" style="max-height:160px;overflow-y:auto;background:var(--surface2);border-radius:12px;padding:10px;font-size:11px;border:1px solid var(--border);display:flex;flex-direction:column;gap:4px">
+            <span style="color:var(--text-muted);font-style:italic">No SOS events recorded.</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3309,6 +3332,7 @@
     <div class="tabs">
       <div class="tab active" onclick="judgeAssignTab('agreements',this)">📋 Agreements & Roles</div>
       <div class="tab" onclick="judgeAssignTab('assigned',this)">🧑‍⚖️ Active Panel</div>
+      <div class="tab" onclick="judgeAssignTab('formlink',this)">🔗 Application Link</div>
     </div>
 
     <!-- AGREEMENTS SETUP -->
@@ -3364,6 +3388,21 @@
        </div>
     </div>
 
+    <!-- JUDGE APPLICATION LINK -->
+    <div id="jat-formlink" style="display:none">
+       <div class="card glass-card">
+          <div class="card-header" style="margin-bottom:16px">
+            <div>
+              <div class="card-title" style="margin:0 0 4px">🔗 Share Judge Application Link</div>
+              <div style="font-size:12px;color:var(--text-muted)">Distribute this secure link to invited judges so they can register and sign their agreement online.</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;background:var(--surface2);padding:14px;border-radius:12px;border:1px solid var(--border)">
+            <input type="text" id="judge-share-link-input" readonly style="flex:1;background:var(--bg)!important;color:var(--text);font-family:var(--fm);font-size:13px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);" />
+            <button class="btn btn-primary" onclick="copyJudgeLink()" style="padding:10px 20px;font-weight:700;">📋 Copy Link</button>
+          </div>
+       </div>
+    </div>
 
   </div>
 
@@ -4734,6 +4773,7 @@
 <script src="lib/localSync-v4.js?v=240"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
+const staffAudio = window.staffAudio || (window.StaffAudio ? new StaffAudio() : null);
 /* ============================================================== */
 /* DJ STUDIO WEB AUDIO API LOGIC */
 const DJ = {
@@ -5886,6 +5926,8 @@ function hydrate() {
     return true;
   }).map(p => {
     if (p && p.present === undefined) p.present = false;
+    if (p && !p.scores) p.scores = {};
+    if (p && !p.roundScores) p.roundScores = {};
     ensureRoundPresence(p);
     return p;
   });
@@ -6794,7 +6836,7 @@ function broadcastResultsToPublic() {
     .map(p => {
       const cat = evCats.find(c => String(c.id) === String(p.catId));
       const total = presentJudges.reduce((acc, j) =>
-        acc + evSubjects.reduce((s2, s) => s2 + (p.scores[j.id] ? p.scores[j.id][s.id] || 0 : 0), 0), 0);
+        acc + evSubjects.reduce((s2, s) => s2 + ((p.scores && p.scores[j.id]) ? p.scores[j.id][s.id] || 0 : 0), 0), 0);
       return { name: p.name, id: p.id, category: cat ? cat.name : '—', round: p.round, total, maxPossible };
     })
     .sort((a, b) => b.total - a.total)
@@ -6842,6 +6884,7 @@ function handleIncomingScore(data) {
   const { participantId, judgeId, scores, comment } = data;
   const p = participants.find(x => x.id === participantId);
   if (p) {
+    if (!p.scores) p.scores = {};
     if (!p.scores[judgeId]) p.scores[judgeId] = {};
     Object.assign(p.scores[judgeId], scores);
     if (comment) p.comment = comment;
@@ -11706,7 +11749,7 @@ function openScoreModalFor(id){
       <div style="font-size:9px;font-family:var(--fm);color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">⚖️ ${j.name}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">`;
     subjects.forEach(s=>{
-      const val = p&&p.scores[j.id]?p.scores[j.id][s.id]||0:0;
+      const val = (p && p.scores && p.scores[j.id]) ? p.scores[j.id][s.id] || 0 : 0;
       html += `<div style="text-align:center">
         <div style="font-size:8px;color:var(--text-muted);margin-bottom:4px;font-family:var(--fm)">${s.name}<br/><span style="color:var(--border2)">/${s.maxMarks}</span></div>
         <div class="score-cell"><input type="number" min="0" max="${s.maxMarks}" step="0.5" value="${val}" id="score_${j.id}_${s.id}" style="width:60px!important;text-align:center;font-family:var(--fm)!important;font-size:14px!important;padding:6px!important"/></div>
@@ -11742,6 +11785,7 @@ function saveScores(){
     });
 
     activeJudges.forEach(j=>{
+      if(!p.scores) p.scores = {};
       if(!p.scores[j.id]) p.scores[j.id] = {};
       subjects.forEach(s=>{
         const inp = document.getElementById(`score_${j.id}_${s.id}`);
@@ -12259,7 +12303,9 @@ function renderIndividualStats(){
     return sb-sa;
   });
   
-  document.getElementById('individual-stats-content').innerHTML = data.map((p,rank)=>{
+  const indContent = document.getElementById('individual-stats-content');
+  if (!indContent) return;
+  indContent.innerHTML = data.map((p,rank)=>{
     const pClone = { ...p };
     const effectiveScores = (p.scores && Object.keys(p.scores).length > 0) ? p.scores : (p.roundScores && p.roundScores[p.round] ? p.roundScores[p.round] : {});
     pClone.scores = effectiveScores;
@@ -16197,7 +16243,8 @@ function judgeAssignTab(tab, el){
   if(tab==='assigned') renderAssignedJudges();
   if(tab==='formlink') {
     const activeEvId = syncEngine.getData().activeEventId;
-    document.getElementById('judge-share-link-input').value = window.location.origin + '/judge-apply.html?event=' + activeEvId + '&token=xK9mZ2';
+    const inp = document.getElementById('judge-share-link-input');
+    if (inp) inp.value = window.location.origin + '/judge-apply.html?event=' + activeEvId + '&token=xK9mZ2';
   }
 }
 
