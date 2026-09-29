@@ -4390,14 +4390,27 @@
       <button class="btn btn-icon btn-ghost" onclick="closeM('judge-brief-modal')">✕</button>
     </div>
     <div class="modal-body" style="padding:16px;overflow-y:auto;flex:1">
+      <!-- Auto-Collected Recipient Bar -->
+      <div style="display:flex;align-items:center;gap:10px;background:rgba(37,99,235,0.06);border:1.5px solid rgba(37,99,235,0.2);padding:10px 14px;border-radius:10px;margin-bottom:14px">
+        <span style="font-size:20px">🎯</span>
+        <div style="flex:1">
+          <div style="font-size:10px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:0.5px">Auto-Collected Judge Email</div>
+          <input id="judge-brief-recipient-email" type="email" style="width:100%;border:none;background:transparent;font-weight:800;font-size:14px;color:#0f172a;outline:none;padding:2px 0;font-family:var(--fm)" placeholder="Auto-collecting judge email..." readonly/>
+        </div>
+        <span class="badge b-green" style="font-size:9px">AUTO-COLLECTED</span>
+      </div>
+
       <!-- Quick Action Buttons -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;background:var(--surface2);padding:10px;border-radius:10px;border:1px solid var(--border);align-items:center;justify-content:space-between">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-sm" style="background:#2563eb;color:#fff;font-weight:700;display:inline-flex;align-items:center;gap:6px" onclick="triggerJudgeEmailClient()">
-            <span>📧</span> Send via Email App
+          <button id="btn-direct-send-email" class="btn btn-sm" style="background:#2563eb;color:#fff;font-weight:700;display:inline-flex;align-items:center;gap:6px" onclick="sendJudgeEmailDirectly()">
+            <span>🚀</span> Send Email Directly
+          </button>
+          <button class="btn btn-sm" style="background:#ea4335;color:#fff;font-weight:700;display:inline-flex;align-items:center;gap:6px" onclick="openJudgeWebGmail()">
+            <span>🌐</span> Open in Web Gmail
           </button>
           <button class="btn btn-sm" style="background:#22c55e;color:#fff;font-weight:700;display:inline-flex;align-items:center;gap:6px" onclick="triggerJudgeWhatsApp()">
-            <span>📱</span> Share on WhatsApp
+            <span>📱</span> WhatsApp
           </button>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -16718,20 +16731,104 @@ function openJudgeBriefModal(agrId) {
   }
   currentBriefAgr = data.agr;
 
+  // Auto-collect judge email into recipient input
+  const emailInput = document.getElementById('judge-brief-recipient-email');
+  if (emailInput) {
+    emailInput.value = (data.agr.email || '').trim();
+  }
+
   const container = document.getElementById('judge-brief-preview-container');
   if (container) {
     container.innerHTML = generateJudgeBriefHtml(data);
   }
+
+  // Reset send button
+  const btn = document.getElementById('btn-direct-send-email');
+  if (btn) {
+    btn.innerHTML = '<span>🚀</span> Send Email Directly';
+    btn.disabled = false;
+    btn.style.background = '#2563eb';
+  }
+
   openM('judge-brief-modal');
 }
 
-function triggerJudgeEmailClient() {
+async function sendJudgeEmailDirectly() {
   if (!currentBriefAgr) return;
   const data = getJudgeBriefData(currentBriefAgr.id);
   if (!data) return;
-  const subject = encodeURIComponent(`Official Judge Appointment & Login Credentials — ${data.ev.name || 'KNSDC'}`);
-  const body = encodeURIComponent(generateJudgeBriefPlainText(data));
-  window.open(`mailto:${data.agr.email}?subject=${subject}&body=${body}`, '_blank');
+
+  const toEmail = (document.getElementById('judge-brief-recipient-email')?.value || data.agr.email || '').trim();
+  if (!toEmail || !toEmail.includes('@')) {
+    toast('⚠️ Valid judge email is required!');
+    return;
+  }
+
+  const btn = document.getElementById('btn-direct-send-email');
+  if (btn) {
+    btn.innerHTML = '<span>⏳</span> Sending directly...';
+    btn.disabled = true;
+  }
+
+  const subject = `Official Judge Appointment & Login Credentials — ${data.ev.name || 'KNSDC'}`;
+  const htmlContent = generateJudgeBriefHtml(data);
+  const textContent = generateJudgeBriefPlainText(data);
+
+  try {
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: toEmail,
+        subject: subject,
+        html: htmlContent,
+        text: textContent,
+        judgeName: data.agr.name
+      })
+    });
+
+    const result = await res.json().catch(() => ({}));
+    if (res.ok && result.status === 'success') {
+      toast('✅ Email successfully delivered to ' + toEmail);
+      if (btn) {
+        btn.innerHTML = '<span>✅</span> Delivered!';
+        btn.style.background = '#10b981';
+      }
+      return;
+    }
+
+    // If serverless endpoint is pending a mail provider or running locally:
+    console.log('[Direct Mail Notice]:', result.message || 'Falling back to Web Gmail');
+    toast('🌐 Opening Web Gmail tab with prefilled brief (No desktop app needed)...');
+    openJudgeWebGmail();
+    if (btn) {
+      btn.innerHTML = '<span>🚀</span> Send Email Directly';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    console.warn('[Direct Mail Error]:', err);
+    // Smooth fallback to Web Gmail in browser tab (NEVER desktop app!)
+    toast('🌐 Opening Web Gmail in browser tab...');
+    openJudgeWebGmail();
+    if (btn) {
+      btn.innerHTML = '<span>🚀</span> Send Email Directly';
+      btn.disabled = false;
+    }
+  }
+}
+
+function openJudgeWebGmail() {
+  if (!currentBriefAgr) return;
+  const data = getJudgeBriefData(currentBriefAgr.id);
+  if (!data) return;
+
+  const toEmail = (document.getElementById('judge-brief-recipient-email')?.value || data.agr.email || '').trim();
+  const subject = `Official Judge Appointment & Login Credentials — ${data.ev.name || 'KNSDC'}`;
+  const bodyText = generateJudgeBriefPlainText(data);
+
+  // Opens directly in Google Mail Web (Browser Tab), NOT in desktop mail app!
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+  window.open(gmailUrl, '_blank');
 }
 
 function triggerJudgeWhatsApp() {
