@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const oldUrl = 'https://fjscpohgysbelzkrkrxm.supabase.co';
-const oldKey = 'sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5';
+const oldUrl = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
+const oldKey = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
 const newUrl = 'https://fjscpohgysbelzkrkrxm.supabase.co';
 const newKey = 'sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5';
 
@@ -38,6 +38,8 @@ async function runMigration() {
   await migrateTable('sync_state', 'id');
   await migrateTable('staff_credentials', 'email');
   await migrateTable('judge_credentials', 'email');
+  await migrateTable('judge_agreements', 'id');
+  await migrateTable('public_registrations', 'id');
   await migrateTable('events', 'id');
   await migrateTable('categories', 'id');
   await migrateTable('venues', 'id');
