@@ -6,6 +6,7 @@
 <title>KNSDC — Food & Ride Partner Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
   window.CLOUDFLARE_UPLOAD_URL = 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
 </script>
@@ -230,8 +231,10 @@
 
 <script src="lib/supabase.js"></script>
 <script src="lib/localSync-v4.js?v=240"></script>
+<script src="lib/staffAudio.js"></script>
 <script>
 window.syncEngine = new (window.LocalSync || LocalSync)();
+const staffAudio = window.staffAudio || (window.StaffAudio ? new StaffAudio() : null);
 
 let loggedInPartner = null;
 
@@ -461,7 +464,11 @@ function runReminderScheduler() {
 
 function triggerNotificationAlert(count) {
   lastNotifyTime = Date.now();
-  notificationSound.play().catch(e => console.log('Audio playback delayed:', e));
+  if (staffAudio && typeof staffAudio.playAlert === 'function') {
+    staffAudio.playAlert();
+  } else if (notificationSound) {
+    notificationSound.play().catch(e => console.log('Audio playback delayed:', e));
+  }
   toast(`⚠️ Warning: You have ${count} pending tasks waiting!`);
 }
 
@@ -481,6 +488,15 @@ window.syncEngine.subscribe(() => {
   renderData();
 });
 
+function getDefaultMenu() {
+  return [
+    { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
+    { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
+    { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
+    { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
+  ];
+}
+
 function renderData() {
   const state = window.syncEngine.getData() || {};
   const orders = state.foodOrders || [];
@@ -494,12 +510,7 @@ function renderData() {
   const menuContainer = document.getElementById('menu-management-list');
 
     // Menu rendering
-    const foodMenu = state.foodMenu || [
-      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
-      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
-      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
-      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
-    ];
+    const foodMenu = state.foodMenu || getDefaultMenu();
 
     menuContainer.innerHTML = foodMenu.map(m => {
       const imgHtml = m.image 
@@ -803,6 +814,7 @@ function renderData() {
            if (!mapEl) return;
 
            setTimeout(() => {
+             if (typeof L === 'undefined') return;
              const trackKey = 'food_' + o.id;
              if (!trackingMaps[trackKey]) {
                const mapInstance = L.map(mapId, { attributionControl: false }).setView([pLat, pLng], 15);
@@ -924,6 +936,7 @@ function renderData() {
         if (!mapEl) return;
 
         setTimeout(() => {
+          if (typeof L === 'undefined') return;
           if (!trackingMaps[b.id]) {
             const mapInstance = L.map(mapId, { attributionControl: false }).setView([b.pickupLat || 22.1530092, b.pickupLng || 88.3487731], 14);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
@@ -1105,12 +1118,7 @@ async function addMenuItem() {
     const id = 'f' + Date.now();
 
     window.syncEngine.setData(s => {
-      const foodMenu = s.foodMenu || [
-        { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
-        { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
-        { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
-        { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
-      ];
+      const foodMenu = s.foodMenu ? [...s.foodMenu] : getDefaultMenu();
       foodMenu.push({ id, name, price, deliveryFee, image: imageUrl });
       return { ...s, foodMenu };
     });
@@ -1139,12 +1147,7 @@ async function editMenuPrice(id, currentPrice) {
   if (isNaN(price)) return alert('Invalid price entered.');
 
   window.syncEngine.setData(s => {
-    const foodMenu = s.foodMenu || [
-      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
-      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
-      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
-      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
-    ];
+    const foodMenu = s.foodMenu ? [...s.foodMenu] : getDefaultMenu();
     const idx = foodMenu.findIndex(m => String(m.id) === String(id));
     if (idx !== -1) foodMenu[idx].price = price;
     return { ...s, foodMenu };
@@ -1155,12 +1158,7 @@ async function editMenuPrice(id, currentPrice) {
 async function deleteMenuItem(id) {
   if (!confirm('Are you sure you want to delete this menu item?')) return;
   window.syncEngine.setData(s => {
-    const foodMenu = s.foodMenu || [
-      { id: 'f1', name: 'Burger', price: 99, icon: '🍔' },
-      { id: 'f2', name: 'Pizza', price: 199, icon: '🍕' },
-      { id: 'f3', name: 'Fries', price: 69, icon: '🍟' },
-      { id: 'f4', name: 'Cold Drink', price: 40, icon: '🥤' }
-    ];
+    const foodMenu = s.foodMenu || getDefaultMenu();
     return { ...s, foodMenu: foodMenu.filter(m => String(m.id) !== String(id)) };
   });
   await window.syncEngine.forceSaveStateToSupabase();
@@ -1338,7 +1336,5 @@ async function updateRideStatus(bookingId, newStatus) {
   await window.syncEngine.forceSaveStateToSupabase();
 }
 </script>
-<!-- Leaflet Map Script -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </body>
 </html>
