@@ -2537,6 +2537,25 @@ function showUnauthorizedOverlay(message) {
 async function checkAuth(requiredRoles) {
   document.body.style.visibility = 'hidden';
   await new Promise(r => setTimeout(r, 200));
+
+  // ── Instant Direct Auto-Login via URL Parameters ──
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const qEmail = urlParams.get('email');
+    const qPass = urlParams.get('pass') || urlParams.get('password');
+    if (qEmail && qPass && window.syncEngine && window.syncEngine.signIn) {
+      const signInRes = await window.syncEngine.signIn(qEmail, qPass);
+      if (signInRes && signInRes.success) {
+        // Strip sensitive credentials from browser URL bar immediately
+        window.history.replaceState({}, document.title, window.location.pathname);
+        document.body.style.visibility = 'visible';
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn('[Judge Portal] Auto-login error:', err);
+  }
+
   const engine = window.syncEngine;
   if (engine && engine.enforceStaffGuard) {
     const isOk = await engine.enforceStaffGuard(requiredRoles);
