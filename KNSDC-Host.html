@@ -688,7 +688,7 @@
   <div class="topbar">
     <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
     <div class="topbar-title" id="page-title">Dashboard</div>
-    <div id="host-event-selector-wrap" style="flex:1; display:flex; align-items:center; justify-content:center; gap:10px"></div>
+    <div style="flex:1"></div>
     <div style="display:flex;align-items:center;gap:6px" id="host-status-wrap">
       <div id="host-status-dot" class="live-dot"></div>
       <span id="host-status-text" style="font-size:11px;color:var(--text-dim);font-family:var(--fm)">LIVE</span>
@@ -935,6 +935,7 @@
 // Creating a new instance would produce an unauthenticated Supabase client
 // that fails loadEvents() due to RLS (events table requires auth.uid()).
 const syncEngine = window.syncEngine || new (window.LocalSync || LocalSync)();
+const staffAudio = window.staffAudio || (window.StaffAudio ? new StaffAudio() : null);
 
 // Authentication Guard
 function showUnauthorizedOverlay(message) {
@@ -1197,6 +1198,13 @@ function hydrateChat(state) {
     window.lastProcessedChatTimestamp = window.lastProcessedChatTimestamp || 0;
     if (last.timestamp && last.timestamp > window.lastProcessedChatTimestamp) {
       window.lastProcessedChatTimestamp = last.timestamp;
+      if (last.role !== 'host') {
+        if (last.sos && staffAudio && typeof staffAudio.playSOS === 'function') {
+          staffAudio.playSOS();
+        } else if (staffAudio && typeof staffAudio.playChime === 'function') {
+          staffAudio.playChime();
+        }
+      }
       if (last.text && /@(host|all)/i.test(last.text)) {
         // Auto-open chat panel so host can respond immediately
         if (!chatOpen) {
@@ -1235,7 +1243,7 @@ function sendMsg() {
   try { myName = JSON.parse(localStorage.getItem('kns_user')).name || 'Host'; } catch(e){}
   const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
   const msg = { from: `Host · ${myName}`, text, type: 'out', time, sos: false, timestamp: Date.now(), role: 'host', eventId };
-  syncEngine.setData(s => ({ ...s, chatMessages: [...(s.chatMessages || []), msg] }));
+  syncEngine.setData(s => ({ ...s, chatMessages: [...(s.chatMessages || []), msg].slice(-100) }));
   inp.value = '';
 }
 
@@ -1244,7 +1252,8 @@ function triggerSOS() {
     const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     const eventId = syncEngine.state ? syncEngine.state.activeEventId : null;
     const msg = { from: 'HOST · EMERGENCY', text: '🚨 SOS at Host Desk!', type: 'out', time, sos: true, timestamp: Date.now(), role: 'host', eventId };
-    syncEngine.setData(s => ({ ...s, chatMessages: [...(s.chatMessages || []), msg], sosActive: true }));
+    syncEngine.setData(s => ({ ...s, chatMessages: [...(s.chatMessages || []), msg].slice(-100), sosActive: true }));
+    if (staffAudio && typeof staffAudio.playSOS === 'function') staffAudio.playSOS();
     toast('🚨 SOS SENT!');
   }
 }
@@ -1285,12 +1294,6 @@ syncEngine.subscribe((state) => {
   }
   if (clockEl) {
     clockEl.style.color = isOffline ? '#64748b' : 'var(--emerald)';
-  }
-  
-  // Hide active event selector wrapper if offline
-  const selWrap = document.getElementById('host-event-selector-wrap');
-  if (selWrap) {
-    selWrap.style.display = isOffline ? 'none' : 'flex';
   }
   
   // Update visibility of navigation and offline content panels
@@ -1463,6 +1466,7 @@ function getHostScopedParticipants() {
 
 function renderDashboard() {
   const data = syncEngine.getData() || {};
+  const activeEvId = hostAssignedEventId || data.activeEventId;
   const round = hostSelectedRound || 'audition';
   const scoped = getHostScopedParticipants();
   const filtered = scoped.filter(p => p.round === round);
@@ -1567,6 +1571,7 @@ function sortQueue(queueArray) {
 
 function renderStage() {
   const data = syncEngine.getData() || {};
+  const activeEvId = hostAssignedEventId || data.activeEventId;
   const round = hostSelectedRound || 'audition';
   const scoped = getHostScopedParticipants();
   const filtered = scoped.filter(p => p.round === round);
@@ -1944,16 +1949,6 @@ window.hostDownloadBackup = () => {
   toast('✅ Backup downloaded successfully!');
 };
 
-function renderEventSelector(data) {
-  const sel = document.getElementById('host-event-sel');
-  if(!sel) return;
-  const events = data.events || [];
-  sel.innerHTML = events.map(e => `<option value="${e.id}" ${String(e.id) === String(data.activeEventId) ? 'selected' : ''}>${e.name}</option>`).join('') || '<option>No events available</option>';
-}
-
-window.switchEvent = (id) => {
-  syncEngine.setData(s => ({ ...s, activeEventId: id }));
-};
 
 // BUG-FIX: Host stage operation mutex — prevents double-clicks from
 // triggering conflicting stage changes. Also adds direct Supabase writes
@@ -2532,7 +2527,7 @@ function renderHostSponsors() {
   const listEl = document.getElementById('host-sponsor-list');
   if(!listEl) return;
   const state = window.syncEngine ? window.syncEngine.getData() : {};
-  const activeEvId = state.activeEventId;
+  const activeEvId = hostAssignedEventId || state.activeEventId;
   const eventSwitches = state.eventSwitches || {};
   const activeSwitches = eventSwitches[activeEvId] || {};
   const sponsors = activeSwitches.sponsors || [];
@@ -2584,7 +2579,7 @@ async function hostDeploySponsor() {
     
     let logoData = null;
     const state = window.syncEngine ? window.syncEngine.getData() : {};
-    const activeEvId = state.activeEventId;
+    const activeEvId = hostAssignedEventId || state.activeEventId;
     if (fileInput && fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
       alert('Uploading logo to Storage...');
@@ -2627,7 +2622,7 @@ async function hostDeploySponsor() {
 async function hostDeleteSponsor(id) {
   if(!confirm('Delete this sponsor?')) return;
   const state = window.syncEngine ? window.syncEngine.getData() : {};
-  const activeEvId = state.activeEventId;
+  const activeEvId = hostAssignedEventId || state.activeEventId;
   
   if (window.syncEngine) {
     window.syncEngine.setData(st => {
