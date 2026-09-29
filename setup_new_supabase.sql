@@ -23,9 +23,11 @@ CREATE TABLE IF NOT EXISTS public.staff_credentials (
     password_hash TEXT NOT NULL,
     name TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'monitor',
+    active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.staff_credentials ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
 ALTER TABLE public.staff_credentials ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "staff_credentials_all" ON public.staff_credentials;
 CREATE POLICY "staff_credentials_all" ON public.staff_credentials FOR ALL USING (true) WITH CHECK (true);
@@ -101,44 +103,63 @@ CREATE TABLE IF NOT EXISTS public.events (
     scoring_subjects JSONB DEFAULT '[]'::jsonb,
     status TEXT DEFAULT 'upcoming',
     switch_states JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "events_all" ON public.events;
 CREATE POLICY "events_all" ON public.events FOR ALL USING (true) WITH CHECK (true);
 
 -- 6. TABLE: categories
 CREATE TABLE IF NOT EXISTS public.categories (
-    id SERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY,
     event_id BIGINT,
     name TEXT NOT NULL,
     age_limit TEXT,
+    color TEXT,
+    age_min INTEGER,
+    age_max INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS age_min INTEGER;
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS age_max INTEGER;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "categories_all" ON public.categories;
 CREATE POLICY "categories_all" ON public.categories FOR ALL USING (true) WITH CHECK (true);
 
 -- 7. TABLE: venues
 CREATE TABLE IF NOT EXISTS public.venues (
-    id SERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY,
     name TEXT NOT NULL,
     event_id BIGINT,
     location TEXT,
+    capacity INTEGER,
+    dates TEXT[],
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.venues ADD COLUMN IF NOT EXISTS location TEXT;
+ALTER TABLE public.venues ADD COLUMN IF NOT EXISTS capacity INTEGER;
+ALTER TABLE public.venues ADD COLUMN IF NOT EXISTS dates TEXT[];
 ALTER TABLE public.venues ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "venues_all" ON public.venues;
 CREATE POLICY "venues_all" ON public.venues FOR ALL USING (true) WITH CHECK (true);
 
 -- 8. TABLE: scoring_subjects
 CREATE TABLE IF NOT EXISTS public.scoring_subjects (
-    id SERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY,
     event_id BIGINT,
-    subject_name TEXT NOT NULL,
+    subject_name TEXT,
+    name TEXT,
     max_score INT DEFAULT 10,
+    max_marks INT DEFAULT 10,
+    description TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS max_marks INT DEFAULT 10;
+ALTER TABLE public.scoring_subjects ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE public.scoring_subjects ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "scoring_subjects_all" ON public.scoring_subjects;
 CREATE POLICY "scoring_subjects_all" ON public.scoring_subjects FOR ALL USING (true) WITH CHECK (true);
