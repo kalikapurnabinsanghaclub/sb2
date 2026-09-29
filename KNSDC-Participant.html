@@ -299,9 +299,87 @@
     0% { transform: rotate(-24deg); }
     100% { transform: rotate(24deg); }
   }
-  @keyframes c-dog-wag {
-    0% { transform: rotate(-15deg); }
-    100% { transform: rotate(18deg); }
+  /* PARTICIPANT FLASH MESSAGE BANNER */
+  .participant-flash-banner {
+    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+    color: #ffffff;
+    padding: 16px 20px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.3), 0 8px 10px -6px rgba(99, 102, 241, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    animation: slideDownParticipant 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    position: relative;
+    overflow: hidden;
+  }
+  @keyframes slideDownParticipant {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .participant-flash-banner::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at top right, rgba(255,255,255,0.12) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .participant-flash-banner.flash-theme-goodluck {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+    box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.3);
+  }
+  .participant-flash-banner.flash-theme-break {
+    background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
+    box-shadow: 0 10px 25px -5px rgba(139, 92, 246, 0.3);
+  }
+  .participant-flash-banner.flash-theme-prize {
+    background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+    box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.3);
+  }
+  .participant-flash-banner.flash-theme-congrats {
+    background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
+    box-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.3);
+  }
+  .participant-flash-banner.flash-theme-thanks {
+    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+    box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.3);
+  }
+  .participant-flash-banner.flash-theme-thankyou_emotion {
+    background: linear-gradient(135deg, #db2777 0%, #ec4899 100%);
+    box-shadow: 0 10px 25px -5px rgba(236, 72, 153, 0.3);
+  }
+  .participant-flash-banner.flash-theme-lakshmi_puja {
+    background: linear-gradient(135deg, #991b1b 0%, #d97706 50%, #ca8a04 100%);
+    box-shadow: 0 10px 25px -5px rgba(217, 119, 6, 0.35);
+  }
+  .participant-flash-banner.flash-theme-custom {
+    background: linear-gradient(135deg, #1e293b 0%, #475569 100%);
+    box-shadow: 0 10px 25px -5px rgba(71, 85, 105, 0.3);
+  }
+  .participant-flash-icon {
+    font-size: 2.2rem;
+    line-height: 1;
+    animation: pulseEmojiPart 2s infinite ease-in-out;
+  }
+  @keyframes pulseEmojiPart {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+  }
+  .participant-flash-body { flex: 1; }
+  .participant-flash-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    opacity: 0.9;
+    margin-bottom: 3px;
+  }
+  .participant-flash-text {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.4;
   }
 </style>
 </head>
@@ -357,6 +435,9 @@
       <div style="font-size: 0.75rem; color: var(--primary); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 6px;">Powered by Kalikapur Nabin Sangha</div>
     </header>
     
+    <!-- FLASH MESSAGE BANNER (MONITOR SAME EVENT BROADCAST) -->
+    <div id="flash-message-container" style="display:none; margin-bottom:20px;"></div>
+
     <!-- BACKGROUND NOTIFICATION PERMISSION BANNER -->
     <div id="push-perm-banner" style="display:none; margin-bottom:20px; background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; padding:14px 18px; border-radius:14px; box-shadow:0 8px 24px rgba(124,58,237,0.3); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
       <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:240px;">
@@ -562,6 +643,9 @@
         <button onclick="submitRideBooking()" class="btn" style="background:#3B82F6; border:none; width: 100%;">Confirm Booking</button>
       </div>
     </div>
+
+    <!-- PUBLIC AUDIENCE VOTES & RATINGS CARD (HIS ONLY) -->
+    <div class="card" id="participant-public-votes-card" style="margin-top: 20px; display: none;"></div>
 
     <!-- NEW CARD FOR PERFORMANCE JOURNEY -->
     <div class="card" id="performance-journey-card" style="margin-top: 20px; display: none;">
@@ -2938,10 +3022,14 @@ function renderDashboard() {
 
   // Render Detailed Results
   renderDetailedResults(p);
+  // Render Participant Public Votes (His only total rating & votes)
+  renderParticipantPublicVotes(p);
   // Render Performance Journey Chart
   renderPerformanceJourney(p);
-  // Render Global Stats Charts
+  // Hide global statistics of other participants
   renderGlobalEventStatistics(p);
+  // Sync Flash Message for Participant (same event)
+  updateParticipantFlashMessage(p, state);
 
   // Render Certificate Card
   const eventSwitches = (state.eventSwitches && ev ? state.eventSwitches[ev.id] : null) 
@@ -4449,6 +4537,9 @@ if (window.syncEngine) {
       const state = window.syncEngine.getData() || {};
       const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER)) || {};
       
+      // Real-time Stage Flash Message for same-event participants
+      updateParticipantFlashMessage(p, state);
+      
       // Prevent ringing on initial page load if already in queue
       if (!initialSyncFired) {
         lastStageStatus = p.stageStatus;
@@ -4703,6 +4794,250 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+function getParticipantPublicVotes(p, state) {
+  const s = state || (window.syncEngine && window.syncEngine.getData()) || {};
+  const publicVotes = s.publicVotes || {};
+  const pId = String(p.id);
+  const pVotes = [];
+
+  // Check all keys in publicVotes for this participant (e.g. pId_favorite, pId_audition, etc.)
+  Object.keys(publicVotes).forEach(key => {
+    if (key === `${pId}_favorite`) {
+      const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
+      votes.forEach(v => {
+        pVotes.push({
+          type: 'favorite',
+          typeName: 'Favorite Like ❤️',
+          round: 'Favorite',
+          name: v.name || v.voterName || 'Public Supporter',
+          phone: v.phone || v.phoneNumber || '—',
+          score: Number(v.score) || 10,
+          timestamp: v.timestamp || v.ts || Date.now()
+        });
+      });
+    } else if (key.startsWith(`${pId}_`)) {
+      const roundPart = key.slice((pId + '_').length);
+      const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
+      votes.forEach(v => {
+        pVotes.push({
+          type: 'rating',
+          typeName: `Rating (${roundPart.toUpperCase()}) ⭐`,
+          round: roundPart,
+          name: v.name || v.voterName || 'Public Voter',
+          phone: v.phone || v.phoneNumber || '—',
+          score: Number(v.score) || 0,
+          timestamp: v.ts || v.timestamp || Date.now()
+        });
+      });
+    }
+  });
+
+  // Also check if participant has direct publicVotes array
+  if (Array.isArray(p.publicVotes)) {
+    p.publicVotes.forEach(v => {
+      pVotes.push({
+        type: v.type || 'rating',
+        typeName: v.type === 'favorite' ? 'Favorite Like ❤️' : `Rating (${(v.round || 'Audition').toUpperCase()}) ⭐`,
+        round: v.round || 'Audition',
+        name: v.name || v.voterName || 'Public Voter',
+        phone: v.phone || v.phoneNumber || '—',
+        score: Number(v.score) || 0,
+        timestamp: v.ts || v.timestamp || Date.now()
+      });
+    });
+  }
+
+  // Sort participant votes newest first
+  pVotes.sort((a, b) => {
+    const ta = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : (a.timestamp || 0);
+    const tb = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : (b.timestamp || 0);
+    return tb - ta;
+  });
+
+  const likes = pVotes.filter(v => v.type === 'favorite').length;
+  const ratings = pVotes.filter(v => v.type === 'rating');
+  const ratingSum = ratings.reduce((sum, r) => sum + r.score, 0);
+  const avgRating = ratings.length > 0 ? (ratingSum / ratings.length).toFixed(1) : '—';
+  const totalVotes = pVotes.length;
+
+  return {
+    votes: pVotes,
+    likes,
+    ratingsCount: ratings.length,
+    ratingSum,
+    avgRating,
+    totalVotes
+  };
+}
+
+function renderParticipantPublicVotes(p) {
+  const card = document.getElementById('participant-public-votes-card');
+  if (!card) return;
+  if (!p) {
+    card.style.display = 'none';
+    return;
+  }
+
+  const state = (window.syncEngine && window.syncEngine.getData()) || {};
+  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
+  const eventSwitches = (state.eventSwitches && ev ? state.eventSwitches[ev.id] : null)
+    || (ev ? ev.switchStates : null)
+    || state.switchStates
+    || {};
+
+  const publicData = getParticipantPublicVotes(p, state);
+  const { votes, likes, ratingsCount, ratingSum, avgRating, totalVotes } = publicData;
+
+  const isVotingEnabled = eventSwitches.publicVoting === true || (eventSwitches.publicRatingPos !== undefined && Number(eventSwitches.publicRatingPos) > 0);
+
+  // Show if voting is enabled OR if he has received votes
+  if (!isVotingEnabled && totalVotes === 0) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
+      <div>
+        <div class="card-title" style="font-size:18px; font-weight:800; margin:0; color:var(--primary); display:flex; align-items:center; gap:8px;">
+          <span>🌟</span> Your Public Ratings &amp; Total Votes
+        </div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">
+          Ratings and total votes given directly to you by the public audience
+        </div>
+      </div>
+      <button class="btn btn-sm" onclick="openShareModal()" style="background:linear-gradient(135deg, #10B981, #059669); color:#fff; border:none; padding:7px 14px; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 3px 10px rgba(16,185,129,0.3);">
+        <span>📲</span> Share &amp; Get Votes
+      </button>
+    </div>
+
+    <!-- 4 Stats Cards for HIS Votes Only -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:12px; margin-bottom:18px;">
+      <div style="background:linear-gradient(135deg, rgba(37,99,235,0.06), rgba(37,99,235,0.12)); border:1px solid rgba(37,99,235,0.25); border-radius:14px; padding:14px; text-align:center;">
+        <div style="font-size:24px; font-weight:900; color:var(--primary);">${totalVotes}</div>
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); margin-top:3px;">Total Public Votes</div>
+      </div>
+      <div style="background:linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.12)); border:1px solid rgba(239,68,68,0.25); border-radius:14px; padding:14px; text-align:center;">
+        <div style="font-size:24px; font-weight:900; color:#ef4444;">❤️ ${likes}</div>
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); margin-top:3px;">Favorite Likes</div>
+      </div>
+      <div style="background:linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.12)); border:1px solid rgba(245,158,11,0.25); border-radius:14px; padding:14px; text-align:center;">
+        <div style="font-size:24px; font-weight:900; color:#f59e0b;">⭐ ${avgRating}</div>
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); margin-top:3px;">Average Rating (${ratingsCount} voter${ratingsCount === 1 ? '' : 's'})</div>
+      </div>
+      <div style="background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.12)); border:1px solid rgba(16,185,129,0.25); border-radius:14px; padding:14px; text-align:center;">
+        <div style="font-size:24px; font-weight:900; color:#10b981;">${ratingSum} <span style="font-size:12px; font-weight:700;">pts</span></div>
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); margin-top:3px;">Total Rating Score</div>
+      </div>
+    </div>
+  `;
+
+  if (votes.length === 0) {
+    html += `
+      <div style="text-align:center; padding:24px 16px; background:var(--bg2); border-radius:12px; border:1px dashed var(--border);">
+        <div style="font-size:32px; margin-bottom:6px;">🗳️</div>
+        <div style="font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px;">No Public Votes Yet</div>
+        <div style="font-size:12px; color:var(--text-muted); max-width:420px; margin:0 auto 12px; line-height:1.5;">
+          Your audience and supporters can rate and vote for your performance on the live stage. Share your profile poster to collect votes!
+        </div>
+        <button class="btn btn-sm" onclick="openShareModal()" style="background:linear-gradient(135deg, #FF0080, #FF8C00); color:#fff; border:none; padding:8px 18px; border-radius:10px; font-weight:700; font-size:12px; cursor:pointer;">
+          🚀 Share Poster Now
+        </button>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="font-size:13px; font-weight:800; color:var(--text); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+        <span>📋</span> Your Public Supporters &amp; Voter Activity (${votes.length})
+      </div>
+      <div style="max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:12px;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+          <thead>
+            <tr style="background:var(--bg2); color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border);">
+              <th style="padding:10px 12px;">Voter</th>
+              <th style="padding:10px 12px;">Type</th>
+              <th style="padding:10px 12px; text-align:center;">Score / Vote</th>
+              <th style="padding:10px 12px; text-align:right;">Date &amp; Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${votes.map((v, i) => {
+              let dtStr = '—';
+              try {
+                const dt = new Date(v.timestamp);
+                dtStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+              } catch(e) {}
+              const isLike = v.type === 'favorite';
+              const badgeStyle = isLike
+                ? 'background:rgba(239,68,68,0.12); color:#ef4444; border:1px solid rgba(239,68,68,0.3);'
+                : 'background:rgba(245,158,11,0.12); color:#d97706; border:1px solid rgba(245,158,11,0.3);';
+              const scoreBadge = isLike
+                ? `<span style="font-weight:800; color:#ef4444;">❤️ +1</span>`
+                : `<span style="font-weight:800; color:#d97706;">⭐ ${v.score} / 10</span>`;
+
+              return `
+                <tr style="border-bottom:1px solid var(--border); ${i % 2 === 1 ? 'background:rgba(0,0,0,0.015);' : ''}">
+                  <td style="padding:10px 12px;">
+                    <div style="font-weight:700; color:var(--text);">${v.name || 'Public Supporter'}</div>
+                    ${v.phone && v.phone !== '—' ? `<div style="font-size:10px; color:var(--text-muted);">${v.phone.replace(/(\d{2})\d{4}(\d{4})/, '$1****$2')}</div>` : ''}
+                  </td>
+                  <td style="padding:10px 12px;">
+                    <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-block; ${badgeStyle}">
+                      ${v.typeName}
+                    </span>
+                  </td>
+                  <td style="padding:10px 12px; text-align:center;">${scoreBadge}</td>
+                  <td style="padding:10px 12px; text-align:right; font-size:11px; color:var(--text-muted);">${dtStr}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  card.innerHTML = html;
+}
+
+function updateParticipantFlashMessage(p, state) {
+  const s = state || (window.syncEngine && window.syncEngine.getData()) || {};
+  const flash = s.flashMessage || {};
+  const flashContainer = document.getElementById('flash-message-container');
+  if (!flashContainer) return;
+
+  const currentPart = p || ((s.participants || []).find(part => String(part.id) === String(CURRENT_USER))) || {};
+  const isSameEvent = !flash.eventId || !currentPart.eventId || String(flash.eventId) === String(currentPart.eventId);
+
+  if (flash.active && flash.text && isSameEvent) {
+    let emoji = '📢';
+    let title = 'ADMINISTRATOR ANNOUNCEMENT';
+    if (flash.type === 'goodluck') { emoji = '🍀'; title = 'GOOD LUCK!'; }
+    else if (flash.type === 'break') { emoji = '☕'; title = 'EVENT BREAK'; }
+    else if (flash.type === 'prize') { emoji = '🏆'; title = 'PRIZE CEREMONY'; }
+    else if (flash.type === 'congrats') { emoji = '🎉'; title = 'CONGRATULATIONS!'; }
+    else if (flash.type === 'thanks') { emoji = '🤝'; title = 'THANK YOU'; }
+    else if (flash.type === 'thankyou_emotion') { emoji = '❤️🙏'; title = 'BEST WISHES FROM KNS'; }
+    else if (flash.type === 'lakshmi_puja') { emoji = '🪔'; title = 'শুভ শারদীয়া ও কোজাগরী লক্ষ্মী পূজা'; }
+
+    flashContainer.innerHTML = `
+      <div class="participant-flash-banner flash-theme-${flash.type || 'custom'}">
+        <div class="participant-flash-icon">${emoji}</div>
+        <div class="participant-flash-body">
+          <div class="participant-flash-title">${title}</div>
+          <div class="participant-flash-text" style="white-space: pre-line;">${flash.text}</div>
+        </div>
+      </div>
+    `;
+    flashContainer.style.display = 'block';
+  } else {
+    flashContainer.style.display = 'none';
+    flashContainer.innerHTML = '';
+  }
+}
+
 function renderDetailedResults(p) {
   const container = document.getElementById('detailed-results-card');
   if (!container) return;
@@ -4828,7 +5163,19 @@ function renderDetailedResults(p) {
     }
   }
 
-  container.innerHTML = `
+      const pubData = getParticipantPublicVotes(p, state);
+      const publicStatsCols = pubData.totalVotes > 0 ? `
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(245,158,11,0.25);">
+          <div style="font-size:0.65rem; color:#f59e0b; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Public Rating</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">⭐ ${pubData.avgRating}</div>
+        </div>
+        <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(239,68,68,0.25);">
+          <div style="font-size:0.65rem; color:#ef4444; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Public Votes</div>
+          <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">❤️ ${pubData.totalVotes}</div>
+        </div>
+      ` : '';
+
+      container.innerHTML = `
     <div style="padding:24px; border-radius:20px; border:2px solid rgba(124,58,237,0.2); text-align:left; background:var(--bg); box-shadow: 0 8px 24px rgba(124,58,237,0.08);">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
         <div>
@@ -4837,7 +5184,7 @@ function renderDetailedResults(p) {
         </div>
       </div>
       
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:10px; margin-bottom:16px;">
         <div style="background:var(--bg2); padding:14px; border-radius:14px; text-align:center; border:1px solid rgba(124,58,237,0.1);">
           <div style="font-size:0.65rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Your Score</div>
           <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${totalScore}</div>
@@ -4850,6 +5197,7 @@ function renderDetailedResults(p) {
           <div style="font-size:0.65rem; color:#D97706; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Cat. Avg</div>
           <div style="font-size:1.4rem; color:var(--text); font-weight:900; margin-top:4px;">${catAvg}</div>
         </div>
+        ${publicStatsCols}
       </div>
 
       ${subjectBreakdownHTML}
@@ -5030,22 +5378,10 @@ function renderPerformanceJourney(p) {
 
 function renderGlobalEventStatistics(p) {
   const container = document.getElementById('global-statistics-section');
-  if (!container) return;
-
-  const state = window.syncEngine.getData() || {};
-
-  // ─── GATE: Only show when Monitor enables "Result Public" ───
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  const eventSwitches = (state.eventSwitches && ev ? state.eventSwitches[ev.id] : null)
-    || (ev ? ev.switchStates : null)
-    || state.switchStates
-    || {};
-
-  if (!eventSwitches.resultPublic) {
+  if (container) {
     container.style.display = 'none';
-    return;
   }
-  container.style.display = 'block';
+  return;
 
   const participants = state.participants || [];
   const judges = state.judges || [];
