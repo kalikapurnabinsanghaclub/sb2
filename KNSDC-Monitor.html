@@ -3309,7 +3309,7 @@
             <div style="font-size:13px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:6px">
               <span>👥</span> Online Staff
             </div>
-            <button class="btn btn-ghost btn-sm" onclick="renderChatOnlineList()" title="Refresh online status" style="font-size:10px;padding:2px 6px">↺</button>
+            <button class="btn btn-ghost btn-sm" onclick="renderChatOnlineList(true)" title="Refresh online status" style="font-size:10px;padding:2px 6px">↺</button>
           </div>
           <div style="font-size:10px;color:var(--text-muted);margin-bottom:12px">Active staff logged into this event</div>
           <div id="chat-online-list" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -15311,10 +15311,15 @@ function renderGlobalChat() {
   }
 }
 
-async function renderChatOnlineList(){
+async function renderChatOnlineList(sendQuery = false){
   const el = document.getElementById('chat-online-list');
   if(!el) return;
   
+  if (sendQuery && typeof syncEngine !== 'undefined') {
+    if (typeof syncEngine.broadcastPresenceQuery === 'function') syncEngine.broadcastPresenceQuery();
+    if (typeof syncEngine.broadcastStaffPresence === 'function') syncEngine.broadcastStaffPresence();
+  }
+
   let list = [];
   try {
     if(typeof syncEngine !== 'undefined' && syncEngine.listStaffMembers) {
@@ -15323,15 +15328,14 @@ async function renderChatOnlineList(){
   } catch(e) { console.error(e); }
   
   if(list.length === 0) {
-    list = [{ name: 'Refresh Page / Database Empty', role: 'admin', online: false }];
+    list = [{ name: 'No registered staff found', role: 'admin', online: false }];
   }
   
   el.innerHTML = list.map(c=>{
     const roleStr = c.role ? c.role.toUpperCase() : 'STAFF';
     const nameStr = c.name || 'Unknown';
-    // Don't split by ' · ' because real staff don't have that
     const dispName = c.name || 'Unknown';
-    const isOnline = c.online !== undefined ? c.online : true;
+    const isOnline = c.online === true;
     let color = c.color || '#3b82f6';
     if(c.role === 'monitor') color = '#d97706';
     if(c.role === 'admin') color = '#e11d48';
@@ -15339,18 +15343,31 @@ async function renderChatOnlineList(){
     if(c.role === 'host') color = '#7c3aed';
     
     return `
-    <div class="card-hover" style="display:flex;align-items:center;gap:6px;padding:10px;border-radius:12px;background:rgba(255,255,255,0.5);border:1px solid var(--border)">
+    <div class="card-hover" style="display:flex;align-items:center;gap:8px;padding:10px;border-radius:12px;background:${isOnline ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.5)'};border:1px solid ${isOnline ? 'rgba(34,197,94,0.25)' : 'var(--border)'}">
       <div style="width:36px;height:36px;border-radius:50%;background:${color}15;color:${color};display:flex;align-items:center;justify-content:center;font-weight:800;position:relative;border:1px solid ${color}30">
-        ${nameStr[0].toUpperCase()}
-        <div style="position:absolute;bottom:0;right:0;width:10px;height:10px;background:${isOnline?'#22c55e':'#94a3b8'};border:2px solid #fff;border-radius:50%"></div>
+        ${(nameStr[0] || 'S').toUpperCase()}
+        <div style="position:absolute;bottom:0;right:0;width:10px;height:10px;background:${isOnline ? '#22c55e' : '#94a3b8'};border:2px solid #fff;border-radius:50%;${isOnline ? 'box-shadow:0 0 6px rgba(34,197,94,0.8);' : ''}"></div>
       </div>
-      <div style="flex:1">
-        <div style="font-weight:700;font-size:13px;color:var(--text)">${dispName}</div>
-        <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">${roleStr}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dispName}</div>
+        <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:5px">
+          <span>${roleStr}</span>
+          <span>&bull;</span>
+          <span style="font-weight:700;color:${isOnline ? '#16a34a' : '#94a3b8'}">${isOnline ? 'Online' : 'Offline'}</span>
+        </div>
       </div>
     </div>`;
   }).join('');
 }
+
+// Realtime presence reactive listener for Monitor portal
+window.onStaffPresenceChanged = function() {
+  const activePage = document.querySelector('.pp.active');
+  const pageId = activePage ? activePage.id.replace('pp-', '') : '';
+  if (pageId === 'chat') {
+    renderChatOnlineList(false);
+  }
+};
 
 // Per-switch render lock: prevent hydrate() from reverting a switch UI for 1.5s after toggle
 var _switchRenderLockUntil = window._switchRenderLockUntil || {};

@@ -592,7 +592,7 @@
   tbody tr:hover td { color: var(--amber2); }
 
   /* CHAT */
-  .chat-wrap { display: grid; grid-template-columns: 1fr; gap: 24px; height: calc(100vh - 150px); }
+  .chat-wrap { display: grid; grid-template-columns: 1fr 280px; gap: 24px; height: calc(100vh - 150px); }
   .chat-main { background: var(--surface); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border); border-radius: 24px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.02); }
   .chat-hd { padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--surface2); display: flex; align-items: center; justify-content: space-between; }
   .chat-hd-title { font-family: var(--fh); font-size: 14px; font-weight: 800; color: var(--amber); text-transform: uppercase; letter-spacing: 1.5px; }
@@ -1902,8 +1902,20 @@
         <button class="send-btn" onclick="sendMsg()">➤</button>
       </div>
     </div>
+
+    <!-- ONLINE STAFF PANEL -->
+    <div class="online-panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:6px">
+          <span>👥</span> Online Staff
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="renderOnlineList(true)" title="Refresh online status" style="font-size:10px;padding:2px 6px;cursor:pointer">↺</button>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:12px">Active staff logged into this event</div>
+      <div id="online-list" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
   </div>
+</div>
 
   <!-- ══════════════ JUDGE PORTAL FOOTER ══════════════ -->
   <footer class="judge-footer" id="judge-portal-footer">
@@ -6545,9 +6557,14 @@ function updateSOSHistory() {
   el.innerHTML = sosHistory.map(s => `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(220,38,38,0.08);border-radius:5px;border-left:2px solid var(--red2)"><div style="font-size:10px;color:var(--red2);font-family:var(--fm)">${s.time}</div><div style="font-size:11px">${s.msg}</div></div>`).join('');
 }
 
-async function renderOnlineList() {
+async function renderOnlineList(sendQuery = false) {
   const el = document.getElementById('online-list');
   if(!el) return;
+
+  if (sendQuery && typeof syncEngine !== 'undefined') {
+    if (typeof syncEngine.broadcastPresenceQuery === 'function') syncEngine.broadcastPresenceQuery();
+    if (typeof syncEngine.broadcastStaffPresence === 'function') syncEngine.broadcastStaffPresence();
+  }
   
   let list = [];
   try {
@@ -6557,15 +6574,14 @@ async function renderOnlineList() {
   } catch(e) { console.error(e); }
   
   if(list.length === 0) {
-    list = [{ name: 'Refresh Page / Database Empty', role: 'judge', online: false }];
+    list = [{ name: 'No registered staff found', role: 'judge', online: false }];
   }
   
   el.innerHTML = list.map(c => {
     const roleStr = c.role ? c.role.toUpperCase() : 'STAFF';
-    // Don't split by ' · '
     const dispName = c.name || 'Unknown';
     const nameStr = c.name || 'Unknown';
-    const isOnline = c.online !== undefined ? c.online : true;
+    const isOnline = c.online === true;
     let color = c.color || '#7c3aed';
     if(c.role === 'monitor') color = '#d97706';
     if(c.role === 'admin') color = '#e11d48';
@@ -6574,17 +6590,28 @@ async function renderOnlineList() {
     return `
     <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(24,32,48,0.5)">
       <div style="position:relative">
-        <div style="width:34px;height:34px;border-radius:50%;background:${color}20;border:1px solid ${color}40;display:flex;align-items:center;justify-content:center;font-weight:700;font-family:var(--fh);font-size:14px;color:${color}">${nameStr[0].toUpperCase()}</div>
+        <div style="width:34px;height:34px;border-radius:50%;background:${color}20;border:1px solid ${color}40;display:flex;align-items:center;justify-content:center;font-weight:700;font-family:var(--fh);font-size:14px;color:${color}">${(nameStr[0] || 'S').toUpperCase()}</div>
         <div style="position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:${isOnline?'var(--green2)':'#3a4a5e'};border:2px solid var(--s1);${isOnline?'box-shadow:0 0 5px var(--green2)':''}"></div>
       </div>
       <div style="flex:1">
         <div style="font-size:12px;font-weight:600">${dispName}</div>
-        <div style="font-size:10px;color:${isOnline?'var(--green2)':'var(--tmuted)'}">${isOnline?'Online':'Offline'}</div>
+        <div style="font-size:10px;color:${isOnline?'var(--green2)':'var(--tmuted)'};display:flex;align-items:center;gap:4px">
+          <span>${roleStr}</span>
+          <span>&bull;</span>
+          <span style="font-weight:700">${isOnline?'Online':'Offline'}</span>
+        </div>
       </div>
       <span class="mchip" onclick="insMention('@${(c.role || 'staff').toLowerCase()}')" style="font-size:10px;padding:2px 7px">@</span>
     </div>`;
   }).join('');
 }
+
+// Realtime presence reactive listener for Judge portal
+window.onStaffPresenceChanged = function() {
+  if (currentPage === 'chat') {
+    renderOnlineList(false);
+  }
+};
 
 // ════════════════════════════════════════
 // HELPERS
