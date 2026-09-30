@@ -3100,7 +3100,8 @@
               <option value="all_participants">All Participants</option>
             </select>
             <button onclick="renderPublicVotes()" class="btn btn-ghost" title="Refresh Votes" style="padding:8px 10px; font-size:14px; cursor:pointer;">↺</button>
-            <button onclick="exportPublicVotesCSV()" class="btn btn-secondary" style="padding:8px 14px; font-size:12px; cursor:pointer;">📥 Export CSV</button>
+            <button onclick="downloadPublicVotesImage()" class="btn btn-secondary" style="padding:8px 12px; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Download as PNG Image">🖼️ Download Image</button>
+            <button onclick="downloadPublicVotesPDF()" class="btn btn-primary" style="padding:8px 12px; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Download as PDF Report">📄 Download PDF</button>
           </div>
         </div>
 
@@ -12208,7 +12209,83 @@ function renderPublicVotes() {
   }).join('');
 }
 
-function exportPublicVotesCSV() {
+async function downloadPublicVotesImage() {
+  if (typeof html2canvas === 'undefined') {
+    toast('Image rendering library not loaded. Please wait a moment.');
+    return;
+  }
+  const summaryEl = document.getElementById('publicvotes-stats-summary');
+  const containerEl = document.getElementById('publicvotes-container');
+  if (!containerEl || !summaryEl) {
+    toast('Nothing to export.');
+    return;
+  }
+
+  toast('⏳ Generating high-res Public Votes image...');
+
+  // Create clean export wrapper for consistent styling across themes
+  const exportDiv = document.createElement('div');
+  exportDiv.style.position = 'absolute';
+  exportDiv.style.left = '-9999px';
+  exportDiv.style.top = '0';
+  exportDiv.style.width = '1000px';
+  exportDiv.style.background = '#ffffff';
+  exportDiv.style.color = '#0f172a';
+  exportDiv.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+  exportDiv.style.padding = '30px';
+  exportDiv.style.boxSizing = 'border-box';
+
+  const s = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const evTitle = activeEv.name || 'Public Voting & Audience Ratings';
+
+  exportDiv.innerHTML = `
+    <div style="border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end;">
+      <div>
+        <h2 style="margin: 0 0 6px 0; color: #1e293b; font-size: 22px; font-weight: 800;">${evTitle.toUpperCase()}</h2>
+        <div style="font-size: 13px; color: #64748b; font-weight: 600;">Kalikapur Nabin Sangha · Public Audience Voting Report</div>
+      </div>
+      <div style="text-align: right; font-size: 12px; color: #64748b;">
+        Generated on: <strong>${new Date().toLocaleDateString([], { dateStyle: 'medium', timeStyle: 'short' })}</strong>
+      </div>
+    </div>
+    <div style="margin-bottom: 20px;">
+      ${summaryEl.outerHTML}
+    </div>
+    <div>
+      ${containerEl.outerHTML}
+    </div>
+  `;
+
+  document.body.appendChild(exportDiv);
+
+  try {
+    const canvas = await html2canvas(exportDiv, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff'
+    });
+    document.body.removeChild(exportDiv);
+
+    const link = document.createElement('a');
+    link.download = `Public_Votes_${new Date().toISOString().slice(0,10)}_${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    toast('✅ Downloaded Public Votes Image (PNG)!');
+  } catch (err) {
+    if (document.body.contains(exportDiv)) document.body.removeChild(exportDiv);
+    console.error('Error exporting Public Votes image:', err);
+    toast('❌ Error downloading image: ' + (err.message || err));
+  }
+}
+
+async function downloadPublicVotesPDF() {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    toast('PDF library not loaded yet. Please wait a moment.');
+    return;
+  }
+
   const s = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
   let publicVotes = s.publicVotes || {};
   if (!publicVotes || Object.keys(publicVotes).length === 0) {
@@ -12238,49 +12315,50 @@ function exportPublicVotesCSV() {
     candidates = candidates.filter(p => String(p.eventId) === String(activeEventId) || (!p.eventId && String(activeEventId) === '0'));
   }
 
-  const rows = [
-    ['Participant ID', 'Participant Name', 'Category', 'Participant Round', 'Voter Name', 'Voter Phone', 'Vote Type', 'Round', 'Score', 'Timestamp']
-  ];
+  // Gather voter records
+  const voterRows = [];
+  const candidateStats = [];
 
-  candidates.forEach(p => {
+  candidates.forEach((p, pIdx) => {
     const pId = String(p.id).trim();
     const pIdLower = pId.toLowerCase();
     const cat = categories.find(c => String(c.id) === String(p.catId));
     const catName = cat ? cat.name : (p.category || 'General');
+    let pLikes = 0;
+    let pRatings = 0;
+    let pScoreSum = 0;
 
     Object.keys(publicVotes).forEach(key => {
       const kLower = key.toLowerCase();
       if (kLower === `${pIdLower}_favorite` && roundFilter !== 'ratings') {
         const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
         votes.forEach(v => {
-          rows.push([
-            p.id,
-            p.name,
-            catName,
-            p.round || 'Audition',
-            v.name || v.voterName || 'Anonymous',
-            v.phone || v.phoneNumber || '',
+          pLikes++;
+          voterRows.push([
+            voterRows.length + 1,
+            `${p.name} (${p.id})`,
+            v.name || v.voterName || 'Supporter',
+            v.phone || v.phoneNumber || '—',
             'Favorite Like ❤️',
-            'Favorite',
-            v.score || 10,
-            (v.timestamp || v.ts) ? new Date(v.timestamp || v.ts).toISOString() : ''
+            '❤️ +1',
+            (v.timestamp || v.ts) ? new Date(v.timestamp || v.ts).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'
           ]);
         });
       } else if (kLower.startsWith(`${pIdLower}_`) && roundFilter !== 'favorite') {
         const roundPart = key.slice(pIdLower.length + 1);
         const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
         votes.forEach(v => {
-          rows.push([
-            p.id,
-            p.name,
-            catName,
-            p.round || 'Audition',
-            v.name || v.voterName || 'Anonymous',
-            v.phone || v.phoneNumber || '',
-            'Score Rating ⭐',
-            roundPart.toUpperCase(),
-            v.score || 0,
-            (v.ts || v.timestamp) ? new Date(v.ts || v.timestamp).toISOString() : ''
+          const sc = Number(v.score) || 0;
+          pRatings++;
+          pScoreSum += sc;
+          voterRows.push([
+            voterRows.length + 1,
+            `${p.name} (${p.id})`,
+            v.name || v.voterName || 'Voter',
+            v.phone || v.phoneNumber || '—',
+            `Rating (${roundPart.toUpperCase()}) ⭐`,
+            `${sc} / 10`,
+            (v.ts || v.timestamp) ? new Date(v.ts || v.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'
           ]);
         });
       }
@@ -12291,38 +12369,169 @@ function exportPublicVotesCSV() {
         const isFav = v.type === 'favorite';
         if (roundFilter === 'favorite' && !isFav) return;
         if (roundFilter === 'ratings' && isFav) return;
-        rows.push([
-          p.id,
-          p.name,
-          catName,
-          p.round || 'Audition',
-          v.name || v.voterName || 'Anonymous',
-          v.phone || v.phoneNumber || '',
-          isFav ? 'Favorite Like ❤️' : 'Score Rating ⭐',
-          v.round || 'Audition',
-          v.score || 0,
-          (v.ts || v.timestamp) ? new Date(v.ts || v.timestamp).toISOString() : ''
+        if (isFav) pLikes++;
+        else { pRatings++; pScoreSum += Number(v.score) || 0; }
+        voterRows.push([
+          voterRows.length + 1,
+          `${p.name} (${p.id})`,
+          v.name || v.voterName || 'Voter',
+          v.phone || v.phoneNumber || '—',
+          isFav ? 'Favorite Like ❤️' : `Rating (${(v.round||'Audition').toUpperCase()}) ⭐`,
+          isFav ? '❤️ +1' : `${v.score || 0} / 10`,
+          (v.ts || v.timestamp) ? new Date(v.ts || v.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'
         ]);
       });
     }
+
+    const totalVotes = pLikes + pRatings;
+    const avgScore = pRatings > 0 ? (pScoreSum / pRatings).toFixed(1) : '—';
+    if (totalVotes > 0 || document.getElementById('publicvotes-view-filter')?.value === 'all_participants') {
+      candidateStats.push([
+        candidateStats.length + 1,
+        p.id,
+        p.name,
+        catName,
+        p.round ? p.round.toUpperCase() : 'AUDITION',
+        pLikes,
+        pRatings,
+        avgScore,
+        totalVotes
+      ]);
+    }
   });
 
-  if (rows.length === 1) {
-    toast('No public votes to export yet.');
+  if (voterRows.length === 0 && candidateStats.length === 0) {
+    toast('No public votes to download yet.');
     return;
   }
 
-  const csvContent = '\uFEFF' + rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `Public_Votes_${eventFilter}_${Date.now()}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  toast('✅ Public votes CSV exported!');
+  toast('⏳ Generating Public Votes PDF Report...');
+  const logoBase64 = (typeof getLogoBase64 === 'function') ? await getLogoBase64() : null;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4'); // Portrait
+
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const eventName = activeEv.name || 'PUBLIC VOTING & AUDIENCE RATINGS REPORT';
+  const organizer = activeEv.organizer || activeEv.org || 'Kalikapur Nabin Sangha';
+  const evDate = new Date().toLocaleDateString([], { dateStyle: 'medium' });
+
+  const drawHeader = (doc) => {
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, 210, 38, 'F');
+
+    if (logoBase64) {
+      try {
+        doc.addImage(logoBase64, 'PNG', 14, 8, 22, 22);
+      } catch (err) {
+        doc.setFillColor(37, 99, 235);
+        doc.circle(25, 19, 8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.text('KNS', 20.5, 20.5);
+      }
+    } else {
+      doc.setFillColor(37, 99, 235);
+      doc.circle(25, 19, 8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.text('KNS', 20.5, 20.5);
+    }
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(eventName.toUpperCase(), 40, 15);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(9.5);
+    doc.text(`Organized by: ${organizer}  |  Report Date: ${evDate}`, 40, 21);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(217, 119, 6);
+    doc.setFontSize(10);
+    doc.text(`Total Votes: ${voterRows.length}  |  Participants: ${candidateStats.length}`, 40, 27);
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(14, 35, 196, 35);
+  };
+
+  drawHeader(doc);
+
+  // Table 1: Candidate Summary
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59);
+  doc.text('Participant Vote Summary', 14, 43);
+
+  doc.autoTable({
+    head: [['#', 'ID', 'Participant Name', 'Category', 'Round', '❤️ Likes', '⭐ Ratings', 'Avg Score', 'Total Votes']],
+    body: candidateStats.length > 0 ? candidateStats : [['-', '-', 'No data', '-', '-', '0', '0', '-', '0']],
+    startY: 46,
+    theme: 'grid',
+    headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    styles: { fontSize: 8.5, cellPadding: 3, font: 'helvetica' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+      5: { cellWidth: 18, halign: 'center', textColor: [239, 68, 68] },
+      6: { cellWidth: 20, halign: 'center', textColor: [217, 119, 6] },
+      7: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+      8: { cellWidth: 22, halign: 'center', fontStyle: 'bold', textColor: [16, 185, 129] }
+    }
+  });
+
+  // Table 2: Detailed Voter Log (if any votes)
+  if (voterRows.length > 0) {
+    const nextY = (doc.lastAutoTable?.finalY || 100) + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(30, 41, 59);
+    
+    // Check if enough room on current page
+    if (nextY > 250) {
+      doc.addPage();
+      drawHeader(doc);
+      doc.text('Detailed Voter Submissions Log', 14, 43);
+      doc.autoTable({
+        head: [['#', 'Participant', 'Voter Name', 'Phone', 'Vote Type', 'Score / Like', 'Date & Time']],
+        body: voterRows,
+        startY: 46,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        styles: { fontSize: 8, cellPadding: 2.8, font: 'helvetica' },
+        alternateRowStyles: { fillColor: [248, 250, 252] }
+      });
+    } else {
+      doc.text('Detailed Voter Submissions Log', 14, nextY);
+      doc.autoTable({
+        head: [['#', 'Participant', 'Voter Name', 'Phone', 'Vote Type', 'Score / Like', 'Date & Time']],
+        body: voterRows,
+        startY: nextY + 3,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        styles: { fontSize: 8, cellPadding: 2.8, font: 'helvetica' },
+        alternateRowStyles: { fillColor: [248, 250, 252] }
+      });
+    }
+  }
+
+  // Page Numbers
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8.5);
+    doc.setTextColor(150);
+    doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 8, { align: 'right' });
+  }
+
+  doc.save(`Public_Votes_Report_${new Date().toISOString().slice(0,10)}_${Date.now()}.pdf`);
+  toast('✅ Downloaded Public Votes PDF Report!');
 }
 
 function renderFeedbacks() {
