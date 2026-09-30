@@ -3085,16 +3085,21 @@
             <div style="font-size:12px; color:var(--text-muted);">View public voter full names, phone numbers, favorite likes ❤️, and ratings submitted for each participant</div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-            <input type="text" id="publicvotes-search" placeholder="🔍 Search participant, voter, phone..." oninput="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px; min-width:220px;" />
+            <input type="text" id="publicvotes-search" placeholder="🔍 Search participant, voter, phone..." oninput="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px; min-width:200px;" />
+            <select id="publicvotes-event-filter" onchange="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px;">
+              <option value="all">All Events (Full Database)</option>
+              <option value="current">Current Event Only</option>
+            </select>
             <select id="publicvotes-round-filter" onchange="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px;">
               <option value="all">All Votes &amp; Likes</option>
               <option value="favorite">Favorite Likes ❤️ Only</option>
               <option value="ratings">Ratings / Scores ⭐ Only</option>
             </select>
             <select id="publicvotes-view-filter" onchange="renderPublicVotes()" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:12px;">
-              <option value="voted_only">Voted Participants Only</option>
+              <option value="voted_only" selected>Voted Participants Only</option>
               <option value="all_participants">All Participants</option>
             </select>
+            <button onclick="renderPublicVotes()" class="btn btn-ghost" title="Refresh Votes" style="padding:8px 10px; font-size:14px; cursor:pointer;">↺</button>
             <button onclick="exportPublicVotesCSV()" class="btn btn-secondary" style="padding:8px 14px; font-size:12px; cursor:pointer;">📥 Export CSV</button>
           </div>
         </div>
@@ -11807,30 +11812,110 @@ function statsTab(tab, el){
 
 function renderPublicVotes() {
   const s = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
-  const publicVotes = s.publicVotes || {};
-  
-  // Filter participants for active event
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId || String(activeEventId) === '0');
+  let publicVotes = s.publicVotes || {};
+  if (!publicVotes || Object.keys(publicVotes).length === 0) {
+    try {
+      const cached = localStorage.getItem('knsdc_public_votes');
+      if (cached) publicVotes = JSON.parse(cached);
+    } catch (e) {}
+  }
   
   const searchVal = (document.getElementById('publicvotes-search')?.value || '').trim().toLowerCase();
+  const eventFilter = document.getElementById('publicvotes-event-filter')?.value || 'all';
   const roundFilter = document.getElementById('publicvotes-round-filter')?.value || 'all';
   const viewFilter = document.getElementById('publicvotes-view-filter')?.value || 'voted_only';
-  
+
+  // 1. Build master candidate pool across all sources
+  const candidateMap = new Map();
+
+  // A) Local monitor participants array
+  (participants || []).forEach(p => {
+    if (p && p.id) {
+      const pid = String(p.id).trim();
+      candidateMap.set(pid.toLowerCase(), { ...p, id: pid });
+    }
+  });
+
+  // B) Global syncEngine participants array
+  if (Array.isArray(s.participants)) {
+    s.participants.forEach(p => {
+      if (p && p.id) {
+        const pid = String(p.id).trim();
+        const key = pid.toLowerCase();
+        if (!candidateMap.has(key)) {
+          candidateMap.set(key, { ...p, id: pid });
+        } else {
+          const existing = candidateMap.get(key);
+          candidateMap.set(key, { ...p, ...existing });
+        }
+      }
+    });
+  }
+
+  // C) Check localStorage knsdc_participants or knsdc_all_participants
+  try {
+    const rawParts = localStorage.getItem('knsdc_participants') || localStorage.getItem('knsdc_all_participants');
+    if (rawParts) {
+      const parsedParts = JSON.parse(rawParts);
+      if (Array.isArray(parsedParts)) {
+        parsedParts.forEach(p => {
+          if (p && p.id) {
+            const pid = String(p.id).trim();
+            const key = pid.toLowerCase();
+            if (!candidateMap.has(key)) {
+              candidateMap.set(key, { ...p, id: pid });
+            }
+          }
+        });
+      }
+    }
+  } catch (e) {}
+
+  // D) Discover any participant IDs directly from publicVotes keys!
+  // Format is `${participantId}_favorite` or `${participantId}_${round}`
+  Object.keys(publicVotes).forEach(key => {
+    const lastUnderscore = key.lastIndexOf('_');
+    const pid = lastUnderscore > 0 ? key.slice(0, lastUnderscore).trim() : key.trim();
+    if (!pid) return;
+    const pKey = pid.toLowerCase();
+    if (!candidateMap.has(pKey)) {
+      candidateMap.set(pKey, {
+        id: pid,
+        name: `Candidate #${pid}`,
+        category: 'Public Voting',
+        round: lastUnderscore > 0 ? key.slice(lastUnderscore + 1) : 'Audition',
+        eventId: 'all',
+        _isDiscoveredFromVotes: true
+      });
+    }
+  });
+
+  // 2. Filter candidates based on Event Filter
+  let allCandidateList = Array.from(candidateMap.values());
+  if (eventFilter === 'current') {
+    allCandidateList = allCandidateList.filter(p => {
+      if (p._isDiscoveredFromVotes && !p.eventId) return false;
+      return String(p.eventId) === String(activeEventId) || (!p.eventId && String(activeEventId) === '0');
+    });
+  }
+
   let totalAllVotesCount = 0;
   let totalLikesCount = 0;
   let totalRatingsCount = 0;
   let totalScoreSum = 0;
-  
+
   const participantDataList = [];
 
-  eventParticipants.forEach(p => {
-    const pId = String(p.id);
+  allCandidateList.forEach(p => {
+    const pId = String(p.id).trim();
+    const pIdLower = pId.toLowerCase();
     const cat = categories.find(c => String(c.id) === String(p.catId));
     const pVotes = [];
 
-    // Check all keys in publicVotes for this participant
+    // Check all keys in publicVotes matching this participant ID
     Object.keys(publicVotes).forEach(key => {
-      if (key === `${pId}_favorite`) {
+      const kLower = key.toLowerCase();
+      if (kLower === `${pIdLower}_favorite`) {
         const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
         votes.forEach(v => {
           pVotes.push({
@@ -11843,8 +11928,8 @@ function renderPublicVotes() {
             timestamp: v.timestamp || v.ts || Date.now()
           });
         });
-      } else if (key.startsWith(`${pId}_`)) {
-        const roundPart = key.slice((pId + '_').length);
+      } else if (kLower.startsWith(`${pIdLower}_`)) {
+        const roundPart = key.slice(pIdLower.length + 1);
         const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
         votes.forEach(v => {
           pVotes.push({
@@ -11860,7 +11945,7 @@ function renderPublicVotes() {
       }
     });
 
-    // Also check if participant has direct publicVotes array
+    // Also check if participant object has direct publicVotes array
     if (Array.isArray(p.publicVotes)) {
       p.publicVotes.forEach(v => {
         pVotes.push({
@@ -11875,32 +11960,43 @@ function renderPublicVotes() {
       });
     }
 
+    // Deduplicate any duplicate voter entries
+    const seenVoteKeys = new Set();
+    const uniqueVotes = [];
+    pVotes.forEach(v => {
+      const vKey = `${v.type}_${v.round}_${v.phone}_${v.timestamp}_${v.score}`;
+      if (!seenVoteKeys.has(vKey)) {
+        seenVoteKeys.add(vKey);
+        uniqueVotes.push(v);
+      }
+    });
+
     // Sort participant votes newest first
-    pVotes.sort((a, b) => {
-      const ta = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : (a.timestamp || 0);
-      const tb = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : (b.timestamp || 0);
+    uniqueVotes.sort((a, b) => {
+      const ta = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : (Number(a.timestamp) || 0);
+      const tb = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : (Number(b.timestamp) || 0);
       return tb - ta;
     });
 
-    const likes = pVotes.filter(v => v.type === 'favorite').length;
-    const ratings = pVotes.filter(v => v.type === 'rating');
+    const likes = uniqueVotes.filter(v => v.type === 'favorite').length;
+    const ratings = uniqueVotes.filter(v => v.type === 'rating');
     const ratingSum = ratings.reduce((sum, r) => sum + r.score, 0);
     const avgRating = ratings.length > 0 ? (ratingSum / ratings.length).toFixed(1) : '—';
 
     totalLikesCount += likes;
     totalRatingsCount += ratings.length;
-    totalAllVotesCount += pVotes.length;
+    totalAllVotesCount += uniqueVotes.length;
     totalScoreSum += ratingSum;
 
     participantDataList.push({
       p,
       cat,
-      votes: pVotes,
+      votes: uniqueVotes,
       likes,
       ratingsCount: ratings.length,
       ratingSum,
       avgRating,
-      totalVotes: pVotes.length
+      totalVotes: uniqueVotes.length
     });
   });
 
@@ -11945,7 +12041,7 @@ function renderPublicVotes() {
     if (searchVal) {
       const matchPName = (item.p.name || '').toLowerCase().includes(searchVal);
       const matchPId = String(item.p.id || '').toLowerCase().includes(searchVal);
-      const matchCat = (item.cat?.name || '').toLowerCase().includes(searchVal);
+      const matchCat = (item.cat?.name || item.p.category || '').toLowerCase().includes(searchVal);
       const matchVoters = item.votes.some(v => 
         (v.name || '').toLowerCase().includes(searchVal) || 
         (v.phone || '').toLowerCase().includes(searchVal)
@@ -11963,17 +12059,32 @@ function renderPublicVotes() {
   if (!container) return;
 
   if (displayList.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:40px 20px;background:var(--surface2);border-radius:12px;border:1px dashed var(--border);">
-        <div style="font-size:36px;margin-bottom:8px;">🗳️</div>
-        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">No Public Votes Found</div>
-        <div style="font-size:13px;color:var(--text-muted);max-width:500px;margin:0 auto;">
-          ${viewFilter === 'voted_only' 
-            ? 'No participants have received public votes yet. Switch the view filter to "All Participants" to see all registered performers, or wait for public audience votes.' 
-            : 'No matching participants or public votes found for your search criteria.'}
+    if (eventFilter === 'current' && Object.keys(publicVotes).length > 0) {
+      container.innerHTML = `
+        <div style="text-align:center;padding:40px 20px;background:var(--surface2);border-radius:12px;border:1px dashed var(--border);">
+          <div style="font-size:36px;margin-bottom:8px;">🗳️</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">No Public Votes in Current Event</div>
+          <div style="font-size:13px;color:var(--text-muted);max-width:500px;margin:0 auto 16px auto;">
+            The current active event does not have any public votes recorded yet. However, there are public votes recorded across other events in the database!
+          </div>
+          <button onclick="document.getElementById('publicvotes-event-filter').value='all';renderPublicVotes();" class="btn btn-primary" style="padding:8px 16px;font-size:12px;cursor:pointer;">
+            🌐 Switch to All Events (Full Database)
+          </button>
         </div>
-      </div>
-    `;
+      `;
+    } else {
+      container.innerHTML = `
+        <div style="text-align:center;padding:40px 20px;background:var(--surface2);border-radius:12px;border:1px dashed var(--border);">
+          <div style="font-size:36px;margin-bottom:8px;">🗳️</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">No Public Votes Found</div>
+          <div style="font-size:13px;color:var(--text-muted);max-width:500px;margin:0 auto;">
+            ${viewFilter === 'voted_only' 
+              ? 'No participants have received public votes yet. Switch the view filter to "All Participants" to see all registered performers, or wait for public audience votes.' 
+              : 'No matching participants or public votes found for your search criteria.'}
+          </div>
+        </div>
+      `;
+    }
     return;
   }
 
@@ -12009,7 +12120,7 @@ function renderPublicVotes() {
       : filteredVotes.map((v, vIdx) => {
           let dateStr = '—';
           try {
-            const dt = typeof v.timestamp === 'string' ? new Date(v.timestamp) : new Date(v.timestamp);
+            const dt = typeof v.timestamp === 'string' ? new Date(v.timestamp) : new Date(Number(v.timestamp));
             if (!isNaN(dt.getTime())) {
               dateStr = dt.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
             }
@@ -12017,7 +12128,7 @@ function renderPublicVotes() {
 
           const typeBadge = v.type === 'favorite'
             ? `<span style="background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.25);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:800;display:inline-flex;align-items:center;gap:4px;">❤️ Favorite Like</span>`
-            : `<span style="background:rgba(245,158,11,0.12);color:#d97706;border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:800;display:inline-flex;align-items:center;gap:4px;">⭐ ${v.round.toUpperCase()}</span>`;
+            : `<span style="background:rgba(245,158,11,0.12);color:#d97706;border:1px solid rgba(245,158,11,0.25);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:800;display:inline-flex;align-items:center;gap:4px;">⭐ ${(v.round || 'RATING').toUpperCase()}</span>`;
 
           const scoreBadge = v.type === 'favorite'
             ? `<span style="font-weight:800;color:#ef4444;font-size:13px;">❤️ +1</span>`
@@ -12046,6 +12157,12 @@ function renderPublicVotes() {
           `;
         }).join('');
 
+    const categoryBadge = cat 
+      ? `<span style="font-size:10px;background:rgba(124,58,237,0.1);color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(124,58,237,0.2);">${cat.name}</span>`
+      : (p._isDiscoveredFromVotes 
+          ? `<span style="font-size:10px;background:rgba(59,130,246,0.1);color:#3b82f6;padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(59,130,246,0.2);">Global Record</span>`
+          : `<span style="font-size:10px;background:rgba(124,58,237,0.1);color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(124,58,237,0.2);">${p.category || 'General'}</span>`);
+
     return `
       <div class="card" style="background:var(--surface2);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);margin-bottom:12px;">
         <!-- Header -->
@@ -12056,7 +12173,7 @@ function renderPublicVotes() {
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <span style="font-weight:800;font-size:16px;color:var(--text);font-family:var(--fh);">${p.name}</span>
                 ${p.age ? `<span style="font-size:11px;color:var(--text-muted);font-weight:700;">(Age ${p.age})</span>` : ''}
-                <span style="font-size:10px;background:rgba(124,58,237,0.1);color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(124,58,237,0.2);">${cat ? cat.name : (p.category || 'General')}</span>
+                ${categoryBadge}
                 <span class="badge ${roundBadge(p.round)}" style="font-size:10px;">${(p.round || 'Audition').toUpperCase()}</span>
               </div>
               <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
@@ -12115,20 +12232,60 @@ function renderPublicVotes() {
 
 function exportPublicVotesCSV() {
   const s = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
-  const publicVotes = s.publicVotes || {};
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId || String(activeEventId) === '0');
+  let publicVotes = s.publicVotes || {};
+  if (!publicVotes || Object.keys(publicVotes).length === 0) {
+    try {
+      const cached = localStorage.getItem('knsdc_public_votes');
+      if (cached) publicVotes = JSON.parse(cached);
+    } catch (e) {}
+  }
+
+  const eventFilter = document.getElementById('publicvotes-event-filter')?.value || 'all';
+  const roundFilter = document.getElementById('publicvotes-round-filter')?.value || 'all';
+
+  const candidateMap = new Map();
+  (participants || []).forEach(p => {
+    if (p && p.id) candidateMap.set(String(p.id).trim().toLowerCase(), { ...p, id: String(p.id).trim() });
+  });
+  if (Array.isArray(s.participants)) {
+    s.participants.forEach(p => {
+      if (p && p.id && !candidateMap.has(String(p.id).trim().toLowerCase())) {
+        candidateMap.set(String(p.id).trim().toLowerCase(), { ...p, id: String(p.id).trim() });
+      }
+    });
+  }
+  Object.keys(publicVotes).forEach(key => {
+    const lastUnderscore = key.lastIndexOf('_');
+    const pid = lastUnderscore > 0 ? key.slice(0, lastUnderscore).trim() : key.trim();
+    if (pid && !candidateMap.has(pid.toLowerCase())) {
+      candidateMap.set(pid.toLowerCase(), {
+        id: pid,
+        name: `Candidate #${pid}`,
+        category: 'Public Voting',
+        round: lastUnderscore > 0 ? key.slice(lastUnderscore + 1) : 'Audition',
+        eventId: 'all'
+      });
+    }
+  });
+
+  let candidates = Array.from(candidateMap.values());
+  if (eventFilter === 'current') {
+    candidates = candidates.filter(p => String(p.eventId) === String(activeEventId) || (!p.eventId && String(activeEventId) === '0'));
+  }
 
   const rows = [
     ['Participant ID', 'Participant Name', 'Category', 'Participant Round', 'Voter Name', 'Voter Phone', 'Vote Type', 'Round', 'Score', 'Timestamp']
   ];
 
-  eventParticipants.forEach(p => {
-    const pId = String(p.id);
+  candidates.forEach(p => {
+    const pId = String(p.id).trim();
+    const pIdLower = pId.toLowerCase();
     const cat = categories.find(c => String(c.id) === String(p.catId));
     const catName = cat ? cat.name : (p.category || 'General');
 
     Object.keys(publicVotes).forEach(key => {
-      if (key === `${pId}_favorite`) {
+      const kLower = key.toLowerCase();
+      if (kLower === `${pIdLower}_favorite` && roundFilter !== 'ratings') {
         const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
         votes.forEach(v => {
           rows.push([
@@ -12136,16 +12293,16 @@ function exportPublicVotesCSV() {
             p.name,
             catName,
             p.round || 'Audition',
-            v.name || 'Anonymous',
-            v.phone || '',
+            v.name || v.voterName || 'Anonymous',
+            v.phone || v.phoneNumber || '',
             'Favorite Like ❤️',
             'Favorite',
             v.score || 10,
             (v.timestamp || v.ts) ? new Date(v.timestamp || v.ts).toISOString() : ''
           ]);
         });
-      } else if (key.startsWith(`${pId}_`)) {
-        const roundPart = key.slice((pId + '_').length);
+      } else if (kLower.startsWith(`${pIdLower}_`) && roundFilter !== 'favorite') {
+        const roundPart = key.slice(pIdLower.length + 1);
         const votes = Array.isArray(publicVotes[key]) ? publicVotes[key] : [];
         votes.forEach(v => {
           rows.push([
@@ -12153,8 +12310,8 @@ function exportPublicVotesCSV() {
             p.name,
             catName,
             p.round || 'Audition',
-            v.name || 'Anonymous',
-            v.phone || '',
+            v.name || v.voterName || 'Anonymous',
+            v.phone || v.phoneNumber || '',
             'Score Rating ⭐',
             roundPart.toUpperCase(),
             v.score || 0,
@@ -12166,14 +12323,17 @@ function exportPublicVotesCSV() {
 
     if (Array.isArray(p.publicVotes)) {
       p.publicVotes.forEach(v => {
+        const isFav = v.type === 'favorite';
+        if (roundFilter === 'favorite' && !isFav) return;
+        if (roundFilter === 'ratings' && isFav) return;
         rows.push([
           p.id,
           p.name,
           catName,
           p.round || 'Audition',
-          v.name || 'Anonymous',
-          v.phone || '',
-          v.type === 'favorite' ? 'Favorite Like ❤️' : 'Score Rating ⭐',
+          v.name || v.voterName || 'Anonymous',
+          v.phone || v.phoneNumber || '',
+          isFav ? 'Favorite Like ❤️' : 'Score Rating ⭐',
           v.round || 'Audition',
           v.score || 0,
           (v.ts || v.timestamp) ? new Date(v.ts || v.timestamp).toISOString() : ''
@@ -12192,7 +12352,7 @@ function exportPublicVotesCSV() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `Public_Votes_${activeEventId || 'all'}_${Date.now()}.csv`);
+  link.setAttribute('download', `Public_Votes_${eventFilter}_${Date.now()}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
