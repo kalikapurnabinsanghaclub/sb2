@@ -14093,8 +14093,25 @@ function renderCertificateSettings() {
     const img = document.getElementById(`preview-sig-${id}`);
     const btn = document.getElementById(`clear-sig-${id}`);
     if (input) input.value = '';
-    if (img) { img.removeAttribute('src'); img.style.display = 'none'; }
+    if (img) {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+      img.onerror = function() {
+        this.style.display = 'none';
+        if (btn) btn.style.display = 'none';
+        const parent = this.parentElement;
+        if (parent && !parent.querySelector('.sig-broken-warning')) {
+          const warn = document.createElement('div');
+          warn.className = 'sig-broken-warning';
+          warn.style.cssText = 'color:#ef4444;font-size:11px;font-weight:700;margin-top:6px;background:#fef2f2;padding:6px 10px;border-radius:6px;border:1px solid #fecaca;display:flex;align-items:center;gap:6px;';
+          warn.innerHTML = '⚠️ Previous image link expired or unreachable. Please upload a fresh signature file.';
+          parent.appendChild(warn);
+        }
+      };
+    }
     if (btn) btn.style.display = 'none';
+    const existingWarn = img && img.parentElement ? img.parentElement.querySelector('.sig-broken-warning') : null;
+    if (existingWarn) existingWarn.remove();
   });
 
   const state = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : (window.syncEngine ? window.syncEngine.state : {});
@@ -14635,9 +14652,52 @@ async function saveEventSettings() {
   }
 }
 
+async function fileToTransparentSigBase64(file) {
+  if (!file) return null;
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      if (typeof Image === 'undefined') {
+        resolve(e.target.result);
+        return;
+      }
+      const img = new Image();
+      img.onload = function() {
+        const maxDim = 800;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(e.target.result);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 function previewSignature(input, previewId, clearBtnId) {
   const img = document.getElementById(previewId);
   const btn = clearBtnId ? document.getElementById(clearBtnId) : null;
+  const parent = img ? img.parentElement : null;
+  const existingWarn = parent ? parent.querySelector('.sig-broken-warning') : null;
+  if (existingWarn) existingWarn.remove();
+
   if (input.files && input.files[0]) {
     const reader = new FileReader();
     reader.onload = e => { 
@@ -14662,6 +14722,10 @@ async function clearSignature(inputId, previewId, clearBtnId) {
   if (img) { img.removeAttribute('src'); img.style.display = 'none'; }
   if (btn) btn.style.display = 'none';
 
+  const parent = img ? img.parentElement : null;
+  const existingWarn = parent ? parent.querySelector('.sig-broken-warning') : null;
+  if (existingWarn) existingWarn.remove();
+
   if (switchStates.certificateSetup) {
     if (inputId.includes('sec')) switchStates.certificateSetup.secretary = null;
     if (inputId.includes('judge')) switchStates.certificateSetup.judge = null;
@@ -14685,7 +14749,7 @@ async function saveCertificateSignatures() {
   isSavingCert = true;
   // Broadened selector to catch the button regardless of its CSS color class
   const btn = document.querySelector('#st-certificate button');
-  if (btn) { btn.disabled = true; btn.innerText = 'UPLOADING...'; }
+  if (btn) { btn.disabled = true; btn.innerText = 'SAVING...'; }
   toast('Processing signatures...');
   
   try {
@@ -14713,11 +14777,16 @@ async function saveCertificateSignatures() {
             console.warn(`[Monitor] Notice deleting previous ${sigType} signature:`, delErr);
           }
         }
-        // 2. Upload new signature file to Cloudflare R2
-        const ext = input.files[0].name.split('.').pop() || 'png';
-        const customKey = `events/${activeEventId}/certificates/${sigType}_sig_${Date.now()}.${ext}`;
-        const url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`, customKey);
-        if (!url) throw new Error("Failed to upload signature file for " + inputId.replace('cert-sig-', ''));
+        // 2. Compress to permanent transparent PNG Base64 Data URL (immune to broken image URLs)
+        let url = await fileToTransparentSigBase64(input.files[0]);
+        if (!url) {
+          try {
+            const ext = input.files[0].name.split('.').pop() || 'png';
+            const customKey = `events/${activeEventId}/certificates/${sigType}_sig_${Date.now()}.${ext}`;
+            url = await syncEngine.uploadFile(input.files[0], `events/${activeEventId}/certificates/`, customKey);
+          } catch(upErr) {}
+        }
+        if (!url) throw new Error("Failed to process signature file for " + inputId.replace('cert-sig-', ''));
         return url;
       } else if (preview && preview.style.display !== 'none') {
         const src = preview.getAttribute('src');
