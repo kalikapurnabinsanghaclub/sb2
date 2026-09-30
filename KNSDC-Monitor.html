@@ -11871,30 +11871,10 @@ function renderPublicVotes() {
     }
   } catch (e) {}
 
-  // D) Discover any participant IDs directly from publicVotes keys!
-  // Format is `${participantId}_favorite` or `${participantId}_${round}`
-  Object.keys(publicVotes).forEach(key => {
-    const lastUnderscore = key.lastIndexOf('_');
-    const pid = lastUnderscore > 0 ? key.slice(0, lastUnderscore).trim() : key.trim();
-    if (!pid) return;
-    const pKey = pid.toLowerCase();
-    if (!candidateMap.has(pKey)) {
-      candidateMap.set(pKey, {
-        id: pid,
-        name: `Candidate #${pid}`,
-        category: 'Public Voting',
-        round: lastUnderscore > 0 ? key.slice(lastUnderscore + 1) : 'Audition',
-        eventId: 'all',
-        _isDiscoveredFromVotes: true
-      });
-    }
-  });
-
   // 2. Filter candidates based on Event Filter
   let allCandidateList = Array.from(candidateMap.values());
   if (eventFilter === 'current') {
     allCandidateList = allCandidateList.filter(p => {
-      if (p._isDiscoveredFromVotes && !p.eventId) return false;
       return String(p.eventId) === String(activeEventId) || (!p.eventId && String(activeEventId) === '0');
     });
   }
@@ -12159,9 +12139,7 @@ function renderPublicVotes() {
 
     const categoryBadge = cat 
       ? `<span style="font-size:10px;background:rgba(124,58,237,0.1);color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(124,58,237,0.2);">${cat.name}</span>`
-      : (p._isDiscoveredFromVotes 
-          ? `<span style="font-size:10px;background:rgba(59,130,246,0.1);color:#3b82f6;padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(59,130,246,0.2);">Global Record</span>`
-          : `<span style="font-size:10px;background:rgba(124,58,237,0.1);color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(124,58,237,0.2);">${p.category || 'General'}</span>`);
+      : `<span style="font-size:10px;background:rgba(124,58,237,0.1);color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:800;border:1px solid rgba(124,58,237,0.2);">${p.category || 'General'}</span>`;
 
     return `
       <div class="card" style="background:var(--surface2);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);margin-bottom:12px;">
@@ -12254,19 +12232,6 @@ function exportPublicVotesCSV() {
       }
     });
   }
-  Object.keys(publicVotes).forEach(key => {
-    const lastUnderscore = key.lastIndexOf('_');
-    const pid = lastUnderscore > 0 ? key.slice(0, lastUnderscore).trim() : key.trim();
-    if (pid && !candidateMap.has(pid.toLowerCase())) {
-      candidateMap.set(pid.toLowerCase(), {
-        id: pid,
-        name: `Candidate #${pid}`,
-        category: 'Public Voting',
-        round: lastUnderscore > 0 ? key.slice(lastUnderscore + 1) : 'Audition',
-        eventId: 'all'
-      });
-    }
-  });
 
   let candidates = Array.from(candidateMap.values());
   if (eventFilter === 'current') {
