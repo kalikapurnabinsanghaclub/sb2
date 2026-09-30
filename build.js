@@ -11,8 +11,14 @@ if (!fs.existsSync(dist)) {
 }
 
 // Copy files and essential asset folders to dist with minimal memory footprint
-const allowedExts = ['.html', '.css', '.js', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.txt', '.xml'];
-const allowedDirs = ['lib', 'assets', 'parsers', 'sections', 'cluball'];
+const allowedExts = [
+  '.html', '.css', '.js', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.txt', '.xml',
+  '.mp4', '.webm', '.ogg', '.mp3', '.wav', '.webp'
+];
+const allowedDirs = [
+  'lib', 'assets', 'parsers', 'sections', 'cluball',
+  'video', 'previesly work with', 'cultural', 'Sports', 'social', 'public'
+];
 
 const entries = fs.readdirSync(__dirname);
 entries.forEach(item => {
@@ -34,6 +40,15 @@ entries.forEach(item => {
   }
 });
 
+// Also create an alias for 'previesly%20work%20with' to support both decoded and literal encoded URLs
+const prevSrc = path.join(__dirname, 'previesly work with');
+if (fs.existsSync(prevSrc)) {
+  const encodedDest = path.join(dist, 'previesly%20work%20with');
+  if (!fs.existsSync(encodedDest)) {
+    fs.cpSync(prevSrc, encodedDest, { recursive: true });
+  }
+}
+
 // Create directory aliases for clean URLs on static hosting
 const staticAliases = [
   { src: 'KNSDC-Monitor.html', dir: 'monitor' },
@@ -51,4 +66,4 @@ staticAliases.forEach(({ src, dir }) => {
   }
 });
 
-console.log('✅ [Build] Successfully generated dist/ directory with clean static aliases!');
+console.log('✅ [Build] Successfully generated dist/ directory with all video, image assets, and clean static aliases!');
