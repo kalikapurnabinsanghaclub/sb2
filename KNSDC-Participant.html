@@ -2461,6 +2461,44 @@ function toast(msg) {
 // 1. App Init
 function initApp() {
   initServiceWorkerAndWakeLock();
+
+  // ── Auto-Login from Encrypted Token or URL Parameters ──
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const authParam = urlParams.get('auth') || urlParams.get('token');
+    const rawId = urlParams.get('id');
+
+    let targetId = null;
+    if (authParam) {
+      try {
+        let b64 = authParam.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        const decoded = decodeURIComponent(atob(b64));
+        if (decoded.includes('::')) {
+          targetId = decoded.split('::')[0];
+        } else {
+          const parsed = JSON.parse(decoded);
+          targetId = parsed.id;
+        }
+      } catch(e) {
+        console.warn('Invalid auth token:', e);
+      }
+    } else if (rawId) {
+      targetId = rawId.trim();
+    }
+
+    if (targetId) {
+      localStorage.setItem('knsdc_participant_id', targetId);
+      // Clean query parameters from URL bar for privacy & security
+      window.history.replaceState({}, document.title, window.location.pathname);
+      autoLogin(targetId);
+      toast('✅ Welcome! Logged in via direct access link.');
+      return;
+    }
+  } catch(err) {
+    console.warn('[Participant Portal] Direct login error:', err);
+  }
+
   const storedId = localStorage.getItem('knsdc_participant_id');
   if (storedId) {
     autoLogin(storedId);
