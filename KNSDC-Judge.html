@@ -6936,23 +6936,25 @@ function parseMentions(txt) {
 }
 
 function openFloatChat() {
-  floatChatOpen = true;
   const panel = document.getElementById('float-chat-panel');
-  if (panel) {
-    panel.classList.remove('hidden');
-    panel.style.setProperty('display', 'flex', 'important');
-    panel.style.setProperty('z-index', '99999', 'important');
-    panel.style.setProperty('visibility', 'visible', 'important');
-    panel.style.setProperty('opacity', '1', 'important');
-    const dot = document.getElementById('float-unread-dot');
-    if (dot) dot.style.display = 'none';
-    setTimeout(() => {
-      const fmc = document.getElementById('float-chat-msgs');
-      if (fmc) fmc.scrollTop = fmc.scrollHeight;
-      const finp = document.getElementById('float-chat-inp');
-      if (finp) finp.focus();
-    }, 150);
-  }
+  if (!panel) return;
+  const isAlreadyVisible = floatChatOpen && !panel.classList.contains('hidden') && panel.style.display !== 'none';
+  if (isAlreadyVisible) return;
+
+  floatChatOpen = true;
+  panel.classList.remove('hidden');
+  panel.style.setProperty('display', 'flex', 'important');
+  panel.style.setProperty('z-index', '99999', 'important');
+  panel.style.setProperty('visibility', 'visible', 'important');
+  panel.style.setProperty('opacity', '1', 'important');
+  const dot = document.getElementById('float-unread-dot');
+  if (dot) dot.style.display = 'none';
+  setTimeout(() => {
+    const fmc = document.getElementById('float-chat-msgs');
+    if (fmc) fmc.scrollTop = fmc.scrollHeight;
+    const finp = document.getElementById('float-chat-inp');
+    if (finp) finp.focus();
+  }, 150);
 }
 
 function closeFloatChat() {
@@ -6992,8 +6994,12 @@ function handleDirectStaffChatMessage(m) {
   const isSelf = (JUDGE.name && fromStr.toLowerCase().includes(JUDGE.name.toLowerCase())) || (m.role === 'judge');
 
   if (!isSelf && m.text && (judgeMentionRegex.test(m.text) || (judgeNameRegex && judgeNameRegex.test(m.text)))) {
-    const msgKey = 'knsdc_seen_judge_msg_' + (m.id || m.timestamp);
-    sessionStorage.setItem(msgKey, 'true');
+    const msgId = String(m.id || m.timestamp || m.text || '');
+    if (!msgId) return;
+    window._seenJudgeMentionIds = window._seenJudgeMentionIds || new Set();
+    if (window._seenJudgeMentionIds.has(msgId)) return;
+    window._seenJudgeMentionIds.add(msgId);
+    try { sessionStorage.setItem('knsdc_seen_judge_msg_' + msgId, 'true'); } catch(e) {}
     openFloatChat();
     if (window.staffAudio) staffAudio.playChime();
     if (navigator.vibrate) {
@@ -7077,6 +7083,7 @@ function addMsg(from, text, type='out', sos=false) {
   };
   chatMessages.push(msgObj);
   chatMessages = chatMessages.slice(-100);
+  window._lastJudgeChatHash = null;
 
   // Staff messages only in chatMessages
   const curState = (syncEngine.state || (syncEngine.getData ? syncEngine.getData() : {})) || {};
@@ -7543,37 +7550,49 @@ syncEngine.subscribe((state) => {
       return true;
     });
 
-    const emptyNotice = `<div style="text-align:center; color:var(--text-muted); font-size:12px; margin:auto; padding:30px 10px; opacity:0.7;">No staff messages for this event yet.</div>`;
-    const msgHtml = chatMessages.length === 0 ? emptyNotice : chatMessages.map(m => {
-      const type = (m.role === 'judge') ? 'out' : 'in';
-      const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
-      
-      let inlineStyle = '';
-      if (m.sos) inlineStyle = 'color:var(--rose)';
-      if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
-
-      const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
-      const parts = dispFrom.split(' · ');
-      const rolePart = parts[0];
-      const namePart = parts.slice(1).join(' · ');
-      const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
-
-      return `<div class="cmsg ${type}${m.sos?' sos':''}" style="${inlineStyle}">
-        <div class="cmeta">${styledFrom} · ${m.time || ''} ${m.eventId && m.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
-        <div>${parseMentions(m.text)}</div>
-      </div>`;
-    }).join('');
-    
+    // Smart render: only update DOM if the chat messages actually changed to stop blinking/refreshing!
+    const currentChatHash = chatMessages.map(m => (m.id || m.timestamp || '') + ':' + (m.text || '')).join('|');
     const mc = document.getElementById('chat-msgs');
-    if(mc) { mc.innerHTML = msgHtml; mc.scrollTop = mc.scrollHeight; }
     const fmc = document.getElementById('float-chat-msgs');
-    if(fmc) { fmc.innerHTML = msgHtml; fmc.scrollTop = fmc.scrollHeight; }
+
+    if (window._lastJudgeChatHash !== currentChatHash) {
+      window._lastJudgeChatHash = currentChatHash;
+      
+      const emptyNotice = `<div style="text-align:center; color:var(--text-muted); font-size:12px; margin:auto; padding:30px 10px; opacity:0.7;">No staff messages for this event yet.</div>`;
+      const msgHtml = chatMessages.length === 0 ? emptyNotice : chatMessages.map(m => {
+        const type = (m.role === 'judge') ? 'out' : 'in';
+        const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
+        
+        let inlineStyle = '';
+        if (m.sos) inlineStyle = 'color:var(--rose)';
+        if (isMentioned) inlineStyle += (inlineStyle ? ';' : '') + 'background: rgba(16, 185, 129, 0.25) !important; border: 1px solid rgba(16, 185, 129, 0.8) !important;';
+
+        const dispFrom = (m.from || 'Staff').replace(/undefined|null|Loading\.\.\./gi, 'Staff');
+        const parts = dispFrom.split(' · ');
+        const rolePart = parts[0];
+        const namePart = parts.slice(1).join(' · ');
+        const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
+
+        return `<div class="cmsg ${type}${m.sos?' sos':''}" style="${inlineStyle}">
+          <div class="cmeta">${styledFrom} · ${m.time || ''} ${m.eventId && m.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
+          <div>${parseMentions(m.text)}</div>
+        </div>`;
+      }).join('');
+      
+      if(mc) { mc.innerHTML = msgHtml; mc.scrollTop = mc.scrollHeight; }
+      if(fmc) {
+        const wasAtBottom = fmc.scrollHeight - fmc.scrollTop <= fmc.clientHeight + 40;
+        fmc.innerHTML = msgHtml;
+        if (wasAtBottom) fmc.scrollTop = fmc.scrollHeight;
+      }
+    }
 
     // ── AUTOMATIC POPUP & ALERTS ON @judge MENTION ──
     const judgeMentionRegex = /@(judge|judges|all)/i;
     const judgeNameRegex = JUDGE.name ? new RegExp('@' + JUDGE.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
 
     // Check if ANY recent message (within last 15 minutes) tags judge and hasn't been acknowledged in this session
+    window._seenJudgeMentionIds = window._seenJudgeMentionIds || new Set();
     const recentMention = chatMessages.slice().reverse().find(m => {
       const fromStr = String(m.from || '');
       const isSelf = (JUDGE.name && fromStr.toLowerCase().includes(JUDGE.name.toLowerCase())) || (m.role === 'judge');
@@ -7585,9 +7604,17 @@ syncEngine.subscribe((state) => {
     });
 
     if (recentMention) {
-      const msgKey = 'knsdc_seen_judge_msg_' + (recentMention.id || recentMention.timestamp);
-      if (!sessionStorage.getItem(msgKey)) {
-        sessionStorage.setItem(msgKey, 'true');
+      const msgId = String(recentMention.id || recentMention.timestamp || recentMention.text || '');
+      let alreadySeen = false;
+      if (msgId) {
+        if (window._seenJudgeMentionIds.has(msgId)) alreadySeen = true;
+        try {
+          if (sessionStorage.getItem('knsdc_seen_judge_msg_' + msgId)) alreadySeen = true;
+        } catch(e) {}
+      }
+      if (!alreadySeen && msgId) {
+        window._seenJudgeMentionIds.add(msgId);
+        try { sessionStorage.setItem('knsdc_seen_judge_msg_' + msgId, 'true'); } catch(e) {}
         openFloatChat();
         if (window.staffAudio) staffAudio.playChime();
         if (navigator.vibrate) {
