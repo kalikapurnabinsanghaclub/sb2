@@ -6549,9 +6549,16 @@ function syncAll() {
     newState.participants = [...participants];
     if (!newState.publicVotes) newState.publicVotes = {};
     newState.judges = [...judges];
-    // Merge: keep helpdesk messages (with participantId) from current state, and replace staff messages with chatHistory
-    const existingHelpdeskMsgs = (newState.chatMessages || []).filter(m => m.participantId);
-    newState.chatMessages = [...chatHistory, ...existingHelpdeskMsgs];
+    // Staff messages are strictly stored in chatMessages (no participant helpdesk messages)
+    newState.chatMessages = [...chatHistory];
+    // Helpdesk messages are strictly stored in helpdeskMessages
+    const existingHelpdeskMsgs = [...(newState.helpdeskMessages || []), ...(s.helpdeskMessages || []), ...(s.chatMessages || [])].filter(m => m.participantId || m.senderRole === 'participant');
+    const seenHIds = new Set();
+    newState.helpdeskMessages = existingHelpdeskMsgs.filter(m => {
+      if (!m || !m.id || seenHIds.has(m.id)) return false;
+      seenHIds.add(m.id);
+      return true;
+    });
     newState.judgeAgreements = [...agreements];
     newState.hostAssignments = [...hostAssignments];
     newState.partnerAssignments = [...partnerAssignments];
@@ -18445,7 +18452,13 @@ function renderHelpdesk() {
   // ONLY show messages that belong to the Helpdesk (within 5 hours)
   const FIVE_HOURS = 5 * 60 * 60 * 1000;
   const now = Date.now();
-  const msgs = (state.chatMessages || []).filter(m => m.participantId && m.senderRole && (now - m.timestamp <= FIVE_HOURS));
+  const rawHelpMsgs = [...(state.helpdeskMessages || []), ...(state.chatMessages || [])];
+  const seenPmsgIds = new Set();
+  const msgs = rawHelpMsgs.filter(m => {
+    if (!m || !m.id || seenPmsgIds.has(m.id)) return false;
+    seenPmsgIds.add(m.id);
+    return m.participantId && m.senderRole && (now - m.timestamp <= FIVE_HOURS);
+  });
   
   // Group by participant
   const byUser = {};
@@ -18695,7 +18708,7 @@ let _lastChatIds = new Set();
 setInterval(() => {
   if (!window.syncEngine) return;
   const state = window.syncEngine.getData() || {};
-  const msgs = state.chatMessages || [];
+  const msgs = [...(state.helpdeskMessages || []), ...(state.chatMessages || [])];
   const curEventId = String(activeEventId || '');
   
   let newFound = false;

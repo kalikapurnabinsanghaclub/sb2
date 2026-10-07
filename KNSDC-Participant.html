@@ -5518,7 +5518,13 @@ function renderChatMessages() {
   const state = window.syncEngine.getData() || {};
   const FIVE_HOURS = 5 * 60 * 60 * 1000;
   const now = Date.now();
-  const msgs = (state.chatMessages || []).filter(m => String(m.participantId) === String(CURRENT_USER) && (now - m.timestamp <= FIVE_HOURS));
+  const rawMsgs = [...(state.helpdeskMessages || []), ...(state.chatMessages || [])];
+  const seenIds = new Set();
+  const msgs = rawMsgs.filter(m => {
+    if (!m || !m.id || seenIds.has(m.id)) return false;
+    seenIds.add(m.id);
+    return String(m.participantId) === String(CURRENT_USER) && (now - m.timestamp <= FIVE_HOURS);
+  });
   
   const container = document.getElementById('chat-messages-container');
   if (!container) return;

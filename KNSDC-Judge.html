@@ -2086,10 +2086,7 @@
         <span class="mchip" onclick="insMention('@host')">@host</span>
         <span class="mchip" onclick="insMention('@judge')">@judge</span>
       </div>
-      <div class="chat-msgs" id="chat-msgs">
-        <div class="cmsg in"><div class="cmeta">Monitor · Suresh · 09:45</div>Good morning judges! Please be seated by 9:30.</div>
-        <div class="cmsg in"><div class="cmeta">Host · Priya · 09:46</div>Stage check done ✅ We start in 15 mins!</div>
-      </div>
+      <div class="chat-msgs" id="chat-msgs"></div>
       <div class="chat-input-row">
         <input type="text" id="chat-inp" placeholder="Type… use @monitor @host @judge" onkeydown="if(event.key==='Enter')sendMsg()"/>
         <button class="send-btn" onclick="sendMsg()">➤</button>
@@ -7081,16 +7078,14 @@ function addMsg(from, text, type='out', sos=false) {
   chatMessages.push(msgObj);
   chatMessages = chatMessages.slice(-100);
 
-  // Preserve helpdesk messages when updating state so Judge never wipes participant messages
+  // Staff messages only in chatMessages
   const curState = (syncEngine.state || (syncEngine.getData ? syncEngine.getData() : {})) || {};
-  const existingHelpdeskMsgs = (curState.chatMessages || []).filter(m => m.participantId);
-  const otherStaffMsgs = (curState.chatMessages || []).filter(m => !m.participantId && m.id !== msgObj.id);
+  const otherStaffMsgs = (curState.chatMessages || []).filter(m => !m.participantId && m.senderRole !== 'participant' && m.role !== 'participant' && m.id !== msgObj.id);
   const combinedStaff = [...otherStaffMsgs, msgObj].slice(-100);
-  const allChatMsgs = [...combinedStaff, ...existingHelpdeskMsgs];
 
   syncEngine.setData(s => ({
     ...s,
-    chatMessages: allChatMsgs
+    chatMessages: combinedStaff
   }));
 }
 
@@ -7516,14 +7511,14 @@ syncEngine.subscribe((state) => {
     scoringParticipantId = currentOnStage;
   }
   if (state.switchStates) switchStates = state.switchStates;
-  if (state.chatMessages) {
-    // ── STRICT FILTERING: Show ONLY staff chat assigned to this event / station (NO PARTICIPANT/HELPDESK) ──
-    const judgeEventId = String(JUDGE.eventId || state.activeEventId || '').trim();
-    const activeEvId = String(state.activeEventId || '').trim();
-
+  if (state.chatMessages || state.helpdeskMessages) {
+    // ── STRICT FILTERING: Show ONLY staff chat assigned to THIS SAME EVENT (NO PARTICIPANT/HELPDESK) ──
+    const myEventId = String(JUDGE.eventId || state.activeEventId || '').trim();
     const ALLOWED_STAFF_ROLES = ['admin', 'monitor', 'host', 'judge'];
 
-    chatMessages = state.chatMessages.filter(m => {
+    const rawList = state.chatMessages || [];
+
+    chatMessages = rawList.filter(m => {
       if (!m) return false;
       // 1. Strictly exclude participants (participants are NOT staff)
       if (m.participantId) return false;
@@ -7536,27 +7531,20 @@ syncEngine.subscribe((state) => {
       const isAuthorizedStaff = ALLOWED_STAFF_ROLES.includes(role) || ALLOWED_STAFF_ROLES.includes(fromRole);
       if (!isAuthorizedStaff) return false;
 
-      // 3. Allow global Admin messages and SOS broadcasts across all staff
-      if (role === 'admin' || fromRole === 'admin') return true;
+      // 3. Global Admin announcements and emergency SOS are allowed across all events
+      if (role === 'admin' || fromRole === 'admin' || m.sos) return true;
 
-      // 4. If message explicitly tags @judge or @all, it is directly meant for this judge!
-      if (m.text && /@(judge|judges|all)/i.test(m.text)) return true;
-
-      // 5. For staff messages tagged with an eventId, ensure it matches this Judge's assigned event
-      if (m.eventId) {
-        const mEv = String(m.eventId).trim();
-        if (judgeEventId && judgeEventId !== '0' && mEv === judgeEventId) return true;
-        if (activeEvId && mEv === activeEvId) return true;
-        if (!activeEvId && (!judgeEventId || judgeEventId === '0')) return true;
-        return false;
+      // 4. STRICT SAME-EVENT FILTER: Message must belong to the exact same event as this Judge!
+      const mEv = m.eventId ? String(m.eventId).trim() : null;
+      if (myEventId && myEventId !== '0') {
+        if (mEv && mEv !== myEventId) return false;
       }
 
-      // 6. Staff messages with no eventId are treated as station/event-wide staff messages
       return true;
     });
 
-    // Re-render both chat interfaces
-    const msgHtml = chatMessages.map(m => {
+    const emptyNotice = `<div style="text-align:center; color:var(--text-muted); font-size:12px; margin:auto; padding:30px 10px; opacity:0.7;">No staff messages for this event yet.</div>`;
+    const msgHtml = chatMessages.length === 0 ? emptyNotice : chatMessages.map(m => {
       const type = (m.role === 'judge') ? 'out' : 'in';
       const isMentioned = m.text && /@(monitor|judge|admin|host)/i.test(m.text);
       
