@@ -638,10 +638,10 @@
   }
 
   /* FLOATING CHAT */
-  .chat-fab { position: fixed; bottom: 32px; right: 32px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, var(--amber2), var(--amber)); border: none; cursor: pointer; font-size: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(245,158,11,0.3); z-index: 500; transition: all 0.3s; touch-action: none; }
+  .chat-fab { position: fixed; bottom: 32px; right: 32px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, var(--amber2), var(--amber)); border: none; cursor: pointer; font-size: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(245,158,11,0.3); z-index: 99998 !important; transition: all 0.3s; touch-action: none; }
   .chat-fab:hover { transform: scale(1.1) rotate(-5deg); box-shadow: 0 10px 30px rgba(245,158,11,0.4); }
-  .chat-float { position: fixed; bottom: 104px; right: 32px; width: 380px; max-height: 550px; background: var(--surface); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; box-shadow: 0 20px 50px rgba(15,23,42,0.12); z-index: 500; display: flex; flex-direction: column; overflow: hidden; animation: slideRight 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
-  .chat-float.hidden { display: none; }
+  .chat-float { position: fixed; bottom: 104px; right: 32px; width: 380px; max-height: 550px; background: var(--surface); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; box-shadow: 0 20px 50px rgba(15,23,42,0.25); z-index: 99999 !important; display: flex; flex-direction: column; overflow: hidden; animation: slideRight 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+  .chat-float.hidden { display: none !important; }
   .chat-float .chat-hd { padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--surface2); display: flex; justify-content: space-between; align-items: center; }
   .chat-float .chat-msgs { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: var(--surface); min-height: 200px; max-height: 300px; }
   .chat-float .chat-input-row { display: flex; gap: 10px; padding: 16px; border-top: 1px solid var(--border); background: var(--surface2); }
@@ -6929,8 +6929,108 @@ function insMention(m, inputId = 'chat-inp') {
 
 function parseMentions(txt) {
   if (!txt) return '';
-  return txt.replace(/@(monitor|host|judge|admin)/gi, m => `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`);
+  return txt.replace(/@(monitor|host|judge|admin)/gi, m => {
+    const isJudgeMention = /^@judge/i.test(m);
+    if (isJudgeMention) {
+      return `<span style="color:#000; font-weight:800; background:var(--gold2); padding:2px 8px; border-radius:6px; font-size:11px; box-shadow: 0 0 8px rgba(240,180,41,0.5);">${m}</span>`;
+    }
+    return `<span style="color:#fff; font-weight:800; background:var(--blue); padding:2px 6px; border-radius:6px; font-size:11px;">${m}</span>`;
+  });
 }
+
+function openFloatChat() {
+  floatChatOpen = true;
+  const panel = document.getElementById('float-chat-panel');
+  if (panel) {
+    panel.classList.remove('hidden');
+    panel.style.setProperty('display', 'flex', 'important');
+    panel.style.setProperty('z-index', '99999', 'important');
+    panel.style.setProperty('visibility', 'visible', 'important');
+    panel.style.setProperty('opacity', '1', 'important');
+    const dot = document.getElementById('float-unread-dot');
+    if (dot) dot.style.display = 'none';
+    setTimeout(() => {
+      const fmc = document.getElementById('float-chat-msgs');
+      if (fmc) fmc.scrollTop = fmc.scrollHeight;
+      const finp = document.getElementById('float-chat-inp');
+      if (finp) finp.focus();
+    }, 150);
+  }
+}
+
+function closeFloatChat() {
+  floatChatOpen = false;
+  const panel = document.getElementById('float-chat-panel');
+  if (panel) {
+    panel.classList.add('hidden');
+    panel.style.setProperty('display', 'none', 'important');
+  }
+}
+
+function toggleFloatChat() {
+  const panel = document.getElementById('float-chat-panel');
+  if (!panel) return;
+  const isHidden = panel.classList.contains('hidden') || panel.style.display === 'none';
+  if (isHidden) {
+    openFloatChat();
+  } else {
+    closeFloatChat();
+  }
+}
+window.openFloatChat = openFloatChat;
+window.closeFloatChat = closeFloatChat;
+window.toggleFloatChat = toggleFloatChat;
+
+function handleDirectStaffChatMessage(m) {
+  if (!m) return;
+  if (m.participantId || m.senderRole === 'participant' || m.role === 'participant') return;
+  const ALLOWED_STAFF_ROLES = ['admin', 'monitor', 'host', 'judge'];
+  const role = String(m.role || m.senderRole || '').toLowerCase().trim();
+  const fromRole = m.from ? String(m.from).split(' · ')[0].toLowerCase().trim() : '';
+  if (!ALLOWED_STAFF_ROLES.includes(role) && !ALLOWED_STAFF_ROLES.includes(fromRole)) return;
+
+  const judgeMentionRegex = /@(judge|judges|all)/i;
+  const judgeNameRegex = JUDGE.name ? new RegExp('@' + JUDGE.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+  const fromStr = String(m.from || '');
+  const isSelf = (JUDGE.name && fromStr.toLowerCase().includes(JUDGE.name.toLowerCase())) || (m.role === 'judge');
+
+  if (!isSelf && m.text && (judgeMentionRegex.test(m.text) || (judgeNameRegex && judgeNameRegex.test(m.text)))) {
+    const msgKey = 'knsdc_seen_judge_msg_' + (m.id || m.timestamp);
+    sessionStorage.setItem(msgKey, 'true');
+    openFloatChat();
+    if (window.staffAudio) staffAudio.playChime();
+    if (navigator.vibrate) {
+      try { navigator.vibrate([200, 100, 200, 100, 300]); } catch(e) {}
+    }
+    if (typeof toast === 'function') {
+      const sender = m.from ? m.from.split(' · ')[0] : 'Monitor';
+      toast(`💬 ${sender} tagged @judge: "${m.text.slice(0, 45)}${m.text.length > 45 ? '...' : ''}"`);
+    }
+  }
+}
+
+// Sub-millisecond cross-tab communication
+if (typeof BroadcastChannel !== 'undefined') {
+  try {
+    const staffChatChannel = new BroadcastChannel('knsdc_staff_chat_channel');
+    staffChatChannel.onmessage = (e) => {
+      if (e.data && e.data.type === 'staff_chat_message' && e.data.message) {
+        handleDirectStaffChatMessage(e.data.message);
+      }
+    };
+  } catch(e) {}
+}
+
+window.addEventListener('storage', (e) => {
+  if (e.key === 'knsdc_latest_staff_chat' && e.newValue) {
+    try {
+      const parsed = JSON.parse(e.newValue);
+      if (parsed && parsed.msg) {
+        handleDirectStaffChatMessage(parsed.msg);
+      }
+    } catch(err) {}
+  }
+});
 
 function addMsg(from, text, type='out', sos=false) {
   const now = new Date();
@@ -6951,7 +7051,7 @@ function addMsg(from, text, type='out', sos=false) {
   const namePart = parts.slice(1).join(' · ');
   const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
 
-  const evId = syncEngine.state ? syncEngine.state.activeEventId : null;
+  const evId = JUDGE.eventId || (syncEngine.state ? syncEngine.state.activeEventId : null);
   el.innerHTML = `<div class="cmeta">${styledFrom} · ${timeStr}</div><div>${parseMentions(text)}</div>`;
   
   const mc = document.getElementById('chat-msgs');
@@ -6967,24 +7067,31 @@ function addMsg(from, text, type='out', sos=false) {
   }
 
   // Add to local state array and sync (capped to latest 100 messages)
-  const msgObj = { from, text, type, sos, time: timeStr, timestamp: now.getTime(), role: 'judge', eventId: evId };
+  const msgObj = { 
+    id: 'msg_' + now.getTime() + '_' + Math.random().toString(36).substr(2, 5),
+    from, 
+    text, 
+    type, 
+    sos, 
+    time: timeStr, 
+    timestamp: now.getTime(), 
+    role: 'judge', 
+    eventId: evId ? String(evId) : null 
+  };
   chatMessages.push(msgObj);
   chatMessages = chatMessages.slice(-100);
-  syncEngine.updateState({ chatMessages });
 
+  // Preserve helpdesk messages when updating state so Judge never wipes participant messages
+  const curState = (syncEngine.state || (syncEngine.getData ? syncEngine.getData() : {})) || {};
+  const existingHelpdeskMsgs = (curState.chatMessages || []).filter(m => m.participantId);
+  const otherStaffMsgs = (curState.chatMessages || []).filter(m => !m.participantId && m.id !== msgObj.id);
+  const combinedStaff = [...otherStaffMsgs, msgObj].slice(-100);
+  const allChatMsgs = [...combinedStaff, ...existingHelpdeskMsgs];
 
-}
-
-
-function toggleFloatChat() {
-  floatChatOpen = !floatChatOpen;
-  const panel = document.getElementById('float-chat-panel');
-  panel.classList.toggle('hidden', !floatChatOpen);
-  if(floatChatOpen) {
-    document.getElementById('float-unread-dot').style.display = 'none';
-    const mc = document.getElementById('float-chat-msgs');
-    mc.scrollTop = mc.scrollHeight;
-  }
+  syncEngine.setData(s => ({
+    ...s,
+    chatMessages: allChatMsgs
+  }));
 }
 
 function sendFloatMsg() {
@@ -7410,7 +7517,44 @@ syncEngine.subscribe((state) => {
   }
   if (state.switchStates) switchStates = state.switchStates;
   if (state.chatMessages) {
-    chatMessages = state.chatMessages.filter(m => m.eventId === state.activeEventId || m.role === 'admin');
+    // ── STRICT FILTERING: Show ONLY staff chat assigned to this event / station (NO PARTICIPANT/HELPDESK) ──
+    const judgeEventId = String(JUDGE.eventId || state.activeEventId || '').trim();
+    const activeEvId = String(state.activeEventId || '').trim();
+
+    const ALLOWED_STAFF_ROLES = ['admin', 'monitor', 'host', 'judge'];
+
+    chatMessages = state.chatMessages.filter(m => {
+      if (!m) return false;
+      // 1. Strictly exclude participants (participants are NOT staff)
+      if (m.participantId) return false;
+      if (m.senderRole === 'participant' || m.role === 'participant') return false;
+      if (m.from && /participant/i.test(m.from)) return false;
+
+      // 2. Staff messages are EXCLUSIVELY used by: admin, monitor, host, judge
+      const role = String(m.role || m.senderRole || '').toLowerCase().trim();
+      const fromRole = m.from ? String(m.from).split(' · ')[0].toLowerCase().trim() : '';
+      const isAuthorizedStaff = ALLOWED_STAFF_ROLES.includes(role) || ALLOWED_STAFF_ROLES.includes(fromRole);
+      if (!isAuthorizedStaff) return false;
+
+      // 3. Allow global Admin messages and SOS broadcasts across all staff
+      if (role === 'admin' || fromRole === 'admin') return true;
+
+      // 4. If message explicitly tags @judge or @all, it is directly meant for this judge!
+      if (m.text && /@(judge|judges|all)/i.test(m.text)) return true;
+
+      // 5. For staff messages tagged with an eventId, ensure it matches this Judge's assigned event
+      if (m.eventId) {
+        const mEv = String(m.eventId).trim();
+        if (judgeEventId && judgeEventId !== '0' && mEv === judgeEventId) return true;
+        if (activeEvId && mEv === activeEvId) return true;
+        if (!activeEvId && (!judgeEventId || judgeEventId === '0')) return true;
+        return false;
+      }
+
+      // 6. Staff messages with no eventId are treated as station/event-wide staff messages
+      return true;
+    });
+
     // Re-render both chat interfaces
     const msgHtml = chatMessages.map(m => {
       const type = (m.role === 'judge') ? 'out' : 'in';
@@ -7427,7 +7571,7 @@ syncEngine.subscribe((state) => {
       const styledFrom = namePart ? `<span style="font-weight:800;color:var(--accent);">${rolePart}</span> <span style="font-size:10px;color:var(--text-muted);">&bull; ${namePart}</span>` : `<span style="font-weight:800;color:var(--accent);">${rolePart}</span>`;
 
       return `<div class="cmsg ${type}${m.sos?' sos':''}" style="${inlineStyle}">
-        <div class="cmeta">${styledFrom} · ${m.time} ${m.eventId && m.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
+        <div class="cmeta">${styledFrom} · ${m.time || ''} ${m.eventId && m.role === 'admin' ? `<span style="font-size:9px;opacity:0.5;">(${m.eventId})</span>` : ''}</div>
         <div>${parseMentions(m.text)}</div>
       </div>`;
     }).join('');
@@ -7437,56 +7581,66 @@ syncEngine.subscribe((state) => {
     const fmc = document.getElementById('float-chat-msgs');
     if(fmc) { fmc.innerHTML = msgHtml; fmc.scrollTop = fmc.scrollHeight; }
 
-    // Play chime and check mentions for new incoming messages
-    if(chatMessages.length > 0) {
-      const last = chatMessages[chatMessages.length-1];
-      window.lastProcessedChatTimestamp = window.lastProcessedChatTimestamp || 0;
-      
-      if (last.timestamp && last.timestamp > window.lastProcessedChatTimestamp) {
-        window.lastProcessedChatTimestamp = last.timestamp;
-        
-        if(!last.from.includes(JUDGE.name)) {
-          if(window.staffAudio) staffAudio.playChime();
-          
-          // Check for @judge mentions
-          if (last.text && /@(judge|all)/i.test(last.text)) {
-            // Auto-open floating chatbox so judge can respond immediately
+    // ── AUTOMATIC POPUP & ALERTS ON @judge MENTION ──
+    const judgeMentionRegex = /@(judge|judges|all)/i;
+    const judgeNameRegex = JUDGE.name ? new RegExp('@' + JUDGE.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+
+    // Check if ANY recent message (within last 15 minutes) tags judge and hasn't been acknowledged in this session
+    const recentMention = chatMessages.slice().reverse().find(m => {
+      const fromStr = String(m.from || '');
+      const isSelf = (JUDGE.name && fromStr.toLowerCase().includes(JUDGE.name.toLowerCase())) || (m.role === 'judge');
+      if (isSelf) return false;
+      const isTag = m.text && (judgeMentionRegex.test(m.text) || (judgeNameRegex && judgeNameRegex.test(m.text)));
+      if (!isTag) return false;
+      const isRecent = (Date.now() - (m.timestamp || 0)) < 15 * 60 * 1000;
+      return isRecent;
+    });
+
+    if (recentMention) {
+      const msgKey = 'knsdc_seen_judge_msg_' + (recentMention.id || recentMention.timestamp);
+      if (!sessionStorage.getItem(msgKey)) {
+        sessionStorage.setItem(msgKey, 'true');
+        openFloatChat();
+        if (window.staffAudio) staffAudio.playChime();
+        if (navigator.vibrate) {
+          try { navigator.vibrate([200, 100, 200, 100, 300]); } catch(e) {}
+        }
+        if (typeof toast === 'function') {
+          const sender = recentMention.from ? recentMention.from.split(' · ')[0] : 'Monitor';
+          toast(`💬 ${sender} tagged @judge: "${recentMention.text.slice(0, 45)}${recentMention.text.length > 45 ? '...' : ''}"`);
+        }
+      }
+    }
+
+    // Unread count and incoming chime tracking
+    if (!window.lastProcessedChatTimestamp && chatMessages.length > 0) {
+      window.lastProcessedChatTimestamp = Math.max(...chatMessages.map(m => m.timestamp || 0));
+    } else if (chatMessages.length > 0) {
+      const curThreshold = window.lastProcessedChatTimestamp || 0;
+      const newMsgs = chatMessages.filter(m => (m.timestamp || 0) > curThreshold);
+      if (newMsgs.length > 0) {
+        window.lastProcessedChatTimestamp = Math.max(...newMsgs.map(m => m.timestamp || 0));
+        const incoming = newMsgs.filter(m => {
+          const fromStr = String(m.from || '');
+          return !(JUDGE.name && fromStr.toLowerCase().includes(JUDGE.name.toLowerCase())) && m.role !== 'judge';
+        });
+        if (incoming.length > 0) {
+          if (window.staffAudio) staffAudio.playChime();
+          if (currentPage !== 'chat') {
+            chatBadgeCount = (chatBadgeCount || 0) + incoming.length;
+            const badge = document.getElementById('chat-badge');
+            if (badge) {
+              badge.style.display = 'inline-flex';
+              badge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
+            }
+            const mobBadge = document.getElementById('mobile-chat-badge');
+            if (mobBadge) {
+              mobBadge.style.display = 'inline-flex';
+              mobBadge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
+            }
             if (!floatChatOpen) {
-              floatChatOpen = true;
-              const panel = document.getElementById('float-chat-panel');
-              if (panel) {
-                panel.classList.remove('hidden');
-                // Scroll to bottom after opening
-                setTimeout(() => {
-                  const fmc = document.getElementById('float-chat-msgs');
-                  if (fmc) fmc.scrollTop = fmc.scrollHeight;
-                  // Focus input for quick reply
-                  const finp = document.getElementById('float-chat-inp');
-                  if (finp) finp.focus();
-                }, 200);
-              }
               const dot = document.getElementById('float-unread-dot');
-              if (dot) dot.style.display = 'none';
-            }
-
-            // Vibrate device (mobile/tablet) to alert the judge
-            if (navigator.vibrate) {
-              try { navigator.vibrate([200, 100, 200, 100, 300]); } catch(e) {}
-            }
-
-            // Update chat badge on sidebar/mobile nav
-            if (currentPage !== 'chat') {
-              chatBadgeCount++;
-              const badge = document.getElementById('chat-badge');
-              if (badge) {
-                badge.style.display = 'inline-flex';
-                badge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
-              }
-              const mobBadge = document.getElementById('mobile-chat-badge');
-              if (mobBadge) {
-                mobBadge.style.display = 'inline-flex';
-                mobBadge.textContent = chatBadgeCount > 9 ? '9+' : chatBadgeCount;
-              }
+              if (dot) dot.style.display = 'block';
             }
           }
         }

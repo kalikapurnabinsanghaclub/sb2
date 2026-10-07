@@ -6275,8 +6275,14 @@ function hydrate() {
   hostAssignments = (s.hostAssignments || []).filter(h => h && h.email && h.email.trim().toLowerCase() !== 'x@' && h.email.trim().toLowerCase() !== 'x');
   partnerAssignments = s.partnerAssignments || [];
   directorAssignments = s.directorAssignments || [];
-  // Only load STAFF chat messages (those WITHOUT a participantId field, which is used exclusively by Helpdesk)
-  chatHistory = (s.chatMessages || []).filter(m => !m.participantId);
+  // Only load STAFF chat messages (exclusively: admin, monitor, host, judge; participants strictly excluded)
+  const ALLOWED_STAFF_ROLES = ['admin', 'monitor', 'host', 'judge'];
+  chatHistory = (s.chatMessages || []).filter(m => {
+    if (!m || m.participantId || m.senderRole === 'participant' || m.role === 'participant') return false;
+    const r = String(m.role || m.senderRole || '').toLowerCase().trim();
+    const fr = m.from ? String(m.from).split(' · ')[0].toLowerCase().trim() : '';
+    return ALLOWED_STAFF_ROLES.includes(r) || ALLOWED_STAFF_ROLES.includes(fr);
+  });
   sosActive = s.sosActive || false;
   sosHistory = s.sosHistory || [];
   
@@ -16062,10 +16068,14 @@ function renderGlobalChat() {
   if (fb) fb.innerHTML = '';
   if (pb) pb.innerHTML = '';
   
+  const ALLOWED_STAFF_ROLES = ['admin', 'monitor', 'host', 'judge'];
   const filteredChat = chatHistory.filter(m => {
-    // Only show staff messages (no participantId) and match the event
-    if (m.participantId) return false;
-    return m.eventId === activeEventId || m.role === 'admin';
+    // Only show authorized staff messages (no participants) and match the event
+    if (!m || m.participantId || m.senderRole === 'participant' || m.role === 'participant') return false;
+    const r = String(m.role || m.senderRole || '').toLowerCase().trim();
+    const fr = m.from ? String(m.from).split(' · ')[0].toLowerCase().trim() : '';
+    if (!ALLOWED_STAFF_ROLES.includes(r) && !ALLOWED_STAFF_ROLES.includes(fr)) return false;
+    return !m.eventId || String(m.eventId) === String(activeEventId) || r === 'admin' || fr === 'admin';
   });
   
   filteredChat.forEach(m => {
@@ -16262,7 +16272,17 @@ function updateSOSUI() {
 function addChatMsg(from,text,type='out',sos=false){
   const now=new Date();
   const time=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-  const msg={from,text,type,sos,time, timestamp: now.getTime(), role: 'monitor', eventId: activeEventId};
+  const msg={
+    id: 'msg_' + now.getTime() + '_' + Math.random().toString(36).substr(2, 5),
+    from,
+    text,
+    type,
+    sos,
+    time,
+    timestamp: now.getTime(),
+    role: 'monitor',
+    eventId: activeEventId ? String(activeEventId) : null
+  };
   chatHistory.push(msg);
   const el=buildMsgEl(msg);
   const fb=document.getElementById('float-chat-msgs');
@@ -16286,6 +16306,16 @@ function addChatMsg(from,text,type='out',sos=false){
     if(window.staffAudio) staffAudio.playChime();
   }
   syncAll();
+
+  // Instant sub-millisecond tab-to-tab dispatch
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel('knsdc_staff_chat_channel');
+      bc.postMessage({ type: 'staff_chat_message', message: msg });
+      bc.close();
+    }
+    localStorage.setItem('knsdc_latest_staff_chat', JSON.stringify({ msg, ts: Date.now() }));
+  } catch(e) {}
 }
 
 function sendFloatMsg(){
