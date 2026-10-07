@@ -696,10 +696,10 @@
         <div style="width:100%; aspect-ratio: 4/5; background:#000; border-radius:16px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,0.5); margin-bottom:15px; cursor:grab; touch-action:pan-y;" id="poster-preview-container">
           <canvas id="poster-canvas" style="width:100%; height:100%; display:block; position:relative; z-index:2; pointer-events:none;"></canvas>
           <!-- Live camera overlay -->
-          <video id="selfie-video" autoplay playsinline muted style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:16px; z-index:1;"></video>
-          <div id="camera-overlay" style="display:none; position:absolute; bottom:15px; left:0; right:0; justify-content:center; gap:12px; z-index:10;">
-            <button onclick="captureFromCamera()" style="background:#fff; color:#000; border:none; border-radius:50%; width:60px; height:60px; font-size:26px; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.4);">📷</button>
-            <button onclick="stopCamera()" style="background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:50%; width:60px; height:60px; font-size:22px; cursor:pointer;">✕</button>
+          <video id="selfie-video" autoplay playsinline muted style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:16px; z-index:1; transform:scaleX(-1);"></video>
+          <div id="camera-overlay" style="display:none; position:absolute; bottom:15px; left:0; right:0; justify-content:center; gap:16px; z-index:10;">
+            <button onclick="captureFromCamera()" title="Capture Photo" style="background:#fff; color:#000; border:3px solid rgba(255,255,255,0.8); border-radius:50%; width:64px; height:64px; font-size:28px; cursor:pointer; box-shadow:0 6px 20px rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">📸</button>
+            <button onclick="stopCamera()" title="Close Camera" style="background:rgba(0,0,0,0.7); color:#fff; border:1px solid rgba(255,255,255,0.3); border-radius:50%; width:44px; height:44px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; align-self:center;">✕</button>
           </div>
 
           <!-- Navigation chevrons (left / right) for swipe & click -->
@@ -712,10 +712,15 @@
           </div>
         </div>
 
-        <!-- Selfie / Camera button -->
-        <button onclick="openCamera()" id="selfie-btn" style="background:var(--surface); color:var(--text); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border-radius:12px; font-weight:700; font-size:14px; cursor:pointer; margin-bottom:12px; width:100%; box-sizing:border-box; box-shadow:0 4px 10px rgba(0,0,0,0.05);">
-          📸 Snap a Selfie for your Poster
-        </button>
+        <!-- Photo Capture / Upload Controls -->
+        <div style="display:flex; gap:10px; margin-bottom:12px;">
+          <button onclick="openCamera()" id="selfie-btn" style="flex:1; background:var(--surface); color:var(--text); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:6px; padding:12px 6px; border-radius:12px; font-weight:700; font-size:13px; cursor:pointer; box-sizing:border-box; box-shadow:0 4px 10px rgba(0,0,0,0.05); transition:all 0.2s;">
+            📸 Snap HD Selfie
+          </button>
+          <button onclick="uploadPosterPhoto()" id="upload-photo-btn" style="flex:1; background:var(--surface); color:var(--text); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:6px; padding:12px 6px; border-radius:12px; font-weight:700; font-size:13px; cursor:pointer; box-sizing:border-box; box-shadow:0 4px 10px rgba(0,0,0,0.05); transition:all 0.2s;">
+            🖼️ Upload Photo
+          </button>
+        </div>
 
         <button onclick="sharePoster()" id="share-now-btn" style="background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; width:100%; padding:15px; border-radius:12px; font-weight:800; font-size:16px; border:none; cursor:pointer; box-shadow:0 6px 15px rgba(59,130,246,0.3); margin-bottom:8px;">
           📲 Share Now
@@ -1552,51 +1557,74 @@ function closeShareModal() {
   }
 }
 
-// ---- Live Camera ----
-function openCamera() {
+// ---- Live Camera (HD Stream & High-Res Capture) ----
+async function openCamera() {
   const video = document.getElementById('selfie-video');
   const overlay = document.getElementById('camera-overlay');
   const canvas = document.getElementById('poster-canvas');
   
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
-    .then(stream => {
-      cameraStream = stream;
-      video.srcObject = stream;
-      video.style.display = 'block';
-      canvas.style.display = 'block'; // Keep canvas visible
-      overlay.style.display = 'flex';
-      window._isCameraLive = true;
-      selectFrame(currentShareColor); // Re-render canvas as transparent overlay
-    })
-    .catch(() => {
-      toast('Camera not available. Please upload a photo instead.');
-      // Fallback: open file picker
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = 'image/*';
-      inp.onchange = e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (temporarySelfieUrl) URL.revokeObjectURL(temporarySelfieUrl);
-        temporarySelfieUrl = URL.createObjectURL(file);
-        selectFrame(currentShareColor);
-      };
-      inp.click();
-    });
+  if (cameraStream) {
+    stopCamera();
+  }
+
+  // Request high-resolution selfie camera
+  const constraintsList = [
+    { video: { facingMode: 'user', width: { ideal: 1920, min: 1080 }, height: { ideal: 1920, min: 1080 } }, audio: false },
+    { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+    { video: { facingMode: 'user' }, audio: false }
+  ];
+
+  let stream = null;
+  for (const c of constraintsList) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(c);
+      if (stream) break;
+    } catch (e) {
+      // try fallback
+    }
+  }
+
+  if (!stream) {
+    toast('Camera not accessible. Please upload a photo instead.');
+    uploadPosterPhoto();
+    return;
+  }
+
+  cameraStream = stream;
+  video.srcObject = stream;
+  video.style.display = 'block';
+  canvas.style.display = 'block';
+  overlay.style.display = 'flex';
+  window._isCameraLive = true;
+  selectFrame(currentShareColor);
 }
 
 function captureFromCamera() {
   const video = document.getElementById('selfie-video');
+  if (!video || !video.videoWidth) {
+    toast('Camera warming up... Please tap capture again.');
+    return;
+  }
+  const vW = video.videoWidth;
+  const vH = video.videoHeight;
   const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = video.videoWidth;
-  tempCanvas.height = video.videoHeight;
-  tempCanvas.getContext('2d').drawImage(video, 0, 0);
+  tempCanvas.width = vW;
+  tempCanvas.height = vH;
+  const tCtx = tempCanvas.getContext('2d');
+  tCtx.imageSmoothingEnabled = true;
+  tCtx.imageSmoothingQuality = 'high';
+
+  // Front camera mirror effect so photo matches preview
+  tCtx.translate(vW, 0);
+  tCtx.scale(-1, 1);
+  tCtx.drawImage(video, 0, 0, vW, vH);
+
   tempCanvas.toBlob(blob => {
     if (temporarySelfieUrl) URL.revokeObjectURL(temporarySelfieUrl);
     temporarySelfieUrl = URL.createObjectURL(blob);
     stopCamera();
     selectFrame(currentShareColor);
-  }, 'image/jpeg', 0.95);
+  }, 'image/jpeg', 0.98);
 }
 
 function stopCamera() {
@@ -1607,12 +1635,30 @@ function stopCamera() {
     cameraStream.getTracks().forEach(t => t.stop());
     cameraStream = null;
   }
-  video.srcObject = null;
-  video.style.display = 'none';
-  canvas.style.display = 'block';
-  overlay.style.display = 'none';
+  if (video) {
+    video.srcObject = null;
+    video.style.display = 'none';
+  }
+  if (canvas) canvas.style.display = 'block';
+  if (overlay) overlay.style.display = 'none';
   window._isCameraLive = false;
 }
+
+function uploadPosterPhoto() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (temporarySelfieUrl) URL.revokeObjectURL(temporarySelfieUrl);
+    temporarySelfieUrl = URL.createObjectURL(file);
+    stopCamera();
+    selectFrame(currentShareColor);
+  };
+  inp.click();
+}
+window.uploadPosterPhoto = uploadPosterPhoto;
 
 function selectFrame(colorHex) {
   if (colorHex && colorHex.startsWith('#')) {
@@ -1656,15 +1702,15 @@ function selectFrame(colorHex) {
   drawPosterOnCanvas(currentShareColor, pData);
 }
 
-// ---- Canvas Poster Renderer ----
+// ---- Canvas Poster Renderer (Ultra-HD 1200x1500px Engine) ----
 function drawWavesBorder(ctx, W, H, pad, color, shadowColor) {
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
+  ctx.lineWidth = Math.max(3, Math.round(W * 0.0075));
   ctx.shadowColor = shadowColor;
-  ctx.shadowBlur = 10;
-  const step = 15;
-  const amp = 6;
+  ctx.shadowBlur = Math.round(W * 0.025);
+  const step = Math.round(W * 0.04);
+  const amp = Math.round(W * 0.015);
 
   const drawWaves = (startX, endX, y, isBottom) => {
     ctx.beginPath();
@@ -1703,10 +1749,15 @@ function drawLeafBorder(ctx, W, H, pad, color, shadowColor) {
   ctx.save();
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = Math.max(2, Math.round(W * 0.005));
   ctx.shadowColor = shadowColor;
-  ctx.shadowBlur = 8;
-  const step = 20;
+  ctx.shadowBlur = Math.round(W * 0.02);
+  const step = Math.round(W * 0.05);
+  const rx1 = Math.round(W * 0.01);
+  const ry1 = Math.round(W * 0.02);
+  const rx2 = Math.round(W * 0.02);
+  const ry2 = Math.round(W * 0.01);
+  const offset = Math.round(W * 0.015);
 
   const drawLeaves = (startX, endX, y, isVertical) => {
     ctx.beginPath();
@@ -1720,11 +1771,11 @@ function drawLeafBorder(ctx, W, H, pad, color, shadowColor) {
     while ((dir === 1 && curr + step <= endX) || (dir === -1 && curr - step >= endX)) {
       ctx.beginPath();
       if (isVertical) {
-        ctx.ellipse(startX - 6, curr + step/2, 4, 8, Math.PI / 4, 0, 2 * Math.PI);
-        ctx.ellipse(startX + 6, curr + step/2, 4, 8, -Math.PI / 4, 0, 2 * Math.PI);
+        ctx.ellipse(startX - offset, curr + step/2, rx1, ry1, Math.PI / 4, 0, 2 * Math.PI);
+        ctx.ellipse(startX + offset, curr + step/2, rx1, ry1, -Math.PI / 4, 0, 2 * Math.PI);
       } else {
-        ctx.ellipse(curr + step/2, y - 6, 8, 4, Math.PI / 4, 0, 2 * Math.PI);
-        ctx.ellipse(curr + step/2, y + 6, 8, 4, -Math.PI / 4, 0, 2 * Math.PI);
+        ctx.ellipse(curr + step/2, y - offset, rx2, ry2, Math.PI / 4, 0, 2 * Math.PI);
+        ctx.ellipse(curr + step/2, y + offset, rx2, ry2, -Math.PI / 4, 0, 2 * Math.PI);
       }
       ctx.fill();
       curr += step * dir;
@@ -1742,13 +1793,13 @@ function drawDoubleLineBorder(ctx, W, H, pad, color, shadowColor) {
   ctx.save();
   ctx.strokeStyle = color;
   ctx.shadowColor = shadowColor;
-  ctx.shadowBlur = 15;
-  ctx.lineWidth = 3;
+  ctx.shadowBlur = Math.round(W * 0.035);
+  ctx.lineWidth = Math.max(3, Math.round(W * 0.0075));
   ctx.strokeRect(pad, pad, W - pad * 2, H - pad * 2);
   
   ctx.shadowBlur = 0;
-  ctx.lineWidth = 1;
-  const innerPad = pad + 6;
+  ctx.lineWidth = Math.max(1, Math.round(W * 0.0025));
+  const innerPad = pad + Math.round(W * 0.016);
   ctx.strokeRect(innerPad, innerPad, W - innerPad * 2, H - innerPad * 2);
   ctx.restore();
 }
@@ -1756,14 +1807,14 @@ function drawDoubleLineBorder(ctx, W, H, pad, color, shadowColor) {
 function drawGreekKeyBorder(ctx, W, H, pad, color, shadowColor) {
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
+  ctx.lineWidth = Math.max(3, Math.round(W * 0.0075));
   ctx.shadowColor = shadowColor;
-  ctx.shadowBlur = 15;
+  ctx.shadowBlur = Math.round(W * 0.035);
   ctx.lineCap = 'square';
   ctx.lineJoin = 'miter';
  
-  const S = 18;
-  const D = 9;
+  const S = Math.round(W * 0.048);
+  const D = Math.round(W * 0.024);
  
   const drawHorizontalKey = (startX, endX, y, isBottom) => {
     ctx.beginPath();
@@ -1822,19 +1873,23 @@ function drawGreekKeyBorder(ctx, W, H, pad, color, shadowColor) {
 }
 
 function drawPosterOnCanvas(frame, pData) {
-  const container = document.getElementById('poster-preview-container');
   const canvas = document.getElementById('poster-canvas');
-  const W = container.clientWidth;
-  const H = container.clientHeight;
+  if (!canvas) return;
+
+  // Ultra-HD 1200x1500px resolution (Instagram 4:5 Portrait HD)
+  const W = 1200;
+  const H = 1500;
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   _posterCanvas = null;
 
   const theme = POSTER_THEMES[currentThemeIndex] || POSTER_THEMES[0];
   const accent = theme.accent || frame || '#7c3aed';
   const border = theme.accent || frame || '#7c3aed';
-  const shadow = hexToRgba(accent === '#000000' ? '#333333' : accent, 0.8);
+  const shadow = hexToRgba(accent === '#000000' ? '#333333' : accent, 0.85);
   const grad1 = accent === '#000000' ? '#09090b' : adjustColorBrightness(accent, -110);
   const grad2 = accent === '#000000' ? '#18181b' : adjustColorBrightness(accent, -60);
   
@@ -1853,7 +1908,6 @@ function drawPosterOnCanvas(frame, pData) {
       grad.addColorStop(0, f.gradient[0]);
       grad.addColorStop(1, f.gradient[1]);
       ctx.fillStyle = grad;
-      ctx.roundRect ? ctx.beginPath() : null;
       ctx.fillRect(0, 0, W, H);
     } else {
       ctx.clearRect(0, 0, W, H); // Transparent background for live camera
@@ -1862,32 +1916,39 @@ function drawPosterOnCanvas(frame, pData) {
     // Photo as full background
     if (photoImg && !window._isCameraLive) {
       ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.globalAlpha = 1;
       // Draw photo cover
       const ir = photoImg.naturalWidth / photoImg.naturalHeight;
       const cr = W / H;
       let sx = 0, sy = 0, sw = photoImg.naturalWidth, sh = photoImg.naturalHeight;
-      if (ir > cr) { sw = photoImg.naturalHeight * cr; sx = (photoImg.naturalWidth - sw) / 2; }
-      else { sh = photoImg.naturalWidth / cr; sy = (photoImg.naturalHeight - sh) / 2; }
+      if (ir > cr) {
+        sw = photoImg.naturalHeight * cr;
+        sx = (photoImg.naturalWidth - sw) / 2;
+      } else {
+        sh = photoImg.naturalWidth / cr;
+        sy = (photoImg.naturalHeight - sh) / 2;
+      }
       ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, W, H);
       ctx.restore();
     }
 
     // Gradient overlays for text readability
     const topGrad = ctx.createLinearGradient(0, 0, 0, H * 0.32);
-    topGrad.addColorStop(0, 'rgba(0,0,0,0.9)');
+    topGrad.addColorStop(0, 'rgba(0,0,0,0.92)');
     topGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = topGrad;
     ctx.fillRect(0, 0, W, H * 0.32);
 
-    const btmGrad = ctx.createLinearGradient(0, H * 0.72, 0, H);
+    const btmGrad = ctx.createLinearGradient(0, H * 0.70, 0, H);
     btmGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    btmGrad.addColorStop(1, 'rgba(0,0,0,0.95)');
+    btmGrad.addColorStop(1, 'rgba(0,0,0,0.96)');
     ctx.fillStyle = btmGrad;
-    ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    ctx.fillRect(0, H * 0.70, W, H * 0.30);
 
     // Draw chosen border style in matching accent color
-    const padOuter = W * 0.035;
+    const padOuter = Math.round(W * 0.035);
     if (currentBorderStyle === 'greek') {
       drawGreekKeyBorder(ctx, W, H, padOuter, f.border, f.shadow);
     } else if (currentBorderStyle === 'wave') {
@@ -1899,15 +1960,15 @@ function drawPosterOnCanvas(frame, pData) {
     } else if (currentBorderStyle === 'line') {
       ctx.save();
       ctx.strokeStyle = f.border;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = Math.max(3, Math.round(W * 0.0075));
       ctx.shadowColor = f.shadow;
-      ctx.shadowBlur = 15;
+      ctx.shadowBlur = Math.round(W * 0.035);
       ctx.strokeRect(padOuter, padOuter, W - padOuter * 2, H - padOuter * 2);
       
       // Decorative corner brackets for line border
       ctx.strokeStyle = f.accent;
-      ctx.lineWidth = 3;
-      const len = W * 0.05;
+      ctx.lineWidth = Math.max(3, Math.round(W * 0.0075));
+      const len = Math.round(W * 0.05);
       // Top-Left
       ctx.beginPath(); ctx.moveTo(padOuter, padOuter + len); ctx.lineTo(padOuter, padOuter); ctx.lineTo(padOuter + len, padOuter); ctx.stroke();
       // Top-Right
@@ -1924,18 +1985,18 @@ function drawPosterOnCanvas(frame, pData) {
     const topY = H * 0.055;
 
     // Club / Organizer Name + Big Logo on the left
-    const orgFont = `800 ${W * 0.032}px 'Cinzel', 'Montserrat', 'Outfit', sans-serif`;
+    const orgFont = `800 ${Math.round(W * 0.032)}px 'Cinzel', 'Montserrat', 'Outfit', sans-serif`;
     ctx.font = orgFont;
     const orgMetrics = ctx.measureText(pData.orgName);
     
-    const badgePadX = W * 0.04;
-    const badgeH = Math.max(Math.round(W * 0.032 + H * 0.02), 34);
+    const badgePadX = Math.round(W * 0.04);
+    const badgeH = Math.max(Math.round(W * 0.032 + H * 0.02), Math.round(W * 0.075));
     const badgeW = orgMetrics.width + badgePadX * 2;
     
     // Big prominent Logo on the left side of organizer
     const logoDia = logoImg ? Math.round(W * 0.135) : 0;
     const logoRadius = logoDia / 2;
-    const gap = logoImg ? 12 : 0;
+    const gap = logoImg ? Math.round(W * 0.025) : 0;
     
     const totalGroupW = logoDia + gap + badgeW;
     const startX = (W - totalGroupW) / 2;
@@ -1948,9 +2009,9 @@ function drawPosterOnCanvas(frame, pData) {
     // 1. Draw Big Logo in White Circle on the left
     if (logoImg) {
       ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetY = 2;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+      ctx.shadowBlur = Math.round(W * 0.025);
+      ctx.shadowOffsetY = Math.round(W * 0.005);
 
       // Solid White Circle Background
       ctx.beginPath();
@@ -1960,6 +2021,8 @@ function drawPosterOnCanvas(frame, pData) {
 
       // Logo Image
       ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       const pad = logoRadius * 0.08;
       const drawR = logoRadius - pad;
       ctx.beginPath();
@@ -1974,7 +2037,7 @@ function drawPosterOnCanvas(frame, pData) {
       ctx.beginPath();
       ctx.arc(logoCenterX, rowCenterY, logoRadius, 0, Math.PI * 2);
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = Math.max(2.5, Math.round(W * 0.006));
       ctx.stroke();
       ctx.restore();
     }
@@ -1982,12 +2045,12 @@ function drawPosterOnCanvas(frame, pData) {
     // 2. Draw Glassmorphic Badge Background for Organizer Name
     ctx.save();
     const badgeGrad = ctx.createLinearGradient(badgeX, badgeY, badgeX + badgeW, badgeY + badgeH);
-    badgeGrad.addColorStop(0, 'rgba(15, 23, 42, 0.85)');
-    badgeGrad.addColorStop(0.5, 'rgba(30, 27, 75, 0.92)');
-    badgeGrad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
+    badgeGrad.addColorStop(0, 'rgba(15, 23, 42, 0.88)');
+    badgeGrad.addColorStop(0.5, 'rgba(30, 27, 75, 0.94)');
+    badgeGrad.addColorStop(1, 'rgba(15, 23, 42, 0.88)');
     ctx.fillStyle = badgeGrad;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    ctx.shadowBlur = Math.round(W * 0.025);
     ctx.beginPath();
     if (ctx.roundRect) {
       ctx.roundRect(badgeX, badgeY, badgeW, badgeH, badgeH / 2);
@@ -1998,8 +2061,8 @@ function drawPosterOnCanvas(frame, pData) {
 
     // Subtle border glow
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = Math.max(1, Math.round(W * 0.0025));
     ctx.stroke();
 
     // Render Organizer Name Text
@@ -2007,40 +2070,40 @@ function drawPosterOnCanvas(frame, pData) {
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#FFFFFF';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 6;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+    ctx.shadowBlur = Math.round(W * 0.015);
     if (ctx.letterSpacing !== undefined) {
-      ctx.letterSpacing = '1px';
+      ctx.letterSpacing = '1.5px';
     }
     ctx.fillText(pData.orgName, badgeX + badgeW / 2, rowCenterY);
     ctx.restore();
 
-    // Event name (from theme font & color, 10% smaller font size, 15px below top row)
+    // Event name
     const rowBottom = Math.max(rowCenterY + logoRadius, badgeY + badgeH);
-    const eventFontSize = W * 0.075 * 0.95 * 0.90; // 10% less px
-    const eventY = rowBottom + 15;
+    const eventFontSize = Math.round(W * 0.065);
+    const eventY = rowBottom + Math.round(H * 0.02);
     ctx.save();
     ctx.font = `900 ${eventFontSize}px ${theme.font}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = theme.eventColor || '#ffffff';
-    ctx.shadowColor = theme.glow || 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = theme.glow || 'rgba(0,0,0,0.85)';
+    ctx.shadowBlur = Math.round(W * 0.03);
     ctx.fillText(pData.eventName, W / 2, eventY);
     ctx.restore();
 
-    // Stylized Event Accent Line (Vibrant Glow or Crisp Solid Accent)
-    const accentLineY = eventY + eventFontSize + 8;
+    // Stylized Event Accent Line
+    const accentLineY = eventY + eventFontSize + Math.round(H * 0.012);
     ctx.save();
-    const lineGrad = ctx.createLinearGradient(W / 2 - W * 0.18, accentLineY, W / 2 + W * 0.18, accentLineY);
+    const lineGrad = ctx.createLinearGradient(W / 2 - W * 0.20, accentLineY, W / 2 + W * 0.20, accentLineY);
     if (theme.accent === '#000000') {
       lineGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
       lineGrad.addColorStop(0.3, 'rgba(255, 255, 255, 0.7)');
       lineGrad.addColorStop(0.5, '#FFFFFF');
       lineGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.7)');
       lineGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-      ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+      ctx.shadowBlur = Math.round(W * 0.01);
     } else {
       lineGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
       lineGrad.addColorStop(0.3, theme.accent);
@@ -2048,34 +2111,34 @@ function drawPosterOnCanvas(frame, pData) {
       lineGrad.addColorStop(0.7, theme.accent);
       lineGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.shadowColor = theme.glow;
-      ctx.shadowBlur = theme.isSolid ? 4 : 8;
+      ctx.shadowBlur = theme.isSolid ? Math.round(W * 0.01) : Math.round(W * 0.02);
     }
     ctx.strokeStyle = lineGrad;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = Math.max(3, Math.round(W * 0.007));
     ctx.beginPath();
-    ctx.moveTo(W / 2 - W * 0.18, accentLineY);
-    ctx.lineTo(W / 2 + W * 0.18, accentLineY);
+    ctx.moveTo(W / 2 - W * 0.20, accentLineY);
+    ctx.lineTo(W / 2 + W * 0.20, accentLineY);
     ctx.stroke();
     ctx.restore();
 
     // ---- BOTTOM SECTION ----
-    let currentY = H * 0.81;
+    let currentY = H * 0.80;
 
     // Participant Name (Theme font and theme color!)
     ctx.save();
-    ctx.font = `900 ${W * 0.088}px ${theme.font}`;
+    ctx.font = `900 ${Math.round(W * 0.088)}px ${theme.font}`;
     ctx.fillStyle = theme.nameColor;
     ctx.textAlign = 'center';
     ctx.shadowColor = theme.glow || 'rgba(0,0,0,0.95)';
-    ctx.shadowBlur = theme.isSolid ? 6 : 18;
+    ctx.shadowBlur = theme.isSolid ? Math.round(W * 0.015) : Math.round(W * 0.045);
     ctx.fillText(pData.name, W / 2, currentY);
     ctx.restore();
     
-    currentY += H * 0.024;
+    currentY += H * 0.026;
 
     // Category pill (Vibrant Glassmorphic Gradient from theme)
-    const catW = W * 0.64;
-    const catH = H * 0.044;
+    const catW = W * 0.65;
+    const catH = H * 0.046;
     const catX = (W - catW) / 2;
     
     ctx.save();
@@ -2084,7 +2147,7 @@ function drawPosterOnCanvas(frame, pData) {
     catGrad.addColorStop(1, theme.catGradient[1]);
     ctx.fillStyle = catGrad;
     ctx.shadowColor = theme.glow;
-    ctx.shadowBlur = theme.isSolid ? 6 : 12;
+    ctx.shadowBlur = theme.isSolid ? Math.round(W * 0.015) : Math.round(W * 0.03);
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(catX, currentY, catW, catH, catH / 2);
     else ctx.rect(catX, currentY, catW, catH);
@@ -2092,10 +2155,10 @@ function drawPosterOnCanvas(frame, pData) {
     
     ctx.shadowBlur = 0;
     ctx.strokeStyle = theme.borderColor || 'rgba(255, 255, 255, 0.45)';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = Math.max(1.5, Math.round(W * 0.0035));
     ctx.stroke();
     
-    ctx.font = `800 ${W * 0.036}px ${theme.font}`;
+    ctx.font = `800 ${Math.round(W * 0.036)}px ${theme.font}`;
     ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
@@ -2104,14 +2167,14 @@ function drawPosterOnCanvas(frame, pData) {
     
     currentY += catH + H * 0.022;
 
-    // Official Footer: Vote and Watch me at knsdc.in (Replaced per user request!)
+    // Official Footer: Vote and Watch me at knsdc.in
     ctx.save();
-    ctx.font = `800 ${W * 0.033}px ${theme.font}`;
+    ctx.font = `800 ${Math.round(W * 0.033)}px ${theme.font}`;
     ctx.fillStyle = theme.watermarkColor || '#FFFFFF';
     ctx.shadowColor = 'rgba(0,0,0,0.95)';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = Math.round(W * 0.025);
     ctx.textAlign = 'center';
-    if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '0.5px';
+    if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '1px';
     ctx.fillText('🗳️ Vote & Watch me at knsdc.in', W / 2, currentY + H * 0.015);
     ctx.restore();
 
@@ -2119,14 +2182,17 @@ function drawPosterOnCanvas(frame, pData) {
     _posterCanvas = canvas;
   };
 
-  // Load images
+  // Load images & await document.fonts.ready for razor-sharp rendering
   let photoImg = null;
   let logoImg = null;
   let loadedCount = 0;
   
-  const checkDone = () => {
+  const checkDone = async () => {
     loadedCount++;
     if (loadedCount === 2) {
+      if (document.fonts && document.fonts.ready) {
+        try { await document.fonts.ready; } catch(e){}
+      }
       doRender(photoImg, logoImg);
     }
   };
@@ -2154,7 +2220,7 @@ function getPosterBlob(callback) {
     toast('Please wait for the poster to render first!');
     return;
   }
-  _posterCanvas.toBlob(blob => callback(blob), 'image/jpeg', 0.95);
+  _posterCanvas.toBlob(blob => callback(blob), 'image/jpeg', 0.98);
 }
 
 function sharePoster() {
