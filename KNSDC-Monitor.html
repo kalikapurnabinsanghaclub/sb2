@@ -16265,17 +16265,19 @@ async function renderChatOnlineList(sendQuery = false){
   if (sendQuery && typeof syncEngine !== 'undefined') {
     if (typeof syncEngine.broadcastPresenceQuery === 'function') syncEngine.broadcastPresenceQuery();
     if (typeof syncEngine.broadcastStaffPresence === 'function') syncEngine.broadcastStaffPresence();
+    setTimeout(() => { renderChatOnlineList(false); }, 500);
+    setTimeout(() => { renderChatOnlineList(false); }, 1500);
   }
 
   let list = [];
   try {
     if(typeof syncEngine !== 'undefined' && syncEngine.listStaffMembers) {
-      list = await syncEngine.listStaffMembers();
+      list = await syncEngine.listStaffMembers(activeEventId);
     }
   } catch(e) { console.error(e); }
   
   if(list.length === 0) {
-    list = [{ name: 'No registered staff found', role: 'admin', online: false }];
+    list = [{ name: 'No registered staff found for this event', role: 'admin', online: false }];
   }
   
   el.innerHTML = list.map(c=>{
@@ -16309,9 +16311,8 @@ async function renderChatOnlineList(sendQuery = false){
 
 // Realtime presence reactive listener for Monitor portal
 window.onStaffPresenceChanged = function() {
-  const activePage = document.querySelector('.pp.active');
-  const pageId = activePage ? activePage.id.replace('pp-', '') : '';
-  if (pageId === 'chat') {
+  const el = document.getElementById('chat-online-list');
+  if (el) {
     renderChatOnlineList(false);
   }
 };

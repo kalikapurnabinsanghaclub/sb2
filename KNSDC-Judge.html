@@ -2847,6 +2847,7 @@ let JUDGE = {
   amount: 0,
   advance: 0
 };
+window.JUDGE = JUDGE;
 
 let SUBJECTS = [];
 let CATEGORIES = [];
@@ -3415,6 +3416,11 @@ function initIdentity() {
   }
   const fYear = document.getElementById('footer-year');
   if (fYear) fYear.textContent = new Date().getFullYear();
+
+  window.JUDGE = JUDGE;
+  if (typeof syncEngine !== 'undefined' && typeof syncEngine.broadcastStaffPresence === 'function') {
+    syncEngine.broadcastStaffPresence();
+  }
 
   checkAgreementStatus();
 }
@@ -7155,10 +7161,11 @@ async function renderOnlineList(sendQuery = false) {
     if (typeof syncEngine.broadcastStaffPresence === 'function') syncEngine.broadcastStaffPresence();
   }
   
+  const targetEvId = (typeof JUDGE !== 'undefined' && JUDGE.eventId) || (typeof syncEngine !== 'undefined' && syncEngine.state ? syncEngine.state.activeEventId : null);
   let list = [];
   try {
     if(typeof syncEngine !== 'undefined' && syncEngine.listStaffMembers) {
-      list = await syncEngine.listStaffMembers();
+      list = await syncEngine.listStaffMembers(targetEvId);
     }
   } catch(e) { console.error(e); }
   
@@ -7175,6 +7182,7 @@ async function renderOnlineList(sendQuery = false) {
     if(c.role === 'monitor') color = '#d97706';
     if(c.role === 'admin') color = '#e11d48';
     if(c.role === 'judge') color = '#059669';
+    if(c.role === 'host') color = '#8b5cf6';
     
     return `
     <div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(24,32,48,0.5)">
@@ -7193,11 +7201,17 @@ async function renderOnlineList(sendQuery = false) {
       <span class="mchip" onclick="insMention('@${(c.role || 'staff').toLowerCase()}')" style="font-size:10px;padding:2px 7px">@</span>
     </div>`;
   }).join('');
+
+  if (sendQuery) {
+    setTimeout(() => renderOnlineList(false), 500);
+    setTimeout(() => renderOnlineList(false), 1500);
+  }
 }
 
 // Realtime presence reactive listener for Judge portal
 window.onStaffPresenceChanged = function() {
-  if (currentPage === 'chat') {
+  const el = document.getElementById('online-list');
+  if (el) {
     renderOnlineList(false);
   }
 };

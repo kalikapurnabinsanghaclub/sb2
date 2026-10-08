@@ -994,6 +994,18 @@ async function checkAuth(requiredRoles) {
 }
 
 checkAuth(['host']);
+try {
+  const localUserStr = localStorage.getItem('kns_user');
+  if (localUserStr) {
+    const u = JSON.parse(localUserStr);
+    if (u.email) window.hostEmail = u.email.trim().toLowerCase();
+    if (u.name) window.hostName = u.name.trim();
+  }
+  if (window.syncEngine && typeof window.syncEngine.broadcastStaffPresence === 'function') {
+    window.syncEngine.broadcastStaffPresence();
+  }
+} catch(e) {}
+
 let participants = [];
 let categories = [];
 let subjects = [];
@@ -1017,7 +1029,13 @@ function updateSidebarUserInfo() {
   const cfg = ROLE_PROFILE_CONFIG[localRole] || ROLE_PROFILE_CONFIG.host;
   let name = 'Host', email = '';
   if (localUser) {
-    try { const u = JSON.parse(localUser); name = u.name || 'Host'; email = u.email || ''; } catch(e) {}
+    try {
+      const u = JSON.parse(localUser);
+      name = u.name || 'Host';
+      email = u.email || '';
+      if (email) window.hostEmail = email.trim().toLowerCase();
+      if (name) window.hostName = name.trim();
+    } catch(e) {}
   }
   const avatarEl = document.getElementById('sidebar-user-avatar');
   const nameEl = document.getElementById('sidebar-user-name');
@@ -1376,7 +1394,14 @@ syncEngine.subscribe((state) => {
 
   const events = state.events || [];
   let hostEmail = '';
-  try { hostEmail = JSON.parse(localStorage.getItem('kns_user')).email; } catch(e){}
+  let hostName = '';
+  try {
+    const u = JSON.parse(localStorage.getItem('kns_user'));
+    hostEmail = u.email || '';
+    hostName = u.name || '';
+  } catch(e){}
+  if (hostEmail) window.hostEmail = hostEmail.trim().toLowerCase();
+  if (hostName) window.hostName = hostName.trim();
   
   hostAssignedEventId = null;
   hostAssignedVenueId = null;
@@ -1385,6 +1410,7 @@ syncEngine.subscribe((state) => {
     // 1. Primary lookup: state.hostAssignments from Supabase database
     const hostAssignment = (state.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === hostEmail.toLowerCase());
     if (hostAssignment) {
+      if (hostAssignment.name && !window.hostName) window.hostName = hostAssignment.name;
       hostAssignedEventId = String(hostAssignment.eventId);
       hostAssignedVenueId = (hostAssignment.venueId !== undefined && hostAssignment.venueId !== null && hostAssignment.venueId !== '' && hostAssignment.venueId !== 'null' && hostAssignment.venueId !== 'undefined') ? String(hostAssignment.venueId) : null;
       hostAssignedVenueName = hostAssignment.venueName || null;
