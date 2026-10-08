@@ -10,6 +10,13 @@
 <script>
   window.CLOUDFLARE_UPLOAD_URL = 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
 </script>
+<script src="lib/qrcode.min.js"></script>
+<script>
+  // Fallback to CDN if local lib failed to load
+  if (typeof QRCode === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\\/script>');
+  }
+</script>
 <style>
   :root {
     --primary: #FF6B35;
@@ -405,6 +412,17 @@
 
 <main id="main" class="container">
   
+  <!-- CERTIFICATE VERIFICATION VIEW (Direct QR Scan) -->
+  <div id="cert-verify-view" class="card" style="display:none; text-align:center; padding:24px 20px;">
+    <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:rgba(16,185,129,0.12); color:#059669; margin-bottom:12px; box-shadow:0 0 0 6px rgba(16,185,129,0.06);">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    </div>
+    <div style="font-size:0.75rem; font-weight:800; letter-spacing:1.5px; color:#059669; text-transform:uppercase;">Official Verification System</div>
+    <h2 style="font-size:1.45rem; font-weight:900; color:var(--text); margin:6px 0 2px 0;">Certificate Verified</h2>
+    <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:18px;">Authentic participant credential issued by Kalikapur Nabin Sangha.</div>
+    <div id="cert-verify-content" style="text-align:left;"></div>
+  </div>
+
   <!-- LOGIN VIEW -->
   <div id="login-view" class="card">
     <h1>KNSDC Participant Portal</h1>
@@ -2528,11 +2546,38 @@ function toast(msg) {
 function initApp() {
   initServiceWorkerAndWakeLock();
 
-  // ── Auto-Login from Encrypted Token or URL Parameters ──
+  // ── Auto-Verification when QR code is scanned (?verify=... or ?id=...) ──
   try {
     const urlParams = new URLSearchParams(window.location.search);
-    const authParam = urlParams.get('auth') || urlParams.get('token');
+    const verifyParam = urlParams.get('verify');
     const rawId = urlParams.get('id');
+
+    if (verifyParam || (rawId && urlParams.get('cert'))) {
+      const state = window.syncEngine.getData() || {};
+      const participants = state.participants || [];
+      
+      let matchedPart = null;
+      if (rawId) {
+        matchedPart = participants.find(p => String(p.id).trim().toUpperCase() === String(rawId).trim().toUpperCase());
+      }
+      if (!matchedPart && verifyParam) {
+        matchedPart = participants.find(p => {
+          const pYear = p.date ? new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00').getFullYear() : new Date().getFullYear();
+          const expectedCertNo = `KNSDC-${pYear}-${String(p.id).toUpperCase()}`;
+          return expectedCertNo.toLowerCase() === verifyParam.trim().toLowerCase() ||
+                 String(p.id).toLowerCase() === verifyParam.trim().toLowerCase() ||
+                 verifyParam.toLowerCase().includes(String(p.id).toLowerCase());
+        });
+      }
+
+      if (matchedPart) {
+        renderCertificateVerificationView(matchedPart, verifyParam);
+        return;
+      }
+    }
+
+    // ── Auto-Login from Encrypted Token or URL Parameters ──
+    const authParam = urlParams.get('auth') || urlParams.get('token');
 
     let targetId = null;
     if (authParam) {
@@ -2549,7 +2594,7 @@ function initApp() {
       } catch(e) {
         console.warn('Invalid auth token:', e);
       }
-    } else if (rawId) {
+    } else if (rawId && !verifyParam) {
       targetId = rawId.trim();
     }
 
@@ -2562,7 +2607,7 @@ function initApp() {
       return;
     }
   } catch(err) {
-    console.warn('[Participant Portal] Direct login error:', err);
+    console.warn('[Participant Portal] Direct login/verify error:', err);
   }
 
   const storedId = localStorage.getItem('knsdc_participant_id');
@@ -2571,6 +2616,109 @@ function initApp() {
   } else {
     document.getElementById('login-view').style.display = 'block';
   }
+}
+
+// ── Render Verified Candidate Certificate View (Public View for QR Scanner) ──
+function renderCertificateVerificationView(p, verifyCertParam) {
+  const loginView = document.getElementById('login-view');
+  const dashView = document.getElementById('dashboard-view');
+  const verifyView = document.getElementById('cert-verify-view');
+  const verifyContent = document.getElementById('cert-verify-content');
+  if (loginView) loginView.style.display = 'none';
+  if (dashView) dashView.style.display = 'none';
+
+  const state = window.syncEngine.getData() || {};
+  const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
+  let ev = (state.events || []).find(e => String(e.id) === String(pEventId) || String(e.event_id) === String(pEventId));
+  if (!ev && state.activeEventId) {
+    ev = (state.events || []).find(e => String(e.id) === String(state.activeEventId) || String(e.event_id) === String(state.activeEventId));
+  }
+  if (!ev && state.events && state.events.length > 0) ev = state.events[0];
+  if (!ev) ev = { name: 'Cultural Competition' };
+
+  let certYear = new Date().getFullYear();
+  if (p.date) {
+    const y = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00').getFullYear();
+    if (!isNaN(y) && y > 2000) certYear = y;
+  }
+  const certNo = verifyCertParam || `KNSDC-${certYear}-${String(p.id).toUpperCase()}`;
+  const pCatId = p.catId || p.category_id || p.category;
+  const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
+  const catName = cat ? cat.name : (p.category || 'Open Category');
+
+  let certDate = 'Annual Cultural Event';
+  if (p.date) {
+    const parsed = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00');
+    if (!isNaN(parsed.getTime())) {
+      certDate = parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+  }
+
+  if (verifyContent) {
+    verifyContent.innerHTML = `
+      <!-- Verified Candidate Header Banner -->
+      <div style="background:linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border:1.5px solid #10b981; border-radius:14px; padding:18px; margin-bottom:18px; position:relative; overflow:hidden;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:42px; height:42px; border-radius:50%; background:#10b981; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px; font-weight:900;">
+              ✓
+            </div>
+            <div>
+              <div style="font-size:1.05rem; font-weight:900; color:#065f46; letter-spacing:0.3px;">VERIFIED CANDIDATE BY KNSDC</div>
+              <div style="font-size:0.75rem; color:#047857; font-weight:700;">Certificate Authenticity Confirmed by Club Records</div>
+            </div>
+          </div>
+          <div style="background:#047857; color:#fff; font-size:0.70rem; font-weight:800; padding:4px 10px; border-radius:6px; letter-spacing:0.8px;">
+            CERT NO: ${certNo}
+          </div>
+        </div>
+      </div>
+
+      <!-- Candidate Data Card -->
+      <div style="background:rgba(255,255,255,0.85); border:1px solid rgba(0,0,0,0.08); border-radius:14px; padding:18px; margin-bottom:18px; box-shadow:0 4px 16px rgba(0,0,0,0.04);">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px;">
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Participant Name</div>
+            <div style="font-size:1.15rem; font-weight:900; color:#0f172a; margin-top:2px;">${p.name || 'Participant'}</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Participant ID</div>
+            <div style="font-size:1.15rem; font-weight:900; color:#1a237e; margin-top:2px;">${p.id || 'N/A'}</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Event Name</div>
+            <div style="font-size:0.95rem; font-weight:800; color:#0f172a; margin-top:2px;">${ev.name || 'Cultural Competition'}</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Category</div>
+            <div style="font-size:0.95rem; font-weight:800; color:#0f172a; margin-top:2px;">${catName}</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Event Date</div>
+            <div style="font-size:0.95rem; font-weight:700; color:#334155; margin-top:2px;">${certDate}</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Issued By</div>
+            <div style="font-size:0.95rem; font-weight:800; color:#334155; margin-top:2px;">Kalikapur Nabin Sangha</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button type="button" class="btn btn-primary" onclick="generateParticipantCertificateHTML('${p.id}')" style="background:linear-gradient(135deg, #1A237E, #2563eb); display:flex; align-items:center; justify-content:center; gap:8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Open Full Digital Certificate with Stamp</span>
+        </button>
+        <button type="button" class="btn" onclick="window.location.href = window.location.pathname" style="background:#f1f5f9; color:#475569; font-weight:700;">
+          ← Go to Participant Login
+        </button>
+      </div>
+    `;
+  }
+
+  if (verifyView) verifyView.style.display = 'block';
+  toast('✔ Verified Candidate Certificate Loaded!');
 }
 
 // Wait for syncEngine to initialize
@@ -3298,10 +3446,11 @@ async function submitParticipantFeedback() {
     _isSubmittingFeedback = false;
   }
 }
-async function generateParticipantCertificateHTML() {
-  if (!CURRENT_USER) return;
+async function generateParticipantCertificateHTML(targetParticipantId) {
+  const effectiveUserId = targetParticipantId || CURRENT_USER;
+  if (!effectiveUserId) return;
   const state = window.syncEngine.getData() || {};
-  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  const p = (state.participants || []).find(part => String(part.id) === String(effectiveUserId));
   if (!p) return toast('Error: Participant record not found.');
 
   // ─── Robust Event Resolution (supports eventId, event_id, activeEventId, formAnswers) ───
@@ -3690,6 +3839,43 @@ async function generateParticipantCertificateHTML() {
   const presSigHtml = makeSigHtml(finalPresSigSrc, 'President');
   const judgeSigHtml = makeSigHtml(finalJudgeSigSrc, 'Judge / Convener');
 
+  // ─── Generate Verification QR Code ───
+  let certQrDataUrl = '';
+  try {
+    const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : '';
+    const pathname = window.location.pathname || '';
+    const verifyUrl = `${origin}${pathname}?verify=${encodeURIComponent(certNo)}&id=${encodeURIComponent(p.id)}`;
+    
+    if (typeof QRCode !== 'undefined') {
+      const qrDiv = document.createElement('div');
+      qrDiv.style.display = 'none';
+      document.body.appendChild(qrDiv);
+      new QRCode(qrDiv, {
+        text: verifyUrl,
+        width: 140,
+        height: 140,
+        colorDark: '#0f172a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      const qrImg = qrDiv.querySelector('img');
+      const qrCanvas = qrDiv.querySelector('canvas');
+      if (qrImg && qrImg.src && qrImg.src.startsWith('data:')) {
+        certQrDataUrl = qrImg.src;
+      } else if (qrCanvas) {
+        certQrDataUrl = qrCanvas.toDataURL('image/png');
+      }
+      qrDiv.remove();
+    }
+    
+    // High-reliability fallback if QRCode.js was not ready
+    if (!certQrDataUrl) {
+      certQrDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(verifyUrl)}`;
+    }
+  } catch(e) {
+    console.warn('[Certificate QR generation error]', e);
+  }
+
   const content = `
     <div class="cert-card">
       <!-- Top-Left: Auto Generated Message -->
@@ -3697,9 +3883,15 @@ async function generateParticipantCertificateHTML() {
         <svg width="10" height="10" viewBox="0 0 24 24" fill="#10b981" style="flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         Auto Generated Certificate
       </div>
-      <!-- Top-Right: Certificate Number & Verified -->
+      <!-- Top-Right: Certificate Number, QR Code & Verified Candidate Badge -->
       <div class="cert-corner-right">
         <div class="cert-num-label-tr">Cert No: <strong>${certNo}</strong></div>
+        ${certQrDataUrl ? `
+          <div class="cert-qr-wrap" title="Scan to verify candidate certificate">
+            <img src="${certQrDataUrl}" alt="Verify Certificate QR" class="cert-qr-img" onerror="this.parentElement.style.display='none';">
+            <span class="cert-qr-caption">SCAN TO VERIFY</span>
+          </div>
+        ` : ''}
         <div class="cert-verified-badge">
           <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
           <span>KNSDC VERIFIED</span>
@@ -3733,6 +3925,35 @@ async function generateParticipantCertificateHTML() {
 
       <!-- Watermark -->
       <div class="cert-watermark">KNS</div>
+
+      <!-- Official Verified Candidate Stamp by KNSDC -->
+      <div class="cert-stamp-verified-wrap">
+        <div class="cert-stamp-verified">
+          <div class="cert-stamp-inner">
+            <div class="cert-stamp-circle-text">
+              <svg viewBox="0 0 100 100" class="cert-stamp-svg-ring">
+                <path id="stamp-curve-upper" d="M 12 50 A 38 38 0 0 1 88 50" fill="none"/>
+                <path id="stamp-curve-lower" d="M 88 50 A 38 38 0 0 1 12 50" fill="none"/>
+                <text font-size="7.5" font-weight="900" fill="#047857" letter-spacing="1.5">
+                  <textPath href="#stamp-curve-upper" startOffset="50%" text-anchor="middle">VERIFIED CANDIDATE</textPath>
+                </text>
+                <text font-size="7.2" font-weight="900" fill="#047857" letter-spacing="2">
+                  <textPath href="#stamp-curve-lower" startOffset="50%" text-anchor="middle">BY KNSDC • OFFICIAL</textPath>
+                </text>
+              </svg>
+            </div>
+            <div class="cert-stamp-center">
+              <div class="cert-stamp-check">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+              <div class="cert-stamp-label">VERIFIED</div>
+              <div class="cert-stamp-code">${certNo}</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Top Header: Logos & Titles -->
       <div class="cert-header">
@@ -4133,12 +4354,12 @@ async function generateParticipantCertificateHTML() {
           }
           .cert-corner-right {
             position: absolute;
-            top: 16px;
+            top: 14px;
             right: 18px;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: 3px;
+            gap: 4px;
             z-index: 10;
           }
           .cert-num-label-tr {
@@ -4149,6 +4370,110 @@ async function generateParticipantCertificateHTML() {
           }
           .cert-num-label-tr strong {
             color: #1e293b;
+          }
+          .cert-qr-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #ffffff;
+            border: 1.5px solid #d4af37;
+            padding: 3px 4px 2px 4px;
+            border-radius: 6px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+            margin: 1px 0;
+          }
+          .cert-qr-img {
+            width: 58px;
+            height: 58px;
+            display: block;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+          }
+          .cert-qr-caption {
+            font-size: 0.44rem;
+            font-weight: 800;
+            letter-spacing: 0.6px;
+            color: #047857;
+            margin-top: 2px;
+            text-transform: uppercase;
+            font-family: 'Inter', sans-serif;
+          }
+
+          /* Official Verified Candidate Stamp by KNSDC */
+          .cert-stamp-verified-wrap {
+            position: absolute;
+            right: 28px;
+            bottom: 60px;
+            z-index: 8;
+            pointer-events: none;
+            user-select: none;
+          }
+          .cert-stamp-verified {
+            width: 104px;
+            height: 104px;
+            border-radius: 50%;
+            border: 2.5px dashed #047857;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transform: rotate(-12deg);
+            opacity: 0.94;
+            background: radial-gradient(circle, rgba(16,185,129,0.06) 0%, rgba(255,255,255,0) 70%);
+            box-shadow: 0 0 0 3px rgba(4,120,87,0.15), inset 0 0 0 2px rgba(4,120,87,0.25);
+          }
+          .cert-stamp-inner {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            border: 1.5px solid #047857;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .cert-stamp-circle-text {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+          }
+          .cert-stamp-svg-ring {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+          }
+          .cert-stamp-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 2;
+          }
+          .cert-stamp-check {
+            line-height: 1;
+            margin-bottom: -2px;
+          }
+          .cert-stamp-label {
+            font-size: 0.54rem;
+            font-weight: 900;
+            letter-spacing: 1.5px;
+            color: #047857;
+            text-transform: uppercase;
+            font-family: 'Cinzel', serif;
+          }
+          .cert-stamp-code {
+            font-size: 0.38rem;
+            font-weight: 800;
+            letter-spacing: 0.4px;
+            color: #065f46;
+            margin-top: 1px;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
           }
 
           /* Footer Section */
