@@ -13026,12 +13026,64 @@ async function downloadPublicVotesPDF() {
   toast('✅ Downloaded Public Votes PDF Report!');
 }
 
+function getStatsEventParticipants() {
+  const curEv = activeEventId ? String(activeEventId).trim() : '';
+  const allParts = participants || [];
+  if (!curEv) return allParts;
+  
+  // 1. Direct match with current active event
+  const matches = allParts.filter(p => {
+    if (!p) return false;
+    const pEv = String(p.eventId || p.event_id || '').trim();
+    return pEv === curEv;
+  });
+  if (matches.length > 0) return matches;
+
+  // 2. Fallback: if participants in array have no eventId populated at all
+  const hasAnyEventId = allParts.some(p => p && (p.eventId || p.event_id));
+  if (!hasAnyEventId) return allParts;
+
+  return matches;
+}
+
+function getStatsEventCategories() {
+  const curEv = activeEventId ? String(activeEventId).trim() : '';
+  const allCats = categories || [];
+  if (!curEv) return allCats;
+  const matches = allCats.filter(c => {
+    if (!c) return false;
+    const cEv = String(c.eventId || c.event_id || '').trim();
+    return cEv === curEv;
+  });
+  if (matches.length > 0) return matches;
+  const hasAnyEventId = allCats.some(c => c && (c.eventId || c.event_id));
+  if (!hasAnyEventId) return allCats;
+  return matches;
+}
+
+function parseParticipantAge(val) {
+  if (!val && val !== 0) return null;
+  const s = String(val).trim();
+  if (!s) return null;
+  // If format is YYYY-MM-DD or DD/MM/YYYY (date string)
+  if (s.includes('-') || s.includes('/')) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      const diffMs = Date.now() - d.getTime();
+      const age = Math.floor(diffMs / (365.25 * 24 * 3600 * 1000));
+      if (age >= 0 && age <= 120) return age;
+    }
+  }
+  const num = parseInt(s.replace(/[^0-9]/g, ''), 10);
+  return isNaN(num) ? null : num;
+}
+
 function renderFeedbacks() {
   const fbs = [];
   const now = Date.now();
   const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
   
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  const eventParticipants = getStatsEventParticipants();
   eventParticipants.forEach(p => {
     if (p.formAnswers && p.formAnswers._feedback) {
       if (now - p.formAnswers._feedback.timestamp > sevenDaysMs) {
@@ -13078,12 +13130,13 @@ function renderFeedbacks() {
 }
 
 function searchParticipant(v){
-  filteredParticipants = participants.filter(p=>p.name.toLowerCase().includes(v.toLowerCase())||p.id.includes(v));
+  const evParts = getStatsEventParticipants();
+  filteredParticipants = evParts.filter(p=>(p.name||'').toLowerCase().includes(v.toLowerCase())||String(p.id||'').includes(v));
   renderIndividualStats();
 }
 
 function renderIndividualStats(){
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  const eventParticipants = getStatsEventParticipants();
   filteredParticipants = eventParticipants;
   const roundFilter = document.getElementById('stats-round-sel')?.value||'all';
   let data = roundFilter==='all' ? eventParticipants : eventParticipants.filter(p=>p.round===roundFilter);
@@ -13265,8 +13318,8 @@ function renderComparativeStats() {
   const colors = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e', '#f97316', '#6366f1'];
   
   const activeJudges = judges.filter(j => j.present);
-  const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  const evCats = getStatsEventCategories();
+  const eventParticipants = getStatsEventParticipants();
   
   const getAverageSubjectScoreForCat = (sId, catId) => {
     let total = 0;
@@ -13456,7 +13509,7 @@ function renderParticipantStreamCharts() {
   window.participantStreamCharts = [];
   container.innerHTML = '';
 
-  const targetParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  const targetParticipants = getStatsEventParticipants();
   if (targetParticipants.length === 0) {
     container.innerHTML = '<div style="color:var(--text-muted);text-align:center;grid-column:1/-1;">No participants available for this event.</div>';
     return;
@@ -13708,149 +13761,142 @@ function renderParticipantStreamCharts() {
 function renderRoundwiseStats(){
   const rounds = ['audition','qualified','semifinal','final'];
   const labels = ['Audition','Qualified','Semifinal','Final'];
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
-  const counts = rounds.map(r => eventParticipants.filter(p => p.round === r).length);
+  const eventParticipants = getStatsEventParticipants();
+  const counts = rounds.map(r => eventParticipants.filter(p => (p.round || 'audition') === r).length);
 
   // Flow chart
-  document.getElementById('qualification-flow').innerHTML = `<div style="display:flex;align-items:center;gap:6px">
-    ${rounds.map((r,i)=>`
-      <div class="flow-node ${counts[i]>0?'active':''}" style="flex:1" onclick="statsTab('roundwise',this.closest('.pp').querySelector('.tab:nth-child(1)'))">
-        <div style="font-size:22px;font-weight:800;font-family:var(--fh)">${counts[i]}</div>
-        <div style="font-size:9px;margin-top:2px">${labels[i]}</div>
-      </div>
-      ${i<rounds.length-1?'<div class="flow-arrow">→</div>':''}
-    `).join('')}
-  </div>`;
+  const qFlow = document.getElementById('qualification-flow');
+  if (qFlow) {
+    qFlow.innerHTML = `<div style="display:flex;align-items:center;gap:6px">
+      ${rounds.map((r,i)=>`
+        <div class="flow-node ${counts[i]>0?'active':''}" style="flex:1" onclick="statsTab('roundwise',this.closest('.pp').querySelector('.tab:nth-child(1)'))">
+          <div style="font-size:22px;font-weight:800;font-family:var(--fh)">${counts[i]}</div>
+          <div style="font-size:9px;margin-top:2px">${labels[i]}</div>
+        </div>
+        ${i<rounds.length-1?'<div class="flow-arrow">→</div>':''}
+      `).join('')}
+    </div>`;
+  }
 
   // Chart
   const ctx = document.getElementById('round-chart');
-  if (typeof Chart === 'undefined') {
-    ctx.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:12px">Chart library not loaded</div>';
-    return;
+  if (ctx) {
+    if (typeof Chart === 'undefined') {
+      ctx.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:12px">Chart library not loaded</div>';
+    } else {
+      const resolveCatBorderColor = (catColorStr, index) => {
+        const classMap = {
+          'b-blue': '#3b82f6',
+          'b-green': '#10b981',
+          'b-amber': '#f59e0b',
+          'b-orange': '#ea580c',
+          'b-red': '#ef4444',
+          'b-purple': '#8b5cf6',
+          'b-pink': '#ec4899',
+          'b-teal': '#14b8a6',
+          'b-indigo': '#6366f1'
+        };
+        if (catColorStr && classMap[catColorStr]) return classMap[catColorStr];
+        if (catColorStr && catColorStr.startsWith('#')) return catColorStr;
+        const fallbackPalette = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
+        return fallbackPalette[index % fallbackPalette.length];
+      };
+
+      const activeEventCats = getStatsEventCategories();
+      const datasets = [];
+      const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
+
+      activeEventCats.forEach((cat, catIdx) => {
+        const promotedData = [];
+        const stoppedData = [];
+        const borderColor = resolveCatBorderColor(cat.color, catIdx);
+
+        rounds.forEach((round, rIdx) => {
+          const catParts = eventParticipants.filter(p => String(p.catId) === String(cat.id));
+          const presentInRound = catParts.filter(p => {
+            const currentRIdx = roundsOrder.indexOf(p.round || 'audition');
+            return currentRIdx >= rIdx;
+          });
+          const promoted = presentInRound.filter(p => {
+            const currentRIdx = roundsOrder.indexOf(p.round || 'audition');
+            return currentRIdx > rIdx;
+          });
+          const stopped = presentInRound.filter(p => {
+            const currentRIdx = roundsOrder.indexOf(p.round || 'audition');
+            return currentRIdx === rIdx;
+          });
+
+          promotedData.push(promoted.length);
+          stoppedData.push(stopped.length);
+        });
+
+        const hexToRgba = (hex, alpha) => {
+          let r = 0, g = 0, b = 0;
+          if (hex && hex.length === 4) { r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16); }
+          else if (hex && hex.length === 7) { r = parseInt(hex.slice(1, 3), 16); g = parseInt(hex.slice(3, 5), 16); b = parseInt(hex.slice(5, 7), 16); }
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+
+        datasets.push({
+          label: `${cat.name} (Promoted)`,
+          data: promotedData,
+          backgroundColor: hexToRgba(borderColor, 0.85),
+          borderColor: borderColor,
+          borderWidth: 2.5,
+          borderRadius: 4,
+          stack: `cat_${cat.id}`
+        });
+
+        datasets.push({
+          label: `${cat.name} (Stopped Here)`,
+          data: stoppedData,
+          backgroundColor: hexToRgba(borderColor, 0.25),
+          borderColor: borderColor,
+          borderWidth: 2.5,
+          borderRadius: 4,
+          stack: `cat_${cat.id}`
+        });
+      });
+
+      if(roundChartInstance) roundChartInstance.destroy();
+      roundChartInstance = new Chart(ctx, {
+        type:'bar',
+        data:{labels, datasets},
+        options:{
+          responsive:true,
+          maintainAspectRatio:false,
+          plugins:{
+            legend:{
+              display:true,
+              labels:{
+                color:'#8892a4',
+                font:{size:10, family:'var(--fb)', weight:'bold'}
+              }
+            },
+            tooltip: {
+              mode: 'index',
+              intersect: false
+            }
+          },
+          scales:{
+            x:{
+              ticks:{color:'#8892a4'},
+              grid:{color:'rgba(34,36,54,0.15)'},
+              stacked: true
+            },
+            y:{
+              ticks:{color:'#8892a4',stepSize:1},
+              grid:{color:'rgba(34,36,54,0.15)'},
+              stacked: true
+            }
+          }
+        }
+      });
+    }
   }
 
-  const resolveCatBorderColor = (catColorStr, index) => {
-    const classMap = {
-      'b-blue': '#3b82f6',
-      'b-green': '#10b981',
-      'b-amber': '#f59e0b',
-      'b-orange': '#ea580c',
-      'b-red': '#ef4444',
-      'b-purple': '#8b5cf6',
-      'b-pink': '#ec4899',
-      'b-teal': '#14b8a6',
-      'b-indigo': '#6366f1'
-    };
-    if (catColorStr && classMap[catColorStr]) {
-      return classMap[catColorStr];
-    }
-    if (catColorStr && catColorStr.startsWith('#')) {
-      return catColorStr;
-    }
-    const fallbackPalette = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
-    return fallbackPalette[index % fallbackPalette.length];
-  };
-
-  const activeEventCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
-  const datasets = [];
-  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
-
-  activeEventCats.forEach((cat, catIdx) => {
-    const promotedData = [];
-    const stoppedData = [];
-    const borderColor = resolveCatBorderColor(cat.color, catIdx);
-
-    rounds.forEach((round, rIdx) => {
-      // Find participants in this category for this event
-      const catParts = participants.filter(p => String(p.catId) === String(cat.id) && (String(p.eventId) === String(activeEventId) || !p.eventId));
-      
-      // Reached at least this round
-      const presentInRound = catParts.filter(p => {
-        const currentRIdx = roundsOrder.indexOf(p.round);
-        return currentRIdx >= rIdx;
-      });
-
-      // Promoted from this round (current round is strictly higher)
-      const promoted = presentInRound.filter(p => {
-        const currentRIdx = roundsOrder.indexOf(p.round);
-        return currentRIdx > rIdx;
-      });
-
-      // Stopped at this round (current round is exactly this round)
-      const stopped = presentInRound.filter(p => {
-        const currentRIdx = roundsOrder.indexOf(p.round);
-        return currentRIdx === rIdx;
-      });
-
-      promotedData.push(promoted.length);
-      stoppedData.push(stopped.length);
-    });
-
-    const hexToRgba = (hex, alpha) => {
-      let r = 0, g = 0, b = 0;
-      if (hex && hex.length === 4) { r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16); }
-      else if (hex && hex.length === 7) { r = parseInt(hex.slice(1, 3), 16); g = parseInt(hex.slice(3, 5), 16); b = parseInt(hex.slice(5, 7), 16); }
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    };
-
-    // 2-Color Fill Scheme with Category Outer Frame (Border) Color
-    datasets.push({
-      label: `${cat.name} (Promoted)`,
-      data: promotedData,
-      backgroundColor: hexToRgba(borderColor, 0.85),
-      borderColor: borderColor,
-      borderWidth: 2.5,
-      borderRadius: 4,
-      stack: `cat_${cat.id}`
-    });
-
-    datasets.push({
-      label: `${cat.name} (Stopped Here)`,
-      data: stoppedData,
-      backgroundColor: hexToRgba(borderColor, 0.25),
-      borderColor: borderColor,
-      borderWidth: 2.5,
-      borderRadius: 4,
-      stack: `cat_${cat.id}`
-    });
-  });
-
-  if(roundChartInstance) roundChartInstance.destroy();
-  roundChartInstance = new Chart(ctx, {
-    type:'bar',
-    data:{labels, datasets},
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      plugins:{
-        legend:{
-          display:true,
-          labels:{
-            color:'#8892a4',
-            font:{size:10, family:'var(--fb)', weight:'bold'}
-          }
-        },
-        tooltip: {
-          mode: 'index',
-          intersect: false
-        }
-      },
-      scales:{
-        x:{
-          ticks:{color:'#8892a4'},
-          grid:{color:'rgba(34,36,54,0.15)'},
-          stacked: true
-        },
-        y:{
-          ticks:{color:'#8892a4',stepSize:1},
-          grid:{color:'rgba(34,36,54,0.15)'},
-          stacked: true
-        }
-      }
-    }
-  });
-
   // Tables
+  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
   const getRoundScoreStr = (p, rName) => {
     const s = syncEngine.getData();
     const publicVotes = s.publicVotes || {};
@@ -13872,7 +13918,7 @@ function renderRoundwiseStats(){
       });
     });
 
-    const currentIdx = roundsOrder.indexOf(p.round);
+    const currentIdx = roundsOrder.indexOf(p.round || 'audition');
     const targetIdx = roundsOrder.indexOf(rName);
     
     let judgeHtml = '';
@@ -13899,59 +13945,60 @@ function renderRoundwiseStats(){
     }
   };
 
-  document.getElementById('roundwise-tables').innerHTML = rounds.map((r,i)=>{
-    const s = syncEngine.getData();
-    const publicVotes = s.publicVotes || {};
-    const data = eventParticipants.filter(p=>p.round===r);
-    if(!data.length) return '';
-    return `<div class="card" style="margin-bottom:12px">
-      <div class="card-header" style="margin-bottom: 12px;"><div class="card-title" style="margin-bottom: 0;">${labels[i]} (${data.length})</div><span class="badge ${roundBadge(r)}">${r.toUpperCase()}</span></div>
-      <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Name</th><th>Category</th><th style="text-align:center">Audition (J | P)</th><th style="text-align:center">Qualified (J | P)</th><th style="text-align:center">Semifinal (J | P)</th><th style="text-align:center">Final (J | P)</th><th style="text-align:center">Status</th><th style="text-align:center;color:var(--purple)">🌟 Total Rating</th></tr></thead>
-      <tbody>${data.map((p,idx)=>{
-        const cat=categories.find(c=>String(c.id)===String(p.catId));
-        
-        // Calculate OVERALL rating across all rounds
-        let overallVotes = [];
-        roundsOrder.forEach(rnd => {
-           const vKey = p.id + '_' + rnd;
-           if (publicVotes[vKey]) {
-             overallVotes = overallVotes.concat(publicVotes[vKey]);
-           }
-        });
-        const totalCount = overallVotes.length;
-        const totalSum = overallVotes.reduce((a,v)=>a+v.score,0);
-        
-        // Build round-wise breakdown
-        let roundBreakdown = '';
-        if (totalCount > 0) {
-          const rbParts = roundsOrder.map(rnd => {
-            const rKey = p.id + '_' + rnd;
-            const rVotes = publicVotes[rKey] || [];
-            if (!rVotes.length) return null;
-            const rSum = rVotes.reduce((a,v)=>a+v.score,0);
-            return `<span style="font-size:9px;color:var(--text-muted);" title="${rnd}: ${rVotes.length} people">${rnd.charAt(0).toUpperCase()}:${rSum}</span>`;
-          }).filter(Boolean);
-          if (rbParts.length) roundBreakdown = `<div style="display:flex;gap:4px;justify-content:center;margin-top:2px;">${rbParts.join('<span style="color:var(--border)">+</span>')}</div>`;
-        }
-        
-        const vCell = totalCount > 0
-          ? `<div style="font-family:var(--fm);font-size:14px;font-weight:900;color:var(--purple)">${totalSum}</div><div style="font-size:8px;color:var(--text-muted)">(${totalCount} people)</div>${roundBreakdown}`
-          : `<span style="color:var(--text-muted);opacity:0.4;font-size:11px">—</span>`;
+  const rwTables = document.getElementById('roundwise-tables');
+  if (rwTables) {
+    rwTables.innerHTML = rounds.map((r,i)=>{
+      const s = syncEngine.getData();
+      const publicVotes = s.publicVotes || {};
+      const data = eventParticipants.filter(p=>(p.round || 'audition')===r);
+      if(!data.length) return '';
+      return `<div class="card" style="margin-bottom:12px">
+        <div class="card-header" style="margin-bottom: 12px;"><div class="card-title" style="margin-bottom: 0;">${labels[i]} (${data.length})</div><span class="badge ${roundBadge(r)}">${r.toUpperCase()}</span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Name</th><th>Category</th><th style="text-align:center">Audition (J | P)</th><th style="text-align:center">Qualified (J | P)</th><th style="text-align:center">Semifinal (J | P)</th><th style="text-align:center">Final (J | P)</th><th style="text-align:center">Status</th><th style="text-align:center;color:var(--purple)">🌟 Total Rating</th></tr></thead>
+        <tbody>${data.map((p,idx)=>{
+          const cat=categories.find(c=>String(c.id)===String(p.catId));
           
-        return `<tr>
-          <td style="color:var(--text-muted);font-family:var(--fm)">${idx+1}</td>
-          <td><strong>${p.name}</strong></td>
-          <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
-          <td style="text-align:center">${getRoundScoreStr(p, 'audition')}</td>
-          <td style="text-align:center">${getRoundScoreStr(p, 'qualified')}</td>
-          <td style="text-align:center">${getRoundScoreStr(p, 'semifinal')}</td>
-          <td style="text-align:center">${getRoundScoreStr(p, 'final')}</td>
-          <td><span class="badge ${p.stageStatus==='done'?'b-green':p.stageStatus==='on-stage'?'b-amber':'b-gray'}">${p.stageStatus}</span></td>
-          <td style="text-align:center">${vCell}</td>
-        </tr>`;
-      }).join('')}</tbody></table></div>
-    </div>`;
-  }).join('');
+          let overallVotes = [];
+          roundsOrder.forEach(rnd => {
+             const vKey = p.id + '_' + rnd;
+             if (publicVotes[vKey]) {
+               overallVotes = overallVotes.concat(publicVotes[vKey]);
+             }
+          });
+          const totalCount = overallVotes.length;
+          const totalSum = overallVotes.reduce((a,v)=>a+v.score,0);
+          
+          let roundBreakdown = '';
+          if (totalCount > 0) {
+            const rbParts = roundsOrder.map(rnd => {
+              const rKey = p.id + '_' + rnd;
+              const rVotes = publicVotes[rKey] || [];
+              if (!rVotes.length) return null;
+              const rSum = rVotes.reduce((a,v)=>a+v.score,0);
+              return `<span style="font-size:9px;color:var(--text-muted);" title="${rnd}: ${rVotes.length} people">${rnd.charAt(0).toUpperCase()}:${rSum}</span>`;
+            }).filter(Boolean);
+            if (rbParts.length) roundBreakdown = `<div style="display:flex;gap:4px;justify-content:center;margin-top:2px;">${rbParts.join('<span style="color:var(--border)">+</span>')}</div>`;
+          }
+          
+          const vCell = totalCount > 0
+            ? `<div style="font-family:var(--fm);font-size:14px;font-weight:900;color:var(--purple)">${totalSum}</div><div style="font-size:8px;color:var(--text-muted)">(${totalCount} people)</div>${roundBreakdown}`
+            : `<span style="color:var(--text-muted);opacity:0.4;font-size:11px">—</span>`;
+            
+          return `<tr>
+            <td style="color:var(--text-muted);font-family:var(--fm)">${idx+1}</td>
+            <td><strong>${p.name}</strong></td>
+            <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
+            <td style="text-align:center">${getRoundScoreStr(p, 'audition')}</td>
+            <td style="text-align:center">${getRoundScoreStr(p, 'qualified')}</td>
+            <td style="text-align:center">${getRoundScoreStr(p, 'semifinal')}</td>
+            <td style="text-align:center">${getRoundScoreStr(p, 'final')}</td>
+            <td><span class="badge ${p.stageStatus==='done'?'b-green':p.stageStatus==='on-stage'?'b-amber':'b-gray'}">${p.stageStatus}</span></td>
+            <td style="text-align:center">${vCell}</td>
+          </tr>`;
+        }).join('')}</tbody></table></div>
+      </div>`;
+    }).join('');
+  }
   
   renderGenderCharts();
   renderAgeCharts();
@@ -13967,6 +14014,7 @@ function renderGenderCharts() {
 
   const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
   const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  const eventParticipants = getStatsEventParticipants();
   
   container.innerHTML = '';
   
@@ -13976,38 +14024,64 @@ function renderGenderCharts() {
   window.genderCharts = [];
 
   roundsOrder.forEach((r, idx) => {
-    const reached = participants.filter(p => {
-      if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
+    // Reached round (current round index >= idx)
+    const reached = eventParticipants.filter(p => {
       const currentRIdx = roundsOrder.indexOf(p.round || 'audition');
       return currentRIdx >= idx;
     });
 
-    const males = reached.filter(p => p.gender && p.gender.toLowerCase() === 'male').length;
-    const females = reached.filter(p => p.gender && p.gender.toLowerCase() === 'female').length;
-    const total = males + females;
+    let males = 0;
+    let females = 0;
+    let others = 0;
+
+    reached.forEach(p => {
+      const g = String(p.gender || '').trim().toLowerCase();
+      if (/^(m|male|boy|man)$/i.test(g)) {
+        males++;
+      } else if (/^(f|female|girl|woman)$/i.test(g)) {
+        females++;
+      } else {
+        others++;
+      }
+    });
+
+    const total = reached.length; // Accurately matches total participants reached
+    const currentlyInRound = eventParticipants.filter(p => (p.round || 'audition') === r).length;
     
     const wrap = document.createElement('div');
     wrap.style.textAlign = 'center';
     wrap.innerHTML = `
-      <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-dim);text-transform:uppercase;">${labels[idx]}</div>
+      <div style="font-size:12px;font-weight:800;margin-bottom:4px;color:var(--text-dim);text-transform:uppercase;">${labels[idx]}</div>
+      <div style="font-size:9px;color:var(--text-muted);margin-bottom:8px;font-family:var(--fm)">Active: <strong style="color:var(--primary)">${currentlyInRound}</strong> · Reached: <strong>${total}</strong></div>
       <div style="position:relative;height:80px;display:flex;justify-content:center;">
         <canvas id="gender-chart-${r}"></canvas>
       </div>
-      <div style="font-size:9px;margin-top:10px;font-family:var(--fm);display:flex;justify-content:center;gap:15px">
+      <div style="font-size:9px;margin-top:10px;font-family:var(--fm);display:flex;justify-content:center;gap:12px">
         <span style="color:#f97316;font-weight:800">M: ${males}</span>
         <span style="color:#a855f7;font-weight:800">F: ${females}</span>
+        ${others > 0 ? `<span style="color:#14b8a6;font-weight:800">O: ${others}</span>` : ''}
       </div>
     `;
     container.appendChild(wrap);
+
+    const chartLabels = ['Male', 'Female'];
+    const chartData = [males, females];
+    const chartColors = ['#f97316', '#a855f7'];
+
+    if (others > 0) {
+      chartLabels.push('Other');
+      chartData.push(others);
+      chartColors.push('#14b8a6');
+    }
 
     const ctx = document.getElementById(`gender-chart-${r}`);
     const chart = new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Male', 'Female'],
+        labels: chartLabels,
         datasets: [{
-          data: [males, females],
-          backgroundColor: ['#f97316', '#a855f7'],
+          data: chartData,
+          backgroundColor: chartColors,
           borderWidth: 0,
           hoverOffset: 2
         }]
@@ -14065,6 +14139,7 @@ function renderAgeCharts() {
 
   const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
   const labels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  const eventParticipants = getStatsEventParticipants();
   
   container.innerHTML = '';
   
@@ -14077,18 +14152,17 @@ function renderAgeCharts() {
   const groupColors = ['#f43f5e', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#f59e0b'];
 
   roundsOrder.forEach((r, idx) => {
-    const reached = participants.filter(p => {
-      if (activeEventId && String(p.eventId) !== String(activeEventId) && p.eventId) return false;
+    const reached = eventParticipants.filter(p => {
       const currentRIdx = roundsOrder.indexOf(p.round || 'audition');
       return currentRIdx >= idx;
     });
 
     const bucketCounts = [0, 0, 0, 0, 0, 0];
+    let specifiedCount = 0;
     reached.forEach(p => {
-      const ageStr = p.age ? String(p.age).replace(/[^0-9]/g, '') : '';
-      if (!ageStr) return;
-      const a = parseInt(ageStr, 10);
-      if (isNaN(a)) return;
+      const a = parseParticipantAge(p.age);
+      if (a === null) return;
+      specifiedCount++;
 
       if (a < 6) bucketCounts[0]++;
       else if (a >= 6 && a <= 10) bucketCounts[1]++;
@@ -14098,10 +14172,13 @@ function renderAgeCharts() {
       else if (a >= 33) bucketCounts[5]++;
     });
 
+    const currentlyInRound = eventParticipants.filter(p => (p.round || 'audition') === r).length;
+
     const wrap = document.createElement('div');
     wrap.style.textAlign = 'center';
     wrap.innerHTML = `
-      <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--text-dim);text-transform:uppercase;">${labels[idx]}</div>
+      <div style="font-size:12px;font-weight:800;margin-bottom:4px;color:var(--text-dim);text-transform:uppercase;">${labels[idx]}</div>
+      <div style="font-size:9px;color:var(--text-muted);margin-bottom:8px;font-family:var(--fm)">Active: <strong style="color:var(--primary)">${currentlyInRound}</strong> · Reached: <strong>${reached.length}</strong></div>
       <div style="position:relative;height:160px;display:flex;justify-content:center;">
         <canvas id="age-chart-${r}"></canvas>
       </div>
@@ -14167,12 +14244,15 @@ function renderJudgeStats(){
   if (!ctx) return;
 
   if(judgeChartInstance) judgeChartInstance.destroy();
+  const agreements = syncEngine.getData()?.judgeAgreements || [];
   const presentJudges = judges.filter(j => {
     if (!j.present) return false;
-    const agreements = syncEngine.getData()?.judgeAgreements || [];
-    return agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+    // Check match with active event agreement or direct judge eventId
+    const hasAgreement = agreements.some(a => String(a.eventId) === String(activeEventId) && ((a.email && j.email && a.email.toLowerCase() === j.email.toLowerCase()) || (a.name && j.name && a.name.toLowerCase() === j.name.toLowerCase())));
+    const matchesEvent = !j.eventId || String(j.eventId) === String(activeEventId) || String(j.eventId) === '0';
+    return hasAgreement || matchesEvent;
   });
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  const eventParticipants = getStatsEventParticipants();
   const getAllJudgeScores = (p, jId) => {
     let allScores = [];
     if (p.scores && p.scores[jId]) {
@@ -14283,26 +14363,28 @@ function renderJudgeStats(){
   });
 
   // Max & average
-  document.getElementById('judge-maxavg').innerHTML = presentJudges.map(j=>{
-    let allJudgeScores = [];
-    eventParticipants.forEach(p => {
-      const pScores = getAllJudgeScores(p, j.id);
-      if(pScores.length) allJudgeScores.push(...pScores);
-    });
-    const max = allJudgeScores.length ? Math.max(...allJudgeScores) : 0;
-    const avg = allJudgeScores.length ? Math.round((allJudgeScores.reduce((a,b)=>a+b,0)/allJudgeScores.length)*10)/10 : 0;
-    const pct = subjects.length*10 > 0 ? Math.round(avg/(subjects.length*10)*100) : 0;
-    return `<div class="judge-row" style="margin-bottom:8px">
-      <div class="judge-avatar" style="background:${j.color}20;color:${j.color};border:1px solid ${j.color}50">${j.name[0]}</div>
-      <div style="flex:1">
-        <div style="font-weight:600;font-size:13px">${j.name}</div>
-        <div class="score-bar judge-score-val" style="margin-top:4px"><div class="score-bar-fill" style="width:${pct}%;background:${j.color}"></div></div>
-        <div style="font-size:8px;color:var(--text-muted);margin-top:2px">Avg: ${avg} · Max given: ${max}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-    
+  const maxAvgEl = document.getElementById('judge-maxavg');
+  if (maxAvgEl) {
+    maxAvgEl.innerHTML = presentJudges.map(j=>{
+      let allJudgeScores = [];
+      eventParticipants.forEach(p => {
+        const pScores = getAllJudgeScores(p, j.id);
+        if(pScores.length) allJudgeScores.push(...pScores);
+      });
+      const max = allJudgeScores.length ? Math.max(...allJudgeScores) : 0;
+      const avg = allJudgeScores.length ? Math.round((allJudgeScores.reduce((a,b)=>a+b,0)/allJudgeScores.length)*10)/10 : 0;
+      const maxSubjectMarks = subjects.length ? Math.max(...subjects.map(s => Number(s.maxMarks) || 10)) : 10;
+      const pct = maxSubjectMarks > 0 ? Math.min(100, Math.round(avg / maxSubjectMarks * 100)) : 0;
+      return `<div class="judge-row" style="margin-bottom:8px">
+        <div class="judge-avatar" style="background:${j.color}20;color:${j.color};border:1px solid ${j.color}50">${j.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px">${j.name}</div>
+          <div class="score-bar judge-score-val" style="margin-top:4px"><div class="score-bar-fill" style="width:${pct}%;background:${j.color}"></div></div>
+          <div style="font-size:8px;color:var(--text-muted);margin-top:2px">Avg: ${avg} · Max given: ${max}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
 
   renderJudgeSubjectCharts(presentJudges);
 }
@@ -14327,7 +14409,7 @@ function renderJudgeSubjectCharts(presentJudges) {
   }
 
   const subjectNames = subjects.map(s => s.name);
-  const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  const eventParticipants = getStatsEventParticipants();
 
   const getSubjectScores = (jId, sId) => {
     let allScores = [];
