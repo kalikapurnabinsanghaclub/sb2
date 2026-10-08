@@ -3123,10 +3123,12 @@ function initApp() {
 }
 
 // ── Audition Round Completion Status Helper ──
+// Strictly checks if the participant has actually performed and finished their audition round.
+// (Registration date or being merely marked 'present' before performing does NOT count as completing audition!)
 function hasCompletedAudition(p) {
   if (!p) return false;
 
-  // 1. Participant has progressed past audition round (e.g. qualified, semifinal, final)
+  // 1. Participant has progressed past audition round into higher rounds
   const currentRound = String(p.round || '').toLowerCase().trim();
   if (['qualified', 'semifinal', 'final'].includes(currentRound)) {
     return true;
@@ -3137,43 +3139,78 @@ function hasCompletedAudition(p) {
     return true;
   }
 
-  // 3. Stage performance status marked 'done' or 'completed'
+  // 3. Stage status was marked 'done', 'completed' or 'finished'
   const stageStatus = String(p.stageStatus || '').toLowerCase().trim();
   if (['done', 'completed', 'finished'].includes(stageStatus)) {
     return true;
   }
 
-  // 4. Scores recorded for audition round or any round
+  // 4. Performed flag set to true
+  if (p.performed === true) {
+    return true;
+  }
+
+  // 5. Scores or evaluations submitted by judges for audition round
   if (p.roundScores && p.roundScores.audition && Object.keys(p.roundScores.audition).length > 0) {
     return true;
   }
-  if (p.scores && (p.scores.audition || (typeof p.scores === 'object' && Object.keys(p.scores).length > 0 && !p.scores.round))) {
-    return true;
-  }
-
-  // 5. Marked present for audition or attendance marked
-  if (p.roundPresence && p.roundPresence.audition && (p.roundPresence.audition.present === true || p.roundPresence.audition.markedAt)) {
-    return true;
-  }
-  if (p.present === true || p.presenceMarkedAt) {
-    return true;
-  }
-
-  // 6. Explicit performed, attended or scored flag
-  if (p.performed === true || p.attended === true || p.checkedIn === true) {
+  if (p.scores && typeof p.scores === 'object' && Object.keys(p.scores).length > 0) {
     return true;
   }
   if (p.score || p.totalScore || p.total_score || p.marks || p.evaluation) {
     return true;
   }
 
-  // 7. General status
+  // 6. Explicit completed status
   const pStatus = String(p.status || '').toLowerCase().trim();
-  if (['qualified', 'done', 'completed', 'present', 'auditioned'].includes(pStatus)) {
+  if (['qualified', 'done', 'completed', 'auditioned'].includes(pStatus)) {
     return true;
   }
 
   return false;
+}
+
+// ── Audition Completion Date Resolver ──
+// Strictly returns the date when the audition was completed (stage done / judge evaluated / round marked),
+// NEVER falling back to registration date or name entry date.
+function getAuditionCompletionDate(p, ev, venObj) {
+  if (!p) return '';
+
+  // 1. Check explicit audition completion timestamp
+  if (p.auditionCompletedAt || p.audition_completed_at) {
+    return p.auditionCompletedAt || p.audition_completed_at;
+  }
+
+  // 2. Check stage status update timestamp if marked done
+  if (p.stageStatus === 'done' && p.localMutatedAt) {
+    return p.localMutatedAt;
+  }
+
+  // 3. Check audition date field set on participant (from schedule / evaluation)
+  if (p.auditionDate || p.audition_date) {
+    return p.auditionDate || p.audition_date;
+  }
+
+  // 4. Check roundPresence audition markedAt timestamp
+  if (p.roundPresence && p.roundPresence.audition && p.roundPresence.audition.markedAt) {
+    return p.roundPresence.audition.markedAt;
+  }
+
+  // 5. Check attendance presence timestamp on participant
+  if (p.presenceMarkedAt) {
+    return p.presenceMarkedAt;
+  }
+
+  // 6. Check venue performance dates
+  if (venObj && Array.isArray(venObj.dates) && venObj.dates.length > 0) {
+    return venObj.dates[0];
+  }
+
+  // 7. Event display date or event start date
+  if (ev && ev.disp) return ev.disp;
+  if (ev && ev.date) return ev.date;
+
+  return '';
 }
 
 // ── Safe Date Formatting Helpers (supports timestamps, ISO strings, Date objects & numeric strings) ──
@@ -3360,22 +3397,8 @@ function renderCertificateVerificationView(p, verifyCertParam) {
   const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
   const catName = cat ? cat.name : (p.category || 'Open Category');
 
-  let rawAuditionDate = '';
-  if (p.roundPresence && p.roundPresence.audition && p.roundPresence.audition.markedAt) {
-    rawAuditionDate = p.roundPresence.audition.markedAt;
-  } else if (p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date) {
-    rawAuditionDate = p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date;
-  } else if (p.presenceMarkedAt) {
-    rawAuditionDate = p.presenceMarkedAt;
-  } else if (p.date) {
-    rawAuditionDate = p.date;
-  } else if (ev.disp) {
-    rawAuditionDate = ev.disp;
-  } else if (ev.date) {
-    rawAuditionDate = ev.date;
-  }
-
-  let certDate = safeFormatDate(rawAuditionDate) || 'Annual Cultural Event';
+  const rawAuditionDate = getAuditionCompletionDate(p, ev, null);
+  let certDate = safeFormatDate(rawAuditionDate) || 'Audition Completion Date';
 
   const isAuditionDone = hasCompletedAudition(p);
 
@@ -3451,10 +3474,17 @@ function renderCertificateVerificationView(p, verifyCertParam) {
 
       <!-- Action Buttons -->
       <div style="display:flex; flex-direction:column; gap:10px;">
-        <button type="button" class="btn btn-primary" onclick="generateParticipantCertificateHTML('${p.id}')" style="background:linear-gradient(135deg, #1A237E, #2563eb); display:flex; align-items:center; justify-content:center; gap:8px; font-weight:800; padding:12px 18px; border-radius:12px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          <span>${isAuditionDone ? 'Open Full Digital Certificate with Stamp' : 'View Digital Certificate'}</span>
-        </button>
+        ${isAuditionDone ? `
+          <button type="button" class="btn btn-primary" onclick="generateParticipantCertificateHTML('${p.id}')" style="background:linear-gradient(135deg, #1A237E, #2563eb); display:flex; align-items:center; justify-content:center; gap:8px; font-weight:800; padding:12px 18px; border-radius:12px; cursor:pointer;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span>Open Full Digital Certificate with Stamp</span>
+          </button>
+        ` : `
+          <div style="background:rgba(245,158,11,0.12); border:1.5px dashed #f59e0b; color:#92400e; padding:14px; border-radius:12px; font-weight:700; text-align:center; font-size:13px; line-height:1.5;">
+            ⏳ <strong>Audition Round Pending</strong><br/>
+            Certificate will be unlocked and displayed here after the participant completes their audition stage performance.
+          </div>
+        `}
       </div>
     `;
   }
@@ -4033,6 +4063,7 @@ function renderDashboard() {
           btnEl.disabled = false;
           btnEl.style.opacity = '1';
           btnEl.style.cursor = 'pointer';
+          btnEl.style.background = 'linear-gradient(135deg, #7C3AED, #4F46E5)';
           btnEl.innerHTML = `
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>Download Certificate</span>
@@ -4040,16 +4071,19 @@ function renderDashboard() {
           btnEl.onclick = () => generateParticipantCertificateHTML();
         }
       } else {
-        if (badgeEl) badgeEl.innerHTML = '<span>⏳</span> Audition Round Pending';
-        if (descEl) descEl.textContent = 'Your official certificate will unlock once your audition performance is completed.';
+        if (badgeEl) badgeEl.innerHTML = '<span>⏳</span> Audition Round In Progress';
+        if (descEl) descEl.innerHTML = '<strong style="color:#d97706; font-size:14px; display:block; margin-bottom:4px;">After completing your audition, your certificate will appear here.</strong><span style="font-size:12px; opacity:0.85;">Please finish your audition stage performance. Once completed, your verified certificate will be generated automatically.</span>';
         if (btnEl) {
           btnEl.disabled = false;
-          btnEl.style.opacity = '0.95';
+          btnEl.style.opacity = '0.9';
           btnEl.style.cursor = 'pointer';
+          btnEl.style.background = 'linear-gradient(135deg, #d97706, #b45309)';
           btnEl.innerHTML = `
-            <span>👁️ View Certificate (Audition Pending)</span>
+            <span>⏳ Audition Pending — Complete to Unlock Certificate</span>
           `;
-          btnEl.onclick = () => generateParticipantCertificateHTML();
+          btnEl.onclick = () => {
+            toast("⏳ After completing your audition round, your certificate will be generated and shown here.");
+          };
         }
       }
     } else {
@@ -4260,7 +4294,10 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     // Audition completion status check
     const isAuditionDone = hasCompletedAudition(p);
     if (!isAuditionDone) {
-      toast("⏳ Generating your certificate (Audition in progress)...");
+      toast("⏳ After completing your audition round, your certificate will appear here.");
+      const certCard = document.getElementById('certificate-card');
+      if (certCard) certCard.scrollIntoView({ behavior: 'smooth' });
+      return;
     } else {
       toast("⏳ Preparing your official verified certificate...");
     }
@@ -4418,33 +4455,8 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     }
   }
 
-  // ─── Resolve Audition Completion Date ───
-  let rawAuditionDate = '';
-  // 1. Check roundPresence audition markedAt timestamp
-  if (p.roundPresence && p.roundPresence.audition && p.roundPresence.audition.markedAt) {
-    rawAuditionDate = p.roundPresence.audition.markedAt;
-  }
-  // 2. Check audition completion timestamp / evaluation date if stored in participant
-  if (!rawAuditionDate && (p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date)) {
-    rawAuditionDate = p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date;
-  }
-  // 3. Check presence timestamp on participant
-  if (!rawAuditionDate && p.presenceMarkedAt) {
-    rawAuditionDate = p.presenceMarkedAt;
-  }
-  // 4. Check assigned audition date on participant record
-  if (!rawAuditionDate && p.date) {
-    rawAuditionDate = p.date;
-  }
-  // 5. Fallback to event display date or event start date
-  if (!rawAuditionDate && ev.disp) {
-    rawAuditionDate = ev.disp;
-  } else if (!rawAuditionDate && ev.date) {
-    rawAuditionDate = ev.date;
-  } else if (!rawAuditionDate && venObj && Array.isArray(venObj.dates) && venObj.dates.length > 0) {
-    rawAuditionDate = venObj.dates[0];
-  }
-
+  // ─── Resolve Audition Completion Date strictly (Not registration/name entry date) ───
+  const rawAuditionDate = getAuditionCompletionDate(p, ev, venObj);
   let certDate = safeFormatDate(rawAuditionDate) || new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 
   // ─── Convert image to DataURL safely with fast timeout ───
