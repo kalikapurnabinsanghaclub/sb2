@@ -1361,14 +1361,15 @@ syncEngine.subscribe((state) => {
     const hostAssignment = (state.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === hostEmail.toLowerCase());
     if (hostAssignment) {
       hostAssignedEventId = String(hostAssignment.eventId);
-      hostAssignedVenueId = String(hostAssignment.venueId);
-      hostAssignedVenueName = hostAssignment.venueName;
+      hostAssignedVenueId = (hostAssignment.venueId !== undefined && hostAssignment.venueId !== null && hostAssignment.venueId !== '' && hostAssignment.venueId !== 'null' && hostAssignment.venueId !== 'undefined') ? String(hostAssignment.venueId) : null;
+      hostAssignedVenueName = hostAssignment.venueName || null;
     } else {
       // 2. Fallback: events.staff array
       const assignedEv = events.find(e => Array.isArray(e.staff) && e.staff.map(x => (x || '').toLowerCase()).includes(hostEmail.toLowerCase()));
       if (assignedEv) hostAssignedEventId = String(assignedEv.id);
     }
   }
+  if (!hostAssignedEventId && state.activeEventId) hostAssignedEventId = String(state.activeEventId);
   if (!hostAssignedEventId && events.length > 0) hostAssignedEventId = String(events[0].id);
 
   if (hostAssignedEventId && String(state.activeEventId) !== hostAssignedEventId) {
@@ -1455,25 +1456,8 @@ function getHostScopedParticipants() {
   const data = syncEngine.getData() || {};
   const activeEvId = hostAssignedEventId || data.activeEventId;
   
-  // Base event filter
-  let evParts = participants.filter(p => !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId));
-  
-  // If host is assigned to a specific venue, try to match by venue ID or venue name
-  if (hostAssignedVenueId) {
-    const matched = evParts.filter(p => {
-      const pVen = String(p.venueId || p.venue || '');
-      if (pVen && pVen === String(hostAssignedVenueId)) return true;
-      if (hostAssignedVenueName) {
-        const vField = String(p.formAnswers?.['Venue Field'] || p.formAnswers?.venue || p.venueName || '').toLowerCase();
-        if (vField && (vField.includes(hostAssignedVenueName.toLowerCase()) || hostAssignedVenueName.toLowerCase().includes(vField))) return true;
-      }
-      return false;
-    });
-    if (matched.length > 0) {
-      return matched;
-    }
-  }
-  return evParts;
+  // Base event filter: all participants belonging to the assigned event (matches Monitor event scope)
+  return participants.filter(p => !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId));
 }
 
 function renderDashboard() {
@@ -2100,9 +2084,12 @@ window.renderLeaderboard = () => {
 
     let filtered = participants.filter(p => 
       p.round === currentLeaderRound && 
-      (String(p.eventId) === String(activeEventId) || !p.eventId) &&
-      (!hostAssignedVenueId || String(p.venueId) === String(hostAssignedVenueId))
+      (String(p.eventId) === String(activeEventId) || !p.eventId)
     );
+    if (hostAssignedVenueId) {
+      const venueMatches = filtered.filter(p => String(p.venueId) === String(hostAssignedVenueId));
+      if (venueMatches.length > 0) filtered = venueMatches;
+    }
     
     const categoriesMap = new Map();
     categories.forEach(c => categoriesMap.set(String(c.id), c));
