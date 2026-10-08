@@ -126,7 +126,7 @@
       <h2 class="section-title" style="color: var(--primary); font-weight: 800;">📝 Menu Management</h2>
       <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap; align-items:center;">
         <div style="display:flex; flex-direction:column; gap:4px; min-width:180px; flex:1;">
-          <label style="font-weight:bold; color:var(--text-muted); font-size:11px; margin-left:4px;">📷 Upload Photo</label>
+          <label style="font-weight:bold; color:var(--text-muted); font-size:11px; margin-left:4px;">📷 Photo (Optional)</label>
           <input type="file" id="new-menu-file" accept="image/*" style="padding:8px; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; background:#fff; width:100%; box-sizing:border-box;">
         </div>
         <div style="display:flex; flex-direction:column; gap:4px; min-width:150px; flex:2;">
@@ -1081,45 +1081,61 @@ async function addMenuItem() {
     return alert('Please enter a valid item name and price.');
   }
 
-  if (!fileInput.files || fileInput.files.length === 0) {
-    return alert('Please select a photo to upload for the menu item.');
-  }
-
-  const file = fileInput.files[0];
   const btn = document.getElementById('add-menu-btn');
+  const hasFile = fileInput.files && fileInput.files.length > 0;
+  let imageUrl = '';
+
   if (btn) {
     btn.disabled = true;
-    btn.innerText = '⏳ Uploading photo...';
+    btn.innerText = hasFile ? '⏳ Uploading photo...' : '⏳ Saving item...';
   }
-  toast('📸 Uploading photo... ⏳');
 
   try {
-    const cfUrl = window.CLOUDFLARE_UPLOAD_URL || 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
-    const fd = new FormData();
-    fd.append('pathPrefix', 'food_menu');
-    fd.append('file', file);
+    if (hasFile) {
+      toast('📸 Uploading photo... ⏳');
+      const file = fileInput.files[0];
+      const cfUrl = window.CLOUDFLARE_UPLOAD_URL || 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
+      const fd = new FormData();
+      fd.append('pathPrefix', 'food_menu');
+      fd.append('file', file);
 
-    const res = await fetch(cfUrl, {
-      method: 'POST',
-      body: fd
-    });
+      try {
+        const res = await fetch(cfUrl, {
+          method: 'POST',
+          body: fd
+        });
 
-    if (!res.ok) {
-      throw new Error(`Upload failed with HTTP ${res.status}`);
-    }
-
-    const json = await res.json();
-    const imageUrl = json.fileUrl || json.imageUrl;
-
-    if (!imageUrl) {
-      throw new Error('No image URL returned from upload server');
+        if (res.ok) {
+          const json = await res.json();
+          imageUrl = json.fileUrl || json.imageUrl || '';
+        } else {
+          console.warn('Image upload failed with status:', res.status);
+          if (!confirm('Photo upload failed. Would you like to save this item without a photo?')) {
+            return;
+          }
+        }
+      } catch (uploadErr) {
+        console.warn('Image upload error:', uploadErr);
+        if (!confirm('Photo upload failed. Would you like to save this item without a photo?')) {
+          return;
+        }
+      }
     }
 
     const id = 'f' + Date.now();
 
     window.syncEngine.setData(s => {
       const foodMenu = s.foodMenu ? [...s.foodMenu] : getDefaultMenu();
-      foodMenu.push({ id, name, price, deliveryFee, image: imageUrl });
+      foodMenu.push({
+        id,
+        name,
+        price,
+        deliveryFee,
+        image: imageUrl,
+        icon: '🍽️',
+        partnerEmail: loggedInPartner?.email || '',
+        partnerName: loggedInPartner?.name || ''
+      });
       return { ...s, foodMenu };
     });
 
@@ -1130,8 +1146,8 @@ async function addMenuItem() {
     toast('✅ Food item saved successfully!');
     await window.syncEngine.forceSaveStateToSupabase();
   } catch (err) {
-    console.error('[Food Upload Error]', err);
-    alert('Failed to upload image: ' + (err.message || err));
+    console.error('[Food Item Save Error]', err);
+    alert('Failed to save item: ' + (err.message || err));
   } finally {
     if (btn) {
       btn.disabled = false;
