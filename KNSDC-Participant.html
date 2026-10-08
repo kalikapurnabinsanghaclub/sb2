@@ -834,18 +834,30 @@
     padding-bottom: 15px;
   }
 
-  /* ═══ PRINT ENGINE FOR IN-PAGE CERTIFICATE MODAL ═══ */
+  /* ═══ PRINT ENGINE FOR IN-PAGE CERTIFICATE MODAL (EXACT SINGLE PAGE) ═══ */
   @media print {
     @page {
       size: 297mm 210mm;
       margin: 0mm;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 297mm !important;
+      height: 210mm !important;
+      max-width: 297mm !important;
+      max-height: 210mm !important;
+      overflow: hidden !important;
+      background: #ffffff !important;
     }
     body > *:not(#cert-viewer-modal) {
       display: none !important;
     }
     #cert-viewer-modal {
       display: flex !important;
-      position: static !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
       background: #ffffff !important;
       padding: 0 !important;
       margin: 0 !important;
@@ -854,6 +866,12 @@
       max-width: 297mm !important;
       max-height: 210mm !important;
       overflow: hidden !important;
+      page-break-after: avoid !important;
+      page-break-before: avoid !important;
+      page-break-inside: avoid !important;
+      break-after: avoid !important;
+      break-before: avoid !important;
+      break-inside: avoid !important;
     }
     .cert-modal-controls {
       display: none !important;
@@ -869,6 +887,8 @@
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
     }
     #modal-cert-wrapper {
       transform: none !important;
@@ -876,18 +896,25 @@
       height: 210mm !important;
       max-width: 297mm !important;
       max-height: 210mm !important;
-      padding: 6mm !important;
+      padding: 0 !important;
       margin: 0 !important;
       border: none !important;
       box-shadow: none !important;
       overflow: hidden !important;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
     }
     .cert-card {
-      width: 100% !important;
-      height: 100% !important;
-      max-height: 100% !important;
+      width: 297mm !important;
+      height: 210mm !important;
+      max-width: 297mm !important;
+      max-height: 210mm !important;
       box-sizing: border-box !important;
       overflow: hidden !important;
+      page-break-after: avoid !important;
+      page-break-before: avoid !important;
+      break-after: avoid !important;
+      break-before: avoid !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
@@ -4916,10 +4943,21 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
         });
 
         const imgData = canvas.toDataURL('image/jpeg', 0.98);
-        pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210, undefined, 'FAST');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+        
+        // Strictly guarantee exactly 1 page
+        const totalPages = pdf.internal.getNumberOfPages();
+        if (totalPages > 1) {
+          for (let pi = totalPages; pi > 1; pi--) {
+            pdf.deletePage(pi);
+          }
+        }
+
         const safeName = ((p.name || 'Participant').replace(/[^a-zA-Z0-9_-]/g, '_')) || 'Participant';
         pdf.save(safeName + '_Certificate.pdf');
-        toast("✅ PDF downloaded successfully!");
+        toast("✅ PDF downloaded successfully (1 Page)!");
       } catch (err) {
         console.error(err);
         toast("⚠️ PDF issue. You can tap Download JPG or Print to save as PDF.");
