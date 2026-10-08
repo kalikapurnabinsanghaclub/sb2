@@ -3066,7 +3066,7 @@ function initApp() {
       }
       if (!matchedPart && verifyParam) {
         matchedPart = participants.find(p => {
-          const pYear = p.date ? new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00').getFullYear() : new Date().getFullYear();
+          const pYear = safeExtractYear(p.date);
           const expectedCertNo = `KNSDC-${pYear}-${String(p.id).toUpperCase()}`;
           return expectedCertNo.toLowerCase() === verifyParam.trim().toLowerCase() ||
                  String(p.id).toLowerCase() === verifyParam.trim().toLowerCase() ||
@@ -3176,6 +3176,103 @@ function hasCompletedAudition(p) {
   return false;
 }
 
+// ── Safe Date Formatting Helpers (supports timestamps, ISO strings, Date objects & numeric strings) ──
+function safeFormatDate(raw) {
+  if (raw === undefined || raw === null || raw === '') return '';
+  try {
+    if (raw instanceof Date && !isNaN(raw.getTime())) {
+      return raw.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    if (typeof raw === 'number' && !isNaN(raw)) {
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    const str = String(raw).trim();
+    if (/^\d{10,13}$/.test(str)) {
+      const ts = Number(str);
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    const isoCandidate = str.includes('T') ? str : (str.includes('-') && str.length === 10 ? str + 'T00:00:00' : str);
+    const parsed = new Date(isoCandidate);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    return str;
+  } catch (err) {
+    return String(raw);
+  }
+}
+
+function safeExtractYear(raw) {
+  if (raw === undefined || raw === null || raw === '') return new Date().getFullYear();
+  try {
+    if (raw instanceof Date && !isNaN(raw.getTime())) return raw.getFullYear();
+    if (typeof raw === 'number' && !isNaN(raw)) {
+      const y = new Date(raw).getFullYear();
+      if (!isNaN(y) && y > 2000) return y;
+    }
+    const str = String(raw).trim();
+    if (/^\d{10,13}$/.test(str)) {
+      const y = new Date(Number(str)).getFullYear();
+      if (!isNaN(y) && y > 2000) return y;
+    }
+    const isoCandidate = str.includes('T') ? str : (str.includes('-') && str.length === 10 ? str + 'T00:00:00' : str);
+    const parsed = new Date(isoCandidate);
+    if (!isNaN(parsed.getTime())) {
+      const y = parsed.getFullYear();
+      if (!isNaN(y) && y > 2000) return y;
+    }
+    const yearMatch = str.match(/\b(20\d{2})\b/);
+    if (yearMatch) return Number(yearMatch[1]);
+  } catch(e) {}
+  return new Date().getFullYear();
+}
+
+// ── Ensure Modal Container Always Exists in DOM ──
+function ensureCertViewerModalInDOM() {
+  let modal = document.getElementById('cert-viewer-modal');
+  let wrapper = document.getElementById('modal-cert-wrapper');
+  if (modal && wrapper) return { modal, wrapper };
+
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'cert-viewer-modal';
+    modal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; width:100vw; height:100%; min-height:100vh; background:rgba(9,13,22,0.97); z-index:2147483647; flex-direction:column; padding:10px 8px 30px; box-sizing:border-box; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; align-items:center; justify-content:flex-start;';
+    modal.innerHTML = `
+      <div style="width:100%; max-width:1040px; display:flex; flex-direction:column; align-items:center; margin:0 auto; padding-top:4px; padding-bottom:30px; position:relative;">
+        <div class="cert-modal-controls" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center; align-items:center; width:100%; margin-bottom:14px; background:rgba(30,41,59,0.97); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); padding:10px 14px; border-radius:14px; border:1px solid rgba(255,255,255,0.13); box-shadow:0 10px 30px rgba(0,0,0,0.6); position:sticky; top:4px; z-index:100;">
+          <button id="modal-btn-pdf" class="btn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; font-weight:700; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:13px; box-shadow:0 4px 12px rgba(79,70,229,.3);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download PDF</span>
+          </button>
+          <button id="modal-btn-jpg" class="btn" style="background:linear-gradient(135deg,#059669,#10b981); color:#fff; font-weight:700; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:13px; box-shadow:0 4px 12px rgba(16,185,129,.3);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <span>Download JPG (HD)</span>
+          </button>
+          <button id="modal-btn-print" class="btn" onclick="printModalCertificate()" style="background:linear-gradient(135deg,#d97706,#b45309); color:#fff; font-weight:700; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:13px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span>Print</span>
+          </button>
+          <button id="modal-btn-tab" class="btn" onclick="openCertInNewTab()" style="background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); color:#cbd5e1; font-weight:700; padding:10px 14px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; font-size:13px;" title="Open in new window">
+            ↗️ New Tab
+          </button>
+          <button id="modal-btn-close" class="btn" onclick="closeCertViewerModal()" style="background:rgba(239,68,68,.2); color:#fca5a5; border:1px solid rgba(239,68,68,.4); font-weight:700; padding:10px 16px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; font-size:13px;">
+            ✕ Close
+          </button>
+        </div>
+        <div id="modal-cert-stage" style="width:100%; max-width:1000px; display:flex; justify-content:center; align-items:flex-start; overflow:hidden; position:relative; margin:0 auto;">
+          <div id="modal-cert-wrapper" style="width:1000px; height:707px; min-width:1000px; min-height:707px; max-width:1000px; max-height:707px; background:#ffffff; box-shadow:0 25px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(212,175,55,0.3); border-radius:4px; position:relative; overflow:hidden; box-sizing:border-box; transform-origin:0 0;">
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    wrapper = document.getElementById('modal-cert-wrapper');
+  }
+  return { modal, wrapper };
+}
+
 // ── Modal Certificate Helper Functions ──
 function closeCertViewerModal() {
   const m = document.getElementById('cert-viewer-modal');
@@ -3257,11 +3354,7 @@ function renderCertificateVerificationView(p, verifyCertParam) {
   if (!ev && state.events && state.events.length > 0) ev = state.events[0];
   if (!ev) ev = { name: 'Cultural Competition' };
 
-  let certYear = new Date().getFullYear();
-  if (p.date) {
-    const y = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00').getFullYear();
-    if (!isNaN(y) && y > 2000) certYear = y;
-  }
+  let certYear = safeExtractYear(p.date || (ev && ev.date));
   const certNo = verifyCertParam || `KNSDC-${certYear}-${String(p.id).toUpperCase()}`;
   const pCatId = p.catId || p.category_id || p.category;
   const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
@@ -3282,15 +3375,7 @@ function renderCertificateVerificationView(p, verifyCertParam) {
     rawAuditionDate = ev.date;
   }
 
-  let certDate = 'Annual Cultural Event';
-  if (rawAuditionDate) {
-    const parsed = new Date(rawAuditionDate.includes('T') ? rawAuditionDate : rawAuditionDate + 'T00:00:00');
-    if (!isNaN(parsed.getTime())) {
-      certDate = parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-    } else {
-      certDate = rawAuditionDate;
-    }
-  }
+  let certDate = safeFormatDate(rawAuditionDate) || 'Annual Cultural Event';
 
   const isAuditionDone = hasCompletedAudition(p);
 
@@ -4146,135 +4231,129 @@ async function submitParticipantFeedback() {
   }
 }
 async function generateParticipantCertificateHTML(targetParticipantId) {
-  const effectiveUserId = targetParticipantId || CURRENT_USER || localStorage.getItem('knsdc_participant_id');
-  if (!effectiveUserId) {
-    toast("⚠️ Please enter your ID or log in to view certificate.");
-    return;
-  }
-  const state = window.syncEngine.getData() || {};
-  let p = (state.participants || []).find(part => String(part.id || '').trim().toUpperCase() === String(effectiveUserId || '').trim().toUpperCase());
-  if (!p) {
-    p = (state.participants || []).find(part => String(part.name || '').toLowerCase() === String(effectiveUserId || '').toLowerCase());
-  }
-  if (!p) {
-    try {
-      const cached = localStorage.getItem('knsdc_cached_participant');
-      if (cached) p = JSON.parse(cached);
-    } catch(e) {}
-  }
-  if (!p) {
-    p = {
-      id: effectiveUserId,
-      name: localStorage.getItem('knsdc_participant_name') || 'Participant',
-      category: 'General',
-      round: 'audition'
-    };
-  }
-
-  // Audition completion status check
-  const isAuditionDone = hasCompletedAudition(p);
-  if (!isAuditionDone) {
-    toast("⏳ Generating your certificate (Audition in progress)...");
-  } else {
-    toast("⏳ Preparing your official verified certificate...");
-  }
-
-  // ─── Robust Event Resolution (supports eventId, event_id, activeEventId, formAnswers) ───
-  const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
-  let ev = (state.events || []).find(e => String(e.id) === String(pEventId) || String(e.event_id) === String(pEventId));
-  if (!ev && state.activeEventId) {
-    ev = (state.events || []).find(e => String(e.id) === String(state.activeEventId) || String(e.event_id) === String(state.activeEventId));
-  }
-  if (!ev && state.events && state.events.length > 0) {
-    ev = state.events[0];
-  }
-  if (!ev) {
-    ev = { name: 'Cultural Competition', org: 'Kalikapur Nabin Sangha' };
-  }
-
-  // ─── Comprehensive Certificate Signatures & Setup Resolution ───
-  let certSetup = {};
-
-  const mergeSetup = (src) => {
-    if (!src) return;
-    let obj = src;
-    if (typeof src === 'string') {
-      try { obj = JSON.parse(src); } catch(e) { return; }
-    }
-    if (obj && typeof obj === 'object') {
-      if (obj.certificateSetup) {
-        mergeSetup(obj.certificateSetup);
-      }
-      const sec = obj.secretary || obj.sec || obj.secretarySig || obj.secSig || obj.secretary_signature || obj.secretarySignature || obj.sec_signature || obj.Secretary;
-      const pres = obj.president || obj.pres || obj.presidentSig || obj.presSig || obj.president_signature || obj.presidentSignature || obj.pres_signature || obj.President;
-      const judge = obj.judge || obj.judgeSig || obj.convener || obj.judge_signature || obj.judgeSignature || obj.Judge;
-      if (sec && !certSetup.secretary) certSetup.secretary = sec;
-      if (pres && !certSetup.president) certSetup.president = pres;
-      if (judge && !certSetup.judge) certSetup.judge = judge;
-    }
-  };
-
-  // 1. Check ev.certificateSetup & ev.certificate_setup & ev.switchStates
-  if (ev) {
-    mergeSetup(ev.certificateSetup);
-    mergeSetup(ev.certificate_setup);
-    if (ev.switchStates || ev.switch_states) mergeSetup(ev.switchStates || ev.switch_states);
-  }
-
-  // 2. Check state.eventSwitches for matching event ID / name
-  if (state.eventSwitches) {
-    if (ev && ev.id) {
-      mergeSetup(state.eventSwitches[ev.id]);
-      mergeSetup(state.eventSwitches[String(ev.id)]);
-    }
-    if (pEventId) {
-      mergeSetup(state.eventSwitches[pEventId]);
-      mergeSetup(state.eventSwitches[String(pEventId)]);
-    }
-    if (state.activeEventId) {
-      mergeSetup(state.eventSwitches[state.activeEventId]);
-      mergeSetup(state.eventSwitches[String(state.activeEventId)]);
-    }
-    for (const k of Object.keys(state.eventSwitches)) {
-      if (state.eventSwitches[k]) mergeSetup(state.eventSwitches[k]);
-    }
-  }
-
-  // 3. Check state.switchStates
-  if (state.switchStates) {
-    mergeSetup(state.switchStates);
-  }
-
-  // 4. Check localStorage fallback
   try {
-    const lsSw = localStorage.getItem('knsdc_eventSwitches');
-    if (lsSw) {
-      const parsed = JSON.parse(lsSw);
-      if (parsed && typeof parsed === 'object') {
-        if (ev && ev.id && parsed[ev.id]) mergeSetup(parsed[ev.id]);
-        if (pEventId && parsed[pEventId]) mergeSetup(parsed[pEventId]);
-        for (const k of Object.keys(parsed)) {
-          if (parsed[k]) mergeSetup(parsed[k]);
+    const effectiveUserId = targetParticipantId || CURRENT_USER || localStorage.getItem('knsdc_participant_id');
+    if (!effectiveUserId) {
+      toast("⚠️ Please enter your ID or log in to view certificate.");
+      return;
+    }
+    const state = (window.syncEngine && window.syncEngine.getData()) || {};
+    let p = (state.participants || []).find(part => String(part.id || '').trim().toUpperCase() === String(effectiveUserId || '').trim().toUpperCase());
+    if (!p) {
+      p = (state.participants || []).find(part => String(part.name || '').toLowerCase() === String(effectiveUserId || '').toLowerCase());
+    }
+    if (!p) {
+      try {
+        const cached = localStorage.getItem('knsdc_cached_participant');
+        if (cached) p = JSON.parse(cached);
+      } catch(e) {}
+    }
+    if (!p) {
+      p = {
+        id: effectiveUserId,
+        name: localStorage.getItem('knsdc_participant_name') || 'Participant',
+        category: 'General',
+        round: 'audition'
+      };
+    }
+
+    // Audition completion status check
+    const isAuditionDone = hasCompletedAudition(p);
+    if (!isAuditionDone) {
+      toast("⏳ Generating your certificate (Audition in progress)...");
+    } else {
+      toast("⏳ Preparing your official verified certificate...");
+    }
+
+    // ─── Robust Event Resolution (supports eventId, event_id, activeEventId, formAnswers) ───
+    const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
+    let ev = (state.events || []).find(e => String(e.id) === String(pEventId) || String(e.event_id) === String(pEventId));
+    if (!ev && state.activeEventId) {
+      ev = (state.events || []).find(e => String(e.id) === String(state.activeEventId) || String(e.event_id) === String(state.activeEventId));
+    }
+    if (!ev && state.events && state.events.length > 0) {
+      ev = state.events[0];
+    }
+    if (!ev) {
+      ev = { name: 'Cultural Competition', org: 'Kalikapur Nabin Sangha' };
+    }
+
+    // ─── Comprehensive Certificate Signatures & Setup Resolution ───
+    let certSetup = {};
+
+    const mergeSetup = (src) => {
+      if (!src) return;
+      let obj = src;
+      if (typeof src === 'string') {
+        try { obj = JSON.parse(src); } catch(e) { return; }
+      }
+      if (obj && typeof obj === 'object') {
+        if (obj.certificateSetup) {
+          mergeSetup(obj.certificateSetup);
+        }
+        const sec = obj.secretary || obj.sec || obj.secretarySig || obj.secSig || obj.secretary_signature || obj.secretarySignature || obj.sec_signature || obj.Secretary;
+        const pres = obj.president || obj.pres || obj.presidentSig || obj.presSig || obj.president_signature || obj.presidentSignature || obj.pres_signature || obj.President;
+        const judge = obj.judge || obj.judgeSig || obj.convener || obj.judge_signature || obj.judgeSignature || obj.Judge;
+        if (sec && !certSetup.secretary) certSetup.secretary = sec;
+        if (pres && !certSetup.president) certSetup.president = pres;
+        if (judge && !certSetup.judge) certSetup.judge = judge;
+      }
+    };
+
+    // 1. Check ev.certificateSetup & ev.certificate_setup & ev.switchStates
+    if (ev) {
+      mergeSetup(ev.certificateSetup);
+      mergeSetup(ev.certificate_setup);
+      if (ev.switchStates || ev.switch_states) mergeSetup(ev.switchStates || ev.switch_states);
+    }
+
+    // 2. Check state.eventSwitches for matching event ID / name
+    if (state.eventSwitches) {
+      if (ev && ev.id) {
+        mergeSetup(state.eventSwitches[ev.id]);
+        mergeSetup(state.eventSwitches[String(ev.id)]);
+      }
+      if (pEventId) {
+        mergeSetup(state.eventSwitches[pEventId]);
+        mergeSetup(state.eventSwitches[String(pEventId)]);
+      }
+      if (state.activeEventId) {
+        mergeSetup(state.eventSwitches[state.activeEventId]);
+        mergeSetup(state.eventSwitches[String(state.activeEventId)]);
+      }
+      for (const k of Object.keys(state.eventSwitches)) {
+        if (state.eventSwitches[k]) mergeSetup(state.eventSwitches[k]);
+      }
+    }
+
+    // 3. Check state.switchStates
+    if (state.switchStates) {
+      mergeSetup(state.switchStates);
+    }
+
+    // 4. Check localStorage fallback
+    try {
+      const lsSw = localStorage.getItem('knsdc_eventSwitches');
+      if (lsSw) {
+        const parsed = JSON.parse(lsSw);
+        if (parsed && typeof parsed === 'object') {
+          if (ev && ev.id && parsed[ev.id]) mergeSetup(parsed[ev.id]);
+          if (pEventId && parsed[pEventId]) mergeSetup(parsed[pEventId]);
+          for (const k of Object.keys(parsed)) {
+            if (parsed[k]) mergeSetup(parsed[k]);
+          }
         }
       }
-    }
-  } catch(e) {}
+    } catch(e) {}
 
-  // ─── Format Certificate Number as KNSDC-{YEAR}-{ID} ───
-  let certYear = new Date().getFullYear();
-  if (p.date) {
-    const y = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00').getFullYear();
-    if (!isNaN(y) && y > 2000) certYear = y;
-  } else if (ev.date) {
-    const y = new Date(ev.date.includes('T') ? ev.date : ev.date + 'T00:00:00').getFullYear();
-    if (!isNaN(y) && y > 2000) certYear = y;
-  }
-  const partId = String(p.id || 'PART').toUpperCase();
-  const certNo = `KNSDC-${certYear}-${partId}`;
-  
-  const pCatId = p.catId || p.category_id || p.category;
-  const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
-  const catName = cat ? cat.name.toUpperCase() : (p.category ? String(p.category).toUpperCase() : 'OPEN CATEGORY');
+    // ─── Format Certificate Number as KNSDC-{YEAR}-{ID} ───
+    const certYear = safeExtractYear(p.date || (ev && ev.date));
+    const partId = String(p.id || 'PART').toUpperCase();
+    const certNo = `KNSDC-${certYear}-${partId}`;
+    
+    const pCatId = p.catId || p.category_id || p.category;
+    const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
+    const catName = cat ? cat.name.toUpperCase() : (p.category ? String(p.category).toUpperCase() : 'OPEN CATEGORY');
 
   // ─── Resolve Venue matching Monitor venue mapping ───
   const eventVenues = (ev.venues && ev.venues.length > 0)
@@ -4366,15 +4445,7 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     rawAuditionDate = venObj.dates[0];
   }
 
-  let certDate = '';
-  if (rawAuditionDate) {
-    const parsed = new Date(rawAuditionDate.includes('T') ? rawAuditionDate : rawAuditionDate + 'T00:00:00');
-    certDate = !isNaN(parsed.getTime())
-      ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
-      : rawAuditionDate;
-  } else {
-    certDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-  }
+  let certDate = safeFormatDate(rawAuditionDate) || new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 
   // ─── Convert image to DataURL safely with fast timeout ───
   async function imgToDataUrl(url) {
@@ -4757,8 +4828,7 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     </div>
   `;
 
-  const modal = document.getElementById('cert-viewer-modal');
-  const modalWrapper = document.getElementById('modal-cert-wrapper');
+  const { modal, wrapper: modalWrapper } = ensureCertViewerModalInDOM();
   if (!modal || !modalWrapper) {
     toast("⚠️ Certificate viewer is not available.");
     return;
@@ -4905,6 +4975,10 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
   }
 
   toast("🏆 Certificate ready! View or Download below.");
+  } catch(err) {
+    console.error('[generateParticipantCertificateHTML error]', err);
+    toast("⚠️ Certificate error: " + (err.message || 'Please retry'));
+  }
 }
 
 // 4. Save Updates (Auto-Lock)
