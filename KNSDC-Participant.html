@@ -4518,22 +4518,13 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     }
   }
 
-  // Pre-convert to DataURLs for 100% reliable rendering in HTML2Canvas and PDF/JPG
-  const [knsLogoDataUrl, eventLogoDataUrl, secSigDataUrl, presSigDataUrl, judgeSigDataUrl, participantPhotoDataUrl] = await Promise.all([
-    imgToDataUrl('logo.png'),
-    eventLogoUrl ? imgToDataUrl(eventLogoUrl) : Promise.resolve(''),
-    secSigUrl ? imgToDataUrl(secSigUrl) : Promise.resolve(''),
-    presSigUrl ? imgToDataUrl(presSigUrl) : Promise.resolve(''),
-    judgeSigUrl ? imgToDataUrl(judgeSigUrl) : Promise.resolve(''),
-    participantPhotoUrl ? imgToDataUrl(participantPhotoUrl) : Promise.resolve('')
-  ]);
-
-  const finalKnsLogoSrc = knsLogoDataUrl || 'logo.png';
-  const finalEventBannerSrc = eventLogoDataUrl || eventLogoUrl;
-  const finalSecSigSrc = secSigDataUrl || secSigUrl || '';
-  const finalPresSigSrc = presSigDataUrl || presSigUrl || '';
-  const finalJudgeSigSrc = judgeSigDataUrl || judgeSigUrl || '';
-  const finalParticipantPhotoSrc = participantPhotoDataUrl || participantPhotoUrl || '';
+  // Fast instant image source binding (non-blocking for immediate modal display)
+  const finalKnsLogoSrc = 'logo.png';
+  const finalEventBannerSrc = eventLogoUrl || 'cultural/photo_6118659175400280599_y.jpg';
+  const finalSecSigSrc = secSigUrl || '';
+  const finalPresSigSrc = presSigUrl || '';
+  const finalJudgeSigSrc = judgeSigUrl || '';
+  const finalParticipantPhotoSrc = participantPhotoUrl || '';
 
   const makeSigHtml = (imgSrc, title) => {
     return `
@@ -4752,9 +4743,21 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
   modal.scrollTop = 0;
   document.body.style.overflow = 'hidden';
   fitModalCertToScreen();
-  setTimeout(fitModalCertToScreen, 50);
-  setTimeout(fitModalCertToScreen, 150);
-  setTimeout(fitModalCertToScreen, 350);
+  setTimeout(fitModalCertToScreen, 40);
+  setTimeout(fitModalCertToScreen, 120);
+  setTimeout(fitModalCertToScreen, 300);
+
+  // Background non-blocking pre-cache of images to DataURLs (ensures smooth offline export)
+  setTimeout(() => {
+    const imgs = modalWrapper.querySelectorAll('img');
+    imgs.forEach(img => {
+      if (img.src && !img.src.startsWith('data:')) {
+        imgToDataUrl(img.src).then(dUrl => {
+          if (dUrl && dUrl.startsWith('data:image')) img.src = dUrl;
+        }).catch(() => {});
+      }
+    });
+  }, 100);
 
   // Wire up modal PDF download
   const btnPdf = document.getElementById('modal-btn-pdf');
