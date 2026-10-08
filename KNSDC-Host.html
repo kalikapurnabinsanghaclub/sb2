@@ -2451,34 +2451,49 @@ function renderHostJudges() {
     return raw ? raw.toLowerCase() : '';
   };
 
-  currentJudges.forEach(j => {
-    if (!j) return;
-    const jEvId = j.eventId || j.event_id;
-    if (activeEvId && jEvId && String(jEvId) !== String(activeEvId) && String(jEvId) !== '0') return;
-    const key = getJudgeKey(j);
-    if (key) {
-      judgeMap.set(key, typeof j === 'object' ? { ...j } : { id: j, name: String(j) });
-    }
-  });
-
+  // 1. Primary source: registered judge agreements for this active event
   currentAgreements.forEach(a => {
     if (!a) return;
     const aEvId = a.eventId || a.event_id;
     if (activeEvId && aEvId && String(aEvId) !== String(activeEvId) && String(aEvId) !== '0') return;
     const key = getJudgeKey(a);
     if (key) {
-      const existing = judgeMap.get(key) || {};
-      const aObj = typeof a === 'object' && a !== null ? a : {};
       judgeMap.set(key, {
-        ...existing,
-        name: existing.name || aObj.name || 'Judge',
-        email: existing.email || aObj.email || '',
-        phone: existing.phone || aObj.phone || '',
-        address: existing.address || aObj.address || '',
-        spec: existing.spec || existing.specialist || aObj.spec || aObj.specialist || aObj.specialization || 'General',
-        mentionNote: existing.mentionNote || aObj.mentionNote || '',
-        avatar: existing.avatar || aObj.avatar || existing.photoUrl || aObj.photoUrl || '',
-        present: existing.present === true
+        id: a.id,
+        name: a.name || 'Judge',
+        email: a.email || '',
+        phone: a.phone || '',
+        address: a.address || a.city || '',
+        spec: a.spec || a.specialist || a.specialization || 'General',
+        mentionNote: a.notes || a.mentionNote || '',
+        avatar: a.avatar || a.photoUrl || a.photo || '',
+        present: false
+      });
+    }
+  });
+
+  // 2. Cross-reference live presence from active judges session
+  currentJudges.forEach(j => {
+    if (!j) return;
+    const key = getJudgeKey(j);
+    if (key && judgeMap.has(key)) {
+      const existing = judgeMap.get(key);
+      if (j.present !== undefined) existing.present = !!j.present;
+      if (j.avatar && !existing.avatar) existing.avatar = j.avatar;
+    } else if (key && typeof j === 'object' && j.name && isNaN(Number(j.name)) && String(j.name).trim().length > 1) {
+      // Only include independent judges if they have a genuine real name (not a number or empty ID)
+      const jEvId = j.eventId || j.event_id;
+      if (activeEvId && jEvId && String(jEvId) !== String(activeEvId) && String(jEvId) !== '0') return;
+      judgeMap.set(key, {
+        id: j.id,
+        name: j.name,
+        email: j.email || '',
+        phone: j.phone || '',
+        address: j.address || '',
+        spec: j.spec || j.specialist || 'General',
+        mentionNote: j.mentionNote || '',
+        avatar: j.avatar || '',
+        present: !!j.present
       });
     }
   });
