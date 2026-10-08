@@ -2412,13 +2412,23 @@ function renderHostJudges() {
   // Build unified list of unique judges for this event
   const judgeMap = new Map();
 
+  const getJudgeKey = (item) => {
+    if (!item) return '';
+    if (typeof item === 'string') return item.trim().toLowerCase();
+    const email = typeof item.email === 'string' ? item.email.trim() : '';
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    const id = item.id != null && typeof item.id !== 'object' ? String(item.id).trim() : '';
+    const raw = email || name || id;
+    return raw ? raw.toLowerCase() : '';
+  };
+
   currentJudges.forEach(j => {
     if (!j) return;
     const isEventMatch = !activeEvId || !j.eventId || String(j.eventId) === String(activeEvId) || String(j.eventId) === '0';
     if (!isEventMatch) return;
-    const key = (j.email || j.name || String(j.id)).toLowerCase().trim();
+    const key = getJudgeKey(j);
     if (key) {
-      judgeMap.set(key, { ...j });
+      judgeMap.set(key, typeof j === 'object' ? { ...j } : { id: j, name: String(j) });
     }
   });
 
@@ -2426,18 +2436,19 @@ function renderHostJudges() {
     if (!a) return;
     const isEventMatch = !activeEvId || !a.eventId || String(a.eventId) === String(activeEvId) || String(a.eventId) === '0';
     if (!isEventMatch) return;
-    const key = (a.email || a.name || String(a.id)).toLowerCase().trim();
+    const key = getJudgeKey(a);
     if (key) {
       const existing = judgeMap.get(key) || {};
+      const aObj = typeof a === 'object' && a !== null ? a : {};
       judgeMap.set(key, {
         ...existing,
-        name: existing.name || a.name || 'Judge',
-        email: existing.email || a.email || '',
-        phone: existing.phone || a.phone || '',
-        address: existing.address || a.address || '',
-        spec: existing.spec || existing.specialist || a.spec || a.specialist || a.specialization || 'General',
-        mentionNote: existing.mentionNote || a.mentionNote || '',
-        avatar: existing.avatar || a.avatar || existing.photoUrl || a.photoUrl || '',
+        name: existing.name || aObj.name || 'Judge',
+        email: existing.email || aObj.email || '',
+        phone: existing.phone || aObj.phone || '',
+        address: existing.address || aObj.address || '',
+        spec: existing.spec || existing.specialist || aObj.spec || aObj.specialist || aObj.specialization || 'General',
+        mentionNote: existing.mentionNote || aObj.mentionNote || '',
+        avatar: existing.avatar || aObj.avatar || existing.photoUrl || aObj.photoUrl || '',
         present: existing.present === true
       });
     }
@@ -2458,16 +2469,19 @@ function renderHostJudges() {
   container.innerHTML = `
     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
       ${judgeList.map(j => {
-        const name = j.name || 'Judge';
-        const spec = j.spec || j.specialist || 'General';
-        const address = j.address || 'Not specified';
-        const phone = j.phone || '—';
-        const email = j.email || '—';
-        const note = (j.mentionNote || '').trim();
-        const initial = name.charAt(0).toUpperCase();
-        const isPresent = j.present === true;
+        const rawName = j && j.name != null ? (typeof j.name === 'string' ? j.name : String(j.name)) : 'Judge';
+        const name = rawName || 'Judge';
+        const rawSpec = j && (j.spec || j.specialist || j.specialization);
+        const spec = rawSpec != null ? (typeof rawSpec === 'string' ? rawSpec : String(rawSpec)) : 'General';
+        const rawAddress = j && j.address;
+        const address = rawAddress != null ? (typeof rawAddress === 'string' ? rawAddress : String(rawAddress)) : 'Not specified';
+        const phone = j && j.phone ? String(j.phone) : '—';
+        const email = j && j.email ? (typeof j.email === 'string' ? j.email : String(j.email)) : '—';
+        const note = j && j.mentionNote ? String(j.mentionNote).trim() : '';
+        const initial = (name || 'J').charAt(0).toUpperCase();
+        const isPresent = j && j.present === true;
 
-        const avatarHtml = j.avatar ? 
+        const avatarHtml = j && j.avatar ? 
           `<div style="width:52px; height:52px; border-radius:50%; background-image:url('${j.avatar}'); background-size:cover; background-position:center; border:2.5px solid var(--border); box-shadow:0 4px 10px rgba(0,0,0,0.06); flex-shrink:0;"></div>` :
           `<div style="width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg, #0ea5e9, #3b82f6); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; border:2.5px solid var(--surface); box-shadow:0 4px 10px rgba(14,165,233,0.3); flex-shrink:0;">${initial}</div>`;
 
