@@ -1061,6 +1061,30 @@ let hostAssignedEventId = null;
 let hostAssignedVenueId = null;
 let hostAssignedVenueName = null;
 let hostSelectedRound = 'audition';
+let venues = [];
+
+function resolveParticipantVenue(p, venList) {
+  if (!p) return null;
+  const list = (Array.isArray(venList) && venList.length > 0) ? venList : (venues || []);
+  if (p.venueId !== undefined && p.venueId !== null && p.venueId !== '') {
+    const v = list.find(x => String(x.id) === String(p.venueId));
+    if (v) return v;
+  }
+  if (p.venue !== undefined && p.venue !== null && p.venue !== '') {
+    const v = list.find(x => String(x.id) === String(p.venue) || (x.name && String(x.name).trim().toLowerCase() === String(p.venue).trim().toLowerCase()));
+    if (v) return v;
+  }
+  const rawVen = p.formAnswers && (p.formAnswers['Venue Field'] || p.formAnswers['Venue'] || p.formAnswers['venue'] || p.formAnswers['venue_field']);
+  if (rawVen) {
+    const v = list.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+    if (v) return v;
+  }
+  if (p.venueId && typeof p.venueId === 'string' && isNaN(Number(p.venueId))) {
+    const v = list.find(x => x.name && String(x.name).trim().toLowerCase() === String(p.venueId).trim().toLowerCase());
+    if (v) return v;
+  }
+  return null;
+}
 
 // ══════════════════════════════════════════
 // ROUND-WISE PRESENCE HELPERS (Host)
@@ -1315,6 +1339,7 @@ syncEngine.subscribe((state) => {
   const seenIds = new Set();
   participants = (state.participants || []).filter(p => {
     if (!p || !p.id) return false;
+    if (p.stageStatus === 'Archived' || p.stage_status === 'Archived' || p.isArchived) return false;
     const idStr = String(p.id);
     if (seenIds.has(idStr)) return false;
     seenIds.add(idStr);
@@ -1392,8 +1417,9 @@ syncEngine.subscribe((state) => {
     assignedNameEl.textContent = disp;
   }
 
-  // Use categories from the matched event, or fall back to global state.categories
+  // Use categories and venues from the matched event, or fall back to global state
   categories = activeEv ? (activeEv.categories || state.categories || []) : (state.categories || []);
+  venues = activeEv ? (activeEv.venues || state.venues || []) : (state.venues || []);
   subjects = state.subjects || [];
   judges = state.judges || [];
   const ALLOWED_STAFF_ROLES = ['admin', 'monitor', 'host', 'judge'];
@@ -1456,8 +1482,20 @@ function getHostScopedParticipants() {
   const data = syncEngine.getData() || {};
   const activeEvId = hostAssignedEventId || data.activeEventId;
   
-  // Base event filter: all participants belonging to the assigned event (matches Monitor event scope)
-  return participants.filter(p => !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId));
+  return participants.filter(p => {
+    if (!p || !p.id) return false;
+    if (p.stageStatus === 'Archived' || p.stage_status === 'Archived' || p.isArchived) return false;
+    if (activeEvId && p.eventId && String(p.eventId) !== String(activeEvId)) return false;
+    
+    // If the Host is assigned to a specific venue, strictly scope participants to that venue (mirrors Venue Monitor)
+    if (hostAssignedVenueId) {
+      if (String(p.venueId) === String(hostAssignedVenueId)) return true;
+      const r = resolveParticipantVenue(p, venues);
+      if (r && String(r.id) === String(hostAssignedVenueId)) return true;
+      return false;
+    }
+    return true;
+  });
 }
 
 function renderDashboard() {
@@ -1580,14 +1618,14 @@ function renderStage() {
   if (!isExplicitEmpty) {
     const curStageId = (stageVen && stageVen.currentOnStage) || data.currentOnStage;
     if (curStageId) {
-      onStage = participants.find(p => String(p.id) === String(curStageId));
+      onStage = scoped.find(p => String(p.id) === String(curStageId) && p.stageStatus !== 'Archived' && p.stage_status !== 'Archived');
     }
   }
   if (!onStage && !isExplicitEmpty && !stageVen) {
-    onStage = scoped.find(p => p.stageStatus === 'on-stage') || null;
+    onStage = scoped.find(p => p.stageStatus === 'on-stage' && p.stageStatus !== 'Archived' && p.stage_status !== 'Archived') || null;
   }
   // Queue: exactly mirrors Venue Monitor QUEUE section (resolved across ANY round)
-  const upcoming = sortQueue(scoped.filter(p => p.stageStatus === 'queue' && (!onStage || String(p.id) !== String(onStage.id))));
+  const upcoming = sortQueue(scoped.filter(p => p.stageStatus === 'queue' && p.stageStatus !== 'Archived' && p.stage_status !== 'Archived' && (!onStage || String(p.id) !== String(onStage.id))));
 
   const area = document.getElementById('on-stage-area');
   if(area) {
@@ -2087,7 +2125,11 @@ window.renderLeaderboard = () => {
       (String(p.eventId) === String(activeEventId) || !p.eventId)
     );
     if (hostAssignedVenueId) {
-      const venueMatches = filtered.filter(p => String(p.venueId) === String(hostAssignedVenueId));
+      const venueMatches = filtered.filter(p => {
+        if (String(p.venueId) === String(hostAssignedVenueId)) return true;
+        const r = resolveParticipantVenue(p, venues);
+        return r && String(r.id) === String(hostAssignedVenueId);
+      });
       if (venueMatches.length > 0) filtered = venueMatches;
     }
     
