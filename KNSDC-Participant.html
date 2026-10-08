@@ -2646,11 +2646,28 @@ function renderCertificateVerificationView(p, verifyCertParam) {
   const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
   const catName = cat ? cat.name : (p.category || 'Open Category');
 
+  let rawAuditionDate = '';
+  if (p.roundPresence && p.roundPresence.audition && p.roundPresence.audition.markedAt) {
+    rawAuditionDate = p.roundPresence.audition.markedAt;
+  } else if (p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date) {
+    rawAuditionDate = p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date;
+  } else if (p.presenceMarkedAt) {
+    rawAuditionDate = p.presenceMarkedAt;
+  } else if (p.date) {
+    rawAuditionDate = p.date;
+  } else if (ev.disp) {
+    rawAuditionDate = ev.disp;
+  } else if (ev.date) {
+    rawAuditionDate = ev.date;
+  }
+
   let certDate = 'Annual Cultural Event';
-  if (p.date) {
-    const parsed = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00');
+  if (rawAuditionDate) {
+    const parsed = new Date(rawAuditionDate.includes('T') ? rawAuditionDate : rawAuditionDate + 'T00:00:00');
     if (!isNaN(parsed.getTime())) {
       certDate = parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    } else {
+      certDate = rawAuditionDate;
     }
   }
 
@@ -3617,21 +3634,39 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     }
   }
 
+  // ─── Resolve Audition Completion Date ───
+  let rawAuditionDate = '';
+  // 1. Check roundPresence audition markedAt timestamp
+  if (p.roundPresence && p.roundPresence.audition && p.roundPresence.audition.markedAt) {
+    rawAuditionDate = p.roundPresence.audition.markedAt;
+  }
+  // 2. Check audition completion timestamp / evaluation date if stored in participant
+  if (!rawAuditionDate && (p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date)) {
+    rawAuditionDate = p.auditionCompletedAt || p.audition_completed_at || p.auditionDate || p.audition_date;
+  }
+  // 3. Check presence timestamp on participant
+  if (!rawAuditionDate && p.presenceMarkedAt) {
+    rawAuditionDate = p.presenceMarkedAt;
+  }
+  // 4. Check assigned audition date on participant record
+  if (!rawAuditionDate && p.date) {
+    rawAuditionDate = p.date;
+  }
+  // 5. Fallback to event display date or event start date
+  if (!rawAuditionDate && ev.disp) {
+    rawAuditionDate = ev.disp;
+  } else if (!rawAuditionDate && ev.date) {
+    rawAuditionDate = ev.date;
+  } else if (!rawAuditionDate && venObj && Array.isArray(venObj.dates) && venObj.dates.length > 0) {
+    rawAuditionDate = venObj.dates[0];
+  }
+
   let certDate = '';
-  if (p.date) {
-    const parsed = new Date(p.date.includes('T') ? p.date : p.date + 'T00:00:00');
-    certDate = !isNaN(parsed.getTime()) 
-      ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) 
-      : p.date;
-  } else if (ev.disp) {
-    certDate = ev.disp;
-  } else if (ev.date) {
-    const parsed = new Date(ev.date.includes('T') ? ev.date : ev.date + 'T00:00:00');
-    certDate = !isNaN(parsed.getTime()) 
-      ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) 
-      : ev.date;
-  } else if (venObj && Array.isArray(venObj.dates) && venObj.dates.length > 0) {
-    certDate = venObj.dates[0];
+  if (rawAuditionDate) {
+    const parsed = new Date(rawAuditionDate.includes('T') ? rawAuditionDate : rawAuditionDate + 'T00:00:00');
+    certDate = !isNaN(parsed.getTime())
+      ? parsed.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
+      : rawAuditionDate;
   } else {
     certDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   }
