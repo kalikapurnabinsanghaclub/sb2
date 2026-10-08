@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>KNSDC — Participant Portal</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;600;700;800;900&family=Montserrat:wght@600;700;800;900&family=Oswald:wght@600;700&family=Outfit:wght@400;600;700;800;900&family=Playfair+Display:wght@600;700;800;900&family=Poppins:wght@600;700;800;900&family=Righteous&family=Space+Grotesk:wght@600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;800;900&family=Cinzel+Decorative:wght@700;900&family=Inter:wght@400;600;700;800;900&family=Montserrat:wght@600;700;800;900&family=Oswald:wght@600;700&family=Outfit:wght@400;600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,400;1,700&family=Poppins:wght@600;700;800;900&family=Righteous&family=Space+Grotesk:wght@600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <!-- Removed importmap to support file:// protocol -->
 <script>
@@ -12,9 +12,20 @@
 </script>
 <script src="lib/qrcode.min.js"></script>
 <script>
-  // Fallback to CDN if local lib failed to load
   if (typeof QRCode === 'undefined') {
     document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\\/script>');
+  }
+</script>
+<script src="lib/jspdf.umd.min.js"></script>
+<script>
+  if (typeof window.jspdf === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\\/script>');
+  }
+</script>
+<script src="lib/html2canvas.min.js"></script>
+<script>
+  if (typeof html2canvas === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\\/script>');
   }
 </script>
 <style>
@@ -388,6 +399,499 @@
     font-weight: 700;
     line-height: 1.4;
   }
+
+  /* ═══ OFFICIAL KNSDC PARTICIPANT E-CERTIFICATE STYLES ═══ */
+  .cert-card {
+    position: relative;
+    width: 1000px;
+    height: 707px;
+    min-width: 1000px;
+    min-height: 707px;
+    box-sizing: border-box;
+    background-color: #faf8f2;
+    background-image: 
+      radial-gradient(circle at 50% 50%, #ffffff 0%, #faf8f2 100%),
+      repeating-linear-gradient(45deg, rgba(212, 175, 55, 0.015) 0, rgba(212, 175, 55, 0.015) 1px, transparent 0, transparent 12px);
+    border: 8px solid #b8860b;
+    box-shadow: inset 0 0 0 3px #dfba73, inset 0 0 0 9px #ffffff, inset 0 0 0 11px #d4af37;
+    padding: 0px 18px 0px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    overflow: hidden;
+    font-family: 'Playfair Display', Georgia, serif;
+    color: #0f172a;
+  }
+  .corner-flourish {
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    pointer-events: none;
+    fill: none;
+    stroke: #c59b27;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+  .corner-tl { top: 11px; left: 11px; }
+  .corner-tr { top: 11px; right: 11px; transform: scaleX(-1); }
+  .corner-bl { bottom: 11px; left: 11px; transform: scaleY(-1); }
+  .corner-br { bottom: 11px; right: 11px; transform: scale(-1, -1); }
+  .cert-watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 13rem;
+    font-weight: 900;
+    font-family: 'Cinzel', serif;
+    color: #1a237e;
+    opacity: 0.025;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+  }
+  .cert-header {
+    width: 100%;
+    position: relative;
+    z-index: 2;
+    padding-top: 12px;
+  }
+  .cert-logos {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 0;
+    margin-bottom: 35px;
+  }
+  .cert-logo-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+  }
+  .cert-logo-img {
+    height: 200px;
+    width: auto;
+    max-width: 200px;
+    object-fit: contain;
+  }
+  .cert-banner-img {
+    height: 200px;
+    width: auto;
+    max-width: 420px;
+    object-fit: contain;
+    border-radius: 5px;
+  }
+  .cert-logo-divider {
+    width: 1.5px;
+    height: 165px;
+    background: linear-gradient(to bottom, transparent, #d4af37, transparent);
+  }
+  .cert-logo-label {
+    font-size: 0.48rem;
+    color: #64748b;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+  .cert-org-name {
+    font-family: 'Cinzel Decorative', 'Cinzel', serif;
+    font-size: 0.90rem;
+    color: #1a237e;
+    font-weight: 800;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 0;
+    margin-bottom: 0;
+    line-height: 1.1;
+  }
+  .cert-ornament-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 2px 0 2px;
+  }
+  .cert-ornament-line .line {
+    width: 60px;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #c59b27, transparent);
+  }
+  .cert-ornament-line .diamond {
+    color: #c59b27;
+    font-size: 0.65rem;
+  }
+  .cert-main-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.55rem;
+    font-weight: 900;
+    color: #0f172a;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 0;
+    line-height: 1.1;
+  }
+  .cert-subtitle {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-size: 0.80rem;
+    color: #64748b;
+    margin-bottom: 0;
+    margin-top: 2px;
+    line-height: 1.2;
+  }
+  .cert-body {
+    width: 100%;
+    margin: 20px 0 0;
+    position: relative;
+    z-index: 2;
+  }
+  .cert-recipient-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.0rem;
+    font-weight: 900;
+    color: #1a237e;
+    letter-spacing: 1px;
+    border-bottom: 2px solid #d4af37;
+    display: inline-block;
+    padding: 6px 24px 6px;
+    margin-top: 10px;
+    margin-bottom: 25px;
+    text-transform: capitalize;
+    line-height: 1.2;
+  }
+  .cert-citation {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 0.88rem;
+    color: #334155;
+    line-height: 1.3;
+    max-width: 750px;
+    margin: 2px auto 0;
+  }
+  .cert-meta-item {
+    font-size: 0.85rem;
+    color: #475569;
+  }
+  .cert-meta-sep {
+    color: #d4af37;
+    margin: 0 6px;
+  }
+  .cert-accent {
+    color: #1a237e;
+    font-weight: 800;
+  }
+  .cert-text-dark {
+    color: #0f172a;
+  }
+  .cert-event-title {
+    color: #1a237e;
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    font-family: 'Cinzel', serif;
+    margin: 1px 0;
+    line-height: 1.2;
+  }
+  .cert-corner-left {
+    position: absolute;
+    top: 14px;
+    left: 20px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 10;
+  }
+  .cert-auto-gen-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.54rem;
+    font-weight: 700;
+    color: #059669;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    padding: 2.5px 7px;
+    border-radius: 4px;
+  }
+  .cert-corner-right {
+    position: absolute;
+    top: 14px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    z-index: 10;
+  }
+  .cert-num-label-tr {
+    font-size: 0.60rem;
+    color: #64748b;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .cert-num-label-tr strong {
+    color: #1e293b;
+  }
+  .cert-qr-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #ffffff;
+    border: 1.5px solid #d4af37;
+    padding: 3px 4px 2px 4px;
+    border-radius: 6px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+    margin: 1px 0;
+  }
+  .cert-qr-img {
+    width: 58px;
+    height: 58px;
+    display: block;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+  .cert-qr-caption {
+    font-size: 0.44rem;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    color: #047857;
+    margin-top: 2px;
+    text-transform: uppercase;
+    font-family: 'Inter', sans-serif;
+  }
+  .cert-stamp-verified-wrap {
+    position: absolute;
+    top: 42px;
+    left: 20px;
+    z-index: 12;
+    pointer-events: none;
+    user-select: none;
+  }
+  .cert-stamp-verified {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 2.2px dashed #047857;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transform: rotate(-10deg);
+    opacity: 0.95;
+    background: radial-gradient(circle, rgba(16,185,129,0.08) 0%, rgba(255,255,255,0.7) 65%, rgba(255,255,255,0) 100%);
+    box-shadow: 0 0 0 2.5px rgba(4,120,87,0.18), inset 0 0 0 1.5px rgba(4,120,87,0.25), 0 3px 10px rgba(0,0,0,0.06);
+  }
+  .cert-stamp-inner {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    border: 1.4px solid #047857;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cert-stamp-circle-text {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .cert-stamp-svg-ring {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .cert-stamp-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    z-index: 2;
+  }
+  .cert-stamp-check {
+    line-height: 1;
+    margin-bottom: -2px;
+  }
+  .cert-stamp-label {
+    font-size: 0.54rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    color: #047857;
+    text-transform: uppercase;
+    font-family: 'Cinzel', serif;
+  }
+  .cert-stamp-code {
+    font-size: 0.38rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    color: #065f46;
+    margin-top: 1px;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cert-footer {
+    width: 100%;
+    position: relative;
+    z-index: 2;
+    margin-top: auto;
+  }
+  .cert-footer-row {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0 16px;
+    box-sizing: border-box;
+    margin-bottom: 2px;
+  }
+  .cert-sigs-left {
+    display: flex;
+    gap: 60px;
+    align-items: flex-end;
+    text-align: center;
+  }
+  .cert-sig-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 159px;
+    text-align: center;
+  }
+  .cert-sig-img-wrap {
+    height: 100px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    margin-bottom: 3px;
+  }
+  .cert-sig-img {
+    max-height: 100px;
+    max-width: 154px;
+    object-fit: contain;
+  }
+  .cert-sig-line {
+    border-top: 1.5px solid #1e293b;
+    width: 100%;
+    padding-top: 3px;
+    font-family: 'Playfair Display', serif;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #1e293b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .cert-participant-photo-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .cert-participant-photo-frame {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 3px solid #d4af37;
+    outline: 2px solid #b8860b;
+    outline-offset: 2px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 0 6px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 6px;
+  }
+  .cert-participant-photo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+  }
+  .cert-sigs-right {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+  .cert-powered {
+    font-size: 0.60rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 700;
+    padding-bottom: 15px;
+  }
+
+  /* ═══ PRINT ENGINE FOR IN-PAGE CERTIFICATE MODAL ═══ */
+  @media print {
+    @page {
+      size: 297mm 210mm;
+      margin: 0mm;
+    }
+    body > *:not(#cert-viewer-modal) {
+      display: none !important;
+    }
+    #cert-viewer-modal {
+      display: flex !important;
+      position: static !important;
+      background: #ffffff !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      width: 297mm !important;
+      height: 210mm !important;
+      max-width: 297mm !important;
+      max-height: 210mm !important;
+      overflow: hidden !important;
+    }
+    .cert-modal-controls {
+      display: none !important;
+    }
+    #modal-cert-stage {
+      padding: 0 !important;
+      margin: 0 !important;
+      width: 297mm !important;
+      height: 210mm !important;
+      max-width: 297mm !important;
+      max-height: 210mm !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    #modal-cert-wrapper {
+      transform: none !important;
+      width: 297mm !important;
+      height: 210mm !important;
+      max-width: 297mm !important;
+      max-height: 210mm !important;
+      padding: 6mm !important;
+      margin: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      overflow: hidden !important;
+    }
+    .cert-card {
+      width: 100% !important;
+      height: 100% !important;
+      max-height: 100% !important;
+      box-sizing: border-box !important;
+      overflow: hidden !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+  }
 </style>
 </head>
 <body>
@@ -747,6 +1251,45 @@
           ⬇️ Download Poster
         </button>
         <div id="share-loading" style="display:none; text-align:center; color:var(--text-muted); font-size:12px; margin-top:10px;">Generating poster... Please wait.</div>
+      </div>
+    </div>
+
+    <!-- CERTIFICATE VIEWER MODAL (Full Responsive Mobile & Desktop Modal Viewer) -->
+    <div id="cert-viewer-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(9,13,22,0.96); z-index:9999999; flex-direction:column; padding:12px; box-sizing:border-box; overflow-y:auto; -webkit-overflow-scrolling:touch; align-items:center;">
+      <div style="width:100%; max-width:1080px; display:flex; flex-direction:column; align-items:center; margin:auto 0; position:relative;">
+        
+        <!-- Action Toolbar -->
+        <div class="cert-modal-controls" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center; align-items:center; width:100%; margin-bottom:14px; background:rgba(30,41,59,0.92); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); padding:8px 12px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); box-shadow:0 10px 25px rgba(0,0,0,0.5); z-index:100; position:sticky; top:8px;">
+          <button id="modal-btn-pdf" class="btn" style="background:linear-gradient(135deg, #4f46e5, #7c3aed); color:white; font-weight:700; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:13px; box-shadow:0 4px 12px rgba(79,70,229,0.3);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download PDF</span>
+          </button>
+
+          <button id="modal-btn-jpg" class="btn" style="background:linear-gradient(135deg, #059669, #10b981); color:white; font-weight:700; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:13px; box-shadow:0 4px 12px rgba(16,185,129,0.3);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <span>Download JPG (HD)</span>
+          </button>
+
+          <button id="modal-btn-print" class="btn" onclick="printModalCertificate()" style="background:linear-gradient(135deg, #d97706, #b45309); color:white; font-weight:700; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:13px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span>Print</span>
+          </button>
+
+          <button id="modal-btn-tab" class="btn" onclick="openCertInNewTab()" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#cbd5e1; font-weight:700; padding:10px 14px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; font-size:13px;" title="Open in new window">
+            ↗️ New Tab
+          </button>
+
+          <button id="modal-btn-close" class="btn" onclick="closeCertViewerModal()" style="background:rgba(239,68,68,0.2); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); font-weight:700; padding:10px 16px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; font-size:13px;">
+            ✕ Close
+          </button>
+        </div>
+
+        <!-- Stage Container for Scaling -->
+        <div id="modal-cert-stage" style="width:100%; display:flex; justify-content:center; overflow:hidden; position:relative;">
+          <div id="modal-cert-wrapper" style="width:1000px; height:707px; min-width:1000px; min-height:707px; max-width:1000px; max-height:707px; background:#ffffff; box-shadow:0 25px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(212,175,55,0.3); border-radius:4px; position:relative; overflow:hidden; box-sizing:border-box; transform-origin:top center; transition:transform 0.15s ease-out;">
+            <!-- Certificate Content populated by JS -->
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2618,6 +3161,81 @@ function initApp() {
   }
 }
 
+// ── Audition Round Completion Status Helper ──
+function hasCompletedAudition(p) {
+  if (!p) return false;
+
+  // 1. Participant has progressed past audition round (e.g. qualified, semifinal, final)
+  const currentRound = String(p.round || '').toLowerCase().trim();
+  if (['qualified', 'semifinal', 'final'].includes(currentRound)) {
+    return true;
+  }
+
+  // 2. Explicit audition completed flag or timestamp
+  if (p.auditionCompletedAt || p.audition_completed_at || p.auditionCompleted === true) {
+    return true;
+  }
+
+  // 3. Stage performance status marked 'done'
+  if (p.stageStatus === 'done') {
+    return true;
+  }
+
+  // 4. Scores recorded for audition round
+  if (p.roundScores && p.roundScores.audition && Object.keys(p.roundScores.audition).length > 0) {
+    return true;
+  }
+  if (p.scores && (p.scores.audition || (typeof p.scores === 'object' && Object.keys(p.scores).length > 0 && !p.scores.round))) {
+    return true;
+  }
+
+  return false;
+}
+
+// ── Modal Certificate Helper Functions ──
+function closeCertViewerModal() {
+  const m = document.getElementById('cert-viewer-modal');
+  if (m) m.style.display = 'none';
+}
+
+function printModalCertificate() {
+  window.print();
+}
+
+function fitModalCertToScreen() {
+  const stage = document.getElementById('modal-cert-stage');
+  const wrapper = document.getElementById('modal-cert-wrapper');
+  const modalEl = document.getElementById('cert-viewer-modal');
+  if (!stage || !wrapper || !modalEl || modalEl.style.display === 'none') return;
+
+  const availW = Math.min(window.innerWidth - 24, stage.clientWidth || (window.innerWidth - 24));
+  const targetW = 1000;
+  const targetH = 707;
+
+  if (availW < targetW) {
+    const scale = Math.max(0.25, (availW - 6) / targetW);
+    wrapper.style.transform = `scale(${scale})`;
+    stage.style.height = `${Math.ceil(targetH * scale + 16)}px`;
+  } else {
+    wrapper.style.transform = 'none';
+    stage.style.height = `${targetH + 16}px`;
+  }
+}
+window.addEventListener('resize', fitModalCertToScreen);
+window.addEventListener('orientationchange', fitModalCertToScreen);
+
+function openCertInNewTab() {
+  const modalWrapper = document.getElementById('modal-cert-wrapper');
+  if (!modalWrapper || !modalWrapper.firstElementChild) return;
+  const cardHtml = modalWrapper.innerHTML;
+  const styleEl = document.querySelector('style');
+  const styleContent = styleEl ? styleEl.textContent : '';
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>KNSDC Certificate</title><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Cinzel+Decorative:wght@700;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,400;1,700&display=swap" rel="stylesheet"/><style>${styleContent}</style></head><body style="margin:0;padding:24px 10px;background:#090d16;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;">${cardHtml}</body></html>`;
+  const blob = new Blob([fullHtml], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
 // ── Render Verified Candidate Certificate View (Public View for QR Scanner) ──
 function renderCertificateVerificationView(p, verifyCertParam) {
   const loginView = document.getElementById('login-view');
@@ -2671,25 +3289,47 @@ function renderCertificateVerificationView(p, verifyCertParam) {
     }
   }
 
+  const isAuditionDone = hasCompletedAudition(p);
+
   if (verifyContent) {
     verifyContent.innerHTML = `
-      <!-- Verified Candidate Header Banner -->
-      <div style="background:linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border:1.5px solid #10b981; border-radius:14px; padding:18px; margin-bottom:18px; position:relative; overflow:hidden;">
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div style="width:42px; height:42px; border-radius:50%; background:#10b981; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px; font-weight:900;">
-              ✓
+      ${isAuditionDone ? `
+        <!-- Verified Candidate Header Banner -->
+        <div style="background:linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border:1.5px solid #10b981; border-radius:14px; padding:18px; margin-bottom:18px; position:relative; overflow:hidden;">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:42px; height:42px; border-radius:50%; background:#10b981; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px; font-weight:900;">
+                ✓
+              </div>
+              <div>
+                <div style="font-size:1.05rem; font-weight:900; color:#065f46; letter-spacing:0.3px;">VERIFIED CANDIDATE BY KNSDC</div>
+                <div style="font-size:0.75rem; color:#047857; font-weight:700;">Certificate Authenticity Confirmed by Club Records</div>
+              </div>
             </div>
-            <div>
-              <div style="font-size:1.05rem; font-weight:900; color:#065f46; letter-spacing:0.3px;">VERIFIED CANDIDATE BY KNSDC</div>
-              <div style="font-size:0.75rem; color:#047857; font-weight:700;">Certificate Authenticity Confirmed by Club Records</div>
+            <div style="background:#047857; color:#fff; font-size:0.70rem; font-weight:800; padding:4px 10px; border-radius:6px; letter-spacing:0.8px;">
+              CERT NO: ${certNo}
             </div>
-          </div>
-          <div style="background:#047857; color:#fff; font-size:0.70rem; font-weight:800; padding:4px 10px; border-radius:6px; letter-spacing:0.8px;">
-            CERT NO: ${certNo}
           </div>
         </div>
-      </div>
+      ` : `
+        <!-- Audition Pending Notice Banner -->
+        <div style="background:linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border:1.5px solid #f59e0b; border-radius:14px; padding:18px; margin-bottom:18px; position:relative; overflow:hidden;">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:42px; height:42px; border-radius:50%; background:#f59e0b; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px; font-weight:900;">
+                ⏳
+              </div>
+              <div>
+                <div style="font-size:1.05rem; font-weight:900; color:#92400e; letter-spacing:0.3px;">AUDITION ROUND PENDING</div>
+                <div style="font-size:0.75rem; color:#b45309; font-weight:700;">Candidate has not yet completed their audition round performance.</div>
+              </div>
+            </div>
+            <div style="background:#b45309; color:#fff; font-size:0.70rem; font-weight:800; padding:4px 10px; border-radius:6px; letter-spacing:0.8px;">
+              STATUS: PENDING
+            </div>
+          </div>
+        </div>
+      `}
 
       <!-- Candidate Data Card -->
       <div style="background:rgba(255,255,255,0.85); border:1px solid rgba(0,0,0,0.08); border-radius:14px; padding:18px; margin-bottom:18px; box-shadow:0 4px 16px rgba(0,0,0,0.04);">
@@ -2711,7 +3351,7 @@ function renderCertificateVerificationView(p, verifyCertParam) {
             <div style="font-size:0.95rem; font-weight:800; color:#0f172a; margin-top:2px;">${catName}</div>
           </div>
           <div>
-            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Event Date</div>
+            <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Audition Date</div>
             <div style="font-size:0.95rem; font-weight:700; color:#334155; margin-top:2px;">${certDate}</div>
           </div>
           <div>
@@ -2723,16 +3363,22 @@ function renderCertificateVerificationView(p, verifyCertParam) {
 
       <!-- Action Buttons -->
       <div style="display:flex; flex-direction:column; gap:10px;">
-        <button type="button" class="btn btn-primary" onclick="generateParticipantCertificateHTML('${p.id}')" style="background:linear-gradient(135deg, #1A237E, #2563eb); display:flex; align-items:center; justify-content:center; gap:8px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          <span>Open Full Digital Certificate with Stamp</span>
-        </button>
+        ${isAuditionDone ? `
+          <button type="button" class="btn btn-primary" onclick="generateParticipantCertificateHTML('${p.id}')" style="background:linear-gradient(135deg, #1A237E, #2563eb); display:flex; align-items:center; justify-content:center; gap:8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span>Open Full Digital Certificate with Stamp</span>
+          </button>
+        ` : `
+          <div style="text-align:center; padding:12px 16px; color:#92400e; font-weight:700; font-size:13px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px;">
+            ⏳ E-Certificate will be issued once the candidate completes their Audition round performance.
+          </div>
+        `}
       </div>
     `;
   }
 
   if (verifyView) verifyView.style.display = 'block';
-  toast('✔ Verified Candidate Certificate Loaded!');
+  toast(isAuditionDone ? '✔ Verified Candidate Certificate Loaded!' : 'ℹ Candidate Audition Pending');
 }
 
 // Wait for syncEngine to initialize
@@ -3276,15 +3922,19 @@ function renderDashboard() {
   // Sync Flash Message for Participant (same event)
   updateParticipantFlashMessage(p, state);
 
-  // Render Certificate Card
+  // Render Certificate Card (Gated by Audition Completion & Event Switches)
   const eventSwitches = (state.eventSwitches && ev ? state.eventSwitches[ev.id] : null) 
     || (ev ? ev.switchStates : null) 
     || state.switchStates 
     || {};
-  if (ev && (eventSwitches.certificatePublic === true || eventSwitches.downloadPublic === true)) {
-    document.getElementById('certificate-card').style.display = 'block';
-  } else {
-    document.getElementById('certificate-card').style.display = 'none';
+  const isAuditionDone = hasCompletedAudition(p);
+  const certCard = document.getElementById('certificate-card');
+  if (certCard) {
+    if (ev && (eventSwitches.certificatePublic === true || eventSwitches.downloadPublic === true) && isAuditionDone) {
+      certCard.style.display = 'block';
+    } else {
+      certCard.style.display = 'none';
+    }
   }
 
   // Render Feedback Card (Global 30s Database-backed Auto-Hide)
@@ -3467,6 +4117,15 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
   const p = (state.participants || []).find(part => String(part.id) === String(effectiveUserId));
   if (!p) return toast('Error: Participant record not found.');
 
+  // Audition completion gate
+  if (!hasCompletedAudition(p)) {
+    toast("⚠️ Certificate is available only after completing your audition round.");
+    return;
+  }
+
+  // Show status feedback
+  toast("⏳ Preparing your official certificate...");
+
   // ─── Robust Event Resolution (supports eventId, event_id, activeEventId, formAnswers) ───
   const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
   let ev = (state.events || []).find(e => String(e.id) === String(pEventId) || String(e.event_id) === String(pEventId));
@@ -3478,13 +4137,6 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
   }
   if (!ev) {
     ev = { name: 'Cultural Competition', org: 'Kalikapur Nabin Sangha' };
-  }
-
-  // ─── Open window immediately and render directly without blocking loading states ───
-  const win = window.open('', '', 'height=850,width=1250');
-  if (!win) {
-    toast("⚠️ Please allow popups to view and print your certificate.");
-    return;
   }
 
   // ─── Comprehensive Certificate Signatures & Setup Resolution ───
@@ -4061,829 +4713,139 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     </div>
   `;
 
-  win.document.open();
-  
-  win.document.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <base href="${window.location.href}" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>KNSDC Certificate — ${p.name || 'Participant'}</title>
-        <style>
-          @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800;900&family=Cinzel+Decorative:wght@700;900&family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400;1,700&display=swap");
+  const modal = document.getElementById('cert-viewer-modal');
+  const modalWrapper = document.getElementById('modal-cert-wrapper');
+  if (!modal || !modalWrapper) {
+    toast("⚠️ Certificate viewer is not available.");
+    return;
+  }
 
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          
-          body {
-            margin: 0;
-            padding: 20px 10px;
-            font-family: 'Playfair Display', Georgia, serif;
-            background: #090d16;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: #e2e8f0;
-          }
+  modalWrapper.innerHTML = content;
+  modal.style.display = 'flex';
+  fitModalCertToScreen();
+  setTimeout(fitModalCertToScreen, 80);
+  setTimeout(fitModalCertToScreen, 250);
 
-          /* Action Bar Controls */
-          #controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            justify-content: center;
-            margin-bottom: 24px;
-            z-index: 100;
-          }
+  // Wire up modal PDF download
+  const btnPdf = document.getElementById('modal-btn-pdf');
+  if (btnPdf) {
+    btnPdf.onclick = async function() {
+      if (btnPdf.disabled) return;
+      btnPdf.disabled = true;
+      const origHtml = btnPdf.innerHTML;
+      btnPdf.innerHTML = '<span>⏳ Generating PDF...</span>';
 
-          .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 10px;
-            font-weight: 700;
-            cursor: pointer;
-            color: white;
-            display: inline-flex;
-            align-items: center;
-            gap: 9px;
-            font-size: 14px;
-            letter-spacing: 0.3px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-          .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.4); }
-          .btn:active { transform: translateY(1px); opacity: 0.9; }
+      try {
+        const cardEl = modalWrapper.querySelector('.cert-card') || modalWrapper;
+        const imgs = Array.from(modalWrapper.querySelectorAll('img'));
+        await Promise.all(imgs.map(img => {
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+          return new Promise(res => {
+            img.onload = res;
+            img.onerror = res;
+            setTimeout(res, 2000);
+          });
+        }));
 
-          .btn-pdf {
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            border: 1px solid rgba(255,255,255,0.25);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
-            font-size: 15px;
-            padding: 13px 26px;
-          }
-          .btn-print {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border: 1px solid #d4af37;
-            color: #f8fafc;
-          }
-          .btn-jpg {
-            background: linear-gradient(135deg, #d97706, #b45309);
-            border: 1px solid rgba(255,255,255,0.15);
-          }
-          .btn-close {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.15);
-            color: #94a3b8;
-          }
-          .btn-close:hover { background: rgba(255,255,255,0.15); color: #fff; }
+        const prevTransform = modalWrapper.style.transform;
+        modalWrapper.style.transform = 'none';
 
-          /* Certificate Stage & Viewport */
-          #cert-stage {
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            width: 100%;
-            padding: 0 0 40px;
-            box-sizing: border-box;
-          }
+        const canvas = await html2canvas(cardEl, {
+          scale: 3,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: '#faf8f2',
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 1000,
+          windowHeight: 707
+        });
 
-          /* Exact 1000px by 707px (A4 1.4142 : 1 aspect ratio) */
-          #cert-wrapper {
-            width: 1000px;
-            height: 707px;
-            min-width: 1000px;
-            min-height: 707px;
-            max-width: 1000px;
-            max-height: 707px;
-            background: #ffffff;
-            box-shadow: 0 25px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(212,175,55,0.3);
-            border-radius: 4px;
-            position: relative;
-            overflow: hidden;
-            box-sizing: border-box;
-            transform-origin: top center;
-          }
+        modalWrapper.style.transform = prevTransform;
 
-          /* Certificate Card Layout */
-          .cert-card {
-            position: relative;
-            width: 1000px;
-            height: 707px;
-            box-sizing: border-box;
-            background-color: #faf8f2;
-            background-image: 
-              radial-gradient(circle at 50% 50%, #ffffff 0%, #faf8f2 100%),
-              repeating-linear-gradient(45deg, rgba(212, 175, 55, 0.015) 0, rgba(212, 175, 55, 0.015) 1px, transparent 0, transparent 12px);
-            border: 8px solid #b8860b;
-            box-shadow: inset 0 0 0 3px #dfba73, inset 0 0 0 9px #ffffff, inset 0 0 0 11px #d4af37;
-            padding: 0px 18px 0px;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            align-items: center;
-            overflow: hidden;
-          }
+        const jsPDFModule = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : (typeof jsPDF !== 'undefined' ? jsPDF : null);
+        if (!jsPDFModule) throw new Error('PDF generator library unavailable');
 
-          /* Corner Flourishes */
-          .corner-flourish {
-            position: absolute;
-            width: 36px;
-            height: 36px;
-            pointer-events: none;
-            fill: none;
-            stroke: #c59b27;
-            stroke-width: 1.5;
-            stroke-linecap: round;
-          }
-          .corner-tl { top: 11px; left: 11px; }
-          .corner-tr { top: 11px; right: 11px; transform: scaleX(-1); }
-          .corner-bl { bottom: 11px; left: 11px; transform: scaleY(-1); }
-          .corner-br { bottom: 11px; right: 11px; transform: scale(-1, -1); }
+        const pdf = new jsPDFModule({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'a4',
+          compress: true
+        });
 
-          /* Watermark */
-          .cert-watermark {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 13rem;
-            font-weight: 900;
-            font-family: 'Cinzel', serif;
-            color: #1a237e;
-            opacity: 0.025;
-            pointer-events: none;
-            user-select: none;
-            z-index: 1;
-          }
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210, undefined, 'FAST');
+        const safeName = ((p.name || 'Participant').replace(/[^a-zA-Z0-9_-]/g, '_')) || 'Participant';
+        pdf.save(safeName + '_Certificate.pdf');
+        toast("✅ PDF downloaded successfully!");
+      } catch (err) {
+        console.error(err);
+        toast("⚠️ PDF issue. You can tap Download JPG or Print to save as PDF.");
+      } finally {
+        btnPdf.innerHTML = origHtml;
+        btnPdf.disabled = false;
+      }
+    };
+  }
 
-          /* Header Section */
-          .cert-header {
-            width: 100%;
-            position: relative;
-            z-index: 2;
-            padding-top: 12px;
-          }
-          .cert-logos {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 20px;
-            margin-top: 0;
-            margin-bottom: 35px;
-          }
-          .cert-logo-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1px;
-          }
-          .cert-logo-img {
-            height: 200px;
-            width: auto;
-            max-width: 200px;
-            object-fit: contain;
-          }
-          .cert-banner-img {
-            height: 200px;
-            width: auto;
-            max-width: 420px;
-            object-fit: contain;
-            border-radius: 5px;
-          }
-          .cert-logo-divider {
-            width: 1.5px;
-            height: 165px;
-            background: linear-gradient(to bottom, transparent, #d4af37, transparent);
-          }
-          .cert-logo-label {
-            font-size: 0.48rem;
-            color: #64748b;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-          }
+  // Wire up modal JPG download
+  const btnJpg = document.getElementById('modal-btn-jpg');
+  if (btnJpg) {
+    btnJpg.onclick = async function() {
+      if (btnJpg.disabled) return;
+      btnJpg.disabled = true;
+      const origHtml = btnJpg.innerHTML;
+      btnJpg.innerHTML = '<span>⏳ Generating Image...</span>';
 
-          .cert-org-name {
-            font-family: 'Cinzel Decorative', 'Cinzel', serif;
-            font-size: 0.90rem;
-            color: #1a237e;
-            font-weight: 800;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            margin-top: 0;
-            margin-bottom: 0;
-            line-height: 1.1;
-          }
-          .cert-ornament-line {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            margin: 2px 0 2px;
-          }
-          .cert-ornament-line .line {
-            width: 60px;
-            height: 1px;
-            background: linear-gradient(to right, transparent, #c59b27, transparent);
-          }
-          .cert-ornament-line .diamond {
-            color: #c59b27;
-            font-size: 0.65rem;
-          }
-          .cert-main-title {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.55rem;
-            font-weight: 900;
-            color: #0f172a;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 0;
-            line-height: 1.1;
-          }
-          .cert-subtitle {
-            font-family: 'Playfair Display', Georgia, serif;
-            font-style: italic;
-            font-size: 0.80rem;
-            color: #64748b;
-            margin-bottom: 0;
-            margin-top: 2px;
-            line-height: 1.2;
-          }
+      try {
+        const cardEl = modalWrapper.querySelector('.cert-card') || modalWrapper;
+        const imgs = Array.from(modalWrapper.querySelectorAll('img'));
+        await Promise.all(imgs.map(img => {
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+          return new Promise(res => {
+            img.onload = res;
+            img.onerror = res;
+            setTimeout(res, 2000);
+          });
+        }));
 
-          /* Body Section */
-          .cert-body {
-            width: 100%;
-            margin: 20px 0 0;
-            position: relative;
-            z-index: 2;
-          }
-          .cert-recipient-name {
-            font-family: 'Playfair Display', serif;
-            font-size: 2.0rem;
-            font-weight: 900;
-            color: #1a237e;
-            letter-spacing: 1px;
-            border-bottom: 2px solid #d4af37;
-            display: inline-block;
-            padding: 6px 24px 6px;
-            margin-top: 10px;
-            margin-bottom: 25px;
-            text-transform: capitalize;
-            line-height: 1.2;
-          }
-          .cert-citation {
-            font-family: 'Playfair Display', Georgia, serif;
-            font-size: 0.88rem;
-            color: #334155;
-            line-height: 1.3;
-            max-width: 750px;
-            margin: 2px auto 0;
-          }
-          .cert-meta-item {
-            font-size: 0.85rem;
-            color: #475569;
-          }
-          .cert-meta-sep {
-            color: #d4af37;
-            margin: 0 6px;
-          }
-          .cert-accent {
-            color: #1a237e;
-            font-weight: 800;
-          }
-          .cert-text-dark {
-            color: #0f172a;
-          }
-          .cert-event-title {
-            color: #1a237e;
-            font-size: 1.05rem;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            font-family: 'Cinzel', serif;
-            margin: 1px 0;
-            line-height: 1.2;
-          }
+        const prevTransform = modalWrapper.style.transform;
+        modalWrapper.style.transform = 'none';
 
-          /* Top Corners */
-          .cert-corner-left {
-            position: absolute;
-            top: 14px;
-            left: 20px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            z-index: 10;
-          }
-          .cert-auto-gen-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            font-size: 0.54rem;
-            font-weight: 700;
-            color: #059669;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            background: rgba(16, 185, 129, 0.08);
-            border: 1px solid rgba(16, 185, 129, 0.25);
-            padding: 2.5px 7px;
-            border-radius: 4px;
-          }
-          .cert-corner-right {
-            position: absolute;
-            top: 14px;
-            right: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 4px;
-            z-index: 10;
-          }
-          .cert-num-label-tr {
-            font-size: 0.60rem;
-            color: #64748b;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-          }
-          .cert-num-label-tr strong {
-            color: #1e293b;
-          }
-          .cert-qr-wrap {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: #ffffff;
-            border: 1.5px solid #d4af37;
-            padding: 3px 4px 2px 4px;
-            border-radius: 6px;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.08);
-            margin: 1px 0;
-          }
-          .cert-qr-img {
-            width: 58px;
-            height: 58px;
-            display: block;
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: crisp-edges;
-          }
-          .cert-qr-caption {
-            font-size: 0.44rem;
-            font-weight: 800;
-            letter-spacing: 0.6px;
-            color: #047857;
-            margin-top: 2px;
-            text-transform: uppercase;
-            font-family: 'Inter', sans-serif;
-          }
+        const canvas = await html2canvas(cardEl, {
+          scale: 3,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: '#faf8f2',
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 1000,
+          windowHeight: 707
+        });
 
-          /* Official Verified Candidate Stamp by KNSDC (Top-Left Position below Auto-Generated badge) */
-          .cert-stamp-verified-wrap {
-            position: absolute;
-            top: 42px;
-            left: 20px;
-            z-index: 12;
-            pointer-events: none;
-            user-select: none;
-          }
-          .cert-stamp-verified {
-            width: 96px;
-            height: 96px;
-            border-radius: 50%;
-            border: 2.2px dashed #047857;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            transform: rotate(-10deg);
-            opacity: 0.95;
-            background: radial-gradient(circle, rgba(16,185,129,0.08) 0%, rgba(255,255,255,0.7) 65%, rgba(255,255,255,0) 100%);
-            box-shadow: 0 0 0 2.5px rgba(4,120,87,0.18), inset 0 0 0 1.5px rgba(4,120,87,0.25), 0 3px 10px rgba(0,0,0,0.06);
-          }
-          .cert-stamp-inner {
-            width: 88px;
-            height: 88px;
-            border-radius: 50%;
-            border: 1.4px solid #047857;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          .cert-stamp-circle-text {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-          }
-          .cert-stamp-svg-ring {
-            width: 100%;
-            height: 100%;
-            overflow: visible;
-          }
-          .cert-stamp-center {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            z-index: 2;
-          }
-          .cert-stamp-check {
-            line-height: 1;
-            margin-bottom: -2px;
-          }
-          .cert-stamp-label {
-            font-size: 0.54rem;
-            font-weight: 900;
-            letter-spacing: 1.5px;
-            color: #047857;
-            text-transform: uppercase;
-            font-family: 'Cinzel', serif;
-          }
-          .cert-stamp-code {
-            font-size: 0.38rem;
-            font-weight: 800;
-            letter-spacing: 0.4px;
-            color: #065f46;
-            margin-top: 1px;
-            max-width: 80px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
+        modalWrapper.style.transform = prevTransform;
 
-          /* Footer Section */
-          .cert-footer {
-            width: 100%;
-            position: relative;
-            z-index: 2;
-            margin-top: auto;
-          }
-          .cert-footer-row {
-            width: 100%;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            padding: 0 16px;
-            box-sizing: border-box;
-            margin-bottom: 2px;
-          }
-          .cert-sigs-left {
-            display: flex;
-            gap: 60px;
-            align-items: flex-end;
-            text-align: center;
-          }
-          .cert-sig-box {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 159px;
-            text-align: center;
-          }
-          .cert-sig-img-wrap {
-            height: 100px;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            margin-bottom: 3px;
-          }
-          .cert-sig-img {
-            max-height: 100px;
-            max-width: 154px;
-            object-fit: contain;
-          }
-          .cert-sig-line {
-            border-top: 1.5px solid #1e293b;
-            width: 100%;
-            padding-top: 3px;
-            font-family: 'Playfair Display', serif;
-            font-size: 0.74rem;
-            font-weight: 700;
-            color: #1e293b;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-          }
+        const safeName = ((p.name || 'Participant').replace(/[^a-zA-Z0-9_-]/g, '_')) || 'Participant';
+        const link = document.createElement('a');
+        link.download = safeName + '_Certificate.jpg';
+        link.href = canvas.toDataURL('image/jpeg', 0.98);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast("✅ JPG Image downloaded successfully!");
+      } catch (err) {
+        console.error(err);
+        toast("⚠️ Image generation error.");
+      } finally {
+        btnJpg.innerHTML = origHtml;
+        btnJpg.disabled = false;
+      }
+    };
+  }
 
-          /* Participant Photo in Center */
-          .cert-participant-photo-wrap {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-end;
-          }
-          .cert-participant-photo-frame {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            border: 3px solid #d4af37;
-            outline: 2px solid #b8860b;
-            outline-offset: 2px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 0 6px rgba(0, 0, 0, 0.2);
-            overflow: hidden;
-            background: #ffffff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 6px;
-          }
-          .cert-participant-photo-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 50%;
-            display: block;
-          }
-
-          .cert-sigs-right {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 6px;
-            text-align: center;
-          }
-          .cert-auth-box {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 3px;
-          }
-          .cert-num-label {
-            font-size: 0.65rem;
-            color: #64748b;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-          }
-          .cert-verified-badge {
-            background: linear-gradient(135deg, #1A237E, #2563eb);
-            color: #fff;
-            border: 1px solid #D4AF37;
-            padding: 3px 10px;
-            font-size: 0.68rem;
-            font-weight: 800;
-            border-radius: 6px;
-            letter-spacing: 1.2px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.12);
-          }
-
-          .cert-powered {
-            font-size: 0.60rem;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            font-weight: 700;
-            padding-bottom: 15px;
-          }
-
-          /* ═══ BULLETPROOF SINGLE-PAGE LANDSCAPE PRINT ENGINE ═══ */
-          @page {
-            size: 297mm 210mm;
-            margin: 0mm;
-          }
-          @media print {
-            @page {
-              size: 297mm 210mm;
-              margin: 0mm;
-            }
-            *, *::before, *::after {
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            html, body {
-              width: 297mm !important;
-              height: 210mm !important;
-              max-width: 297mm !important;
-              max-height: 210mm !important;
-              min-width: 297mm !important;
-              min-height: 210mm !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              overflow: hidden !important;
-              background: #ffffff !important;
-            }
-            #controls {
-              display: none !important;
-            }
-            #cert-stage {
-              display: block !important;
-              padding: 0 !important;
-              margin: 0 !important;
-              width: 297mm !important;
-              height: 210mm !important;
-              max-width: 297mm !important;
-              max-height: 210mm !important;
-              overflow: hidden !important;
-            }
-            #cert-wrapper {
-              transform: none !important;
-              width: 297mm !important;
-              height: 210mm !important;
-              max-width: 297mm !important;
-              max-height: 210mm !important;
-              min-width: 297mm !important;
-              min-height: 210mm !important;
-              padding: 6mm !important;
-              margin: 0 !important;
-              border: none !important;
-              box-shadow: none !important;
-              border-radius: 0 !important;
-              overflow: hidden !important;
-              page-break-before: avoid !important;
-              page-break-after: avoid !important;
-              page-break-inside: avoid !important;
-              break-before: avoid !important;
-              break-after: avoid !important;
-              break-inside: avoid !important;
-              display: flex !important;
-              align-items: center !important;
-              justify-content: center !important;
-            }
-            .cert-card {
-              width: 100% !important;
-              height: 100% !important;
-              max-height: 100% !important;
-              box-sizing: border-box !important;
-              page-break-inside: avoid !important;
-              break-inside: avoid !important;
-              overflow: hidden !important;
-            }
-          }
-        </style>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
-      </head>
-      <body>
-        <div id="controls">
-          <button class="btn btn-pdf" id="btn-dl-pdf">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>Download PDF</span>
-          </button>
-          <button class="btn btn-print" onclick="window.print()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            <span>Print Certificate (Landscape)</span>
-          </button>
-          <button class="btn btn-jpg" id="btn-dl-jpg">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            <span>Download Image (JPG)</span>
-          </button>
-          <button class="btn btn-close" onclick="window.close()">✕ Close</button>
-        </div>
-
-        <div id="cert-stage">
-          <div id="cert-wrapper">
-            ${content}
-          </div>
-        </div>
-
-        <script>
-          function fitCertToScreen() {
-            const wrapper = document.getElementById('cert-wrapper');
-            const stage = document.getElementById('cert-stage');
-            if (!wrapper || !stage) return;
-            const availW = window.innerWidth - 24;
-            if (availW < 1000) {
-              const scale = Math.max(0.3, availW / 1000);
-              wrapper.style.transform = 'scale(' + scale + ')';
-              stage.style.height = (707 * scale + 20) + 'px';
-            } else {
-              wrapper.style.transform = 'none';
-              stage.style.height = 'auto';
-            }
-          }
-          window.addEventListener('resize', fitCertToScreen);
-          window.addEventListener('load', fitCertToScreen);
-          fitCertToScreen();
-
-          const btnPdf = document.getElementById('btn-dl-pdf');
-          if (btnPdf) {
-            btnPdf.onclick = async function() {
-              if (btnPdf.disabled) return;
-              btnPdf.disabled = true;
-              const origText = btnPdf.innerHTML;
-              btnPdf.innerHTML = '<span>⏳ Generating PDF...</span>';
-
-              try {
-                const cardEl = document.querySelector('.cert-card') || document.getElementById('cert-wrapper');
-                const wrapperEl = document.getElementById('cert-wrapper');
-
-                // Wait for all images inside cert-wrapper to finish loading
-                const imgs = Array.from(wrapperEl.querySelectorAll('img'));
-                await Promise.all(imgs.map(img => {
-                  if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-                  return new Promise(resolve => {
-                    img.onload = resolve;
-                    img.onerror = resolve;
-                    setTimeout(resolve, 2500);
-                  });
-                }));
-
-                const prevTransform = wrapperEl.style.transform;
-                wrapperEl.style.transform = 'none';
-
-                const canvas = await html2canvas(cardEl, {
-                  scale: 3, // Ultra HD print-grade resolution (3000 x 2121px)
-                  useCORS: true,
-                  allowTaint: true,
-                  logging: false,
-                  backgroundColor: '#faf8f2',
-                  scrollX: 0,
-                  scrollY: 0,
-                  windowWidth: 1000,
-                  windowHeight: 707
-                });
-
-                wrapperEl.style.transform = prevTransform;
-
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF({
-                  orientation: 'landscape',
-                  unit: 'mm',
-                  format: 'a4',
-                  compress: true
-                });
-
-                const imgData = canvas.toDataURL('image/jpeg', 0.98);
-                pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210, undefined, 'FAST');
-                
-                const safeName = (('${p.name || 'Participant'}').replace(/[^a-zA-Z0-9_-]/g, '_')) || 'Participant';
-                pdf.save(safeName + '_Certificate.pdf');
-              } catch (err) {
-                console.error(err);
-                alert('PDF generation encountered an issue. You can also use the Print button to Save as PDF.');
-              } finally {
-                btnPdf.innerHTML = origText;
-                btnPdf.disabled = false;
-              }
-            };
-          }
-
-          const btnJpg = document.getElementById('btn-dl-jpg');
-          if (btnJpg) {
-            btnJpg.onclick = async function() {
-              if (btnJpg.disabled) return;
-              btnJpg.disabled = true;
-              const origText = btnJpg.innerHTML;
-              btnJpg.innerHTML = '<span>⏳ Generating Image...</span>';
-
-              try {
-                const cardEl = document.querySelector('.cert-card') || document.getElementById('cert-wrapper');
-                const wrapperEl = document.getElementById('cert-wrapper');
-
-                // Wait for all images inside cert-wrapper to finish loading
-                const imgs = Array.from(wrapperEl.querySelectorAll('img'));
-                await Promise.all(imgs.map(img => {
-                  if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-                  return new Promise(resolve => {
-                    img.onload = resolve;
-                    img.onerror = resolve;
-                    setTimeout(resolve, 2500);
-                  });
-                }));
-
-                const prevTransform = wrapperEl.style.transform;
-                wrapperEl.style.transform = 'none';
-
-                const canvas = await html2canvas(cardEl, {
-                  scale: 3, // Ultra HD print quality (3000 x 2121px, 300+ DPI equivalent)
-                  useCORS: true,
-                  allowTaint: true,
-                  logging: false,
-                  backgroundColor: '#faf8f2',
-                  scrollX: 0,
-                  scrollY: 0,
-                  windowWidth: 1000,
-                  windowHeight: 707
-                });
-
-                wrapperEl.style.transform = prevTransform;
-
-                const link = document.createElement('a');
-                const safeName = (('${p.name || 'Participant'}').replace(/[^a-zA-Z0-9_-]/g, '_')) || 'Participant';
-                link.download = safeName + '_Certificate.jpg';
-                link.href = canvas.toDataURL('image/jpeg', 0.98);
-                link.click();
-              } catch (err) {
-                console.error(err);
-                alert('Failed to generate JPG.');
-              } finally {
-                btnJpg.innerHTML = origText;
-                btnJpg.disabled = false;
-              }
-            };
-          }
-        <\/script>
-      </body>
-    </html>
-  `);
-  win.document.close();
-  
-  toast("📥 Certificate ready! You can download PDF or Print.");
+  toast("🏆 Certificate ready! View or Download below.");
 }
 
 // 4. Save Updates (Auto-Lock)
