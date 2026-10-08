@@ -2710,9 +2710,6 @@ function renderCertificateVerificationView(p, verifyCertParam) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           <span>Open Full Digital Certificate with Stamp</span>
         </button>
-        <button type="button" class="btn" onclick="window.location.href = window.location.pathname" style="background:#f1f5f9; color:#475569; font-weight:700;">
-          ← Go to Participant Login
-        </button>
       </div>
     `;
   }
@@ -4137,17 +4134,15 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
           /* Certificate Card Layout */
           .cert-card {
             position: relative;
-            width: 100%;
-            height: 100%;
+            width: 1000px;
+            height: 707px;
             box-sizing: border-box;
-            background-color: #ffffff;
+            background-color: #faf8f2;
             background-image: 
               radial-gradient(circle at 50% 50%, #ffffff 0%, #faf8f2 100%),
               repeating-linear-gradient(45deg, rgba(212, 175, 55, 0.015) 0, rgba(212, 175, 55, 0.015) 1px, transparent 0, transparent 12px);
-            border: 6px solid #b8860b;
-            outline: 2px solid #dfba73;
-            outline-offset: -7px;
-            box-shadow: inset 0 0 0 9px #ffffff, inset 0 0 0 11px #d4af37;
+            border: 8px solid #b8860b;
+            box-shadow: inset 0 0 0 3px #dfba73, inset 0 0 0 9px #ffffff, inset 0 0 0 11px #d4af37;
             padding: 0px 18px 0px;
             text-align: center;
             display: flex;
@@ -4341,11 +4336,10 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
           .cert-corner-left {
             position: absolute;
             top: 14px;
-            left: 18px;
+            left: 20px;
             display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 6px;
+            align-items: center;
+            gap: 4px;
             z-index: 10;
           }
           .cert-auto-gen-badge {
@@ -4359,13 +4353,13 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
             letter-spacing: 0.8px;
             background: rgba(16, 185, 129, 0.08);
             border: 1px solid rgba(16, 185, 129, 0.25);
-            padding: 2px 7px;
+            padding: 2.5px 7px;
             border-radius: 4px;
           }
           .cert-corner-right {
             position: absolute;
             top: 14px;
-            right: 18px;
+            right: 20px;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
@@ -4409,10 +4403,10 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
             font-family: 'Inter', sans-serif;
           }
 
-          /* Official Verified Candidate Stamp by KNSDC (Top-Left Position) */
+          /* Official Verified Candidate Stamp by KNSDC (Top-Left Position below Auto-Generated badge) */
           .cert-stamp-verified-wrap {
             position: absolute;
-            top: 20px;
+            top: 42px;
             left: 20px;
             z-index: 12;
             pointer-events: none;
@@ -4740,10 +4734,11 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
               btnPdf.innerHTML = '<span>⏳ Generating PDF...</span>';
 
               try {
-                const certEl = document.getElementById('cert-wrapper');
+                const cardEl = document.querySelector('.cert-card') || document.getElementById('cert-wrapper');
+                const wrapperEl = document.getElementById('cert-wrapper');
 
                 // Wait for all images inside cert-wrapper to finish loading
-                const imgs = Array.from(certEl.querySelectorAll('img'));
+                const imgs = Array.from(wrapperEl.querySelectorAll('img'));
                 await Promise.all(imgs.map(img => {
                   if (img.complete && img.naturalWidth > 0) return Promise.resolve();
                   return new Promise(resolve => {
@@ -4753,18 +4748,22 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
                   });
                 }));
 
-                const prevTransform = certEl.style.transform;
-                certEl.style.transform = 'none';
+                const prevTransform = wrapperEl.style.transform;
+                wrapperEl.style.transform = 'none';
 
-                const canvas = await html2canvas(certEl, {
-                  scale: 2,
+                const canvas = await html2canvas(cardEl, {
+                  scale: 3, // Ultra HD print-grade resolution (3000 x 2121px)
                   useCORS: true,
                   allowTaint: true,
                   logging: false,
-                  backgroundColor: '#ffffff'
+                  backgroundColor: '#faf8f2',
+                  scrollX: 0,
+                  scrollY: 0,
+                  windowWidth: 1000,
+                  windowHeight: 707
                 });
 
-                certEl.style.transform = prevTransform;
+                wrapperEl.style.transform = prevTransform;
 
                 const { jsPDF } = window.jspdf;
                 const pdf = new jsPDF({
@@ -4774,7 +4773,7 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
                   compress: true
                 });
 
-                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const imgData = canvas.toDataURL('image/jpeg', 0.98);
                 pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210, undefined, 'FAST');
                 
                 const safeName = (('${p.name || 'Participant'}').replace(/[^a-zA-Z0-9_-]/g, '_')) || 'Participant';
@@ -4798,10 +4797,11 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
               btnJpg.innerHTML = '<span>⏳ Generating Image...</span>';
 
               try {
-                const certEl = document.getElementById('cert-wrapper');
+                const cardEl = document.querySelector('.cert-card') || document.getElementById('cert-wrapper');
+                const wrapperEl = document.getElementById('cert-wrapper');
 
                 // Wait for all images inside cert-wrapper to finish loading
-                const imgs = Array.from(certEl.querySelectorAll('img'));
+                const imgs = Array.from(wrapperEl.querySelectorAll('img'));
                 await Promise.all(imgs.map(img => {
                   if (img.complete && img.naturalWidth > 0) return Promise.resolve();
                   return new Promise(resolve => {
@@ -4811,23 +4811,27 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
                   });
                 }));
 
-                const prevTransform = certEl.style.transform;
-                certEl.style.transform = 'none';
+                const prevTransform = wrapperEl.style.transform;
+                wrapperEl.style.transform = 'none';
 
-                const canvas = await html2canvas(certEl, {
-                  scale: 2,
+                const canvas = await html2canvas(cardEl, {
+                  scale: 3, // Ultra HD print quality (3000 x 2121px, 300+ DPI equivalent)
                   useCORS: true,
                   allowTaint: true,
                   logging: false,
-                  backgroundColor: '#ffffff'
+                  backgroundColor: '#faf8f2',
+                  scrollX: 0,
+                  scrollY: 0,
+                  windowWidth: 1000,
+                  windowHeight: 707
                 });
 
-                certEl.style.transform = prevTransform;
+                wrapperEl.style.transform = prevTransform;
 
                 const link = document.createElement('a');
                 const safeName = (('${p.name || 'Participant'}').replace(/[^a-zA-Z0-9_-]/g, '_')) || 'Participant';
                 link.download = safeName + '_Certificate.jpg';
-                link.href = canvas.toDataURL('image/jpeg', 0.95);
+                link.href = canvas.toDataURL('image/jpeg', 0.98);
                 link.click();
               } catch (err) {
                 console.error(err);
