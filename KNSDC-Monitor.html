@@ -13078,6 +13078,50 @@ function parseParticipantAge(val) {
   return isNaN(num) ? null : num;
 }
 
+function resolveParticipantGender(p) {
+  if (!p) return 'Male';
+  // 1. Direct p.gender field
+  let g = p.gender !== undefined && p.gender !== null ? String(p.gender).trim().toLowerCase() : '';
+  
+  // 2. Fallback to formAnswers if p.gender is blank or not populated
+  if (!g && p.formAnswers && typeof p.formAnswers === 'object') {
+    const keys = Object.keys(p.formAnswers);
+    const gKey = keys.find(k => /^gender$/i.test(k.trim())) || keys.find(k => /gender/i.test(k));
+    if (gKey && p.formAnswers[gKey]) {
+      g = String(p.formAnswers[gKey]).trim().toLowerCase();
+    }
+  }
+
+  // 3. Fallback to category name if gender-specific (e.g., 'Solo Male', 'Duet Girls', etc.)
+  if (!g && p.catId) {
+    const cat = (categories || []).find(c => String(c.id) === String(p.catId));
+    if (cat && cat.name) {
+      const cName = cat.name.toLowerCase();
+      if (/female|girl|women|woman/i.test(cName)) return 'Female';
+      if (/male|boy|men|man/i.test(cName)) return 'Male';
+    }
+  }
+
+  // Exact binary match: Female vs Male
+  if (/^(f|female|girl|woman|she|her)$/i.test(g)) {
+    return 'Female';
+  }
+  if (/^(m|male|boy|man|he|his)$/i.test(g)) {
+    return 'Male';
+  }
+
+  // Check if string contains female/male keywords
+  if (g.includes('female') || g.includes('girl') || g.includes('woman')) {
+    return 'Female';
+  }
+  if (g.includes('male') || g.includes('boy') || g.includes('man')) {
+    return 'Male';
+  }
+
+  // Default fallback for any remaining records is Male
+  return 'Male';
+}
+
 function renderFeedbacks() {
   const fbs = [];
   const now = Date.now();
@@ -14032,20 +14076,17 @@ function renderGenderCharts() {
 
     let males = 0;
     let females = 0;
-    let others = 0;
 
     reached.forEach(p => {
-      const g = String(p.gender || '').trim().toLowerCase();
-      if (/^(m|male|boy|man)$/i.test(g)) {
-        males++;
-      } else if (/^(f|female|girl|woman)$/i.test(g)) {
+      const g = resolveParticipantGender(p);
+      if (g === 'Female') {
         females++;
       } else {
-        others++;
+        males++;
       }
     });
 
-    const total = reached.length; // Accurately matches total participants reached
+    const total = reached.length; // Exactly matches males + females and total participants reached
     const currentlyInRound = eventParticipants.filter(p => (p.round || 'audition') === r).length;
     
     const wrap = document.createElement('div');
@@ -14056,10 +14097,9 @@ function renderGenderCharts() {
       <div style="position:relative;height:80px;display:flex;justify-content:center;">
         <canvas id="gender-chart-${r}"></canvas>
       </div>
-      <div style="font-size:9px;margin-top:10px;font-family:var(--fm);display:flex;justify-content:center;gap:12px">
+      <div style="font-size:9px;margin-top:10px;font-family:var(--fm);display:flex;justify-content:center;gap:15px">
         <span style="color:#f97316;font-weight:800">M: ${males}</span>
         <span style="color:#a855f7;font-weight:800">F: ${females}</span>
-        ${others > 0 ? `<span style="color:#14b8a6;font-weight:800">O: ${others}</span>` : ''}
       </div>
     `;
     container.appendChild(wrap);
@@ -14067,12 +14107,6 @@ function renderGenderCharts() {
     const chartLabels = ['Male', 'Female'];
     const chartData = [males, females];
     const chartColors = ['#f97316', '#a855f7'];
-
-    if (others > 0) {
-      chartLabels.push('Other');
-      chartData.push(others);
-      chartColors.push('#14b8a6');
-    }
 
     const ctx = document.getElementById(`gender-chart-${r}`);
     const chart = new Chart(ctx, {
