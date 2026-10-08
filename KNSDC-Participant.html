@@ -4916,9 +4916,14 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
         }));
 
         const prevTransform = modalWrapper.style.transform;
+        const prevOverflow = cardEl.style.overflow;
         modalWrapper.style.transform = 'none';
+        cardEl.style.overflow = 'hidden';
 
-        const canvas = await html2canvas(cardEl, {
+        const CARD_W = 910;
+        const CARD_H = 617;
+
+        const rawCanvas = await html2canvas(cardEl, {
           scale: 3,
           useCORS: true,
           allowTaint: true,
@@ -4926,11 +4931,27 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
           backgroundColor: '#faf8f2',
           scrollX: 0,
           scrollY: 0,
-          windowWidth: 910,
-          windowHeight: 617
+          windowWidth: CARD_W,
+          windowHeight: CARD_H,
+          width: CARD_W,
+          height: CARD_H
         });
 
         modalWrapper.style.transform = prevTransform;
+        cardEl.style.overflow = prevOverflow;
+
+        // Force-clip canvas to exactly CARD_W*3 x CARD_H*3 pixels (prevent overflow)
+        const clipW = CARD_W * 3;
+        const clipH = CARD_H * 3;
+        let finalCanvas = rawCanvas;
+        if (rawCanvas.width > clipW || rawCanvas.height > clipH) {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = clipW;
+          tempCanvas.height = clipH;
+          const ctx = tempCanvas.getContext('2d');
+          ctx.drawImage(rawCanvas, 0, 0, clipW, clipH, 0, 0, clipW, clipH);
+          finalCanvas = tempCanvas;
+        }
 
         const jsPDFModule = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : (typeof jsPDF !== 'undefined' ? jsPDF : null);
         if (!jsPDFModule) throw new Error('PDF generator library unavailable');
@@ -4942,10 +4963,27 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
           compress: true
         });
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+        const imgData = finalCanvas.toDataURL('image/jpeg', 0.98);
+        const pageW = pdf.internal.pageSize.getWidth();   // 297mm
+        const pageH = pdf.internal.pageSize.getHeight();  // 210mm
+
+        // Fit image inside page with 2mm margin on each side to prevent border bleed
+        const margin = 2;
+        const availW = pageW - (margin * 2);
+        const availH = pageH - (margin * 2);
+        const cardAspect = CARD_W / CARD_H;  // ~1.475
+        let imgW, imgH;
+        if (availW / availH > cardAspect) {
+          imgH = availH;
+          imgW = imgH * cardAspect;
+        } else {
+          imgW = availW;
+          imgH = imgW / cardAspect;
+        }
+        const offsetX = (pageW - imgW) / 2;
+        const offsetY = (pageH - imgH) / 2;
+
+        pdf.addImage(imgData, 'JPEG', offsetX, offsetY, imgW, imgH, undefined, 'FAST');
         
         // Strictly guarantee exactly 1 page
         const totalPages = pdf.internal.getNumberOfPages();
