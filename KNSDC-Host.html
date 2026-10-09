@@ -796,33 +796,39 @@
     <div id="sec-sponsors" class="section">
       <div class="g2">
         <div class="card">
-           <div class="card-header">
+           <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
               <div class="card-title">Sponsors Directory</div>
-              <button class="btn btn-ghost btn-sm" onclick="renderHostSponsors()">Refresh</button>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <button class="btn btn-sm btn-amber" style="font-weight:800; display:flex; align-items:center; gap:5px;" onclick="openHostAddSponsorModal()">＋ Add Sponsor</button>
+                <button class="btn btn-ghost btn-sm" onclick="renderHostSponsors()">Refresh</button>
+              </div>
            </div>
-           <div id="host-sponsor-list" style="display:flex;flex-direction:column;gap:10px"></div>
+           <div id="host-sponsor-list" style="display:flex;flex-direction:column;gap:12px"></div>
         </div>
 
         <div class="card">
-          <div class="card-header">
-            <div class="card-title" style="background: linear-gradient(90deg, var(--amber), var(--orange)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Add Sponsor</div>
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+              <span>🎙️ Host Stage Announcements</span>
+            </div>
+            <span style="font-size:10px; font-weight:800; color:var(--emerald); background:rgba(16,185,129,0.12); padding:3px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.25);">
+              💾 Host LocalStorage
+            </span>
           </div>
-          
-          <div class="fg"><label class="fl">Partner Name</label><input id="host-ad-partner" type="text" placeholder="e.g. Red Bull" class="form-input"/></div>
-          <div class="fg"><label class="fl">Tagline (Optional)</label><input id="host-ad-tagline" type="text" placeholder="e.g. Gives You Wings" class="form-input"/></div>
-          <div class="fg"><label class="fl">Proprietor Name (Optional)</label><input id="host-ad-proprietor" type="text" placeholder="e.g. John Doe" class="form-input"/></div>
-          <div class="fg"><label class="fl">Address (Optional)</label><input id="host-ad-address" type="text" placeholder="e.g. 123 Main St, City" class="form-input"/></div>
-          <div class="fg"><label class="fl">Phone Number (Optional)</label><input id="host-ad-phone" type="tel" placeholder="e.g. 9876543210" class="form-input"/></div>
+          <p style="font-size:12px; color:var(--text-muted); line-height:1.5; margin-bottom:14px;">
+            Write and save your independent stage announcement notes. These messages are saved privately in your browser's local storage and won't affect other panels.
+          </p>
           <div class="fg">
-            <label class="fl">Logo Upload (Optional)</label>
-            <div style="display:flex; gap:10px;">
-              <input id="host-ad-logo-file" type="file" accept="image/*" style="flex:1; padding:10px; border:1px dashed var(--border2); border-radius:8px; background: var(--surface2); cursor: pointer; transition: all 0.3s ease;" />
+            <label class="fl">Independent Stage Script / General Sponsor Shoutout</label>
+            <textarea id="host-general-sponsor-notes" rows="6" class="form-input" placeholder="e.g. Welcome everyone to Kalikapur Nabin Sangha Dance Championship! We would like to take a moment to thank all our title sponsors and event partners for their incredible support..." oninput="autoSaveHostGeneralSponsorNotes()"></textarea>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+            <span id="host-notes-saved-status" style="font-size:11px; color:#059669; font-weight:700;">✓ Saved in Local Storage</span>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-ghost btn-xs" onclick="clearHostGeneralSponsorNotes()">Clear</button>
+              <button class="btn btn-sm btn-amber" style="font-weight:700;" onclick="saveHostGeneralSponsorNotes()">💾 Save Notes</button>
             </div>
           </div>
-          
-          <button id="host-deploy-ad-btn" class="btn" style="background: linear-gradient(135deg, var(--amber), var(--orange)); color:#fff; border-radius:12px; width:100%; font-weight:800; margin-top:10px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="hostDeploySponsor()">
-            <span class="btn-text">ADD SPONSOR</span>
-          </button>
         </div>
       </div>
     </div>
@@ -1186,8 +1192,9 @@ window.showTab = function(tab, el) {
   if (tab === 'judges' && typeof renderHostJudges === 'function') {
     renderHostJudges();
   }
-  if (tab === 'sponsors' && typeof renderHostSponsors === 'function') {
-    renderHostSponsors();
+  if (tab === 'sponsors') {
+    if (typeof renderHostSponsors === 'function') renderHostSponsors();
+    if (typeof loadHostGeneralSponsorNotes === 'function') loadHostGeneralSponsorNotes();
   }
 }
 
@@ -1478,7 +1485,10 @@ syncEngine.subscribe((state) => {
     if (sectionId === 'stage') renderStage();
     if (sectionId === 'leaderboard') renderLeaderboard();
     if (sectionId === 'judges') renderHostJudges();
-    if (sectionId === 'sponsors') renderHostSponsors();
+    if (sectionId === 'sponsors') {
+      renderHostSponsors();
+      if (typeof loadHostGeneralSponsorNotes === 'function') loadHostGeneralSponsorNotes();
+    }
   } else {
     renderDashboard();
     renderStage();
@@ -2362,6 +2372,46 @@ window.renderLeaderboard = () => {
     </div>
   </div>
 </div>
+
+<div class="modal-overlay" id="host-add-sponsor-modal" style="display:none; z-index:2500;" onclick="closeOnBg(event,'host-add-sponsor-modal')">
+  <div class="modal" style="max-width:520px; padding:0; overflow:hidden;">
+    <div class="modal-header" style="padding:20px 24px; border-bottom:1px solid var(--border); background:var(--surface); display:flex; justify-content:space-between; align-items:center;">
+      <div class="modal-title" style="font-family:var(--fh); font-size:18px; font-weight:800; background: linear-gradient(90deg, var(--amber), var(--orange)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">
+        Add New Sponsor
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="closeM('host-add-sponsor-modal')" style="border-radius:50%; width:32px; height:32px; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
+    </div>
+    <div class="modal-body" style="padding:22px 24px; max-height:calc(85vh - 70px); overflow-y:auto;">
+      <div class="fg"><label class="fl">Partner Name *</label><input id="host-ad-partner" type="text" placeholder="e.g. Red Bull" class="form-input"/></div>
+      <div class="fg"><label class="fl">Tagline (Optional)</label><input id="host-ad-tagline" type="text" placeholder="e.g. Gives You Wings" class="form-input"/></div>
+      <div class="fg"><label class="fl">Proprietor Name (Optional)</label><input id="host-ad-proprietor" type="text" placeholder="e.g. John Doe" class="form-input"/></div>
+      <div class="fg"><label class="fl">Address (Optional)</label><input id="host-ad-address" type="text" placeholder="e.g. 123 Main St, City" class="form-input"/></div>
+      <div class="fg"><label class="fl">Phone Number (Optional)</label><input id="host-ad-phone" type="tel" placeholder="e.g. 9876543210" class="form-input"/></div>
+      <div class="fg">
+        <label class="fl">Logo Upload (Optional)</label>
+        <div style="display:flex; gap:10px;">
+          <input id="host-ad-logo-file" type="file" accept="image/*" style="flex:1; padding:10px; border:1px dashed var(--border2); border-radius:8px; background: var(--surface2); cursor: pointer; transition: all 0.3s ease;" />
+        </div>
+      </div>
+      
+      <!-- Host Independent Message Section -->
+      <div class="fg" style="margin-top:14px; background:var(--surface2); padding:14px; border-radius:12px; border:1px solid var(--border);">
+        <label class="fl" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-weight:800; color:var(--text);">🎙️ Host Stage Message / Shoutout</span>
+          <span style="font-size:10px; font-weight:700; color:#059669; background:rgba(16,185,129,0.12); padding:2px 6px; border-radius:4px; border:1px solid rgba(16,185,129,0.25);">💾 Saved in LocalStorage</span>
+        </label>
+        <textarea id="host-ad-message" rows="3" class="form-input" placeholder="e.g. A huge round of applause for our sponsor [Name]! Special discounts for all performers today. Visit their booth in the foyer..."></textarea>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+          💡 This announcement message will be stored independently in your Host local storage to help you read/announce on stage.
+        </div>
+      </div>
+      
+      <button id="host-deploy-ad-btn" class="btn" style="background: linear-gradient(135deg, var(--amber), var(--orange)); color:#fff; border-radius:12px; width:100%; font-weight:800; margin-top:16px; padding:12px; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="hostDeploySponsor()">
+        <span class="btn-text">＋ ADD SPONSOR & SAVE MESSAGE</span>
+      </button>
+    </div>
+  </div>
+</div>
 <script>
 
 window.refreshPortal = async function(btn) {
@@ -2677,8 +2727,99 @@ function renderHostJudges() {
 window.renderHostJudges = renderHostJudges;
 
 // ════════════════════════════════════════
-// HOST SPONSOR MANAGEMENT
+// HOST SPONSOR MANAGEMENT & LOCAL STORAGE MESSAGES
 // ════════════════════════════════════════
+window.openHostAddSponsorModal = function() {
+  const modal = document.getElementById('host-add-sponsor-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    setTimeout(() => {
+      const input = document.getElementById('host-ad-partner');
+      if (input) input.focus();
+    }, 100);
+  }
+};
+
+function getHostSponsorMessages() {
+  try {
+    return JSON.parse(localStorage.getItem('knsdc_host_sponsor_messages') || '{}');
+  } catch(e) {
+    return {};
+  }
+}
+
+function saveHostSponsorMessageToLocal(sponsorId, sponsorName, message) {
+  try {
+    const stored = getHostSponsorMessages();
+    stored[sponsorId] = message;
+    if (sponsorName) stored[sponsorName.toLowerCase()] = message;
+    localStorage.setItem('knsdc_host_sponsor_messages', JSON.stringify(stored));
+  } catch(e) {
+    console.warn('[Host] Error saving message to LocalStorage:', e);
+  }
+}
+
+function loadHostGeneralSponsorNotes() {
+  const notesEl = document.getElementById('host-general-sponsor-notes');
+  if (!notesEl) return;
+  const saved = localStorage.getItem('knsdc_host_general_sponsor_notes') || '';
+  notesEl.value = saved;
+  const statusEl = document.getElementById('host-notes-saved-status');
+  if (statusEl) {
+    statusEl.textContent = saved ? '✓ Saved in Local Storage' : '';
+  }
+}
+
+function autoSaveHostGeneralSponsorNotes() {
+  const notesEl = document.getElementById('host-general-sponsor-notes');
+  if (!notesEl) return;
+  localStorage.setItem('knsdc_host_general_sponsor_notes', notesEl.value);
+  const statusEl = document.getElementById('host-notes-saved-status');
+  if (statusEl) {
+    statusEl.textContent = '✓ Saved in Local Storage';
+  }
+}
+
+function saveHostGeneralSponsorNotes() {
+  autoSaveHostGeneralSponsorNotes();
+  toast('💾 Stage shoutout notes saved to Local Storage!');
+}
+
+function clearHostGeneralSponsorNotes() {
+  if (!confirm('Clear your stage announcement notes?')) return;
+  const notesEl = document.getElementById('host-general-sponsor-notes');
+  if (notesEl) notesEl.value = '';
+  localStorage.removeItem('knsdc_host_general_sponsor_notes');
+  const statusEl = document.getElementById('host-notes-saved-status');
+  if (statusEl) statusEl.textContent = '';
+  toast('Cleared announcement notes.');
+}
+
+function editHostSponsorMessage(sponsorId, sponsorName) {
+  const stored = getHostSponsorMessages();
+  const cur = stored[sponsorId] || stored[(sponsorName || '').toLowerCase()] || '';
+  const val = prompt(`Edit Stage Shoutout / Message for "${sponsorName}":\n(Saved independently to your Local Storage)`, cur);
+  if (val !== null) {
+    saveHostSponsorMessageToLocal(sponsorId, sponsorName, val.trim());
+    renderHostSponsors();
+    toast('💾 Host message saved to Local Storage!');
+  }
+}
+
+function copyHostSponsorMessage(text) {
+  const decoded = decodeURIComponent(text || '');
+  if (!decoded) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(decoded).then(() => {
+      toast('📋 Shoutout copied to clipboard!');
+    }).catch(() => {
+      toast('Message: ' + decoded);
+    });
+  } else {
+    toast('Message: ' + decoded);
+  }
+}
+
 function renderHostSponsors() {
   const listEl = document.getElementById('host-sponsor-list');
   if(!listEl) return;
@@ -2687,27 +2828,59 @@ function renderHostSponsors() {
   const eventSwitches = state.eventSwitches || {};
   const activeSwitches = eventSwitches[activeEvId] || {};
   const sponsors = activeSwitches.sponsors || [];
+  const hostMessages = getHostSponsorMessages();
   
   if(sponsors.length === 0) {
-    listEl.innerHTML = '<div style="color:var(--text-muted); font-size:12px; font-style:italic;">No active sponsors deployed yet.</div>';
+    listEl.innerHTML = `
+      <div style="text-align:center; padding:32px 20px; color:var(--text-muted); font-size:13px; background:var(--surface2); border:1px dashed var(--border); border-radius:12px;">
+        <div style="font-size:32px; margin-bottom:8px;">✨</div>
+        <div style="font-weight:700; color:var(--text); font-size:14px;">No sponsors deployed yet.</div>
+        <div style="font-size:12px; margin:6px 0 16px;">Tap below to add an event sponsor and save your independent stage message.</div>
+        <button class="btn btn-sm btn-amber" style="font-weight:800; margin:0 auto; display:inline-flex; align-items:center; gap:6px;" onclick="openHostAddSponsorModal()">＋ Add Sponsor</button>
+      </div>
+    `;
     return;
   }
   
-  listEl.innerHTML = sponsors.map(sp => `
-    <div style="display:flex; align-items:center; gap:10px; background:var(--surface2); border:1px solid var(--border); padding:12px; border-radius:12px;">
-      ${sp.logo ? `<img src="${sp.logo}" alt="Logo" style="width:40px; height:40px; object-fit:contain; border-radius:6px; background:#fff; border:1px solid rgba(0,0,0,0.1);"/>` : `<div style="width:40px; height:40px; border-radius:6px; background:var(--surface3); border:1px dashed var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:10px;">No Logo</div>`}
-      <div style="flex:1;">
-        <div style="font-weight:800; font-size:14px; color:var(--text);">${sp.name}</div>
-        ${sp.tagline ? `<div style="font-size:10px; color:var(--text-muted); margin-bottom:2px;"><i>"${sp.tagline}"</i></div>` : ''}
-        ${sp.proprietor ? `<div style="font-size:10px; color:var(--text-dim);">👤 ${sp.proprietor}</div>` : ''}
-        ${sp.phone ? `<div style="font-size:10px; color:var(--text-dim);">📞 ${sp.phone}</div>` : ''}
-        ${sp.address ? `<div style="font-size:10px; color:var(--text-dim);">📍 ${sp.address}</div>` : ''}
+  listEl.innerHTML = sponsors.map(sp => {
+    const safeName = (sp.name || 'Sponsor').replace(/'/g, "\\'");
+    const msg = hostMessages[sp.id] || hostMessages[(sp.name || '').toLowerCase()] || sp.message || '';
+    return `
+      <div style="display:flex; flex-direction:column; gap:10px; background:var(--surface2); border:1px solid var(--border); padding:14px; border-radius:14px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          ${sp.logo ? `<img src="${sp.logo}" alt="Logo" style="width:48px; height:48px; object-fit:contain; border-radius:8px; background:#fff; border:1px solid rgba(0,0,0,0.1); padding:2px;"/>` : `<div style="width:48px; height:48px; border-radius:8px; background:var(--surface3); border:1px dashed var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:10px; font-weight:700;">No Logo</div>`}
+          <div style="flex:1;">
+            <div style="font-weight:800; font-size:15px; color:var(--text);">${sp.name}</div>
+            ${sp.tagline ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;"><i>"${sp.tagline}"</i></div>` : ''}
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:2px;">
+              ${sp.proprietor ? `<span style="font-size:11px; color:var(--text-dim);">👤 ${sp.proprietor}</span>` : ''}
+              ${sp.phone ? `<span style="font-size:11px; color:var(--text-dim);">📞 ${sp.phone}</span>` : ''}
+              ${sp.address ? `<span style="font-size:11px; color:var(--text-dim);">📍 ${sp.address}</span>` : ''}
+            </div>
+          </div>
+          <button class="btn-delete-fancy" onclick="hostDeleteSponsor('${sp.id}')" title="Delete" style="width:36px; height:32px;">
+            <svg viewBox="0 0 448 512" class="svgIcon"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
+          </button>
+        </div>
+        
+        <!-- Host Stage Shoutout / Message Box -->
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:2px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; flex-wrap:wrap; gap:6px;">
+            <span style="font-size:11px; font-weight:800; color:var(--amber); display:flex; align-items:center; gap:5px;">
+              🎙️ Host Stage Shoutout <span style="font-size:9px; font-weight:700; color:#059669; background:rgba(16,185,129,0.1); padding:1px 6px; border-radius:4px; border:1px solid rgba(16,185,129,0.2);">💾 LocalStorage</span>
+            </span>
+            <div style="display:flex; gap:6px;">
+              ${msg ? `<button class="btn btn-ghost btn-xs" style="padding:2px 8px; font-size:11px;" onclick="copyHostSponsorMessage('${encodeURIComponent(msg)}')">📋 Copy</button>` : ''}
+              <button class="btn btn-ghost btn-xs" style="padding:2px 8px; font-size:11px;" onclick="editHostSponsorMessage('${sp.id}', '${safeName}')">✏️ ${msg ? 'Edit' : '+ Add Note'}</button>
+            </div>
+          </div>
+          <div style="font-size:12px; color:${msg ? 'var(--text)' : 'var(--text-muted)'}; font-style:${msg ? 'normal' : 'italic'}; line-height:1.4;">
+            ${msg || 'No independent stage shoutout saved for this sponsor yet. Tap "+ Add Note" to save one in LocalStorage.'}
+          </div>
+        </div>
       </div>
-      <button class="btn-delete-fancy" onclick="hostDeleteSponsor('${sp.id}')" title="Delete" style="width:40px; height:24px;">
-        <svg viewBox="0 0 448 512" class="svgIcon"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
-      </button>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 let hostDeployingSponsor = false;
@@ -2732,20 +2905,26 @@ async function hostDeploySponsor() {
     const address = document.getElementById('host-ad-address').value.trim();
     const phone = document.getElementById('host-ad-phone').value.trim();
     const fileInput = document.getElementById('host-ad-logo-file');
+    const hostMessage = (document.getElementById('host-ad-message') ? document.getElementById('host-ad-message').value.trim() : '');
     
     let logoData = null;
     const state = window.syncEngine ? window.syncEngine.getData() : {};
     const activeEvId = hostAssignedEventId || state.activeEventId;
     if (fileInput && fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
-      alert('Uploading logo to Storage...');
+      toast('Uploading logo to Storage...');
       logoData = await window.syncEngine.uploadFile(file, `events/${activeEvId}/sponsors/`);
     }
     
     const sponsor = {
       id: 'sp_' + Date.now(),
-      name, tagline, proprietor, address, phone, logo: logoData, addedAt: Date.now()
+      name, tagline, proprietor, address, phone, logo: logoData, message: hostMessage, addedAt: Date.now()
     };
+    
+    // Save host's independent message in localStorage
+    if (hostMessage) {
+      saveHostSponsorMessageToLocal(sponsor.id, sponsor.name, hostMessage);
+    }
     
     if (window.syncEngine) {
       window.syncEngine.setData(st => {
@@ -2755,22 +2934,23 @@ async function hostDeploySponsor() {
         st.eventSwitches[activeEvId].sponsors.push(sponsor);
         return st;
       });
-      // Await sync if applicable, though typically host portal syncs continuously or manually
       
-      alert('✅ Sponsor added globally!');
+      toast('✅ Sponsor added & Host message saved to LocalStorage!');
       document.getElementById('host-ad-partner').value = '';
       document.getElementById('host-ad-tagline').value = '';
       document.getElementById('host-ad-proprietor').value = '';
       document.getElementById('host-ad-address').value = '';
       document.getElementById('host-ad-phone').value = '';
+      if (document.getElementById('host-ad-message')) document.getElementById('host-ad-message').value = '';
       if (fileInput) fileInput.value = '';
+      closeM('host-add-sponsor-modal');
       renderHostSponsors();
     }
   } finally {
     hostDeployingSponsor = false;
     if (btn) {
       btn.disabled = false;
-      if(btnText) btnText.innerText = 'ADD SPONSOR';
+      if(btnText) btnText.innerText = '＋ ADD SPONSOR & SAVE MESSAGE';
     }
   }
 }
@@ -2788,6 +2968,7 @@ async function hostDeleteSponsor(id) {
       return st;
     });
     renderHostSponsors();
+    toast('Sponsor removed.');
   }
 }
 
