@@ -3454,6 +3454,30 @@
           <!-- Populated by JS -->
         </div>
       </div>
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+          <div>
+            <div class="card-title" style="margin-bottom:4px">Round-wise Category Distribution (Histogram)</div>
+            <div style="font-size:12px; color:var(--text-muted)">Comparative category-wise breakdown of participants across all competition rounds</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select id="cat-hist-type-sel" onchange="renderCategoryCharts()" style="padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:11px; font-weight:700; cursor:pointer;">
+              <option value="grouped">📊 Grouped Histogram</option>
+              <option value="stacked">🥞 Stacked Histogram</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Main Combined Histogram Chart across Rounds -->
+        <div style="position:relative; height:260px; margin-bottom:20px;">
+          <canvas id="category-histogram-chart"></canvas>
+        </div>
+
+        <!-- Individual Round Category Distribution Breakdown Cards -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px; border-top:1px solid var(--border); padding-top:16px;" id="category-charts-container">
+          <!-- Populated by JS -->
+        </div>
+      </div>
       <div id="roundwise-tables"></div>
     </div>
 
@@ -4951,8 +4975,10 @@
       <div class="g2">
         <div class="fg"><label class="fl">Full Name</label><input id="er-name"/></div>
         <div class="fg"><label class="fl">Phone</label><input id="er-phone"/></div>
-        <div class="fg"><label class="fl">Age</label><input id="er-age" type="number"/></div>
-        <div class="fg"><label class="fl">Category</label><select id="er-cat"></select></div>
+        <div class="fg"><label class="fl">Age</label><input id="er-age" type="number"/>
+          <div id="er-age-badge" style="display:none; margin-top:4px; font-size:11px; font-weight:700; color:#4338ca; background:#e0e7ff; padding:4px 8px; border-radius:6px; border:1px solid #c7d2fe;"></div>
+        </div>
+        <div class="fg"><label class="fl">Category</label><select id="er-cat" onchange="window.validateEditRegCatSelect(this)"></select></div>
         <div class="fg"><label class="fl">Venue</label><select id="er-venue"></select></div>
         <div class="fg"><label class="fl">Present</label>
           <select id="er-present"><option value="false">Absent</option><option value="true">Present</option></select>
@@ -10109,11 +10135,18 @@ function openEditReg(id){
       let typeAttr = 'text';
       if (f.type === 'email' || labelUpper.includes('EMAIL')) typeAttr = 'email';
       else if (f.type === 'number') typeAttr = 'number';
-      else if (f.type === 'date' || f.type === 'dob' || labelUpper.includes('DATE') || labelUpper.includes('DOB') || labelUpper.includes('BIRTH')) typeAttr = 'date';
-      html += `<div class="fg">
-        <label class="fl">${f.label}</label>
-        <input type="${typeAttr}" id="${fieldId}" value="${val || ''}"/>
-      </div>`;
+      else if (f.type === 'date' || f.type === 'dob' || labelUpper.includes('DATE') || labelUpper.includes('DOB') || labelUpper.includes('BIRTH')) {
+        typeAttr = 'date';
+        html += `<div class="fg">
+          <label class="fl">${f.label}</label>
+          <input type="${typeAttr}" id="${fieldId}" value="${val || ''}" onchange="window.onEditRegDobChange(this.value)" oninput="window.onEditRegDobChange(this.value)"/>
+        </div>`;
+      } else {
+        html += `<div class="fg">
+          <label class="fl">${f.label}</label>
+          <input type="${typeAttr}" id="${fieldId}" value="${val || ''}"/>
+        </div>`;
+      }
     }
   });
 
@@ -10130,8 +10163,48 @@ function openEditReg(id){
     const evCats = (ev && ev.categories && ev.categories.length > 0) ? ev.categories : categories;
     const evVens = (ev && ev.venues && ev.venues.length > 0) ? ev.venues : venues;
 
+    const evDateStr = (ev && (ev.startDate || ev.date || ev.start_date || (ev.dates && ev.dates[0]))) || '';
+    let foundDob = '';
+    for (const [k, v] of Object.entries(ans)) {
+      const ku = k.toUpperCase();
+      if ((ku.includes('DOB') || ku.includes('DATE OF BIRTH') || ku.includes('BIRTH') || ku === 'DATE') && v && (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(v) || /^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(v))) {
+        foundDob = v; break;
+      }
+    }
+    const ageDetails = foundDob ? window.calculateAgeDetails(foundDob, evDateStr) : null;
+    const pAge = (ageDetails && ageDetails.years) || p.age || 0;
+
+    const erBadge = document.getElementById('er-age-badge');
+    if (erBadge) {
+      if (ageDetails) {
+        let evDateDisplay = '';
+        if (evDateStr) {
+          try {
+            const d = new Date(evDateStr);
+            if (!isNaN(d.getTime())) evDateDisplay = ` on Event Date (${d.toLocaleDateString('en-GB')})`;
+          } catch(e) {}
+        }
+        erBadge.innerHTML = `🎂 Age${evDateDisplay}: <strong>${ageDetails.text}</strong>`;
+        erBadge.style.display = 'block';
+      } else {
+        erBadge.style.display = 'none';
+      }
+    }
+    if (ageDetails && ageDetails.years) {
+      const ageInp = document.getElementById('er-age');
+      if (ageInp) ageInp.value = ageDetails.years;
+    }
+
     if (catEl && evCats && evCats.length) {
-      catEl.innerHTML = evCats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      catEl.innerHTML = evCats.map(c => {
+        const isEligible = window.isCategoryEligible(c, ageDetails || pAge);
+        const ageText = ageDetails ? ageDetails.text : `${pAge} yrs`;
+        if (isEligible) {
+          return `<option value="${c.id}">${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+        } else {
+          return `<option value="${c.id}" disabled style="color:#94a3b8">${c.name} (${c.ageMin}-${c.ageMax} yrs - Ineligible for ${ageText})</option>`;
+        }
+      }).join('');
       if (p.catId !== undefined) catEl.value = p.catId;
     }
     if (venEl && evVens && evVens.length) {
@@ -10146,6 +10219,85 @@ function openEditReg(id){
     openM('edit-reg-modal');
   }, 50);
 }
+
+window.onEditRegDobChange = function(val) {
+  if (!val) {
+    const badge = document.getElementById('er-age-badge');
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+  const id = document.getElementById('er-id').value;
+  const p = (participants || []).find(x => String(x.id) === String(id)) || {};
+  const state = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : {};
+  const pEventId = p.eventId || activeEventId;
+  const ev = (state.events || EVENTS || []).find(e => String(e.id) === String(pEventId)) || {};
+  const evDateStr = ev.startDate || ev.date || ev.start_date || (ev.dates && ev.dates[0]) || '';
+
+  const ageDetails = window.calculateAgeDetails(val, evDateStr);
+  if (!ageDetails) return;
+
+  const erBadge = document.getElementById('er-age-badge');
+  if (erBadge) {
+    let evDateDisplay = '';
+    if (evDateStr) {
+      try {
+        const d = new Date(evDateStr);
+        if (!isNaN(d.getTime())) evDateDisplay = ` on Event Date (${d.toLocaleDateString('en-GB')})`;
+      } catch(e) {}
+    }
+    erBadge.innerHTML = `🎂 Age${evDateDisplay}: <strong>${ageDetails.text}</strong>`;
+    erBadge.style.display = 'block';
+  }
+
+  const ageInp = document.getElementById('er-age');
+  if (ageInp) ageInp.value = ageDetails.years;
+
+  const catEl = document.getElementById('er-cat');
+  const evCats = (ev && ev.categories && ev.categories.length > 0) ? ev.categories : categories;
+  if (catEl && evCats && evCats.length) {
+    const currentVal = catEl.value;
+    let hasMatchingSelected = false;
+    let firstEligibleId = null;
+    catEl.innerHTML = evCats.map(c => {
+      const isEligible = window.isCategoryEligible(c, ageDetails);
+      if (isEligible) {
+        if (firstEligibleId === null) firstEligibleId = c.id;
+        const isSelected = String(c.id) === String(currentVal);
+        if (isSelected) hasMatchingSelected = true;
+        return `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+      } else {
+        return `<option value="${c.id}" disabled style="color:#94a3b8">${c.name} (${c.ageMin}-${c.ageMax} yrs - Ineligible for ${ageDetails.text})</option>`;
+      }
+    }).join('');
+    if (!hasMatchingSelected && firstEligibleId !== null) {
+      catEl.value = firstEligibleId;
+    }
+  }
+};
+
+window.validateEditRegCatSelect = function(sel) {
+  if (!sel || !sel.value) return;
+  const id = document.getElementById('er-id').value;
+  const p = (participants || []).find(x => String(x.id) === String(id)) || {};
+  const state = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : {};
+  const pEventId = p.eventId || activeEventId;
+  const ev = (state.events || EVENTS || []).find(e => String(e.id) === String(pEventId)) || {};
+  const evCats = (ev && ev.categories && ev.categories.length > 0) ? ev.categories : categories;
+  const catObj = (evCats || []).find(c => String(c.id) === String(sel.value));
+  if (!catObj) return;
+
+  const ageVal = parseInt(document.getElementById('er-age').value) || p.age || 0;
+  const dateInp = document.querySelector('#edit-reg-modal input[type="date"]');
+  const evDateStr = ev.startDate || ev.date || ev.start_date || (ev.dates && ev.dates[0]) || '';
+  const ageDetails = (dateInp && dateInp.value) ? window.calculateAgeDetails(dateInp.value, evDateStr) : null;
+  const checkVal = ageDetails || ageVal;
+
+  if (checkVal && !window.isCategoryEligible(catObj, checkVal)) {
+    const ageDisplay = ageDetails ? ageDetails.text : `${ageVal} Years`;
+    toast(`⚠️ Ineligible Category: Participant's age (${ageDisplay}) does not match category "${catObj.name}". Please select an eligible category.`);
+    sel.value = '';
+  }
+};
 
 // ── APPLIED SECTION BUG-FIXES: Mutex guard, direct DB writes, optimistic lock stamp
 let _isSavingEditReg = false;
@@ -10240,6 +10392,30 @@ async function saveEditReg(){
       }
     });
     
+    // Validate Age against Category limits
+    const stateData = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : {};
+    const ev = (stateData.events || EVENTS || []).find(e => String(e.id) === String(p.eventId || activeEventId)) || (EVENTS || []).find(e => String(e.id) === String(p.eventId || activeEventId)) || {};
+    const evDateStr = ev.startDate || ev.date || ev.start_date || (ev.dates && ev.dates[0]) || '';
+    let dobVal = '';
+    for (const [k, v] of Object.entries(p.formAnswers || {})) {
+      const ku = k.toUpperCase();
+      if ((ku.includes('DOB') || ku.includes('DATE OF BIRTH') || ku.includes('BIRTH') || ku === 'DATE') && v) {
+        dobVal = v;
+        break;
+      }
+    }
+    const ageDetails = dobVal ? window.calculateAgeDetails(dobVal, evDateStr) : null;
+    const evCats = (ev && ev.categories && ev.categories.length > 0) ? ev.categories : categories;
+    const catObj = (evCats || []).find(c => String(c.id) === String(p.catId));
+    if (catObj && (ageDetails || p.age > 0)) {
+      const isEligible = window.isCategoryEligible(catObj, ageDetails || p.age);
+      if (!isEligible) {
+        const ageDisplay = ageDetails ? ageDetails.text : `${p.age} Years`;
+        toast(`⚠️ Ineligible Category: Participant's age (${ageDisplay} on event date) does not match category "${catObj.name}". Please select an eligible category.`);
+        return;
+      }
+    }
+
     closeM('edit-reg-modal');
 
     // Direct write to Sync Engine / Database
@@ -10517,7 +10693,8 @@ function openAddRegModal(){
     } else if (f.type === 'email') {
       inputHtml = `<input id="${id}" type="email" placeholder="${f.placeholder || ''}" data-label="${f.label}" />`;
     } else if (f.type === 'dob' || f.type === 'date') {
-      inputHtml = `<input id="${id}" type="date" data-label="${f.label}" onchange="calcAge(this.value)" />`;
+      inputHtml = `<input id="${id}" type="date" data-label="${f.label}" onchange="calcAge(this.value)" oninput="calcAge(this.value)" />
+      <div id="ar-age-badge" style="display:none; margin-top:6px; font-size:12px; font-weight:700; color:#4338ca; background:#e0e7ff; padding:6px 12px; border-radius:8px; border:1px solid #c7d2fe;"></div>`;
     } else if (f.type === 'address' || f.type === 'textarea') {
       inputHtml = `<textarea id="${id}" placeholder="${f.placeholder || ''}" data-label="${f.label}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface)"></textarea>`;
     } else if (f.type === 'file') {
@@ -10551,9 +10728,9 @@ function openAddRegModal(){
       </div>`;
     } else if (f.type === 'category') {
       const cats = activeEv.categories || [];
-      inputHtml = `<select id="${id}" data-label="${f.label}">
+      inputHtml = `<select id="${id}" data-label="${f.label}" class="ar-cat-select" onchange="validateArCategorySelect(this)">
         <option value="">— Select Category —</option>
-        ${cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+        ${cats.map(c => `<option value="${c.id}">${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`).join('')}
       </select>`;
     } else if (f.type === 'venue') {
       const vens = activeEv.venues || [];
@@ -10592,13 +10769,192 @@ function openAddRegModal(){
   openM('add-reg-modal');
 }
 
+window.calculateAgeDetails = function(dobString, eventDateStr) {
+  if (!dobString) return null;
+  let birthDate = null;
+  const s = String(dobString).trim();
+  const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (ymd) {
+    birthDate = new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
+  } else if (dmy) {
+    birthDate = new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+  } else {
+    birthDate = new Date(s);
+  }
+  if (!birthDate || isNaN(birthDate.getTime())) return null;
+
+  let refDate = new Date();
+  if (eventDateStr) {
+    const es = String(eventDateStr).trim();
+    const eymd = es.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    const edmy = es.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (eymd) {
+      refDate = new Date(parseInt(eymd[1], 10), parseInt(eymd[2], 10) - 1, parseInt(eymd[3], 10));
+    } else if (edmy) {
+      refDate = new Date(parseInt(edmy[3], 10), parseInt(edmy[2], 10) - 1, parseInt(edmy[1], 10));
+    } else {
+      const parsed = new Date(es);
+      if (!isNaN(parsed.getTime())) refDate = parsed;
+    }
+  }
+
+  let years = refDate.getFullYear() - birthDate.getFullYear();
+  let months = refDate.getMonth() - birthDate.getMonth();
+  let days = refDate.getDate() - birthDate.getDate();
+
+  if (days < 0) {
+    months--;
+    const prevMonthLastDay = new Date(refDate.getFullYear(), refDate.getMonth(), 0).getDate();
+    days += prevMonthLastDay;
+  }
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  if (years < 0) {
+    return { years: 0, months: 0, days: 0, totalMonths: 0, text: '0 Years 0 Months' };
+  }
+
+  return {
+    years,
+    months,
+    days,
+    totalMonths: years * 12 + months,
+    text: `${years} Years ${months} Months`
+  };
+};
+
+window.isCategoryEligible = function(cat, ageInput) {
+  if (!ageInput && ageInput !== 0) return true;
+  let years, months, days, totalMonths;
+  if (typeof ageInput === 'object' && ageInput !== null) {
+    years = ageInput.years;
+    months = ageInput.months || 0;
+    days = ageInput.days || 0;
+    totalMonths = ageInput.totalMonths !== undefined ? ageInput.totalMonths : (years * 12 + months);
+  } else {
+    years = parseInt(ageInput, 10);
+    months = 0;
+    days = 0;
+    totalMonths = years * 12;
+  }
+  if (isNaN(years) || years < 0) return true;
+
+  const rawMin = cat.ageMin !== undefined ? cat.ageMin : cat.age_min;
+  const rawMax = cat.ageMax !== undefined ? cat.ageMax : cat.age_max;
+  let min = (rawMin !== undefined && rawMin !== null && rawMin !== '') ? parseInt(rawMin, 10) : 0;
+  let max = (rawMax !== undefined && rawMax !== null && rawMax !== '') ? parseInt(rawMax, 10) : 999;
+
+  const name = String(cat.name || '').toLowerCase();
+  const isBelow13 = name.includes('below') || name.includes('under') || name.includes('<') || name.includes('02-13') || name.includes('2-13') || (min <= 2 && max === 13);
+  const isAbove13 = name.includes('above') || name.includes('13+') || name.includes('13 +') || name.includes('>') || (min === 13 && max > 13);
+
+  // Exactly 13 years 0 months 0 days belongs to below-13
+  const isExactly13orUnder = years < 13 || (years === 13 && months === 0 && days === 0);
+  const isStrictlyOver13 = years > 13 || (years === 13 && (months > 0 || days > 0));
+
+  if (isBelow13) {
+    if (years < min) return false;
+    return isExactly13orUnder;
+  }
+  if (isAbove13) {
+    if (!isStrictlyOver13) return false;
+    return years <= max;
+  }
+
+  return years >= min && years <= max;
+};
+
 window.calcAge = (dobString) => {
-  if(!dobString) return;
-  const dob = new Date(dobString);
-  const diff = Date.now() - dob.getTime();
-  const age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
-  const ageInputs = Array.from(document.querySelectorAll('input[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
-  if (ageInputs.length > 0) ageInputs[0].value = age;
+  const badge = document.getElementById('ar-age-badge');
+  if(!dobString) {
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const evDateStr = activeEv.startDate || activeEv.date || activeEv.start_date || (activeEv.dates && activeEv.dates[0]) || '';
+  
+  const ageDetails = window.calculateAgeDetails(dobString, evDateStr);
+  if (!ageDetails) {
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+
+  if (badge) {
+    let evDateDisplay = '';
+    if (evDateStr) {
+      try {
+        const d = new Date(evDateStr);
+        if (!isNaN(d.getTime())) evDateDisplay = ` on Event Date (${d.toLocaleDateString('en-GB')})`;
+      } catch (e) {}
+    }
+    badge.innerHTML = `🎂 Age${evDateDisplay}: <strong>${ageDetails.text}</strong>`;
+    badge.style.display = 'block';
+  }
+
+  const ageInputs = Array.from(document.querySelectorAll('#add-reg-modal input[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
+  if (ageInputs.length > 0) ageInputs[0].value = ageDetails.years;
+
+  window.updateArCategoryOptions(ageDetails);
+};
+
+window.updateArCategoryOptions = (ageInput) => {
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const categories = activeEv.categories || [];
+  if (!categories || categories.length === 0) return;
+
+  const ageYears = (typeof ageInput === 'object' && ageInput !== null) ? ageInput.years : parseInt(ageInput);
+  const ageText = (typeof ageInput === 'object' && ageInput !== null && ageInput.text) ? ageInput.text : (!isNaN(ageYears) ? `${ageYears} Years` : '');
+
+  const catSelects = document.querySelectorAll('select.ar-cat-select');
+  catSelects.forEach(sel => {
+    const currentVal = sel.value;
+    let html = '<option value="">— Select Category —</option>';
+    let hasMatchingSelected = false;
+    let firstEligibleId = null;
+
+    categories.forEach(c => {
+      const isEligible = window.isCategoryEligible(c, ageInput);
+      if (isEligible) {
+        if (firstEligibleId === null) firstEligibleId = c.id;
+        const isSelected = String(c.id) === String(currentVal);
+        if (isSelected) hasMatchingSelected = true;
+        html += `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+      } else {
+        html += `<option value="${c.id}" disabled style="color:#94a3b8">${c.name} (${c.ageMin}-${c.ageMax} yrs - Ineligible for ${ageText})</option>`;
+      }
+    });
+
+    sel.innerHTML = html;
+    if (!hasMatchingSelected && !isNaN(ageYears) && ageYears > 0 && firstEligibleId !== null) {
+      sel.value = firstEligibleId;
+    }
+  });
+};
+
+window.validateArCategorySelect = (sel) => {
+  if (!sel || !sel.value) return;
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId)) || {};
+  const categories = activeEv.categories || [];
+  const catObj = categories.find(c => String(c.id) === String(sel.value));
+  if (!catObj) return;
+
+  const dobInput = document.querySelector('#add-reg-modal input[type="date"]');
+  const evDateStr = activeEv.startDate || activeEv.date || activeEv.start_date || (activeEv.dates && activeEv.dates[0]) || '';
+  let ageDetails = null;
+  if (dobInput && dobInput.value) {
+    ageDetails = window.calculateAgeDetails(dobInput.value, evDateStr);
+  }
+  
+  if (ageDetails && !window.isCategoryEligible(catObj, ageDetails)) {
+    toast(`⚠️ Ineligible: Category "${catObj.name}" is not valid for age ${ageDetails.text}. Please select an eligible category.`);
+    sel.value = '';
+  }
 };
 
 window.convertFileToBase64 = (input, targetId) => {
@@ -10684,6 +11040,7 @@ async function saveNewRegAsync() {
 
       // Map to standard properties if possible
       const lbl = f.label.toUpperCase();
+      const evDateStr = activeEv.startDate || activeEv.date || activeEv.start_date || (activeEv.dates && activeEv.dates[0]) || '';
       if (lbl.includes('NAME')) name = val;
       else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) phone = val;
       else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX') && !lbl.includes('AVERAGE') && !lbl.includes('MANAGE'))) {
@@ -10691,12 +11048,10 @@ async function saveNewRegAsync() {
         if (!isNaN(parsed)) age = parsed;
       }
       else if (lbl.includes('DOB') || lbl.includes('DATE OF BIRTH') || lbl.includes('BIRTHDAY') || lbl.includes('BIRTH DATE') || lbl === 'DATE' || lbl.includes('DATE')) {
-        if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-          const dob = new Date(val);
-          const diff = Date.now() - dob.getTime();
-          const calcAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
-          if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
-            if (age === 0 || lbl.includes('BIRTH') || lbl.includes('DOB')) age = calcAge;
+        if (val) {
+          const ageDetails = window.calculateAgeDetails(val, evDateStr);
+          if (ageDetails) {
+            age = ageDetails.years;
           }
         }
       }
@@ -10714,13 +11069,22 @@ async function saveNewRegAsync() {
     }
 
     // Validate Age against Category limits
+    const evDateStr = activeEv.startDate || activeEv.date || activeEv.start_date || (activeEv.dates && activeEv.dates[0]) || '';
+    let dobVal = '';
+    for (const [k, v] of Object.entries(formData)) {
+      const ku = k.toUpperCase();
+      if ((ku.includes('DOB') || ku.includes('DATE OF BIRTH') || ku.includes('BIRTH') || ku === 'DATE') && v) {
+        dobVal = v;
+        break;
+      }
+    }
+    const ageDetails = dobVal ? window.calculateAgeDetails(dobVal, evDateStr) : null;
     const catObj = (activeEv.categories || []).find(c => String(c.id) === String(catId));
-    if (catObj && age > 0) {
-      const min = parseInt(catObj.ageMin) || 0;
-      const max = parseInt(catObj.ageMax) || 999;
-      if (age < min || age > max) {
-        const maxText = max === 999 ? 'above' : max;
-        toast(`Age Not Eligible: Age ${age} is outside the allowed range (${min} - ${maxText}) for category "${catObj.name}".`);
+    if (catObj && (ageDetails || age > 0)) {
+      const isEligible = window.isCategoryEligible(catObj, ageDetails || age);
+      if (!isEligible) {
+        const ageDisplay = ageDetails ? ageDetails.text : `${age} Years`;
+        toast(`⚠️ Age Not Eligible: Age ${ageDisplay} is not eligible for category "${catObj.name}".`);
         throw new Error('VALIDATION:Age out of range'); // BUG-FIX: was bare return — finally now always resets guard
       }
     }
@@ -15178,6 +15542,7 @@ function renderRoundwiseStats(){
   
   renderGenderCharts();
   renderAgeCharts();
+  renderCategoryCharts();
 }
 
 function renderGenderCharts() {
@@ -15390,6 +15755,248 @@ function renderAgeCharts() {
     window.ageCharts.push(chart);
   });
 }
+
+function renderCategoryCharts() {
+  const container = document.getElementById('category-charts-container');
+  const mainCtx = document.getElementById('category-histogram-chart');
+  if (!container && !mainCtx) return;
+  if (typeof Chart === 'undefined') {
+    if (container) container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;grid-column:1/-1;text-align:center;">Chart library not loaded</div>';
+    return;
+  }
+
+  const roundsOrder = ['audition', 'qualified', 'semifinal', 'final'];
+  const roundLabels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
+  const eventParticipants = getStatsEventParticipants();
+  const activeEventCats = getStatsEventCategories();
+
+  // Helper to resolve category colors
+  const resolveCatColor = (catColorStr, index) => {
+    const classMap = {
+      'b-blue': '#3b82f6',
+      'b-green': '#10b981',
+      'b-amber': '#f59e0b',
+      'b-orange': '#ea580c',
+      'b-red': '#ef4444',
+      'b-purple': '#8b5cf6',
+      'b-pink': '#ec4899',
+      'b-teal': '#14b8a6',
+      'b-indigo': '#6366f1'
+    };
+    if (catColorStr && classMap[catColorStr]) return classMap[catColorStr];
+    if (catColorStr && catColorStr.startsWith('#')) return catColorStr;
+    const fallbackPalette = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#f43f5e'];
+    return fallbackPalette[index % fallbackPalette.length];
+  };
+
+  const hexToRgba = (hex, alpha) => {
+    let r = 0, g = 0, b = 0;
+    if (hex && hex.length === 4) { r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16); }
+    else if (hex && hex.length === 7) { r = parseInt(hex.slice(1, 3), 16); g = parseInt(hex.slice(3, 5), 16); b = parseInt(hex.slice(5, 7), 16); }
+    else return hex;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // 1. Render Combined Histogram across All 4 Rounds
+  if (mainCtx) {
+    if (window.categoryHistogramChartInstance) {
+      window.categoryHistogramChartInstance.destroy();
+      window.categoryHistogramChartInstance = null;
+    }
+
+    const histTypeSel = document.getElementById('cat-hist-type-sel');
+    const isStacked = histTypeSel ? histTypeSel.value === 'stacked' : false;
+
+    // Prepare datasets for each category
+    const datasets = activeEventCats.map((cat, catIdx) => {
+      const color = resolveCatColor(cat.color, catIdx);
+      const data = roundsOrder.map((r, rIdx) => {
+        return eventParticipants.filter(p => {
+          const pRIdx = roundsOrder.indexOf(p.round || 'audition');
+          return pRIdx >= rIdx && String(p.catId) === String(cat.id);
+        }).length;
+      });
+
+      return {
+        label: cat.name || `Category ${catIdx + 1}`,
+        data: data,
+        backgroundColor: hexToRgba(color, 0.8),
+        borderColor: color,
+        borderWidth: 2,
+        borderRadius: isStacked ? 0 : 5,
+        categoryPercentage: 0.75,
+        barPercentage: 0.85
+      };
+    });
+
+    const roundTotals = roundsOrder.map((r, rIdx) => {
+      return eventParticipants.filter(p => {
+        const pRIdx = roundsOrder.indexOf(p.round || 'audition');
+        return pRIdx >= rIdx;
+      }).length;
+    });
+
+    window.categoryHistogramChartInstance = new Chart(mainCtx, {
+      type: 'bar',
+      data: {
+        labels: roundLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            stacked: isStacked,
+            grid: { display: false },
+            ticks: {
+              font: { weight: 'bold', size: 12, family: 'var(--fb)' },
+              color: 'var(--text)'
+            }
+          },
+          y: {
+            stacked: isStacked,
+            beginAtZero: true,
+            ticks: {
+              precision: 0,
+              font: { size: 11, family: 'var(--fm)' },
+              color: 'var(--text-muted)'
+            },
+            grid: {
+              color: 'rgba(148, 163, 184, 0.15)'
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              boxWidth: 12,
+              font: { size: 11, weight: 'bold', family: 'var(--fb)' },
+              color: 'var(--text)'
+            }
+          },
+          tooltip: {
+            padding: 10,
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                const total = roundTotals[context.dataIndex] || 0;
+                const val = context.raw || 0;
+                const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+                return ` ${context.dataset.label}: ${val} participants (${pct}%)`;
+              },
+              footer: function(tooltipItems) {
+                if (isStacked && tooltipItems && tooltipItems.length > 0) {
+                  const idx = tooltipItems[0].dataIndex;
+                  return `Total Reached: ${roundTotals[idx] || 0}`;
+                }
+                return '';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // 2. Render Individual Round Mini Histogram Cards
+  if (container) {
+    container.innerHTML = '';
+    if (window.categoryMiniCharts) {
+      window.categoryMiniCharts.forEach(c => c.destroy());
+    }
+    window.categoryMiniCharts = [];
+
+    roundsOrder.forEach((r, idx) => {
+      const reached = eventParticipants.filter(p => {
+        const pRIdx = roundsOrder.indexOf(p.round || 'audition');
+        return pRIdx >= idx;
+      });
+      const currentlyInRound = eventParticipants.filter(p => (p.round || 'audition') === r).length;
+      const totalReached = reached.length;
+
+      const catCounts = activeEventCats.map((cat, catIdx) => {
+        const count = reached.filter(p => String(p.catId) === String(cat.id)).length;
+        const pct = totalReached > 0 ? Math.round((count / totalReached) * 100) : 0;
+        const color = resolveCatColor(cat.color, catIdx);
+        return { cat, count, pct, color };
+      });
+
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:12px; text-align:center; display:flex; flex-direction:column; justify-content:space-between;';
+      wrap.innerHTML = `
+        <div>
+          <div style="font-size:12px;font-weight:800;margin-bottom:2px;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;">${roundLabels[idx]}</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-bottom:10px;font-family:var(--fm)">
+            Active: <strong style="color:var(--primary)">${currentlyInRound}</strong> · Reached: <strong>${totalReached}</strong>
+          </div>
+          <div style="position:relative;height:120px;margin-bottom:10px;">
+            <canvas id="category-mini-chart-${r}"></canvas>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:10px; font-family:var(--fm); border-top:1px dashed var(--border); padding-top:8px;">
+          ${catCounts.map(item => `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <span style="display:inline-flex; align-items:center; gap:5px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px;">
+                <span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${item.color}; flex-shrink:0;"></span>
+                ${item.cat.name}
+              </span>
+              <span style="font-weight:800; color:${item.color}">${item.count} <span style="font-weight:600; color:var(--text-muted); font-size:9px;">(${item.pct}%)</span></span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      container.appendChild(wrap);
+
+      const miniCtx = document.getElementById(`category-mini-chart-${r}`);
+      if (miniCtx) {
+        const miniChart = new Chart(miniCtx, {
+          type: 'bar',
+          data: {
+            labels: catCounts.map(item => item.cat.name),
+            datasets: [{
+              data: catCounts.map(item => item.count),
+              backgroundColor: catCounts.map(item => hexToRgba(item.color, 0.85)),
+              borderColor: catCounts.map(item => item.color),
+              borderWidth: 1.5,
+              borderRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { display: false },
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  precision: 0,
+                  font: { size: 9, family: 'var(--fm)' },
+                  color: 'var(--text-muted)'
+                },
+                grid: { color: 'rgba(148, 163, 184, 0.1)' }
+              }
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const item = catCounts[context.dataIndex];
+                    return ` ${item.cat.name}: ${item.count} (${item.pct}%)`;
+                  }
+                }
+              }
+            }
+          }
+        });
+        window.categoryMiniCharts.push(miniChart);
+      }
+    });
+  }
+}
+window.renderCategoryCharts = renderCategoryCharts;
 
 function renderJudgeStats(){
   // Judge chart

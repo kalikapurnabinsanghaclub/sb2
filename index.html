@@ -10211,8 +10211,12 @@
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="number" id="${id}" placeholder="${f.placeholder||''}" ${ageEvts} style="${inputStyle}"></div>`;
         } else if (f.type === 'email') {
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="email" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></div>`;
-        } else if (f.type === 'dob' || f.type === 'date') {
-          html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><input class="inp su-df" data-label="${f.label}" type="date" id="${id}" onchange="window.calcPublicAge(this.value)" oninput="window.calcPublicAge(this.value)" style="${inputStyle}"></div>`;
+        } else if (f.type === 'dob' || f.type === 'date' || (f.label && /(?:dob|date of birth|birth date|birthday)/i.test(f.label))) {
+          html += `<div class="fg" style="margin-bottom:20px;">
+            <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
+            <input class="inp su-df" data-label="${f.label}" type="date" id="${id}" onchange="window.calcPublicAge(this.value)" oninput="window.calcPublicAge(this.value)" style="${inputStyle}">
+            <div id="su-age-badge" style="display:none; margin-top:8px; font-size:0.85rem; font-weight:700; color:#4338ca; background:#e0e7ff; padding:8px 14px; border-radius:10px; border:1px solid #c7d2fe;"></div>
+          </div>`;
         } else if (f.type === 'address' || f.type === 'textarea') {
           html += `<div class="fg" style="margin-bottom:20px;"><label style="${labelStyle}">${f.label}${f.required?' *':''}</label><textarea class="inp su-df" data-label="${f.label}" id="${id}" placeholder="${f.placeholder||''}" style="${inputStyle}"></textarea></div>`;
         } else if (f.type === 'file_link') {
@@ -10315,7 +10319,7 @@
           html += `
             <div class="fg" style="margin-bottom:20px;">
               <label style="${labelStyle}">${f.label}${f.required?' *':''}</label>
-              <select class="inp su-df-cat" data-label="${f.label}" style="${inputStyle} width:100%;">
+              <select class="inp su-df-cat" data-label="${f.label}" onchange="window.validatePublicCategorySelect(this)" style="${inputStyle} width:100%;">
                 <option value="">— Select Category —</option>
                 ${cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
               </select>
@@ -10383,9 +10387,14 @@
       // Initialize Category Dropdown with available categories and current age filter if available
       const catEl = container.querySelector(".su-df-cat");
       if (catEl) {
-        const ageInput = container.querySelector('input.su-df[type="number"][data-label*="Age" i], input.su-df[type="number"][data-label*="AGE"]');
-        const currentAge = ageInput ? parseInt(ageInput.value) : 0;
-        window.updatePublicCategoryOptions(currentAge || 0);
+        const dobInp = container.querySelector('input.su-df[type="date"], input.su-df[data-label*="DOB" i], input.su-df[data-label*="Birth" i]');
+        if (dobInp && dobInp.value) {
+          window.calcPublicAge(dobInp.value);
+        } else {
+          const ageInput = container.querySelector('input.su-df[type="number"][data-label*="Age" i], input.su-df[type="number"][data-label*="AGE"]');
+          const currentAge = ageInput ? parseInt(ageInput.value) : 0;
+          window.updatePublicCategoryOptions(currentAge || 0);
+        }
       }
 
       // Initialize Venue Dropdown with available venues
@@ -10448,52 +10457,207 @@
       }
     };
 
-    window.calcPublicAge = function(dobString) {
-      if(!dobString) return;
-      const dob = new Date(dobString);
-      if (isNaN(dob.getTime())) return;
-      const diff = Date.now() - dob.getTime();
-      const age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
-      if (isNaN(age) || age < 0 || age > 120) return;
-      const ageInputs = Array.from(document.querySelectorAll('input.su-df[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
-      if (ageInputs.length > 0) ageInputs[0].value = age;
-      window.updatePublicCategoryOptions(age);
+    window.calculateAgeDetails = function(dobString, eventDateStr) {
+      if (!dobString) return null;
+      let birthDate = null;
+      const s = String(dobString).trim();
+      const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+      const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+      if (ymd) {
+        birthDate = new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
+      } else if (dmy) {
+        birthDate = new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+      } else {
+        birthDate = new Date(s);
+      }
+      if (!birthDate || isNaN(birthDate.getTime())) return null;
+
+      let refDate = new Date();
+      if (eventDateStr) {
+        if (eventDateStr instanceof Date) {
+          if (!isNaN(eventDateStr.getTime())) refDate = eventDateStr;
+        } else {
+          const es = String(eventDateStr).trim();
+          const eymd = es.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+          const edmy = es.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+          if (eymd) {
+            refDate = new Date(parseInt(eymd[1], 10), parseInt(eymd[2], 10) - 1, parseInt(eymd[3], 10));
+          } else if (edmy) {
+            refDate = new Date(parseInt(edmy[3], 10), parseInt(edmy[2], 10) - 1, parseInt(edmy[1], 10));
+          } else {
+            const d = new Date(es);
+            if (!isNaN(d.getTime())) refDate = d;
+          }
+        }
+      }
+
+      let years = refDate.getFullYear() - birthDate.getFullYear();
+      let months = refDate.getMonth() - birthDate.getMonth();
+      let days = refDate.getDate() - birthDate.getDate();
+
+      if (days < 0) {
+        months--;
+        const prevMonthLastDay = new Date(refDate.getFullYear(), refDate.getMonth(), 0).getDate();
+        days += prevMonthLastDay;
+      }
+      if (months < 0) {
+        years--;
+        months += 12;
+      }
+      if (years < 0) return { years: 0, months: 0, days: 0, totalMonths: 0, text: '0 Years 0 Months' };
+
+      const totalMonths = years * 12 + months;
+      const text = `${years} Years ${months} Months`;
+      return { years, months, days, totalMonths, text };
     };
 
-    window.updatePublicCategoryOptions = function(age) {
-      const numericAge = parseInt(age);
+    window.calculateAgeFromDob = function(dobString, eventDateStr) {
+      const details = window.calculateAgeDetails(dobString, eventDateStr);
+      return details ? details.years : null;
+    };
+
+    window.isCategoryEligible = function(cat, ageInput) {
+      if (!ageInput && ageInput !== 0) return true;
+      let years, months, days, totalMonths;
+      if (typeof ageInput === 'object' && ageInput !== null) {
+        years = ageInput.years;
+        months = ageInput.months || 0;
+        days = ageInput.days || 0;
+        totalMonths = ageInput.totalMonths !== undefined ? ageInput.totalMonths : (years * 12 + months);
+      } else {
+        years = parseInt(ageInput, 10);
+        months = 0;
+        days = 0;
+        totalMonths = years * 12;
+      }
+      if (isNaN(years) || years < 0) return true;
+
+      const rawMin = cat.ageMin !== undefined ? cat.ageMin : cat.age_min;
+      const rawMax = cat.ageMax !== undefined ? cat.ageMax : cat.age_max;
+      let min = (rawMin !== undefined && rawMin !== null && rawMin !== '') ? parseInt(rawMin, 10) : 0;
+      let max = (rawMax !== undefined && rawMax !== null && rawMax !== '') ? parseInt(rawMax, 10) : 999;
+      if (isNaN(min)) min = 0;
+      if (isNaN(max)) max = 999;
+
+      const name = String(cat.name || '').toLowerCase();
+
+      // Category 02-13 / Below 13 / Under 13
+      const isBelow13 = name.includes('below') || name.includes('under') || name.includes('<') || name.includes('02-13') || name.includes('2-13') || (min <= 2 && max === 13);
+      // Category 13+ / Above 13
+      const isAbove13 = name.includes('above') || name.includes('13+') || name.includes('13 +') || name.includes('>') || (min === 13 && max > 13);
+
+      // Exactly 13 years 0 months 0 days belongs to below-13
+      const isExactly13orUnder = years < 13 || (years === 13 && months === 0 && days === 0);
+      const isStrictlyOver13 = years > 13 || (years === 13 && (months > 0 || days > 0));
+
+      if (isBelow13) {
+        if (years < min) return false;
+        return isExactly13orUnder;
+      }
+
+      if (isAbove13) {
+        if (!isStrictlyOver13) return false;
+        if (years > max) return false;
+        return true;
+      }
+
+      return years >= min && years <= max;
+    };
+
+    window.calcPublicAge = function(dobString) {
+      if (!dobString) return;
+      const currentEvId = (typeof suSelectedEventId !== 'undefined' && suSelectedEventId) 
+        ? suSelectedEventId 
+        : (window.currentEpvEventId || (window.location.search.match(/event=([^&]+)/) ? window.location.search.match(/event=([^&]+)/)[1] : ''));
+      const ev = (typeof EVENTS !== 'undefined' ? EVENTS : []).find(e => String(e.id) === String(currentEvId)) || {};
+      const evDate = ev.startDate || ev.date || ev.start_date || '';
+      
+      const ageDetails = window.calculateAgeDetails(dobString, evDate);
+      if (!ageDetails) return;
+
+      const ageBadge = document.getElementById('su-age-badge');
+      if (ageBadge) {
+        ageBadge.style.display = 'block';
+        const evDateText = ev.disp || ev.date || 'Event Day';
+        ageBadge.innerHTML = `🎂 Age on Event Date (${evDateText}): <strong style="color:#312e81">${ageDetails.years} Years ${ageDetails.months} Months</strong>`;
+      }
+
+      const ageInputs = Array.from(document.querySelectorAll('input.su-df[type="number"]')).filter(i => i.dataset.label && i.dataset.label.toUpperCase().includes('AGE'));
+      if (ageInputs.length > 0) ageInputs[0].value = ageDetails.years;
+      window.updatePublicCategoryOptions(ageDetails, ev);
+    };
+
+    window.updatePublicCategoryOptions = function(ageInput, evOverride) {
       const catEl = document.querySelector(".su-df-cat");
       if (!catEl) return;
       
       const currentEvId = (typeof suSelectedEventId !== 'undefined' && suSelectedEventId) 
         ? suSelectedEventId 
         : (window.currentEpvEventId || (window.location.search.match(/event=([^&]+)/) ? window.location.search.match(/event=([^&]+)/)[1] : ''));
-      const ev = (typeof EVENTS !== 'undefined' ? EVENTS : []).find(e => String(e.id) === String(currentEvId)) || {};
+      const ev = evOverride || (typeof EVENTS !== 'undefined' ? EVENTS : []).find(e => String(e.id) === String(currentEvId)) || {};
       const cats = ev.categories || [];
       if (!cats || cats.length === 0) return;
       
+      let ageDetails = null;
+      if (typeof ageInput === 'object' && ageInput !== null) {
+        ageDetails = ageInput;
+      } else if (!isNaN(parseInt(ageInput, 10))) {
+        ageDetails = { years: parseInt(ageInput, 10), months: 0, text: `${parseInt(ageInput, 10)} Years` };
+      }
+
       const currentVal = catEl.value;
       let html = '<option value="">— Select Category —</option>';
       let hasMatchingSelected = false;
       let firstEligibleId = null;
       
       cats.forEach(c => {
-        const min = parseInt(c.ageMin) || 0;
-        const max = parseInt(c.ageMax) || 999;
-        const isEligible = isNaN(numericAge) || numericAge <= 0 || (numericAge >= min && numericAge <= max);
+        const isEligible = window.isCategoryEligible(c, ageDetails || ageInput);
+        const ageLabel = (c.ageMin !== undefined && c.ageMax !== undefined) ? ` (${c.ageMin}-${c.ageMax} yrs)` : '';
         if (isEligible) {
           if (firstEligibleId === null) firstEligibleId = c.id;
           const isSelected = String(c.id) === String(currentVal);
           if (isSelected) hasMatchingSelected = true;
-          html += `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name} (${c.ageMin}-${c.ageMax} yrs)</option>`;
+          html += `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name}${ageLabel} — Eligible</option>`;
         } else {
-          html += `<option value="${c.id}" disabled style="color:#94a3b8">${c.name} (${c.ageMin}-${c.ageMax} yrs - Ineligible for age ${numericAge})</option>`;
+          const ineligReason = ageDetails ? `Ineligible for ${ageDetails.years} Yrs ${ageDetails.months} Mos` : 'Ineligible';
+          html += `<option value="${c.id}" disabled style="color:#94a3b8">${c.name}${ageLabel} — ${ineligReason}</option>`;
         }
       });
       
       catEl.innerHTML = html;
-      if (!hasMatchingSelected && !isNaN(numericAge) && numericAge > 0 && firstEligibleId !== null) {
+      if (!hasMatchingSelected && ageDetails && ageDetails.years > 0 && firstEligibleId !== null) {
         catEl.value = firstEligibleId;
+      }
+    };
+
+    window.validatePublicCategorySelect = function(catEl) {
+      if (!catEl || !catEl.value) return;
+      const currentEvId = (typeof suSelectedEventId !== 'undefined' && suSelectedEventId) 
+        ? suSelectedEventId 
+        : (window.currentEpvEventId || (window.location.search.match(/event=([^&]+)/) ? window.location.search.match(/event=([^&]+)/)[1] : ''));
+      const ev = (typeof EVENTS !== 'undefined' ? EVENTS : []).find(e => String(e.id) === String(currentEvId)) || {};
+      const evDate = ev.startDate || ev.date || ev.start_date || '';
+
+      const dobInp = document.querySelector('#suDynamicForm input[type="date"], #suDynamicForm input.su-df[data-label*="DOB" i], #suDynamicForm input.su-df[data-label*="Birth" i]');
+      let ageDetails = null;
+      if (dobInp && dobInp.value) {
+        ageDetails = window.calculateAgeDetails(dobInp.value, evDate);
+      } else {
+        const ageInput = document.querySelector('input.su-df[type="number"][data-label*="Age" i], input.su-df[type="number"][data-label*="AGE"]');
+        if (ageInput && ageInput.value) ageDetails = { years: parseInt(ageInput.value, 10), months: 0, text: `${parseInt(ageInput.value, 10)} Years` };
+      }
+
+      if (ageDetails && ageDetails.years > 0) {
+        const catObj = (ev.categories || []).find(c => String(c.id) === String(catEl.value));
+        if (catObj && !window.isCategoryEligible(catObj, ageDetails)) {
+          showToast(
+            "Age Not Eligible",
+            `Category "${catObj.name}" is not eligible for your calculated age (${ageDetails.years} Years ${ageDetails.months} Months on event date). Please choose an eligible category.`,
+            "⚠️"
+          );
+          const eligible = (ev.categories || []).find(c => window.isCategoryEligible(c, ageDetails));
+          catEl.value = eligible ? eligible.id : '';
+        }
       }
     };
 
@@ -11905,26 +12069,37 @@
       let phone = '';
       let gender = '';
       let age = 0;
+      let dobString = '';
+
       Object.entries(formData).forEach(([label, val]) => {
         const lbl = label.toUpperCase();
         if (lbl.includes('NAME')) name = val;
         else if (lbl.includes('PHONE') || lbl.includes('MOBILE')) phone = val;
         else if (lbl.includes('GENDER')) gender = val;
-        else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX') && !lbl.includes('AVERAGE') && !lbl.includes('MANAGE'))) {
+        else if (lbl === 'AGE' || (lbl.includes('AGE') && !lbl.includes('MIN') && !lbl.includes('MAX') && !lbl.includes('AVERAGE') && !lbl.includes('MANAGE') && !lbl.includes('CATEGORY') && !lbl.includes('GROUP'))) {
           const parsed = parseInt(val);
           if (!isNaN(parsed)) age = parsed;
         }
-        else if (lbl.includes('DOB') || lbl.includes('DATE OF BIRTH') || lbl.includes('BIRTHDAY') || lbl.includes('BIRTH DATE') || lbl === 'DATE' || lbl.includes('DATE')) {
-          if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-            const dob = new Date(val);
-            const diff = Date.now() - dob.getTime();
-            const calcAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
-            if (!isNaN(calcAge) && calcAge > 0 && calcAge < 120) {
-              if (age === 0 || lbl.includes('BIRTH') || lbl.includes('DOB')) age = calcAge;
-            }
+        else if (lbl.includes('DOB') || lbl.includes('DATE OF BIRTH') || lbl.includes('BIRTHDAY') || lbl.includes('BIRTH DATE')) {
+          if (val && typeof val === 'string' && val.trim()) {
+            dobString = val.trim();
           }
         }
       });
+
+      // If dobString not found from specific labels, check dynamic date input
+      if (!dobString) {
+        const dobEl = document.querySelector('#suDynamicForm input[type="date"], #suDynamicForm input.su-df[data-label*="DOB" i], #suDynamicForm input.su-df[data-label*="Birth" i]');
+        if (dobEl && dobEl.value) dobString = dobEl.value.trim();
+      }
+
+      const evDate = ev.startDate || ev.date || ev.start_date || '';
+      if (dobString) {
+        const calcAge = window.calculateAgeFromDob(dobString, evDate);
+        if (calcAge !== null && !isNaN(calcAge) && calcAge >= 0 && calcAge < 120) {
+          age = calcAge;
+        }
+      }
       
       if (!name) { showToast("Name Required", "Please fill in your Name!", "⚠️"); return; }
 
@@ -11933,11 +12108,7 @@
       if (eventCats.length > 0) {
         if (!catId) {
           // If not selected, try finding eligible category for participant age
-          const eligibleCat = eventCats.find(c => {
-            const min = parseInt(c.ageMin) || 0;
-            const max = parseInt(c.ageMax) || 999;
-            return age <= 0 || (age >= min && age <= max);
-          }) || eventCats[0];
+          const eligibleCat = eventCats.find(c => window.isCategoryEligible(c, age)) || eventCats[0];
           if (eligibleCat) {
             catId = eligibleCat.id;
           }
@@ -11964,13 +12135,11 @@
       // Validate Age against Category limits
       const catObj = (ev.categories || []).find(c => String(c.id) === String(catId));
       if (catObj && age > 0) {
-        const min = parseInt(catObj.ageMin) || 0;
-        const max = parseInt(catObj.ageMax) || 999;
-        if (age < min || age > max) {
-          const maxText = max === 999 ? 'above' : max;
+        const details = dobString ? window.calculateAgeDetails(dobString, evDate) : { years: age, months: 0, text: `${age} Years` };
+        if (!window.isCategoryEligible(catObj, details)) {
           showToast(
             "Age Not Eligible",
-            `You are not eligible for category "${catObj.name}". Your age is ${age}, but this category requires age between ${min} and ${maxText}.`,
+            `You are not eligible for category "${catObj.name}". Based on your date of birth (${dobString || 'provided'}) and the event date (${ev.disp || evDate || 'event day'}), your calculated age is ${details.years} Years ${details.months} Months. Please select the correct category.`,
             "⚠️"
           );
           return;
