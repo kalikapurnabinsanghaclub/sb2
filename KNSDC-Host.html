@@ -733,8 +733,8 @@
       </div>
       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px">
         <div class="stat-card">
-          <div><div class="stat-label">Total Participants</div><div class="stat-val" id="stat-total">0</div></div>
-          <div style="background:rgba(79,70,229,.1); color:var(--accent); width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:18px">👥</div>
+          <div><div class="stat-label">Present at Venue</div><div class="stat-val" id="stat-total">0</div></div>
+          <div style="background:rgba(16,185,129,.1); color:var(--emerald); width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:18px">📍</div>
         </div>
         <div class="stat-card">
           <div><div class="stat-label">Scoring Done</div><div class="stat-val" id="stat-done">0</div></div>
@@ -1110,11 +1110,14 @@ function resolveParticipantVenue(p, venList) {
 function ensureRoundPresence(p) {
   if (!p) return;
   const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+  if (typeof p.roundPresence === 'string') {
+    try { p.roundPresence = JSON.parse(p.roundPresence); } catch(e) { p.roundPresence = {}; }
+  }
   if (!p.roundPresence || typeof p.roundPresence !== 'object') {
     p.roundPresence = {};
     rounds.forEach(r => {
       if (r === (p.round || 'audition')) {
-        p.roundPresence[r] = { present: !!p.present, markedAt: p.presentMarkedAt || null };
+        p.roundPresence[r] = { present: !!(p.present === true || p.present === 'true'), markedAt: p.presentMarkedAt || null };
       } else {
         p.roundPresence[r] = { present: false, markedAt: null };
       }
@@ -1126,9 +1129,13 @@ function ensureRoundPresence(p) {
 }
 
 function getRoundPresent(p, round) {
+  if (!p) return false;
   ensureRoundPresence(p);
   const r = round || p.round || 'audition';
-  return p.roundPresence[r] && p.roundPresence[r].present;
+  if (p.roundPresence && p.roundPresence[r]) {
+    return !!p.roundPresence[r].present;
+  }
+  return !!(p.present === true || p.present === 'true');
 }
 
 function setRoundPresent(p, round, isPresent) {
@@ -1374,8 +1381,13 @@ syncEngine.subscribe((state) => {
   // on a later round (e.g. 'semifinal') while the default is 'audition'.
   // Only auto-switch if the host has not manually changed the round.
   if (!window._hostRoundManuallySet && participants.length > 0) {
+    const presentParts = participants.filter(p => {
+      const r = p.round || 'audition';
+      return getRoundPresent(p, r);
+    });
+    const pool = presentParts.length > 0 ? presentParts : participants;
     const roundCounts = {};
-    participants.forEach(p => {
+    pool.forEach(p => {
       const r = p.round || 'audition';
       roundCounts[r] = (roundCounts[r] || 0) + 1;
     });
@@ -1529,15 +1541,26 @@ function renderDashboard() {
   const activeEvId = hostAssignedEventId || data.activeEventId;
   const round = hostSelectedRound || 'audition';
   const scoped = getHostScopedParticipants();
-  const filtered = scoped.filter(p => p.round === round);
   
-  const total = filtered.length;
+  // Total registered in this round
+  const roundRegistered = scoped.filter(p => p.round === round);
+  // Present participants only — verified by Monitor attendance / roundPresence stamp
+  const filtered = roundRegistered.filter(p => getRoundPresent(p, round));
+  
+  const totalPresent = filtered.length;
+  const totalRegistered = roundRegistered.length;
   const done = filtered.filter(p => p.stageStatus === 'done').length;
   const wait = filtered.filter(p => p.stageStatus === 'waiting').length;
   const queue = scoped.filter(p => p.stageStatus === 'queue').length;
 
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-done').textContent = done;
+  const statTotalEl = document.getElementById('stat-total');
+  if (statTotalEl) {
+    statTotalEl.innerHTML = `${totalPresent} <span style="font-size:13px; font-weight:600; color:var(--text-muted);">/ ${totalRegistered}</span>`;
+  }
+  const statDoneEl = document.getElementById('stat-done');
+  if (statDoneEl) {
+    statDoneEl.textContent = done;
+  }
 
   const container = document.getElementById('dashboard-content');
   if(!container) return;
@@ -1545,15 +1568,27 @@ function renderDashboard() {
   const waitingPerformers = filtered.filter(p => p.stageStatus === 'waiting');
   let pickerHtml = '';
   if (waitingPerformers.length === 0) {
-    pickerHtml = '<div style="color:var(--text-muted);text-align:center;padding:20px;font-size:13px">No waiting performers for this round.</div>';
+    pickerHtml = `
+      <div style="color:var(--text-muted);text-align:center;padding:30px;font-size:13px">
+        <div style="font-size:26px;margin-bottom:8px;">📍</div>
+        <div style="font-weight:700;font-size:14px;color:var(--text)">No waiting present performers for this round.</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Only participants marked present by the Monitor will appear here.</div>
+      </div>
+    `;
   } else {
     pickerHtml = `
       <div style="display:flex; flex-direction:column; gap:10px; max-height: 400px; overflow-y: auto; padding-right:5px;">
         ${waitingPerformers.map(p => `
           <div class="performer-item">
             <div>
-              <div style="font-weight:800; font-size:15px; color:var(--text); letter-spacing:-0.2px;">${p.name}</div>
-              <div style="font-size:12px; color:var(--text-muted); font-family:var(--fm); margin-top:4px;">ID: <span style="color:var(--text-dim); font-weight:600">${p.id}</span> | ${p.catName || p.gender || 'Participant'}</div>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="font-weight:800; font-size:15px; color:var(--text); letter-spacing:-0.2px;">${p.name}</span>
+                <span class="badge" style="background:rgba(16,185,129,0.15); color:#059669; font-size:10px; font-weight:800; padding:2px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.25);">✓ Present at Venue</span>
+              </div>
+              <div style="font-size:12px; color:var(--text-muted); font-family:var(--fm); margin-top:4px;">
+                ID: <span style="color:var(--text-dim); font-weight:600">${p.id}</span> | ${p.catName || p.gender || 'Participant'}
+                ${p.presentMarkedAt ? ` · <span style="font-size:11px; opacity:0.8;">Stamped ${new Date(p.presentMarkedAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>` : ''}
+              </div>
             </div>
             <button class="btn btn-sm btn-blue" style="padding:8px 16px; border-radius:10px; font-weight:700; box-shadow: 0 4px 12px rgba(37,99,235,0.2);" onclick="pushToQueueFromList('${p.id}')">＋ Add to Queue</button>
           </div>
@@ -1588,7 +1623,7 @@ function renderDashboard() {
   container.innerHTML = `
     <div class="g2" style="margin-bottom: 20px;">
       <div class="card" style="text-align:center">
-        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Waiting Performers</div>
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Waiting (Present at Venue)</div>
         <div style="font-size:32px;font-weight:900;color:var(--accent)">${wait}</div>
       </div>
       <div class="card" style="text-align:center">
@@ -1598,9 +1633,14 @@ function renderDashboard() {
     </div>
     
     <div class="card" style="margin-top:20px;">
-      <h3 style="font-family:var(--fh); font-size:15px; font-weight:800; margin-bottom:15px; color:var(--text); display:flex; align-items:center; gap:8px;">
-        📋 Venue Performers List (Click to Queue)
-      </h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+        <h3 style="font-family:var(--fh); font-size:15px; font-weight:800; margin:0; color:var(--text); display:flex; align-items:center; gap:8px;">
+          📋 Present Performers List (Click to Queue)
+        </h3>
+        <span style="font-size:11px; font-weight:700; color:#059669; background:rgba(16,185,129,0.1); padding:4px 10px; border-radius:8px; border:1px solid rgba(16,185,129,0.2);">
+          ✓ Monitor Present Stamp Verified (${totalPresent})
+        </span>
+      </div>
       ${pickerHtml}
     </div>
   `;
@@ -1859,6 +1899,13 @@ window.pushToQueueFromList = (id) => {
     return;
   }
 
+  const round = p.round || hostSelectedRound || 'audition';
+  if (!getRoundPresent(p, round)) {
+    toast(`⚠️ ${p.name} is not marked present at the venue! Present stamp must be given by the Monitor.`);
+    _isHostQueueOpInProgress = false;
+    return;
+  }
+
   // Calculate sequential queue order
   const currentlyQueued = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
   const maxOrder = currentlyQueued.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
@@ -1868,9 +1915,10 @@ window.pushToQueueFromList = (id) => {
   p.queueOrder = newOrder;
   p.queuedAt = now;
   p.localMutatedAt = now;
-  const round = p.round || hostSelectedRound || 'audition';
   p.round = round;
-  setRoundPresent(p, round, true);
+  if (!getRoundPresent(p, round)) {
+    setRoundPresent(p, round, true);
+  }
 
   // Synchronously update top-level participants array
   if (Array.isArray(participants)) {
@@ -1929,6 +1977,13 @@ window.hostAddParticipantToQueue = () => {
     return;
   }
 
+  const round = p.round || hostSelectedRound || 'audition';
+  if (!getRoundPresent(p, round)) {
+    toast(`⚠️ ${p.name} is not marked present at the venue! Present stamp must be given by the Monitor.`);
+    _isHostQueueOpInProgress = false;
+    return;
+  }
+
   const currentlyQueued = participants.filter(x => x.stageStatus === 'queue' && String(x.id) !== String(p.id));
   const maxOrder = currentlyQueued.reduce((max, x) => (typeof x.queueOrder === 'number' && x.queueOrder > max ? x.queueOrder : max), -1);
   const newOrder = maxOrder + 1;
@@ -1937,9 +1992,10 @@ window.hostAddParticipantToQueue = () => {
   p.queueOrder = newOrder;
   p.queuedAt = now;
   p.localMutatedAt = now;
-  const round = p.round || hostSelectedRound || 'audition';
   p.round = round;
-  setRoundPresent(p, round, true);
+  if (!getRoundPresent(p, round)) {
+    setRoundPresent(p, round, true);
+  }
 
   // Synchronously update top-level participants array
   if (Array.isArray(participants)) {
