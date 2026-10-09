@@ -3455,26 +3455,8 @@
         </div>
       </div>
       <div class="card" style="margin-bottom:14px">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-          <div>
-            <div class="card-title" style="margin-bottom:4px">Round-wise Category Distribution (Histogram)</div>
-            <div style="font-size:12px; color:var(--text-muted)">Comparative category-wise breakdown of participants across all competition rounds</div>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <select id="cat-hist-type-sel" onchange="renderCategoryCharts()" style="padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:11px; font-weight:700; cursor:pointer;">
-              <option value="grouped">📊 Grouped Histogram</option>
-              <option value="stacked">🥞 Stacked Histogram</option>
-            </select>
-          </div>
-        </div>
-        
-        <!-- Main Combined Histogram Chart across Rounds -->
-        <div style="position:relative; height:260px; margin-bottom:20px;">
-          <canvas id="category-histogram-chart"></canvas>
-        </div>
-
-        <!-- Individual Round Category Distribution Breakdown Cards -->
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px; border-top:1px solid var(--border); padding-top:16px;" id="category-charts-container">
+        <div class="card-title" style="margin-bottom:14px">Round-wise Category Distribution</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;" id="category-charts-container">
           <!-- Populated by JS -->
         </div>
       </div>
@@ -15758,10 +15740,9 @@ function renderAgeCharts() {
 
 function renderCategoryCharts() {
   const container = document.getElementById('category-charts-container');
-  const mainCtx = document.getElementById('category-histogram-chart');
-  if (!container && !mainCtx) return;
+  if (!container) return;
   if (typeof Chart === 'undefined') {
-    if (container) container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;grid-column:1/-1;text-align:center;">Chart library not loaded</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;grid-column:1/-1;text-align:center;">Chart library not loaded</div>';
     return;
   }
 
@@ -15770,7 +15751,6 @@ function renderCategoryCharts() {
   const eventParticipants = getStatsEventParticipants();
   const activeEventCats = getStatsEventCategories();
 
-  // Helper to resolve category colors
   const resolveCatColor = (catColorStr, index) => {
     const classMap = {
       'b-blue': '#3b82f6',
@@ -15785,7 +15765,7 @@ function renderCategoryCharts() {
     };
     if (catColorStr && classMap[catColorStr]) return classMap[catColorStr];
     if (catColorStr && catColorStr.startsWith('#')) return catColorStr;
-    const fallbackPalette = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#f43f5e'];
+    const fallbackPalette = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f43f5e'];
     return fallbackPalette[index % fallbackPalette.length];
   };
 
@@ -15797,204 +15777,106 @@ function renderCategoryCharts() {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  // 1. Render Combined Histogram across All 4 Rounds
-  if (mainCtx) {
-    if (window.categoryHistogramChartInstance) {
-      window.categoryHistogramChartInstance.destroy();
-      window.categoryHistogramChartInstance = null;
-    }
+  container.innerHTML = '';
+  if (window.categoryMiniCharts) {
+    window.categoryMiniCharts.forEach(c => c.destroy());
+  }
+  window.categoryMiniCharts = [];
 
-    const histTypeSel = document.getElementById('cat-hist-type-sel');
-    const isStacked = histTypeSel ? histTypeSel.value === 'stacked' : false;
+  roundsOrder.forEach((r, idx) => {
+    const reached = eventParticipants.filter(p => {
+      const pRIdx = roundsOrder.indexOf(p.round || 'audition');
+      return pRIdx >= idx;
+    });
+    const currentlyInRound = eventParticipants.filter(p => (p.round || 'audition') === r).length;
+    const totalReached = reached.length;
 
-    // Prepare datasets for each category
-    const datasets = activeEventCats.map((cat, catIdx) => {
+    const catCounts = activeEventCats.map((cat, catIdx) => {
+      const count = reached.filter(p => String(p.catId) === String(cat.id)).length;
+      const pct = totalReached > 0 ? Math.round((count / totalReached) * 100) : 0;
       const color = resolveCatColor(cat.color, catIdx);
-      const data = roundsOrder.map((r, rIdx) => {
-        return eventParticipants.filter(p => {
-          const pRIdx = roundsOrder.indexOf(p.round || 'audition');
-          return pRIdx >= rIdx && String(p.catId) === String(cat.id);
-        }).length;
-      });
-
-      return {
-        label: cat.name || `Category ${catIdx + 1}`,
-        data: data,
-        backgroundColor: hexToRgba(color, 0.8),
-        borderColor: color,
-        borderWidth: 2,
-        borderRadius: isStacked ? 0 : 5,
-        categoryPercentage: 0.75,
-        barPercentage: 0.85
-      };
+      return { cat, count, pct, color };
     });
 
-    const roundTotals = roundsOrder.map((r, rIdx) => {
-      return eventParticipants.filter(p => {
-        const pRIdx = roundsOrder.indexOf(p.round || 'audition');
-        return pRIdx >= rIdx;
-      }).length;
-    });
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'background:var(--surface, #ffffff); border:1px solid var(--border, #e2e8f0); border-radius:14px; padding:16px 14px; text-align:center; display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 1px 3px rgba(0,0,0,0.02);';
+    wrap.innerHTML = `
+      <div>
+        <div style="font-size:13px;font-weight:900;margin-bottom:3px;color:var(--text, #1e293b);letter-spacing:0.5px;">${roundLabels[idx].toUpperCase()}</div>
+        <div style="font-size:10px;color:var(--text-muted, #64748b);margin-bottom:12px;font-family:var(--fm)">
+          Active: <strong style="color:var(--red, #ef4444);font-weight:800;">${currentlyInRound}</strong> · Reached: <strong style="color:var(--text);">${totalReached}</strong>
+        </div>
+        <div style="position:relative;height:140px;margin-bottom:12px;">
+          <canvas id="category-mini-chart-${r}"></canvas>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; font-size:11px; font-family:var(--fm); border-top:1px dotted var(--border, #e2e8f0); padding-top:10px;">
+        ${catCounts.map(item => `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px;">
+              <span style="display:inline-block; width:10px; height:10px; border-radius:3px; background:${item.color}; flex-shrink:0;"></span>
+              ${item.cat.name}
+            </span>
+            <span style="font-weight:800; color:${item.color}">${item.count} <span style="font-weight:600; color:var(--text-muted); font-size:10px;">(${item.pct}%)</span></span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(wrap);
 
-    window.categoryHistogramChartInstance = new Chart(mainCtx, {
-      type: 'bar',
-      data: {
-        labels: roundLabels,
-        datasets: datasets
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: {
-            stacked: isStacked,
-            grid: { display: false },
-            ticks: {
-              font: { weight: 'bold', size: 12, family: 'var(--fb)' },
-              color: 'var(--text)'
-            }
-          },
-          y: {
-            stacked: isStacked,
-            beginAtZero: true,
-            ticks: {
-              precision: 0,
-              font: { size: 11, family: 'var(--fm)' },
-              color: 'var(--text-muted)'
-            },
-            grid: {
-              color: 'rgba(148, 163, 184, 0.15)'
-            }
-          }
+    const miniCtx = document.getElementById(`category-mini-chart-${r}`);
+    if (miniCtx) {
+      const maxVal = Math.max(...catCounts.map(c => c.count), 0);
+      const miniChart = new Chart(miniCtx, {
+        type: 'bar',
+        data: {
+          labels: catCounts.map(item => item.cat.name),
+          datasets: [{
+            data: catCounts.map(item => item.count),
+            backgroundColor: catCounts.map(item => hexToRgba(item.color, 0.85)),
+            borderColor: catCounts.map(item => item.color),
+            borderWidth: 1.5,
+            borderRadius: 6,
+            barPercentage: 0.7,
+            categoryPercentage: 0.85
+          }]
         },
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: {
-              boxWidth: 12,
-              font: { size: 11, weight: 'bold', family: 'var(--fb)' },
-              color: 'var(--text)'
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              display: false
+            },
+            y: {
+              beginAtZero: true,
+              suggestedMax: maxVal > 0 ? undefined : 1,
+              ticks: {
+                precision: 0,
+                font: { size: 10, weight: '700', family: 'var(--fm)' },
+                color: '#64748b'
+              },
+              grid: {
+                color: 'rgba(226, 232, 240, 0.6)'
+              }
             }
           },
-          tooltip: {
-            padding: 10,
-            cornerRadius: 8,
-            callbacks: {
-              label: function(context) {
-                const total = roundTotals[context.dataIndex] || 0;
-                const val = context.raw || 0;
-                const pct = total > 0 ? Math.round((val / total) * 100) : 0;
-                return ` ${context.dataset.label}: ${val} participants (${pct}%)`;
-              },
-              footer: function(tooltipItems) {
-                if (isStacked && tooltipItems && tooltipItems.length > 0) {
-                  const idx = tooltipItems[0].dataIndex;
-                  return `Total Reached: ${roundTotals[idx] || 0}`;
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const item = catCounts[context.dataIndex];
+                  return ` ${item.cat.name}: ${item.count} (${item.pct}%)`;
                 }
-                return '';
               }
             }
           }
         }
-      }
-    });
-  }
-
-  // 2. Render Individual Round Mini Histogram Cards
-  if (container) {
-    container.innerHTML = '';
-    if (window.categoryMiniCharts) {
-      window.categoryMiniCharts.forEach(c => c.destroy());
+      });
+      window.categoryMiniCharts.push(miniChart);
     }
-    window.categoryMiniCharts = [];
-
-    roundsOrder.forEach((r, idx) => {
-      const reached = eventParticipants.filter(p => {
-        const pRIdx = roundsOrder.indexOf(p.round || 'audition');
-        return pRIdx >= idx;
-      });
-      const currentlyInRound = eventParticipants.filter(p => (p.round || 'audition') === r).length;
-      const totalReached = reached.length;
-
-      const catCounts = activeEventCats.map((cat, catIdx) => {
-        const count = reached.filter(p => String(p.catId) === String(cat.id)).length;
-        const pct = totalReached > 0 ? Math.round((count / totalReached) * 100) : 0;
-        const color = resolveCatColor(cat.color, catIdx);
-        return { cat, count, pct, color };
-      });
-
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:12px; text-align:center; display:flex; flex-direction:column; justify-content:space-between;';
-      wrap.innerHTML = `
-        <div>
-          <div style="font-size:12px;font-weight:800;margin-bottom:2px;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;">${roundLabels[idx]}</div>
-          <div style="font-size:9px;color:var(--text-muted);margin-bottom:10px;font-family:var(--fm)">
-            Active: <strong style="color:var(--primary)">${currentlyInRound}</strong> · Reached: <strong>${totalReached}</strong>
-          </div>
-          <div style="position:relative;height:120px;margin-bottom:10px;">
-            <canvas id="category-mini-chart-${r}"></canvas>
-          </div>
-        </div>
-        <div style="display:flex; flex-direction:column; gap:6px; font-size:10px; font-family:var(--fm); border-top:1px dashed var(--border); padding-top:8px;">
-          ${catCounts.map(item => `
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-              <span style="display:inline-flex; align-items:center; gap:5px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px;">
-                <span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${item.color}; flex-shrink:0;"></span>
-                ${item.cat.name}
-              </span>
-              <span style="font-weight:800; color:${item.color}">${item.count} <span style="font-weight:600; color:var(--text-muted); font-size:9px;">(${item.pct}%)</span></span>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      container.appendChild(wrap);
-
-      const miniCtx = document.getElementById(`category-mini-chart-${r}`);
-      if (miniCtx) {
-        const miniChart = new Chart(miniCtx, {
-          type: 'bar',
-          data: {
-            labels: catCounts.map(item => item.cat.name),
-            datasets: [{
-              data: catCounts.map(item => item.count),
-              backgroundColor: catCounts.map(item => hexToRgba(item.color, 0.85)),
-              borderColor: catCounts.map(item => item.color),
-              borderWidth: 1.5,
-              borderRadius: 4
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-              x: { display: false },
-              y: {
-                beginAtZero: true,
-                ticks: {
-                  precision: 0,
-                  font: { size: 9, family: 'var(--fm)' },
-                  color: 'var(--text-muted)'
-                },
-                grid: { color: 'rgba(148, 163, 184, 0.1)' }
-              }
-            },
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function(context) {
-                    const item = catCounts[context.dataIndex];
-                    return ` ${item.cat.name}: ${item.count} (${item.pct}%)`;
-                  }
-                }
-              }
-            }
-          }
-        });
-        window.categoryMiniCharts.push(miniChart);
-      }
-    });
-  }
+  });
 }
 window.renderCategoryCharts = renderCategoryCharts;
 
