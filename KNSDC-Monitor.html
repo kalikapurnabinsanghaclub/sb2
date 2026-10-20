@@ -7475,16 +7475,29 @@ function hydrate() {
     return merged;
   }
   if (s && s.switchStates) {
+    delete s.switchStates.whatsapp;
     switchStates = _mergeWithLock(switchStates, s.switchStates);
   }
-  if (activeEv && activeEv.switchStates) {
-    switchStates = _mergeWithLock(switchStates, activeEv.switchStates);
+  if (activeEv && (activeEv.switchStates || activeEv.switch_states)) {
+    const evSw = activeEv.switchStates || activeEv.switch_states;
+    delete evSw.whatsapp;
+    switchStates = _mergeWithLock(switchStates, evSw);
   }
   if (s && s.eventSwitches) {
-    if (activeEventId && s.eventSwitches[activeEventId]) switchStates = _mergeWithLock(switchStates, s.eventSwitches[activeEventId]);
-    if (activeEventId && s.eventSwitches[String(activeEventId)]) switchStates = _mergeWithLock(switchStates, s.eventSwitches[String(activeEventId)]);
-    if (activeEv && activeEv.name && s.eventSwitches[activeEv.name]) switchStates = _mergeWithLock(switchStates, s.eventSwitches[activeEv.name]);
+    if (activeEventId && s.eventSwitches[activeEventId]) {
+      delete s.eventSwitches[activeEventId].whatsapp;
+      switchStates = _mergeWithLock(switchStates, s.eventSwitches[activeEventId]);
+    }
+    if (activeEventId && s.eventSwitches[String(activeEventId)]) {
+      delete s.eventSwitches[String(activeEventId)].whatsapp;
+      switchStates = _mergeWithLock(switchStates, s.eventSwitches[String(activeEventId)]);
+    }
+    if (activeEv && activeEv.name && s.eventSwitches[activeEv.name]) {
+      delete s.eventSwitches[activeEv.name].whatsapp;
+      switchStates = _mergeWithLock(switchStates, s.eventSwitches[activeEv.name]);
+    }
   }
+  delete switchStates.whatsapp;
 
   // Restore judgeLeaderboard fallback from localStorage cache if undefined
   if (switchStates.judgeLeaderboard === undefined) {
@@ -7690,7 +7703,15 @@ function syncAll() {
     newState.subjects = [...otherSubs, ...subjects];
     
     if (!newState.eventSwitches) newState.eventSwitches = {};
-    if (activeEventId) newState.eventSwitches[activeEventId] = { ...switchStates };
+    if (activeEventId) {
+      newState.eventSwitches[activeEventId] = { ...switchStates };
+      delete newState.eventSwitches[activeEventId].whatsapp;
+      newState.eventSwitches[String(activeEventId)] = newState.eventSwitches[activeEventId];
+    }
+    newState.switchStates = { ...(newState.switchStates || {}), ...switchStates };
+    delete newState.switchStates.whatsapp;
+    newState.hotspotShare = Boolean(switchStates.hotspotShare);
+    if (switchStates.hotspotConfig) newState.hotspotConfig = switchStates.hotspotConfig;
     
     if (!newState.eventFormFields) newState.eventFormFields = {};
     if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
@@ -9433,24 +9454,72 @@ function toggleSwitch(sw, cb){
       return;
     } else {
       switchStates['hotspotShare'] = false;
-      switchStates['whatsapp'] = false;
+      delete switchStates['whatsapp'];
       const editBtn = document.getElementById('hotspot-edit-btn');
       if (editBtn) editBtn.style.display = 'none';
       const descEl = document.getElementById('sw-hotspot-desc');
       if (descEl) descEl.textContent = 'Share Wi-Fi hotspot name & password with participants';
       row.classList.remove('on');
       cb.checked = false;
-      _switchRenderLockUntil['hotspotShare'] = Date.now() + 5000;
-      _switchRenderLockUntil['whatsapp'] = Date.now() + 5000;
+      _switchRenderLockUntil['hotspotShare'] = Date.now() + 10000;
+      _switchRenderLockUntil['whatsapp'] = Date.now() + 10000;
 
       const _st = syncEngine.getData() || {};
-      _st.switchStates = { ...(_st.switchStates || {}), hotspotShare: false, whatsapp: false };
+      _st.hotspotShare = false;
+      delete _st.whatsapp;
+      _st.switchStates = { ...(_st.switchStates || {}), hotspotShare: false };
+      delete _st.switchStates.whatsapp;
+      _st.eventSwitches = _st.eventSwitches || {};
       if (activeEventId) {
-        _st.eventSwitches = _st.eventSwitches || {};
-        _st.eventSwitches[activeEventId] = { ...(_st.eventSwitches[activeEventId] || {}), hotspotShare: false, whatsapp: false };
+        _st.eventSwitches[activeEventId] = { ...(_st.eventSwitches[activeEventId] || {}), hotspotShare: false };
+        delete _st.eventSwitches[activeEventId].whatsapp;
+        _st.eventSwitches[String(activeEventId)] = _st.eventSwitches[activeEventId];
       }
+      const evIdx = (_st.events || []).findIndex(e => String(e.id) === String(activeEventId));
+      if (evIdx !== -1) {
+        _st.events[evIdx].switchStates = { ...(_st.events[evIdx].switchStates || {}), hotspotShare: false };
+        delete _st.events[evIdx].switchStates.whatsapp;
+        if (_st.events[evIdx].switch_states) {
+          _st.events[evIdx].switch_states = { ...(_st.events[evIdx].switch_states || {}), hotspotShare: false };
+          delete _st.events[evIdx].switch_states.whatsapp;
+        }
+      }
+
+      const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
+      if (activeEv) {
+        activeEv.switchStates = { ...(activeEv.switchStates || {}), hotspotShare: false };
+        delete activeEv.switchStates.whatsapp;
+        if (activeEv.switch_states) {
+          activeEv.switch_states = { ...(activeEv.switch_states || {}), hotspotShare: false };
+          delete activeEv.switch_states.whatsapp;
+        }
+      }
+
+      try {
+        localStorage.setItem('knsdc_switchStates', JSON.stringify(_st.switchStates));
+        if (activeEventId) localStorage.setItem('knsdc_eventSwitches', JSON.stringify(_st.eventSwitches));
+      } catch (e) {}
+
       syncEngine.setData(_st);
       syncAll();
+
+      if (activeEventId && typeof syncEngine.updateEvent === 'function') {
+        syncEngine.updateEvent(activeEventId, {
+          switchStates: { ...switchStates, hotspotShare: false }
+        }).catch(err => console.error('[Monitor] updateEvent failed:', err));
+      }
+
+      if (syncEngine && syncEngine.supabase && activeEventId) {
+        const swPayload = { ...(activeEv?.switch_states || activeEv?.switchStates || switchStates), hotspotShare: false };
+        delete swPayload.whatsapp;
+        syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', activeEventId).then(({ error }) => {
+          if (error) {
+            const numId = Number(activeEventId);
+            if (!isNaN(numId)) syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', numId);
+          }
+        }).catch(() => {});
+      }
+
       toast('🔒 OFF: Hotspot Share');
       return;
     }
@@ -17982,13 +18051,13 @@ window._switchRenderLockUntil = _switchRenderLockUntil;
 
 function renderSwitches() {
   const now = Date.now();
-  const keys = ['publicReg', 'stagePreview', 'lockScore', 'editScore', 'resultPublic', 'promoPublic', 'downloadPublic', 'certificatePublic', 'publicVoting', 'liveStream', 'hotspotShare', 'whatsapp', 'prevScoresViewer', 'servicesToggle'];
+  const keys = ['publicReg', 'stagePreview', 'lockScore', 'editScore', 'resultPublic', 'promoPublic', 'downloadPublic', 'certificatePublic', 'publicVoting', 'liveStream', 'hotspotShare', 'prevScoresViewer', 'servicesToggle'];
   keys.forEach(k => {
     // Skip rendering this switch if it was recently toggled (lock window = 1500ms)
     if (_switchRenderLockUntil[k] && now < _switchRenderLockUntil[k]) return;
 
-    if (k === 'hotspotShare' || k === 'whatsapp') {
-      const isHotspotOn = !!(switchStates.hotspotShare || switchStates.whatsapp);
+    if (k === 'hotspotShare') {
+      const isHotspotOn = Boolean(switchStates.hotspotShare);
       const row = document.getElementById('sw-hotspot') || document.getElementById('sw-whatsapp');
       const inp = document.getElementById('sw-hotspot-inp') || document.getElementById('sw-whatsapp-inp');
       const editBtn = document.getElementById('hotspot-edit-btn');
@@ -20834,11 +20903,11 @@ function saveHotspotConfig(e) {
   };
 
   switchStates['hotspotShare'] = true;
-  switchStates['whatsapp'] = true;
+  delete switchStates['whatsapp'];
   switchStates['hotspotConfig'] = hotspotConfig;
 
-  _switchRenderLockUntil['hotspotShare'] = Date.now() + 5000;
-  _switchRenderLockUntil['whatsapp'] = Date.now() + 5000;
+  _switchRenderLockUntil['hotspotShare'] = Date.now() + 10000;
+  _switchRenderLockUntil['whatsapp'] = Date.now() + 10000;
 
   const row = document.getElementById('sw-hotspot') || document.getElementById('sw-whatsapp');
   const inp = document.getElementById('sw-hotspot-inp') || document.getElementById('sw-whatsapp-inp');
@@ -20854,15 +20923,18 @@ function saveHotspotConfig(e) {
   const _st = syncEngine.getData() || {};
   _st.systemStatus = 'live';
   _st.hotspotConfig = hotspotConfig;
-  _st.switchStates = { ...(_st.switchStates || {}), hotspotShare: true, whatsapp: true, hotspotConfig };
+  _st.hotspotShare = true;
+  delete _st.whatsapp;
+  _st.switchStates = { ...(_st.switchStates || {}), hotspotShare: true, hotspotConfig };
+  delete _st.switchStates.whatsapp;
   _st.eventSwitches = _st.eventSwitches || {};
   if (activeEventId) {
     _st.eventSwitches[activeEventId] = {
       ...(_st.eventSwitches[activeEventId] || {}),
       hotspotShare: true,
-      whatsapp: true,
       hotspotConfig
     };
+    delete _st.eventSwitches[activeEventId].whatsapp;
     _st.eventSwitches[String(activeEventId)] = _st.eventSwitches[activeEventId];
   }
   const evIdx = (_st.events || []).findIndex(ev => String(ev.id) === String(activeEventId));
@@ -20870,11 +20942,31 @@ function saveHotspotConfig(e) {
     _st.events[evIdx].switchStates = {
       ...(_st.events[evIdx].switchStates || {}),
       hotspotShare: true,
-      whatsapp: true,
       hotspotConfig
     };
+    delete _st.events[evIdx].switchStates.whatsapp;
+    if (_st.events[evIdx].switch_states) {
+      _st.events[evIdx].switch_states = { ...(_st.events[evIdx].switch_states || {}), hotspotShare: true, hotspotConfig };
+      delete _st.events[evIdx].switch_states.whatsapp;
+    }
     _st.events[evIdx].hotspotConfig = hotspotConfig;
   }
+
+  const activeEv = (EVENTS || []).find(e => String(e.id) === String(activeEventId));
+  if (activeEv) {
+    activeEv.switchStates = { ...(activeEv.switchStates || {}), hotspotShare: true, hotspotConfig };
+    delete activeEv.switchStates.whatsapp;
+    if (activeEv.switch_states) {
+      activeEv.switch_states = { ...(activeEv.switch_states || {}), hotspotShare: true, hotspotConfig };
+      delete activeEv.switch_states.whatsapp;
+    }
+    activeEv.hotspotConfig = hotspotConfig;
+  }
+
+  try {
+    localStorage.setItem('knsdc_switchStates', JSON.stringify(_st.switchStates));
+    if (activeEventId) localStorage.setItem('knsdc_eventSwitches', JSON.stringify(_st.eventSwitches));
+  } catch (e) {}
 
   syncEngine.setData(_st);
   syncAll();
@@ -20882,8 +20974,19 @@ function saveHotspotConfig(e) {
   if (activeEventId && typeof syncEngine.updateEvent === 'function') {
     syncEngine.updateEvent(activeEventId, {
       hotspotConfig,
-      switchStates: { ...switchStates, hotspotShare: true, whatsapp: true, hotspotConfig }
+      switchStates: { ...switchStates, hotspotShare: true, hotspotConfig }
     }).catch(err => console.error(err));
+  }
+
+  if (syncEngine && syncEngine.supabase && activeEventId) {
+    const swPayload = { ...(activeEv?.switch_states || activeEv?.switchStates || switchStates), hotspotShare: true, hotspotConfig };
+    delete swPayload.whatsapp;
+    syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', activeEventId).then(({ error }) => {
+      if (error) {
+        const numId = Number(activeEventId);
+        if (!isNaN(numId)) syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', numId);
+      }
+    }).catch(() => {});
   }
 
   closeHotspotModal(true);
