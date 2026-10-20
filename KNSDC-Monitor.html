@@ -3588,10 +3588,14 @@
           </div>
        </div>
        <div class="tabs">
+   <div class="tabs" style="display:flex;gap:8px;flex-wrap:wrap;">
          <div class="tab active" onclick="leaderTab('audition',this)">Audition</div>
          <div class="tab" onclick="leaderTab('qualified',this)">Qualified</div>
          <div class="tab" onclick="leaderTab('semifinal',this)">Semifinal</div>
          <div class="tab" onclick="leaderTab('final',this)">Final</div>
+         <div class="tab" style="font-weight:800;border:1px solid #10b981;color:#10b981;" onclick="leaderTab('audition_qualified',this)">Audition + Qualified</div>
+         <div class="tab" style="font-weight:800;border:1px solid #6366f1;color:#6366f1;" onclick="leaderTab('semifinal_final',this)">Semifinal + Final</div>
+       </div>inal</div>
        </div>
        <div id="leaderboard-content"></div>
     </div>
@@ -7762,6 +7766,34 @@ window.leaderTab = (round, el) => {
     renderLeaderboard();
 };
 
+
+// Helper function to calculate total combined score for a participant across multiple rounds
+function getParticipantCombinedScore(p, roundList) {
+  let grandTotal = 0;
+  const breakDown = {};
+  roundList.forEach(r => {
+    let rTotal = 0;
+    let scoresObj = null;
+    if (p.round === r && p.scores && Object.keys(p.scores).length > 0) {
+      scoresObj = p.scores;
+    } else if (p.roundScores && p.roundScores[r]) {
+      scoresObj = p.roundScores[r];
+    }
+    if (scoresObj) {
+      Object.values(scoresObj).forEach(jScores => {
+        if (jScores && typeof jScores === 'object') {
+          Object.values(jScores).forEach(val => {
+            rTotal += (Number(val) || 0);
+          });
+        }
+      });
+    }
+    breakDown[r] = rTotal;
+    grandTotal += rTotal;
+  });
+  return { grandTotal, breakDown };
+}
+
 function renderLeaderboard() {
     const container = document.getElementById('leaderboard-content');
     if(!container) return;
@@ -7790,21 +7822,42 @@ function renderLeaderboard() {
     }
     const activeCatId = catSelect ? catSelect.value : "";
 
-    // Base participant pool for this event and round
-    let baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+    // Check if combined round mode is active
+    const isCombinedAQ = currentLeaderRound === 'audition_qualified';
+    const isCombinedSF = currentLeaderRound === 'semifinal_final';
+    const isCombined = isCombinedAQ || isCombinedSF;
+    const combinedRoundList = isCombinedAQ ? ['audition', 'qualified'] : (isCombinedSF ? ['semifinal', 'final'] : [currentLeaderRound]);
+
+    // Base participant pool for this event
+    let baseParticipants = [];
+    if (isCombined) {
+      baseParticipants = participants.filter(p => 
+        (String(p.eventId) === String(activeEventId) || !p.eventId) &&
+        (combinedRoundList.includes(p.round) || (p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0)))
+      );
+    } else {
+      baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+    }
 
     // Scored participants
     const scoredList = baseParticipants.map(p => {
         const pClone = { ...p };
-        if (!pClone.roundScores) pClone.roundScores = {};
-        if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-        pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
+        if (isCombined) {
+          const res = getParticipantCombinedScore(pClone, combinedRoundList);
+          pClone.totalScore = res.grandTotal;
+          pClone.roundBreakdown = res.breakDown;
+        } else {
+          if (!pClone.roundScores) pClone.roundScores = {};
+          if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+          pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
 
-        let total = 0;
-        Object.values(pClone.scores || {}).forEach(jScores => {
-            Object.values(jScores).forEach(val => total += (Number(val) || 0));
-        });
-        return { ...pClone, totalScore: total };
+          let total = 0;
+          Object.values(pClone.scores || {}).forEach(jScores => {
+              Object.values(jScores).forEach(val => total += (Number(val) || 0));
+          });
+          pClone.totalScore = total;
+        }
+        return pClone;
     });
 
     let html = '';
@@ -7895,8 +7948,20 @@ function renderLeaderboard() {
                                 </td>
                                 <td><span class="badge ${cat ? cat.color : 'b-gray'}">${cat ? cat.name : 'Unknown'}</span></td>
                                 <td style="text-align:right">
-                                    <div class="judge-score-val" style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore}</div>
-                                    <div style="font-size:9px;color:var(--text-muted)">/ ${(presentJudgesCount * subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0))} max</div>
+                                    <div class="judge-score-val" style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore} <span style="font-size:12px;font-weight:normal;opacity:0.8">pts</span></div>
+                                    ${isCombined ? `
+                                      <div style="font-size:10px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px;align-items:flex-end;margin-top:4px;">
+                                        ${isCombinedAQ ? `
+                                          <span style="background:rgba(16,185,129,0.15);color:#059669;padding:2px 7px;border-radius:5px;font-weight:700">Audition: ${p.roundBreakdown?.audition || 0} pts</span>
+                                          <span style="background:rgba(59,130,246,0.15);color:#2563eb;padding:2px 7px;border-radius:5px;font-weight:700">Qualified: ${p.roundBreakdown?.qualified || 0} pts</span>
+                                        ` : `
+                                          <span style="background:rgba(99,102,241,0.15);color:#4f46e5;padding:2px 7px;border-radius:5px;font-weight:700">Semifinal: ${p.roundBreakdown?.semifinal || 0} pts</span>
+                                          <span style="background:rgba(236,72,153,0.15);color:#db2777;padding:2px 7px;border-radius:5px;font-weight:700">Final: ${p.roundBreakdown?.final || 0} pts</span>
+                                        `}
+                                      </div>
+                                    ` : `
+                                      <div style="font-size:9px;color:var(--text-muted)">/ ${(presentJudgesCount * subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0))} max</div>
+                                    `}
                                 </td>
                             </tr>
                         `;
@@ -7977,18 +8042,39 @@ async function downloadRankingsPDF() {
     ? categories.filter(c => String(c.id) === String(activeCatId))
     : categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
 
-  let baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const isCombinedAQ = currentLeaderRound === 'audition_qualified';
+  const isCombinedSF = currentLeaderRound === 'semifinal_final';
+  const isCombined = isCombinedAQ || isCombinedSF;
+  const combinedRoundList = isCombinedAQ ? ['audition', 'qualified'] : (isCombinedSF ? ['semifinal', 'final'] : [currentLeaderRound]);
+
+  let baseParticipants = [];
+  if (isCombined) {
+    baseParticipants = participants.filter(p => 
+      (String(p.eventId) === String(activeEventId) || !p.eventId) &&
+      (combinedRoundList.includes(p.round) || (p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0)))
+    );
+  } else {
+    baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  }
+
   const scoredList = baseParticipants.map(p => {
       const pClone = { ...p };
-      if (!pClone.roundScores) pClone.roundScores = {};
-      if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-      pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
+      if (isCombined) {
+        const res = getParticipantCombinedScore(pClone, combinedRoundList);
+        pClone.totalScore = res.grandTotal;
+        pClone.roundBreakdown = res.breakDown;
+      } else {
+        if (!pClone.roundScores) pClone.roundScores = {};
+        if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+        pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
 
-      let total = 0;
-      Object.values(pClone.scores || {}).forEach(jScores => {
-          Object.values(jScores).forEach(val => total += (Number(val) || 0));
-      });
-      return { ...pClone, totalScore: total };
+        let total = 0;
+        Object.values(pClone.scores || {}).forEach(jScores => {
+            Object.values(jScores).forEach(val => total += (Number(val) || 0));
+        });
+        pClone.totalScore = total;
+      }
+      return pClone;
   });
 
   const validCategories = [];
@@ -8140,18 +8226,39 @@ async function downloadRankingsJPG() {
     ? categories.filter(c => String(c.id) === String(activeCatId))
     : categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
 
-  let baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const isCombinedAQ = currentLeaderRound === 'audition_qualified';
+  const isCombinedSF = currentLeaderRound === 'semifinal_final';
+  const isCombined = isCombinedAQ || isCombinedSF;
+  const combinedRoundList = isCombinedAQ ? ['audition', 'qualified'] : (isCombinedSF ? ['semifinal', 'final'] : [currentLeaderRound]);
+
+  let baseParticipants = [];
+  if (isCombined) {
+    baseParticipants = participants.filter(p => 
+      (String(p.eventId) === String(activeEventId) || !p.eventId) &&
+      (combinedRoundList.includes(p.round) || (p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0)))
+    );
+  } else {
+    baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  }
+
   const scoredList = baseParticipants.map(p => {
       const pClone = { ...p };
-      if (!pClone.roundScores) pClone.roundScores = {};
-      if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-      pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
+      if (isCombined) {
+        const res = getParticipantCombinedScore(pClone, combinedRoundList);
+        pClone.totalScore = res.grandTotal;
+        pClone.roundBreakdown = res.breakDown;
+      } else {
+        if (!pClone.roundScores) pClone.roundScores = {};
+        if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
+        pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
 
-      let total = 0;
-      Object.values(pClone.scores || {}).forEach(jScores => {
-          Object.values(jScores).forEach(val => total += (Number(val) || 0));
-      });
-      return { ...pClone, totalScore: total };
+        let total = 0;
+        Object.values(pClone.scores || {}).forEach(jScores => {
+            Object.values(jScores).forEach(val => total += (Number(val) || 0));
+        });
+        pClone.totalScore = total;
+      }
+      return pClone;
   });
 
   const validCategories = [];
