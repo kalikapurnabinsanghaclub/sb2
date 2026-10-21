@@ -6584,13 +6584,30 @@
 
       const roundOrderMap = { 'final': 4, 'semifinal': 3, 'qualified': 2, 'audition': 1 };
       const getRoundScoreVal = (p, rName) => {
-        const scoresObj = (p.round === rName) ? (p.scores || {}) : ((p.roundScores && p.roundScores[rName]) || {});
+        let scoresObj = null;
+        let rScores = p.roundScores;
+        if (typeof rScores === 'string') {
+          try { rScores = JSON.parse(rScores); } catch(e) {}
+        }
+        if (p.round === rName && p.scores && Object.keys(p.scores).length > 0) {
+          scoresObj = p.scores;
+        } else if (rScores && rScores[rName] && Object.keys(rScores[rName]).length > 0) {
+          scoresObj = rScores[rName];
+        } else if (p.round === rName) {
+          scoresObj = p.scores || {};
+        }
         let total = 0;
-        Object.values(scoresObj).forEach(jScores => {
-          Object.values(jScores).forEach(val => {
-            total += (Number(val) || 0);
+        if (scoresObj) {
+          Object.values(scoresObj).forEach(jScores => {
+            if (jScores && typeof jScores === 'object') {
+              Object.values(jScores).forEach(val => {
+                total += (Number(val) || 0);
+              });
+            } else {
+              total += (Number(jScores) || 0);
+            }
           });
-        });
+        }
         return total;
       };
 
@@ -6649,14 +6666,41 @@
         generatePDFCategoryPages(eventName, orgName, 'Category-wise Sheet', publishDate, publishTime, pages, getRoundJPObj, getOverallRatingStr);
 
       } else if (type === 'final-result') {
-        const finalists = LIVE_PARTICIPANTS.filter(p => p.round === 'final');
-        if (finalists.length === 0) { showToast("No Finalists", "No final round results available yet.", "⚠️"); return; }
+        // Collect participants who reached final or semifinal round
+        const pool = LIVE_PARTICIPANTS.filter(p => {
+          const r = p.round || 'audition';
+          let rScores = p.roundScores;
+          if (typeof rScores === 'string') { try { rScores = JSON.parse(rScores); } catch(e) {} }
+          const hasSfOrFinalScore = rScores && (
+            (rScores.final && Object.keys(rScores.final).length > 0) || 
+            (rScores.semifinal && Object.keys(rScores.semifinal).length > 0)
+          );
+          return r === 'final' || r === 'semifinal' || hasSfOrFinalScore;
+        });
 
-        const scoredFinalists = finalists.map(p => {
-          return { ...p, finalScore: getRoundScoreVal(p, 'final') };
-        }).sort((a, b) => b.finalScore - a.finalScore);
+        if (pool.length === 0) { 
+          showToast("No Finalists", "No semifinal or final round results available yet.", "⚠️"); 
+          return; 
+        }
 
-        generatePDFFinalResult(eventName, orgName, 'Live Rankings ⭐ Final Leaderboard', publishDate, publishTime, scoredFinalists, categories);
+        const scoredFinalists = pool.map(p => {
+          const semiScore = getRoundScoreVal(p, 'semifinal');
+          const finalScore = getRoundScoreVal(p, 'final');
+          const totalScore = (semiScore + finalScore) > 0 ? (semiScore + finalScore) : (finalScore || semiScore || 0);
+          return { 
+            ...p, 
+            semiScore, 
+            finalScore, 
+            totalScore 
+          };
+        }).sort((a, b) => {
+          const aIsFinal = (a.round === 'final') ? 1 : 0;
+          const bIsFinal = (b.round === 'final') ? 1 : 0;
+          if (aIsFinal !== bIsFinal) return bIsFinal - aIsFinal;
+          return (b.totalScore - a.totalScore) || (b.finalScore - a.finalScore);
+        });
+
+        generatePDFFinalResult(eventName, orgName, 'Live Rankings ⭐ Semifinal + Final Leaderboard', publishDate, publishTime, scoredFinalists, categories);
 
       } else if (type === 'promotion') {
         const grouped = {
@@ -6983,52 +7027,38 @@
         
         let podiumHtml = '';
         if (podiumTop3.length > 0) {
+          const makePodiumCard = (p, placeClass, crown, placeNum) => {
+            if (!p) return `<div class="podium-col col-placeholder"></div>`;
+            const scoreDetail = (p.semiScore > 0 && p.finalScore > 0)
+              ? `<div style="font-size:10px; color:#64748B; font-weight:700; margin-top:2px;">SF: ${p.semiScore} + F: ${p.finalScore}</div>`
+              : (p.round === 'final' && p.finalScore > 0 && p.semiScore === 0)
+                ? `<div style="font-size:10px; color:#64748B; font-weight:700; margin-top:2px;">Final: ${p.finalScore}</div>`
+                : (p.semiScore > 0 ? `<div style="font-size:10px; color:#64748B; font-weight:700; margin-top:2px;">SF: ${p.semiScore}</div>` : '');
+            return `
+            <div class="podium-col col-${placeClass}">
+              <div class="podium-card card-${placeClass}">
+                <div class="podium-crown">${crown}</div>
+                <div class="podium-name" title="${p.name}">${p.name}</div>
+                <div class="podium-score">${p.totalScore} pts</div>
+                ${scoreDetail}
+                <div class="podium-id">${p.id}</div>
+              </div>
+              <div class="podium-block block-${placeClass}">
+                <div class="podium-number">${placeNum}</div>
+              </div>
+            </div>`;
+          };
+
           podiumHtml = `
           <div class="podium-container">
             <!-- 2nd Place -->
-            ${podiumTop3[1] ? `
-            <div class="podium-col col-2nd">
-              <div class="podium-card card-2nd">
-                <div class="podium-crown">🥈</div>
-                <div class="podium-name">${podiumTop3[1].name}</div>
-                <div class="podium-score">${podiumTop3[1].finalScore} pts</div>
-                <div class="podium-id">${podiumTop3[1].id}</div>
-              </div>
-              <div class="podium-block block-2nd">
-                <div class="podium-number">2</div>
-              </div>
-            </div>
-            ` : `<div class="podium-col col-placeholder"></div>`}
+            ${makePodiumCard(podiumTop3[1], '2nd', '🥈', 2)}
 
             <!-- 1st Place -->
-            ${podiumTop3[0] ? `
-            <div class="podium-col col-1st">
-              <div class="podium-card card-1st">
-                <div class="podium-crown">🥇</div>
-                <div class="podium-name">${podiumTop3[0].name}</div>
-                <div class="podium-score">${podiumTop3[0].finalScore} pts</div>
-                <div class="podium-id">${podiumTop3[0].id}</div>
-              </div>
-              <div class="podium-block block-1st">
-                <div class="podium-number">1</div>
-              </div>
-            </div>
-            ` : ''}
+            ${makePodiumCard(podiumTop3[0], '1st', '🥇', 1)}
 
             <!-- 3rd Place -->
-            ${podiumTop3[2] ? `
-            <div class="podium-col col-3rd">
-              <div class="podium-card card-3rd">
-                <div class="podium-crown">🥉</div>
-                <div class="podium-name">${podiumTop3[2].name}</div>
-                <div class="podium-score">${podiumTop3[2].finalScore} pts</div>
-                <div class="podium-id">${podiumTop3[2].id}</div>
-              </div>
-              <div class="podium-block block-3rd">
-                <div class="podium-number">3</div>
-              </div>
-            </div>
-            ` : `<div class="podium-col col-placeholder"></div>`}
+            ${makePodiumCard(podiumTop3[2], '3rd', '🥉', 3)}
           </div>`;
         }
 
@@ -7036,24 +7066,39 @@
         <table>
           <thead>
             <tr>
-              <th style="width:100px">Rank</th>
+              <th style="width:70px">Rank</th>
               <th>Participant ID</th>
               <th>Name</th>
-              <th style="text-align:right">Final Score</th>
+              <th style="text-align:center">Round</th>
+              <th style="text-align:right">Semifinal</th>
+              <th style="text-align:right">Final</th>
+              <th style="text-align:right">Total (SF + Final)</th>
             </tr>
           </thead>
           <tbody>
             ${list.map((p, i) => {
+              const isFinal = p.round === 'final';
+              const rankBadge = i === 0 ? '🏆 1st' : i === 1 ? '🥈 2nd' : i === 2 ? '🥉 3rd' : `#${i + 1}`;
+              const badgeClass = i < 3 ? 'b-amber' : 'b-gray';
+              const semiDisplay = (p.semiScore !== undefined && p.semiScore !== null && p.semiScore > 0) ? p.semiScore : (p.semiScore === 0 ? '0' : '—');
+              const finalDisplay = (isFinal || (p.finalScore && p.finalScore > 0)) ? (p.finalScore || 0) : '—';
               return `
                 <tr>
                   <td>
-                    <span class="badge ${i < 3 ? 'b-amber' : 'b-gray'}" style="font-size: 10px; padding: 3px 8px;">
-                      ${i === 0 ? '🏆 1st' : i === 1 ? '🥈 2nd' : i === 2 ? '🥉 3rd' : `#${i + 1}`}
+                    <span class="badge ${badgeClass}" style="font-size: 10px; padding: 3px 8px;">
+                      ${rankBadge}
                     </span>
                   </td>
                   <td style="font-family: monospace; font-weight: bold; color: #475569;">${p.id}</td>
                   <td><strong>${p.name}</strong></td>
-                  <td style="text-align:right; font-weight:800; color:#B45309; font-size:13px;">${p.finalScore}</td>
+                  <td style="text-align:center;">
+                    <span style="font-size:10px; padding:3px 8px; border-radius:8px; font-weight:700; ${isFinal ? 'background:rgba(245,158,11,0.15);color:#b45309;' : 'background:rgba(99,102,241,0.15);color:#4338ca;'}">
+                      ${isFinal ? '🏆 Final' : '⭐ Semifinal'}
+                    </span>
+                  </td>
+                  <td style="text-align:right; font-weight:600; color:#475569;">${semiDisplay}</td>
+                  <td style="text-align:right; font-weight:600; color:#475569;">${finalDisplay}</td>
+                  <td style="text-align:right; font-weight:800; color:#B45309; font-size:13px;">${p.totalScore}</td>
                 </tr>
               `;
             }).join('')}
@@ -7066,7 +7111,7 @@
           <div class="cat-header">
             <div>
               <div class="cat-name">📂 Category: ${catName}</div>
-              <div class="cat-count">${list.length} finalist${list.length > 1 ? 's' : ''}</div>
+              <div class="cat-count">${list.length} participant${list.length > 1 ? 's' : ''}</div>
             </div>
           </div>
           ${podiumHtml}
