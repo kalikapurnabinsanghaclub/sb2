@@ -3148,6 +3148,37 @@ function initApp() {
         renderCertificateVerificationView(matchedPart, verifyParam);
         return;
       }
+
+      // ── Supabase direct fetch fallback for freshly scanned QR code ──
+      const targetVerifyId = (rawId ? rawId.trim() : (verifyParam.includes('-') ? verifyParam.split('-').pop() : verifyParam)).trim().toUpperCase();
+      if (targetVerifyId && window.syncEngine && window.syncEngine.supabase) {
+        window.syncEngine.supabase
+          .from('public_registrations')
+          .select('*')
+          .ilike('id', targetVerifyId)
+          .maybeSingle()
+          .then(({ data, error }) => {
+            if (data && !error) {
+              const mapped = (window.syncEngine && typeof window.syncEngine.mapSingleDbParticipant === 'function')
+                ? window.syncEngine.mapSingleDbParticipant(data)
+                : {
+                    id: data.id,
+                    name: data.name,
+                    phone: data.phone,
+                    category: data.category,
+                    catId: (!isNaN(Number(data.category))) ? Number(data.category) : null,
+                    eventId: data.event_id,
+                    venue: data.venue,
+                    stageStatus: data.stage_status || data.status || 'done',
+                    round: data.round || 'audition',
+                    scores: data.scores || {},
+                    date: data.reg_date || data.created_at
+                  };
+              renderCertificateVerificationView(mapped, verifyParam);
+            }
+          })
+          .catch(e => console.warn('[Auto-Verify] Async fetch error:', e));
+      }
     }
 
     // ── Auto-Login from Encrypted Token or URL Parameters ──
@@ -3278,7 +3309,13 @@ function getAuditionCompletionDate(p, ev, venObj) {
 
   // 7. Event display date or event start date
   if (ev && ev.disp) return ev.disp;
+  if (ev && (ev.startDate || ev.start_date)) return ev.startDate || ev.start_date;
   if (ev && ev.date) return ev.date;
+
+  // 8. Participant registration or creation timestamp
+  if (p.date || p.regDate || p.reg_date || p.created_at || p.submitted_at) {
+    return p.date || p.regDate || p.reg_date || p.created_at || p.submitted_at;
+  }
 
   return '';
 }
@@ -3443,8 +3480,39 @@ function openCertInNewTab() {
   window.open(url, '_blank');
 }
 
+// ── Global Helper for Resolving Venue ──
+function resolveParticipantVenue(part, venList, state) {
+  if (!part) return null;
+  const list = (Array.isArray(venList) && venList.length > 0) ? venList : ((state && state.venues) ? state.venues : []);
+  if (part.venueId !== undefined && part.venueId !== null && part.venueId !== '') {
+    let v = list.find(x => String(x.id) === String(part.venueId));
+    if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venueId));
+    if (v) return v;
+  }
+  if (part.venue !== undefined && part.venue !== null && part.venue !== '') {
+    let v = list.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
+    if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
+    if (v) return v;
+  }
+  const rawVen = part.formAnswers && (part.formAnswers['Venue Field'] || part.formAnswers['Venue'] || part.formAnswers['venue'] || part.formAnswers['venue_field']);
+  if (rawVen) {
+    let v = list.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+    if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
+    if (v) return v;
+  }
+  if (part.venueId && typeof part.venueId === 'string' && isNaN(Number(part.venueId))) {
+    let v = list.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
+    if (!v && state && state.venues) v = state.venues.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
+    if (v) return v;
+  }
+  return null;
+}
+
 // ── Render Verified Candidate Certificate View (Public View for QR Scanner) ──
 function renderCertificateVerificationView(p, verifyCertParam) {
+  if (!p) return;
+  window._activeVerifiedCandidate = { p, verifyCertParam };
+
   const loginView = document.getElementById('login-view');
   const dashView = document.getElementById('dashboard-view');
   const verifyView = document.getElementById('cert-verify-view');
@@ -3452,23 +3520,55 @@ function renderCertificateVerificationView(p, verifyCertParam) {
   if (loginView) loginView.style.display = 'none';
   if (dashView) dashView.style.display = 'none';
 
-  const state = window.syncEngine.getData() || {};
+  const state = (window.syncEngine && window.syncEngine.getData()) || {};
   const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
   let ev = (state.events || []).find(e => String(e.id) === String(pEventId) || String(e.event_id) === String(pEventId));
   if (!ev && state.activeEventId) {
     ev = (state.events || []).find(e => String(e.id) === String(state.activeEventId) || String(e.event_id) === String(state.activeEventId));
   }
   if (!ev && state.events && state.events.length > 0) ev = state.events[0];
-  if (!ev) ev = { name: 'Cultural Competition' };
 
-  let certYear = safeExtractYear(p.date || (ev && ev.date));
+  // 1. Resolve Event Name with safe fallbacks
+  const eventDisplayName = (ev && (ev.name || ev.title || ev.eventName)) ||
+                           p.eventName || p.event_name ||
+                           (typeof p.event === 'string' && p.event ? p.event : '') ||
+                           (p.formAnswers && (p.formAnswers['Event Name'] || p.formAnswers['Event'] || p.formAnswers.eventName || p.formAnswers.event)) ||
+                           'Cultural Competition';
+
+  let certYear = safeExtractYear(p.date || (ev && (ev.startDate || ev.date)));
   const certNo = verifyCertParam || `KNSDC-${certYear}-${String(p.id).toUpperCase()}`;
-  const pCatId = p.catId || p.category_id || p.category;
-  const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
-  const catName = cat ? cat.name : (p.category || 'Open Category');
 
-  const rawAuditionDate = getAuditionCompletionDate(p, ev, null);
-  let certDate = safeFormatDate(rawAuditionDate) || 'Audition Completion Date';
+  // 2. Resolve Category Name with robust cross-mapping
+  const pCatId = p.catId || p.category_id || p.category;
+  const allCats = (ev && ev.categories && Array.isArray(ev.categories)) ? ev.categories : ((state.categories && Array.isArray(state.categories)) ? state.categories : []);
+  const cat = allCats.find(c => String(c.id) === String(pCatId) || (c.name && String(c.name).trim().toLowerCase() === String(pCatId || '').trim().toLowerCase()));
+
+  let catName = cat ? cat.name : '';
+  if (!catName && p.category && typeof p.category === 'string' && isNaN(Number(p.category))) {
+    catName = p.category;
+  }
+  if (!catName && p.categoryName) catName = p.categoryName;
+  if (!catName && p.catName) catName = p.catName;
+  if (!catName && p.formAnswers) {
+    catName = p.formAnswers['Category'] || p.formAnswers['category'] || p.formAnswers['Category Name'] || p.formAnswers['Cat'] || '';
+  }
+  if (!catName && p.category && typeof p.category === 'object' && p.category.name) {
+    catName = p.category.name;
+  }
+  if (!catName) catName = 'Open Category';
+
+  // 3. Resolve Venue & Performance / Audition Date
+  const eventVenues = (ev && ev.venues && ev.venues.length > 0)
+    ? ev.venues
+    : ((state.venues && Array.isArray(state.venues)) ? state.venues.filter(v => (v.eventId || v.event_id) ? String(v.eventId || v.event_id) === String(ev ? ev.id : '') : true) : []);
+  const venObj = resolveParticipantVenue(p, eventVenues, state);
+
+  const rawAuditionDate = getAuditionCompletionDate(p, ev, venObj);
+  let certDate = safeFormatDate(rawAuditionDate);
+  if (!certDate || certDate === 'Audition Completion Date') {
+    certDate = safeFormatDate(p.date || p.regDate || p.reg_date || (ev && (ev.startDate || ev.date))) ||
+               new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
 
   const isAuditionDone = hasCompletedAudition(p);
 
@@ -3525,7 +3625,7 @@ function renderCertificateVerificationView(p, verifyCertParam) {
           </div>
           <div>
             <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Event Name</div>
-            <div style="font-size:0.95rem; font-weight:800; color:#0f172a; margin-top:2px;">${ev.name || 'Cultural Competition'}</div>
+            <div style="font-size:0.95rem; font-weight:800; color:#0f172a; margin-top:2px;">${eventDisplayName}</div>
           </div>
           <div>
             <div style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:800;">Category</div>
@@ -4479,8 +4579,10 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     const certNo = `KNSDC-${certYear}-${partId}`;
     
     const pCatId = p.catId || p.category_id || p.category;
-    const cat = (ev.categories || []).find(c => String(c.id) === String(pCatId));
-    const catName = cat ? cat.name.toUpperCase() : (p.category ? String(p.category).toUpperCase() : 'OPEN CATEGORY');
+    const allCatsGen = (ev.categories && Array.isArray(ev.categories)) ? ev.categories : ((state.categories && Array.isArray(state.categories)) ? state.categories : []);
+    const cat = allCatsGen.find(c => String(c.id) === String(pCatId) || (c.name && String(c.name).trim().toLowerCase() === String(pCatId || '').trim().toLowerCase()));
+    let resolvedCatStr = cat ? cat.name : (p.category && isNaN(Number(p.category)) ? p.category : (p.categoryName || p.catName || (p.formAnswers && (p.formAnswers['Category'] || p.formAnswers['category'] || p.formAnswers['Category Name'])) || 'OPEN CATEGORY'));
+    const catName = String(resolvedCatStr).toUpperCase();
 
   // ─── Resolve Venue matching Monitor venue mapping ───
   const eventVenues = (ev.venues && ev.venues.length > 0)
@@ -4892,7 +4994,7 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
           <span class="cert-meta-item">Category: <strong class="cert-accent">${catName}</strong></span>
           <div class="cert-citation-text">
             has successfully demonstrated active participation, commendable dedication and excellence in
-            <div class="cert-event-title">${ev.name || 'Cultural Competition'}</div>
+            <div class="cert-event-title">${ev.name || ev.title || ev.eventName || 'Cultural Competition'}</div>
             held on <strong class="cert-text-dark">${certDate}</strong> at <strong>${certVenue}</strong>.
           </div>
         </div>
@@ -5256,6 +5358,12 @@ if (window.syncEngine) {
   window.syncEngine.subscribe((incomingState) => {
     if (typeof updateHotspotBanner === 'function') {
       updateHotspotBanner(incomingState);
+    }
+    if (window._activeVerifiedCandidate && document.getElementById('cert-verify-view') && document.getElementById('cert-verify-view').style.display === 'block') {
+      const s = incomingState || (window.syncEngine && window.syncEngine.getData()) || {};
+      const parts = s.participants || [];
+      const updatedP = parts.find(part => String(part.id).toUpperCase() === String(window._activeVerifiedCandidate.p.id).toUpperCase()) || window._activeVerifiedCandidate.p;
+      renderCertificateVerificationView(updatedP, window._activeVerifiedCandidate.verifyCertParam);
     }
     if (CURRENT_USER && document.getElementById('dashboard-view').style.display === 'block') {
       const state = window.syncEngine.getData() || {};
