@@ -4475,7 +4475,7 @@
       <div class="tab active" onclick="settingsTab('subjects',this)">⚪ Judge Subjects</div>
       <div class="tab" onclick="settingsTab('event',this)">Event & Sponsor</div>
       <div class="tab" onclick="settingsTab('certificate',this)">Certificate Setup</div>
-      <div class="tab" onclick="settingsTab('security',this)" style="color:var(--text-muted)">📌</div>
+      <div class="tab" onclick="settingsTab('security',this)">🔐 Score Control</div>
     </div>
 
     <div id="st-subjects" style="padding-bottom: 80px;">
@@ -4677,7 +4677,7 @@
       </div>
     </div>
 
-    <div id="st-security" style="display:none">
+    <div id="st-security" style="display:none; padding-bottom:80px;">
       <div class="card glass-card" style="max-width:480px;margin:0 auto;background:linear-gradient(135deg, rgba(100,116,139,0.06), transparent);border:1.5px solid rgba(100,116,139,0.15)">
         <div style="text-align:center;margin-bottom:24px">
           <div style="font-size:32px;margin-bottom:8px">📌</div>
@@ -13973,14 +13973,22 @@ function openScoreModalFor(id){
     </div>`;
   let html = '';
   const sState = syncEngine.getData() || {};
-  const activeJudges = judges.filter(j => {
-    if (j.present !== true || j.isUnlocked !== true) return false;
-    const agr = (sState.judgeAgreements || []).find(a => 
-      (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-      (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-    );
-    return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
-  });
+  const allAgreements = sState.judgeAgreements || [];
+  // Monitor-level override: show all present judges for scoring.
+  // If agreements exist, prefer confirmed/verified/submitted judges first,
+  // but fall back to ALL present judges so monitor can always enter scores.
+  let activeJudges = judges.filter(j => j.present === true);
+  if (allAgreements.length > 0) {
+    const confirmedJudges = activeJudges.filter(j => {
+      const agr = allAgreements.find(a =>
+        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) ||
+        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+      );
+      return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+    });
+    // Use confirmed judges if any exist, otherwise fall back to all present judges
+    if (confirmedJudges.length > 0) activeJudges = confirmedJudges;
+  }
 
   activeJudges.forEach(j=>{
     html += `<div style="margin-top:14px">
@@ -14013,14 +14021,19 @@ function saveScores(){
     p.present = true;
     p.localMutatedAt = Date.now(); // stamp so optimistic lock protects the new scores
     const sState = syncEngine.getData() || {};
-    const activeJudges = judges.filter(j => {
-      if (j.present !== true || j.isUnlocked !== true) return false;
-      const agr = (sState.judgeAgreements || []).find(a => 
-        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-      );
-      return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
-    });
+    const allAgreements2 = sState.judgeAgreements || [];
+    // Monitor-level override: save scores for all present judges.
+    let activeJudges = judges.filter(j => j.present === true);
+    if (allAgreements2.length > 0) {
+      const confirmedJudges2 = activeJudges.filter(j => {
+        const agr = allAgreements2.find(a =>
+          (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) ||
+          (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
+        );
+        return agr && (agr.status === 'confirmed' || agr.status === 'verified' || agr.submitted === true);
+      });
+      if (confirmedJudges2.length > 0) activeJudges = confirmedJudges2;
+    }
 
     activeJudges.forEach(j=>{
       if(!p.scores) p.scores = {};
