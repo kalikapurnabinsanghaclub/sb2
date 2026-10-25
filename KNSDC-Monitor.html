@@ -282,13 +282,14 @@
     height: calc(100vh - 70px) !important;
     max-height: calc(100vh - 70px) !important;
     min-height: 0 !important;
-    overflow-y: auto !important; 
+    overflow-y: scroll !important; 
     overflow-x: hidden !important;
-    padding: 8px 24px 140px 24px !important;
+    padding: 8px 48px 140px 24px !important; /* right padding 48px gives space for physical scrollbar and dock */
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     scrollbar-width: auto !important;
     scrollbar-color: #2563eb #e2e8f0 !important;
+    scrollbar-gutter: stable;
   }
   #pp-settings {
     margin-top: 0 !important;
@@ -298,25 +299,28 @@
     margin-top: 4px !important;
     margin-bottom: 16px !important;
   }
-  /* PHYSICAL, HIGH-CONTRAST SCROLLBAR */
+  /* PHYSICAL, HIGH-CONTRAST SCROLLBAR (CLICKABLE & CLEARLY VISIBLE) */
+  html {
+    scrollbar-gutter: stable;
+  }
   .content {
     scrollbar-width: auto !important;
     scrollbar-color: #2563eb #e2e8f0 !important;
   }
   .content::-webkit-scrollbar { 
-    width: 14px !important; 
-    height: 14px !important;
+    width: 18px !important; 
+    height: 18px !important;
     display: block !important; 
   }
   .content::-webkit-scrollbar-track { 
-    background: #e2e8f0 !important; 
-    border-radius: 8px !important; 
+    background: #f1f5f9 !important; 
+    border-left: 2px solid #cbd5e1 !important;
   }
   .content::-webkit-scrollbar-thumb { 
     background: #2563eb !important; 
-    border-radius: 8px !important; 
-    border: 3px solid #e2e8f0 !important; 
-    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.2) !important;
+    border-radius: 9px !important; 
+    border: 3px solid #f1f5f9 !important; 
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.25) !important;
   }
   .content::-webkit-scrollbar-thumb:hover { 
     background: #1d4ed8 !important; 
@@ -2863,6 +2867,27 @@
 
   <div id="helpdesk-toast-container" style="position:fixed; top:80px; right:32px; display:flex; flex-direction:column; gap:10px; z-index:9999;"></div>
   <div class="content" id="main-content">
+
+  <!-- PHYSICAL SCROLL DOCK FOR EASY MOUSE CLICK & DRAG SCROLLING -->
+  <div id="physical-scroll-dock" style="position:fixed; right:6px; top:80px; bottom:24px; width:34px; z-index:999; display:flex; flex-direction:column; align-items:center; background:rgba(255,255,255,0.94); border:1.5px solid #cbd5e1; border-radius:18px; box-shadow:0 8px 24px rgba(0,0,0,0.12); backdrop-filter:blur(10px); padding:4px 2px; user-select:none;">
+    <!-- SCROLL TO TOP -->
+    <button type="button" onclick="scrollMainContent(-300)" title="Scroll Up (Click)" style="width:28px; height:28px; border-radius:50%; background:#3b82f6; color:#fff; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; box-shadow:0 2px 6px rgba(59,130,246,0.3); transition:all 0.15s;">▲</button>
+
+    <!-- FAST PAGE UP -->
+    <button type="button" onclick="scrollMainContent(-600)" title="Fast Page Up" style="width:24px; height:20px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; margin-top:4px;">⇞</button>
+
+    <!-- INTERACTIVE CLICK & DRAG TRACK -->
+    <div id="psd-track" style="flex:1; width:12px; background:#e2e8f0; border-radius:6px; margin:6px 0; position:relative; cursor:pointer; overflow:hidden;" title="Click anywhere on track to jump">
+      <div id="psd-thumb" style="position:absolute; top:0; left:0; right:0; height:40px; background:linear-gradient(180deg, #3b82f6, #1d4ed8); border-radius:6px; cursor:grab; box-shadow:0 2px 5px rgba(0,0,0,0.25);"></div>
+    </div>
+
+    <!-- FAST PAGE DOWN -->
+    <button type="button" onclick="scrollMainContent(600)" title="Fast Page Down" style="width:24px; height:20px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; margin-bottom:4px;">⇟</button>
+
+    <!-- SCROLL TO BOTTOM -->
+    <button type="button" onclick="scrollMainContent(300)" title="Scroll Down (Click)" style="width:28px; height:28px; border-radius:50%; background:#3b82f6; color:#fff; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; box-shadow:0 2px 6px rgba(59,130,246,0.3); transition:all 0.15s;">▼</button>
+  </div>
+
 
   <!-- ════════════════ DASHBOARD ════════════════ -->
   <div class="pp active" id="pp-dashboard">
@@ -21301,6 +21326,97 @@ function saveHotspotConfig(e) {
       mc.scrollTop += e.deltaY;
     }
   }, { passive: true });
+})();
+</script>
+
+
+<script>
+// PHYSICAL MOUSE CLICK-TO-SCROLL LOGIC
+window.scrollMainContent = function(amount) {
+  const mc = document.getElementById('main-content');
+  if (mc) {
+    mc.scrollBy({ top: amount, behavior: 'smooth' });
+  }
+};
+
+(function initPhysicalScrollDock() {
+  function setupDock() {
+    const mc = document.getElementById('main-content');
+    const track = document.getElementById('psd-track');
+    const thumb = document.getElementById('psd-thumb');
+    if (!mc || !track || !thumb) return false;
+
+    function updateThumb() {
+      const scrollH = mc.scrollHeight - mc.clientHeight;
+      if (scrollH <= 0) {
+        thumb.style.height = '100%';
+        thumb.style.top = '0px';
+        return;
+      }
+      const trackH = track.clientHeight;
+      const thumbH = Math.max(30, Math.round((mc.clientHeight / mc.scrollHeight) * trackH));
+      thumb.style.height = thumbH + 'px';
+      const topPct = (mc.scrollTop / scrollH) * (trackH - thumbH);
+      thumb.style.top = Math.max(0, Math.min(trackH - thumbH, topPct)) + 'px';
+    }
+
+    mc.addEventListener('scroll', updateThumb, { passive: true });
+    window.addEventListener('resize', updateThumb, { passive: true });
+    setInterval(updateThumb, 400);
+    updateThumb();
+
+    // Click track to jump
+    track.addEventListener('click', function(e) {
+      if (e.target === thumb) return;
+      const rect = track.getBoundingClientRect();
+      const clickY = e.clientY - rect.top;
+      const pct = clickY / rect.height;
+      const maxScroll = mc.scrollHeight - mc.clientHeight;
+      mc.scrollTo({ top: pct * maxScroll, behavior: 'smooth' });
+    });
+
+    // Drag thumb
+    let isDragging = false;
+    let startY = 0;
+    let startScrollTop = 0;
+
+    thumb.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      isDragging = true;
+      thumb.style.cursor = 'grabbing';
+      startY = e.clientY;
+      startScrollTop = mc.scrollTop;
+      document.body.style.userSelect = 'none';
+    });
+
+    window.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const dy = e.clientY - startY;
+      const trackH = track.clientHeight;
+      const thumbH = thumb.clientHeight;
+      const scrollH = mc.scrollHeight - mc.clientHeight;
+      if (trackH - thumbH <= 0) return;
+      const scrollDelta = (dy / (trackH - thumbH)) * scrollH;
+      mc.scrollTop = startScrollTop + scrollDelta;
+    });
+
+    window.addEventListener('mouseup', function() {
+      if (isDragging) {
+        isDragging = false;
+        thumb.style.cursor = 'grab';
+        document.body.style.userSelect = '';
+      }
+    });
+
+    return true;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupDock);
+  } else {
+    setupDock() || setTimeout(setupDock, 300);
+  }
 })();
 </script>
 
