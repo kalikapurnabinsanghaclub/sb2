@@ -6116,11 +6116,8 @@ async function runTwoSecondPushPull() {
       }
     }
 
-    // 2. PULL PHASE: Periodic 2-second reconciliation
-    if (isOnline && window.syncEngine) {
-      if (typeof syncEngine.fetchSupabaseState === 'function') {
-        syncEngine.fetchSupabaseState().catch(() => {});
-      }
+    // 2. PULL PHASE: Smart throttled reconciliation
+    if (isOnline && window.syncEngine && !document.hidden) {
       if (typeof syncEngine.runHeartbeatSync === 'function') {
         syncEngine.runHeartbeatSync().catch(() => {});
       }
@@ -6170,7 +6167,14 @@ function updateSyncStatusPills() {
 }
 
 // Start 2s Background Sync
-setInterval(runTwoSecondPushPull, 2000);
+// Smart Background Sync: 5s interval (handles pending scores quickly while protecting Disk IO)
+setInterval(runTwoSecondPushPull, 5000);
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) runTwoSecondPushPull();
+  });
+}
 
 
 function toggleLockPasswordVisibility(inputId, btn) {
