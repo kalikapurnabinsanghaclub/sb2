@@ -1,7 +1,7 @@
 import { MongoClient } from 'mongodb';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://fjscpohgysbelzkrkrxm.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || 'sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://cquterfxuwafvhnlfjob.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || 'sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo';
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://kalikapurnabinsanghaclub_db_user:Sb%40210617@knsdc.ewmcdmb.mongodb.net/knsdc?appName=Knsdc";
 
 async function pingSupabase() {

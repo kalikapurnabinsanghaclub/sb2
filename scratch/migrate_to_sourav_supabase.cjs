@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const sourceUrl = 'https://fjscpohgysbelzkrkrxm.supabase.co';
-const sourceKey = 'sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5';
+const sourceUrl = 'https://cquterfxuwafvhnlfjob.supabase.co';
+const sourceKey = 'sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo';
 
 const targetUrl = 'https://sbbmxgohhcywldzmuikh.supabase.co';
 const targetKey = 'sb_publishable__OcvPiBZKmKXGQAHsxPOGQ_92zCOLCZ';

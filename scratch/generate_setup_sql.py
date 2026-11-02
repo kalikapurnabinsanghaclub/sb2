@@ -5,7 +5,7 @@ with open('scratch/old_export.json', 'r', encoding='utf-8') as f:
 
 sql = """-- ============================================================
 -- KNSDC — COMPLETE MASTER SETUP SCRIPT FOR NEW SUPABASE PROJECT
--- Target Project: https://fjscpohgysbelzkrkrxm.supabase.co
+-- Target Project: https://cquterfxuwafvhnlfjob.supabase.co
 -- Generated automatically with all tables, realtime, RPC functions, and current data
 -- ============================================================
 

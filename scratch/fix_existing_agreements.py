@@ -2,10 +2,10 @@ import urllib.request
 import json
 
 # 1. Fetch sync_state payload to see what status is recorded there
-sync_url = "https://fjscpohgysbelzkrkrxm.supabase.co/rest/v1/sync_state?id=eq.knsdc_global_sync"
+sync_url = "https://cquterfxuwafvhnlfjob.supabase.co/rest/v1/sync_state?id=eq.knsdc_global_sync"
 headers = {
-    "apikey": "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5",
-    "Authorization": "Bearer sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5",
+    "apikey": "sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo",
+    "Authorization": "Bearer sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo",
     "Content-Type": "application/json",
     "Prefer": "return=representation"
 }
@@ -28,7 +28,7 @@ try:
             # If the status is verified/submitted in JSON payload, let's update the database table row!
             if a.get('status') == 'verified' or a.get('submitted') is True:
                 id_val = a.get('id')
-                update_url = f"https://fjscpohgysbelzkrkrxm.supabase.co/rest/v1/judge_agreements?id=eq.{id_val}"
+                update_url = f"https://cquterfxuwafvhnlfjob.supabase.co/rest/v1/judge_agreements?id=eq.{id_val}"
                 db_obj = {
                     "status": "verified",
                     "submitted": True,

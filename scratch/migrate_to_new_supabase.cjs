@@ -2,8 +2,8 @@ const { createClient } = require('@supabase/supabase-js');
 
 const oldUrl = 'https://mmbtfbxxnprtzpzdklot.supabase.co';
 const oldKey = 'sb_publishable_-WELjPDVV1Bnpee712Hn7Q_9MDwQmSA';
-const newUrl = 'https://fjscpohgysbelzkrkrxm.supabase.co';
-const newKey = 'sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5';
+const newUrl = 'https://cquterfxuwafvhnlfjob.supabase.co';
+const newKey = 'sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo';
 
 const oldSupabase = createClient(oldUrl, oldKey);
 const newSupabase = createClient(newUrl, newKey);

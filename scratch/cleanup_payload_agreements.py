@@ -1,10 +1,10 @@
 import urllib.request
 import json
 
-url = "https://fjscpohgysbelzkrkrxm.supabase.co/rest/v1/sync_state?id=eq.knsdc_global_sync"
+url = "https://cquterfxuwafvhnlfjob.supabase.co/rest/v1/sync_state?id=eq.knsdc_global_sync"
 headers = {
-    "apikey": "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5",
-    "Authorization": "Bearer sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5",
+    "apikey": "sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo",
+    "Authorization": "Bearer sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo",
     "Content-Type": "application/json",
     "Prefer": "return=representation"
 }

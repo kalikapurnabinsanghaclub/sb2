@@ -1,5 +1,5 @@
-const supabaseUrl = "https://fjscpohgysbelzkrkrxm.supabase.co";
-const supabaseAnonKey = "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5";
+const supabaseUrl = "https://cquterfxuwafvhnlfjob.supabase.co";
+const supabaseAnonKey = "sb_publishable_7sreVLnqfdTxN3d_4-Jd6w_lzXrleIo";
 
 async function test() {
   // 1. Fetch entire sync_state payload
