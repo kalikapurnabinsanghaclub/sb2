@@ -2266,8 +2266,11 @@ function selectFrame(colorHex) {
   const c = (ev.categories || []).find(x => String(x.id) === String(p.catId));
   const catName = c ? c.name.toUpperCase() : 'OPEN CATEGORY';
  
+  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev ? ev.id : null] : state.switchStates) || {};
+  const isResultPublic = Boolean(eventSwitches['resultPublic'] || eventSwitches['result-public']);
+
   let scoreText = null;
-  if (p.stageStatus === 'done' && p.scores && Object.keys(p.scores).length > 0) {
+  if (isResultPublic && p.stageStatus === 'done' && p.scores && Object.keys(p.scores).length > 0) {
     let totalScore = 0;
     Object.values(p.scores).forEach(s => totalScore += (Number(s.total) || 0));
     scoreText = `TOTAL SCORE: ${totalScore.toFixed(1)}`;
@@ -7939,6 +7942,137 @@ if (document.readyState === 'loading') {
   setTimeout(() => updateHotspotBanner(), 500);
   setTimeout(() => updateHotspotBanner(), 2000);
 }
+
+// ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// TARGETED WEBSOCKET LIVE SCORE ENGINE (ZERO-POLLING, INSTANT PUSH)
+// ══════════════════════════════════════════════════════════════════
+let _participantWs = null;
+let _wsReconnectTimer = null;
+let _hasReceivedInitialScore = false;
+
+function applyLiveScoreUpdate(msg) {
+  if (!CURRENT_USER || !msg) return;
+  const cleanCurrent = String(CURRENT_USER).trim().toUpperCase();
+  const cleanMsgPid = String(msg.participantId || '').trim().toUpperCase();
+  if (cleanCurrent !== cleanMsgPid) return;
+
+  const state = (window.syncEngine && window.syncEngine.getData()) || {};
+  let p = (state.participants || []).find(part => String(part.id).toUpperCase() === cleanCurrent);
+  if (!p) {
+    p = { id: CURRENT_USER, scores: {} };
+    if (state.participants) state.participants.push(p);
+  }
+
+  if (!p.scores) p.scores = {};
+  if (!p.roundScores) p.roundScores = {};
+  if (!p.roundComments) p.roundComments = {};
+
+  const jId = msg.judgeId || 'default';
+  const roundName = msg.round || p.round || 'audition';
+
+  p.scores[jId] = msg.scores || { total: msg.total };
+  if (!p.roundScores[roundName]) p.roundScores[roundName] = {};
+  p.roundScores[roundName][jId] = msg.scores || { total: msg.total };
+
+  if (msg.comments) {
+    if (!p.roundComments[roundName]) p.roundComments[roundName] = {};
+    p.roundComments[roundName][jId] = msg.comments;
+  }
+
+  p.stageStatus = 'done';
+
+  // Instant UI update
+  if (typeof renderDashboard === 'function') renderDashboard();
+  if (typeof renderDetailedResults === 'function') renderDetailedResults(p);
+  if (typeof generatePoster === 'function') generatePoster();
+
+  console.log(`[Targeted WS] Live score instantly rendered for ${cleanCurrent}`);
+}
+
+// Ultra-fast 1-time fetch on login so existing scores show immediately
+async function fetchInitialScoreOnce() {
+  if (!CURRENT_USER || _hasReceivedInitialScore) return;
+  try {
+    const res = await fetch(`/api/scores/participant/${encodeURIComponent(CURRENT_USER)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.status === 'success' && data.judges) {
+      _hasReceivedInitialScore = true;
+      Object.entries(data.judges).forEach(([jId, jData]) => {
+        applyLiveScoreUpdate({
+          participantId: CURRENT_USER,
+          judgeId: jId,
+          round: jData.round,
+          scores: jData.scores,
+          total: jData.total,
+          comments: jData.comments
+        });
+      });
+    }
+  } catch(e) {}
+}
+
+// Persistent WebSocket stream connection to Render backend
+function connectParticipantWebSocket() {
+  if (!CURRENT_USER) return;
+  if (_wsReconnectTimer) clearTimeout(_wsReconnectTimer);
+
+  const cleanPid = String(CURRENT_USER).trim().toUpperCase();
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  const wsUrl = `${protocol}//${host}/ws?participantId=${encodeURIComponent(cleanPid)}`;
+
+  try {
+    if (_participantWs) {
+      try { _participantWs.close(); } catch(e) {}
+    }
+    _participantWs = new WebSocket(wsUrl);
+
+    _participantWs.onopen = () => {
+      console.log(`[Targeted WS] Connected for participant: ${cleanPid}`);
+      fetchInitialScoreOnce();
+    };
+
+    _participantWs.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'score_updated') {
+          applyLiveScoreUpdate(msg);
+        }
+      } catch (err) {}
+    };
+
+    _participantWs.onclose = () => {
+      console.log('[Targeted WS] Connection dropped. Auto-reconnecting in 3s...');
+      _wsReconnectTimer = setTimeout(connectParticipantWebSocket, 3000);
+    };
+
+    _participantWs.onerror = () => {
+      try { _participantWs.close(); } catch(e) {}
+    };
+  } catch (err) {
+    _wsReconnectTimer = setTimeout(connectParticipantWebSocket, 4000);
+  }
+}
+
+// Network recovery: reconnect instantly when mobile comes back online
+window.addEventListener('online', () => {
+  console.log('[Network Online] Reconnecting WebSocket...');
+  connectParticipantWebSocket();
+  fetchInitialScoreOnce();
+});
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    connectParticipantWebSocket();
+    fetchInitialScoreOnce();
+  });
+} else {
+  connectParticipantWebSocket();
+  fetchInitialScoreOnce();
+}
+
 </script>
 
 </body>

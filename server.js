@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
+import crypto from 'crypto';
 import { parsePaymentNotification } from './parsers/smsParser.js';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
@@ -73,36 +74,64 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 // Registry: orderId → Set of WebSocket clients waiting for that order
 const wsClients = new Map(); // orderId → Set<WebSocket>
+const participantWsClients = new Map(); // participantId → Set<WebSocket>
 
 wss.on('connection', (ws, req) => {
   const urlParams = new URL(req.url, `http://${req.headers.host}`);
   const orderId = urlParams.searchParams.get('orderId');
+  const participantId = urlParams.searchParams.get('participantId');
 
-  if (!orderId) {
-    ws.close(4000, 'Missing orderId');
+  if (!orderId && !participantId) {
+    ws.close(4000, 'Missing orderId or participantId');
     return;
   }
 
-  console.log(`[WS] Client connected for order: ${orderId}`);
-  if (!wsClients.has(orderId)) wsClients.set(orderId, new Set());
-  wsClients.get(orderId).add(ws);
+  if (orderId) {
+    console.log(`[WS] Client connected for order: ${orderId}`);
+    if (!wsClients.has(orderId)) wsClients.set(orderId, new Set());
+    wsClients.get(orderId).add(ws);
+    ws.send(JSON.stringify({ type: 'connected', orderId, message: 'Listening for payment confirmation...' }));
+  }
+
+  if (participantId) {
+    const cleanPid = String(participantId).trim().toUpperCase();
+    console.log(`[WS] Participant connected for live score stream: ${cleanPid}`);
+    if (!participantWsClients.has(cleanPid)) participantWsClients.set(cleanPid, new Set());
+    participantWsClients.get(cleanPid).add(ws);
+    ws.send(JSON.stringify({ type: 'connected', participantId: cleanPid, message: 'Connected to live score stream' }));
+  }
 
   ws.on('close', () => {
-    const set = wsClients.get(orderId);
-    if (set) {
-      set.delete(ws);
-      if (set.size === 0) wsClients.delete(orderId);
+    if (orderId) {
+      const set = wsClients.get(orderId);
+      if (set) {
+        set.delete(ws);
+        if (set.size === 0) wsClients.delete(orderId);
+      }
+      console.log(`[WS] Client disconnected for order: ${orderId}`);
     }
-    console.log(`[WS] Client disconnected for order: ${orderId}`);
+    if (participantId) {
+      const cleanPid = String(participantId).trim().toUpperCase();
+      const set = participantWsClients.get(cleanPid);
+      if (set) {
+        set.delete(ws);
+        if (set.size === 0) participantWsClients.delete(cleanPid);
+      }
+      console.log(`[WS] Participant disconnected from score stream: ${cleanPid}`);
+    }
   });
 
   ws.on('error', () => {
-    const set = wsClients.get(orderId);
-    if (set) set.delete(ws);
+    if (orderId) {
+      const set = wsClients.get(orderId);
+      if (set) set.delete(ws);
+    }
+    if (participantId) {
+      const cleanPid = String(participantId).trim().toUpperCase();
+      const set = participantWsClients.get(cleanPid);
+      if (set) set.delete(ws);
+    }
   });
-
-  // Send connection-established ack
-  ws.send(JSON.stringify({ type: 'connected', orderId, message: 'Listening for payment confirmation...' }));
 });
 
 // Helper: Broadcast to all clients waiting for a specific orderId
@@ -114,6 +143,19 @@ function broadcastPaymentConfirmed(orderId, payload) {
       if (ws.readyState === 1 /* OPEN */) ws.send(msg);
     });
     console.log(`[WS] Broadcasted payment_confirmed to ${clients.size} client(s) for ${orderId}`);
+  }
+}
+
+// Helper: Broadcast live score directly to targeted participant WebSocket clients
+function broadcastScoreUpdate(participantId, payload) {
+  const cleanPid = String(participantId).trim().toUpperCase();
+  const clients = participantWsClients.get(cleanPid);
+  if (clients && clients.size > 0) {
+    const msg = JSON.stringify({ type: 'score_updated', participantId: cleanPid, ...payload });
+    clients.forEach(ws => {
+      if (ws.readyState === 1 /* OPEN */) ws.send(msg);
+    });
+    console.log(`[WS] Broadcasted score_updated directly to participant ${cleanPid} (${clients.size} device/tab)`);
   }
 }
 
@@ -438,6 +480,234 @@ app.get('/api/orders', (req, res) => {
   const state = loadState();
   res.json(state.foodOrders || []);
 });
+
+// ══════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════
+// STAFF & JUDGE AUTHENTICATION ENGINE (MongoDB Atlas Backend)
+// ══════════════════════════════════════════════════════════════════
+const SEED_STAFF = [
+  { email: 'kalikapurnabinsanghaclub@gmail.com', password_hash: 'ffb7bcda5db5dc45aa8058ab92162526f821cdb682308bcab5f9edb6456c15a6', name: 'KNSDC Super Monitor', role: 'monitor' },
+  { email: 'souravbairagi121999@gmail.com', password_hash: '5440505a59224af2d0dea51b91cb84e3648a1e5cdfa16936ec47a3f68d8c7b42', password: 'Sb@210617', name: 'Super Admin', role: 'admin' },
+  { email: 'host@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', name: 'rakesh', role: 'host' },
+  { email: 'sutapa@knsdc.in', password_hash: 'd2f2516576d11e0e28059d452471ae79ce4e3ab104ea1f59b29eea532e69bb43', name: 'sutapa ganguly', role: 'judge' },
+  { email: 'surjeet@knsdc.in', password_hash: '090d2570be00b093bdf5def134d286c70618415a215b574787f02a2886e25c09', name: 'SURAJIT SARKAR', role: 'judge' },
+  { email: 'soumen@knsdc.in', password_hash: 'a4a3206f824917b22884b775d5f919c3dec31d011c70bf2db56916855e6e1116', name: 'soumen', role: 'finance' },
+  { email: 'd@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', name: 'tg', role: 'director' },
+  { email: 'pert@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', name: 'lok', role: 'service_partner' },
+  { email: 'laxmi@gmail.com', password_hash: '6fd8fc7d5d2a01a4112fe0d3d408ff4552f9a6ef9279d407352528285b07d574', name: 'kalikapur', role: 'monitor' }
+];
+
+app.post('/api/staff/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required.' });
+    }
+
+    const emailNorm = String(email).trim().toLowerCase();
+    const pHash = crypto.createHash('sha256').update(String(password)).digest('hex');
+
+    let staff = null;
+    if (db) {
+      const col = db.collection('staff_credentials');
+      staff = await col.findOne({
+        email: emailNorm,
+        $or: [
+          { password_hash: pHash },
+          { password: password }
+        ]
+      });
+    }
+
+    // Fallback to built-in verified credentials if not yet synced to MongoDB
+    if (!staff) {
+      staff = SEED_STAFF.find(s => s.email === emailNorm && (s.password_hash === pHash || s.password === password));
+    }
+
+    if (!staff) {
+      return res.status(401).json({ success: false, error: 'Invalid email or password.' });
+    }
+
+    if (staff.active === false) {
+      return res.status(403).json({ success: false, error: 'Account has been deactivated.' });
+    }
+
+    return res.json({
+      success: true,
+      role: staff.role || 'staff',
+      user: {
+        email: staff.email,
+        name: staff.name,
+        role: staff.role || 'staff'
+      }
+    });
+  } catch (err) {
+    console.error('[Staff Login Error]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PARTICIPANT SCORING SYSTEM (MongoDB Atlas + Offline Outbox)
+// ══════════════════════════════════════════════════════════════════
+
+// 1. Save or Update Single Judge Score for a Participant
+app.post('/api/scores/save', async (req, res) => {
+  try {
+    const { participantId, eventId, judgeId, round, scores, total, comments, timestamp } = req.body;
+    if (!participantId || !judgeId) {
+      return res.status(400).json({ status: 'error', message: 'participantId and judgeId are required.' });
+    }
+
+    const cleanPid = String(participantId).trim().toUpperCase();
+    const nowTs = timestamp || Date.now();
+    const updateFields = {
+      participantId: cleanPid,
+      eventId: eventId || null,
+      lastUpdated: nowTs,
+      [`judges.${judgeId}.round`]: round || 'audition',
+      [`judges.${judgeId}.scores`]: scores || {},
+      [`judges.${judgeId}.total`]: Number(total) || 0,
+      [`judges.${judgeId}.comments`]: comments || '',
+      [`judges.${judgeId}.updatedAt`]: nowTs
+    };
+
+    if (db) {
+      const col = db.collection('participant_scores');
+      await col.updateOne(
+        { participantId: cleanPid },
+        { 
+          $set: updateFields,
+          $setOnInsert: { createdAt: nowTs }
+        },
+        { upsert: true }
+      );
+    } else {
+      const state = loadState();
+      if (!state.participantScores) state.participantScores = {};
+      if (!state.participantScores[cleanPid]) state.participantScores[cleanPid] = { participantId: cleanPid, judges: {} };
+      state.participantScores[cleanPid].judges[judgeId] = {
+        round: round || 'audition',
+        scores: scores || {},
+        total: Number(total) || 0,
+        comments: comments || '',
+        updatedAt: nowTs
+      };
+      state.participantScores[cleanPid].lastUpdated = nowTs;
+      saveState(state);
+    }
+
+    // Real-time instant WebSocket push directly to participant
+    broadcastScoreUpdate(cleanPid, {
+      judgeId,
+      round: round || 'audition',
+      scores: scores || {},
+      total: Number(total) || 0,
+      comments: comments || '',
+      lastUpdated: nowTs
+    });
+
+    res.json({ status: 'success', message: 'Score saved to MongoDB successfully.' });
+  } catch (err) {
+    console.error('[Score API Error]', err);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// 2. Batch Sync Offline Scores Queue (when internet returns)
+app.post('/api/scores/batch-sync', async (req, res) => {
+  try {
+    const items = Array.isArray(req.body) ? req.body : (req.body.scores || []);
+    if (!items || !items.length) {
+      return res.json({ status: 'success', synced: 0, message: 'No items in batch.' });
+    }
+
+    let synced = 0;
+    for (const item of items) {
+      const { participantId, eventId, judgeId, round, scores, total, comments, timestamp } = item;
+      if (!participantId || !judgeId) continue;
+      const cleanPid = String(participantId).trim().toUpperCase();
+      const nowTs = timestamp || Date.now();
+      
+      const updateFields = {
+        participantId: cleanPid,
+        eventId: eventId || null,
+        lastUpdated: nowTs,
+        [`judges.${judgeId}.round`]: round || 'audition',
+        [`judges.${judgeId}.scores`]: scores || {},
+        [`judges.${judgeId}.total`]: Number(total) || 0,
+        [`judges.${judgeId}.comments`]: comments || '',
+        [`judges.${judgeId}.updatedAt`]: nowTs
+      };
+
+      if (db) {
+        const col = db.collection('participant_scores');
+        await col.updateOne(
+          { participantId: cleanPid },
+          {
+            $set: updateFields,
+            $setOnInsert: { createdAt: nowTs }
+          },
+          { upsert: true }
+        );
+      }
+      synced++;
+      broadcastScoreUpdate(cleanPid, {
+        judgeId,
+        round: round || 'audition',
+        scores: scores || {},
+        total: Number(total) || 0,
+        comments: comments || '',
+        lastUpdated: nowTs
+      });
+    }
+
+    res.json({ status: 'success', synced, message: `Successfully synced ${synced} score(s) to MongoDB.` });
+  } catch (err) {
+    console.error('[Batch Score API Error]', err);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// 3. Ultra-Lightweight Participant Score Retrieval (Only returns their own score)
+app.get('/api/scores/participant/:id', async (req, res) => {
+  try {
+    const cleanPid = String(req.params.id).trim().toUpperCase();
+    let scoreRecord = null;
+
+    if (db) {
+      const col = db.collection('participant_scores');
+      scoreRecord = await col.findOne({ participantId: cleanPid }, { projection: { _id: 0 } });
+    } else {
+      const state = loadState();
+      scoreRecord = (state.participantScores && state.participantScores[cleanPid]) || null;
+    }
+
+    if (!scoreRecord) {
+      return res.json({ status: 'not_found', participantId: cleanPid, scores: {}, total: 0 });
+    }
+
+    const judges = scoreRecord.judges || {};
+    let grandTotal = 0;
+    let judgeCount = 0;
+    Object.values(judges).forEach(j => {
+      grandTotal += Number(j.total) || 0;
+      judgeCount++;
+    });
+
+    res.json({
+      status: 'success',
+      participantId: cleanPid,
+      judges: judges,
+      judgeCount: judgeCount,
+      grandTotal: grandTotal,
+      lastUpdated: scoreRecord.lastUpdated || Date.now()
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 
 // Catch-all route to serve index.html for Single Page Applications (SPA)
 

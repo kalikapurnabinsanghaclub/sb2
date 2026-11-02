@@ -5673,6 +5673,25 @@ async function saveScores() {
     backupScoreToLocalStorage(p.id, p.scores[JUDGE.id], p.round, p.roundComments[p.round][JUDGE.id]);
 
     toast('Saving score...');
+
+    // Push directly to MongoDB Backend
+    try {
+      fetch('/api/scores/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participantId: p.id,
+          eventId: (typeof activeEventId !== 'undefined' ? activeEventId : null) || p.eventId,
+          judgeId: JUDGE.id,
+          round: p.round || 'audition',
+          scores: p.scores[JUDGE.id],
+          total: totalScoreVal,
+          comments: p.roundComments[p.round][JUDGE.id],
+          timestamp: Date.now()
+        })
+      }).catch(err => console.warn('[MongoDB Save Deferred]', err.message));
+    } catch(e) {}
+
     let success = false;
     try {
       success = await syncEngine.updateParticipant(p.id, p);
@@ -6096,6 +6115,22 @@ async function runTwoSecondPushPull() {
             if (!p.roundComments[item.round]) p.roundComments[item.round] = {};
             p.roundComments[item.round][item.judgeId] = item.comment;
           }
+
+          // Push pending item to MongoDB
+          fetch('/api/scores/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              participantId: item.participantId,
+              eventId: (typeof activeEventId !== 'undefined' ? activeEventId : null) || p.eventId,
+              judgeId: item.judgeId,
+              round: item.round || 'audition',
+              scores: item.scores,
+              total: Object.values(item.scores || {}).reduce((sum, v) => sum + (Number(v) || 0), 0),
+              comments: item.comment || '',
+              timestamp: Date.now()
+            })
+          }).catch(() => {});
 
           const ok = await syncEngine.updateParticipant(item.participantId, p);
           if (ok) {
