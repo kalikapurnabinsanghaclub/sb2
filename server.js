@@ -1774,11 +1774,19 @@ setTimeout(seedEventFinance, 4000);
 // 1. GET ALL EVENTS
 app.get("/api/events", async (req, res) => {
   try {
+    let events = [];
     if (db) {
-      const events = await db.collection("club_events").find({}).sort({ startDate: 1 }).toArray();
-      if (events.length > 0) return res.json({ success: true, count: events.length, events });
+      events = await db.collection("club_events").find({}).sort({ startDate: 1 }).toArray();
     }
-    res.json({ success: true, count: DEFAULT_CLUB_EVENTS.length, events: DEFAULT_CLUB_EVENTS });
+    if (events.length === 0) {
+      const state = loadState();
+      if (state.events && state.events.length > 0) {
+        events = state.events;
+      } else {
+        events = DEFAULT_CLUB_EVENTS;
+      }
+    }
+    res.json({ success: true, count: events.length, events });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1788,9 +1796,19 @@ app.get("/api/events", async (req, res) => {
 app.post("/api/events", async (req, res) => {
   try {
     const ev = req.body;
-    ev.id = ev.id || ("evt-" + Date.now());
-    ev.updatedAt = new Date();
+    ev.id = String(ev.id || ("evt-" + Date.now()));
+    ev.name = ev.name || ev.title || 'New Event';
+    ev.title = ev.name;
+    ev.startDate = ev.startDate || ev.date || new Date().toISOString().split('T')[0];
+    ev.date = ev.startDate;
+    ev.endDate = ev.endDate || ev.startDate;
+    ev.category = ev.category || ev.type || 'Cultural';
+    ev.type = ev.category;
+    ev.venue = ev.venue || 'KNSDC Main Ground';
     if (ev.publicNotice === undefined) ev.publicNotice = true;
+    if (ev.publicReg === undefined) ev.publicReg = true;
+    ev.updatedAt = new Date();
+
     if (db) {
       await db.collection("club_events").updateOne(
         { id: ev.id },
@@ -1799,6 +1817,27 @@ app.post("/api/events", async (req, res) => {
       );
       console.log(`[MongoDB] Upserted event: ${ev.name} (${ev.id})`);
     }
+
+    const state = loadState();
+    if (!state.events) state.events = [];
+    const idx = state.events.findIndex(e => String(e.id) === String(ev.id));
+    if (idx >= 0) state.events[idx] = { ...state.events[idx], ...ev };
+    else state.events.push(ev);
+    saveState(state);
+
+    // Broadcast live event update to all WebSocket clients (including public page & monitor)
+    broadcastToAllClients({
+      type: 'sql_watch',
+      table: 'events',
+      eventType: 'UPSERT',
+      payload: ev
+    });
+    broadcastToAllClients({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: { events: state.events, upcomingEvents: state.events }
+    });
+
     res.json({ success: true, event: ev });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1810,10 +1849,26 @@ app.delete("/api/events/:id", async (req, res) => {
   try {
     const { id } = req.params;
     if (db) {
-      await db.collection("club_events").deleteOne({ id });
-      await db.collection("club_event_transactions").deleteMany({ eventId: id });
+      await db.collection("club_events").deleteOne({ id: String(id) });
+      await db.collection("club_event_transactions").deleteMany({ eventId: String(id) });
       console.log(`[MongoDB] Deleted event ${id} and all related transactions`);
     }
+    const state = loadState();
+    if (state.events) {
+      state.events = state.events.filter(e => String(e.id) !== String(id));
+      saveState(state);
+    }
+    broadcastToAllClients({
+      type: 'sql_watch',
+      table: 'events',
+      eventType: 'DELETE',
+      payload: { id }
+    });
+    broadcastToAllClients({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: { events: state.events, upcomingEvents: state.events }
+    });
     res.json({ success: true, message: `Deleted event ${id} and related transactions` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

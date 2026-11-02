@@ -4421,19 +4421,23 @@
     // ── DIRECT SUPABASE EVENTS FETCH ─────────────────────────────────────
     async function fetchEventsDirectly() {
       try {
-        if (!window.supabase) return;
-        const client = window.supabase.createClient(
-          "https://fjscpohgysbelzkrkrxm.supabase.co",
-          "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5"
-        );
-        const { data, error } = await client.from('events').select('*');
-        if (error) {
-          console.error('[DirectFetch] Error loading events:', error);
-          return;
+        let data = [];
+        if (window.supabase) {
+          try {
+            const client = window.supabase.createClient(
+              "https://fjscpohgysbelzkrkrxm.supabase.co",
+              "sb_publishable_veI5vYBOXffm4FSPjobycA_95FiB6a5"
+            );
+            const { data: sData, error: sErr } = await client.from('events').select('*');
+            if (!sErr && Array.isArray(sData)) {
+              data = sData;
+            }
+          } catch (e) {
+            console.warn('[DirectFetch] Supabase events fetch note:', e.message);
+          }
         }
-        if (!data || data.length === 0) return;
         
-        // Sort data by date (or start_date if it ever exists)
+        // Sort data by date
         data.sort((a, b) => {
           const dateA = new Date(a.date || a.start_date || 0);
           const dateB = new Date(b.date || b.start_date || 0);
@@ -4664,24 +4668,49 @@
               // Add any club events defined in MongoDB that aren't in Supabase
               mData.events.forEach(me => {
                 if (!mapped.some(x => String(x.id) === String(me.id))) {
+                  const evType = me.category || me.type || 'Cultural';
+                  const eventDate = me.startDate || me.date || '';
+                  let displayDate = eventDate;
+                  if (eventDate) {
+                    const ymdMatch = eventDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                    const dmyMatch = eventDate.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+                    if (ymdMatch) {
+                      displayDate = `${ymdMatch[3]}/${ymdMatch[2]}/${ymdMatch[1]}`;
+                    } else if (dmyMatch) {
+                      displayDate = `${dmyMatch[1]}/${dmyMatch[2]}/${dmyMatch[3]}`;
+                    } else {
+                      displayDate = eventDate.replace(/-/g, '/');
+                    }
+                  }
+
                   mapped.push({
                     id: me.id,
-                    name: me.name,
-                    disp: me.startDate || 'Upcoming',
-                    startDate: me.startDate || '',
-                    endDate: me.endDate || '',
-                    date: me.startDate || '2026-10-25',
+                    name: me.name || me.title || 'New Event',
+                    disp: displayDate || 'Upcoming',
+                    startDate: eventDate,
+                    endDate: me.endDate || eventDate || '',
+                    date: eventDate,
+                    startTime: me.startTime || me.time || '',
+                    endTime: me.endTime || '',
                     venue: me.venue || 'KNSDC Main Ground',
-                    type: me.category || 'Cultural',
-                    cat: me.category || 'Cultural',
-                    col: me.category === 'Tournament' ? '#2563eb' : '#E91E8C',
-                    icon: me.category === 'Tournament' ? '🏏' : '🎭',
+                    type: evType,
+                    cat: evType,
+                    col: (evType === 'Tournament' || evType === 'Sports') ? '#2563eb' : '#E91E8C',
+                    icon: (evType === 'Tournament' || evType === 'Sports') ? '🏆' : '🎭',
                     description: me.description || '',
+                    banner: me.banner || me.image || '',
+                    whatsapp: me.whatsapp || (me.roundSchedules && me.roundSchedules.whatsapp) || '',
+                    facebook: me.facebook || (me.roundSchedules && me.roundSchedules.facebook) || '',
                     publicNotice: me.publicNotice !== false,
                     targetRevenue: me.targetRevenue || 150000,
                     budgetExpense: me.budgetExpense || 120000,
-                    allowDonations: true,
-                    switchStates: { publicReg: true }
+                    allowDonations: me.allowDonations !== false,
+                    roundSchedules: me.roundSchedules || {},
+                    switchStates: me.switchStates || { publicReg: true },
+                    publicReg: me.publicReg !== false,
+                    categories: me.categories || [],
+                    venues: me.venues || [],
+                    judges: me.judges || []
                   });
                 }
               });
