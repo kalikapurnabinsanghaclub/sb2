@@ -61,6 +61,7 @@ async function connectDB() {
     await client.connect();
     db = client.db('knsdc');
     console.log('[MongoDB] Connected successfully to Atlas cluster!');
+    await seedStaffToMongoDB();
   } catch (err) {
     console.error('[MongoDB] Connection failed:', err);
   }
@@ -68,23 +69,22 @@ async function connectDB() {
 connectDB();
 
 // ==========================================
-// WEBSOCKET SERVER — Real-Time Payment Push
+// WEBSOCKET SERVER — Live Real-Time Push & SQL Watch
 // ==========================================
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-// Registry: orderId → Set of WebSocket clients waiting for that order
+// Registries
 const wsClients = new Map(); // orderId → Set<WebSocket>
 const participantWsClients = new Map(); // participantId → Set<WebSocket>
+const generalWsClients = new Set(); // All portal / sync engine clients (Admin, Monitor, Judge, Host, Director, etc.)
 
 wss.on('connection', (ws, req) => {
   const urlParams = new URL(req.url, `http://${req.headers.host}`);
   const orderId = urlParams.searchParams.get('orderId');
   const participantId = urlParams.searchParams.get('participantId');
 
-  if (!orderId && !participantId) {
-    ws.close(4000, 'Missing orderId or participantId');
-    return;
-  }
+  // Register in general broadcast set
+  generalWsClients.add(ws);
 
   if (orderId) {
     console.log(`[WS] Client connected for order: ${orderId}`);
@@ -101,7 +101,27 @@ wss.on('connection', (ws, req) => {
     ws.send(JSON.stringify({ type: 'connected', participantId: cleanPid, message: 'Connected to live score stream' }));
   }
 
+  // Welcome handshake for portal and sync engine
+  ws.send(JSON.stringify({
+    type: 'connected',
+    message: 'Connected to KNSDC Live WebSocket Sync Engine (Zero Egress)',
+    serverTime: Date.now()
+  }));
+
+  // Handle bidirectional messages (Broadcasts & SQL Watch events from portals)
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'broadcast' || msg.type === 'state_update' || msg.type === 'sql_watch' || msg.type === 'score_update') {
+        broadcastToAllClients(msg, ws);
+      } else if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+      }
+    } catch (e) {}
+  });
+
   ws.on('close', () => {
+    generalWsClients.delete(ws);
     if (orderId) {
       const set = wsClients.get(orderId);
       if (set) {
@@ -122,6 +142,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('error', () => {
+    generalWsClients.delete(ws);
     if (orderId) {
       const set = wsClients.get(orderId);
       if (set) set.delete(ws);
@@ -133,6 +154,16 @@ wss.on('connection', (ws, req) => {
     }
   });
 });
+
+// Helper: Broadcast to all connected clients (except optionally the sender)
+function broadcastToAllClients(payload, senderWs = null) {
+  const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  generalWsClients.forEach(ws => {
+    if (ws !== senderWs && ws.readyState === 1 /* OPEN */) {
+      try { ws.send(data); } catch (e) {}
+    }
+  });
+}
 
 // Helper: Broadcast to all clients waiting for a specific orderId
 function broadcastPaymentConfirmed(orderId, payload) {
@@ -243,6 +274,18 @@ async function saveState(state) {
         console.log('[MongoDB] Synced participants & images to Atlas cluster!');
       }
     }
+    // Instant SQL Watch & State Broadcast to all active clients (0 Egress)
+    broadcastToAllClients({
+      type: 'sql_watch',
+      table: 'sync_state',
+      eventType: 'UPDATE',
+      payload: state
+    });
+    broadcastToAllClients({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: state
+    });
   } catch (e) {
     console.error('Error saving state file:', e);
   }
@@ -487,16 +530,49 @@ app.get('/api/orders', (req, res) => {
 // STAFF & JUDGE AUTHENTICATION ENGINE (MongoDB Atlas Backend)
 // ══════════════════════════════════════════════════════════════════
 const SEED_STAFF = [
-  { email: 'kalikapurnabinsanghaclub@gmail.com', password_hash: 'ffb7bcda5db5dc45aa8058ab92162526f821cdb682308bcab5f9edb6456c15a6', name: 'KNSDC Super Monitor', role: 'monitor' },
+  { email: 'kalikapurnabinsanghaclub@gmail.com', password_hash: 'ffb7bcda5db5dc45aa8058ab92162526f821cdb682308bcab5f9edb6456c15a6', password: 'Sb@210617', name: 'KNSDC Super Monitor', role: 'monitor' },
   { email: 'souravbairagi121999@gmail.com', password_hash: '5440505a59224af2d0dea51b91cb84e3648a1e5cdfa16936ec47a3f68d8c7b42', password: 'Sb@210617', name: 'Super Admin', role: 'admin' },
-  { email: 'host@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', name: 'rakesh', role: 'host' },
-  { email: 'sutapa@knsdc.in', password_hash: 'd2f2516576d11e0e28059d452471ae79ce4e3ab104ea1f59b29eea532e69bb43', name: 'sutapa ganguly', role: 'judge' },
-  { email: 'surjeet@knsdc.in', password_hash: '090d2570be00b093bdf5def134d286c70618415a215b574787f02a2886e25c09', name: 'SURAJIT SARKAR', role: 'judge' },
-  { email: 'soumen@knsdc.in', password_hash: 'a4a3206f824917b22884b775d5f919c3dec31d011c70bf2db56916855e6e1116', name: 'soumen', role: 'finance' },
-  { email: 'd@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', name: 'tg', role: 'director' },
-  { email: 'pert@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', name: 'lok', role: 'service_partner' },
-  { email: 'laxmi@gmail.com', password_hash: '6fd8fc7d5d2a01a4112fe0d3d408ff4552f9a6ef9279d407352528285b07d574', name: 'kalikapur', role: 'monitor' }
+  { email: 'admin@knsdc.in', password_hash: '240be518fabd2724ddb6f04eeb1da5967448d7e831d9a5be0c2f7ede04e26f0', password: 'admin123', name: 'KNSDC Admin', role: 'admin' },
+  { email: 'monitor@knsdc.in', password_hash: '9166bfc7bb2e68c5a44862aca8ff0a25e7cdc3e8f3cc15b5849640a5af1c4bae', password: 'monitor1', name: 'Live Monitor', role: 'monitor' },
+  { email: 'host@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', password: 'host1234', name: 'rakesh', role: 'host' },
+  { email: 'sutapa@knsdc.in', password_hash: 'd2f2516576d11e0e28059d452471ae79ce4e3ab104ea1f59b29eea532e69bb43', password: 'judge123', name: 'sutapa ganguly', role: 'judge' },
+  { email: 'surjeet@knsdc.in', password_hash: '090d2570be00b093bdf5def134d286c70618415a215b574787f02a2886e25c09', password: 'judge123', name: 'SURAJIT SARKAR', role: 'judge' },
+  { email: 'soumen@knsdc.in', password_hash: 'a4a3206f824917b22884b775d5f919c3dec31d011c70bf2db56916855e6e1116', password: 'judge123', name: 'soumen', role: 'judge' },
+  { email: 'd@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', password: 'director123', name: 'tg', role: 'director' },
+  { email: 'pert@knsdc.in', password_hash: 'd56fff2322355f2f9090a421fbb6dc0acdce1679c3749d4694d1e5952c67e66f', password: 'partner123', name: 'lok', role: 'service_partner' },
+  { email: 'laxmi@gmail.com', password_hash: '6fd8fc7d5d2a01a4112fe0d3d408ff4552f9a6ef9279d407352528285b07d574', name: 'kalikapur', role: 'monitor' },
+  { email: 'referee@knsdc.in', password_hash: '5440505a59224af2d0dea51b91cb84e3648a1e5cdfa16936ec47a3f68d8c7b42', password: 'Sb@210617', name: 'Official Referee', role: 'referee' },
+  { email: 'umpire@knsdc.in', password_hash: '5440505a59224af2d0dea51b91cb84e3648a1e5cdfa16936ec47a3f68d8c7b42', password: 'Sb@210617', name: 'Official Umpire', role: 'umpire' },
+  { email: 'sports@knsdc.in', password_hash: '5440505a59224af2d0dea51b91cb84e3648a1e5cdfa16936ec47a3f68d8c7b42', password: 'Sb@210617', name: 'Sports Manager', role: 'sportsmanager' },
+  { email: 'sportsmanager@knsdc.in', password_hash: '5440505a59224af2d0dea51b91cb84e3648a1e5cdfa16936ec47a3f68d8c7b42', password: 'Sb@210617', name: 'Sports Manager', role: 'sportsmanager' },
+  { email: 'finance@knsdc.in', password_hash: '5440505a59224af2d0dea51b91cb84e3648a1e5cdfa16936ec47a3f68d8c7b42', password: 'Sb@210617', name: 'Finance Lead', role: 'finance' }
 ];
+
+async function seedStaffToMongoDB() {
+  if (!db) return;
+  try {
+    const col = db.collection('staff_credentials');
+    for (const staff of SEED_STAFF) {
+      await col.updateOne(
+        { email: staff.email },
+        {
+          $set: {
+            email: staff.email,
+            name: staff.name,
+            role: staff.role,
+            password_hash: staff.password_hash,
+            updated_at: new Date()
+          },
+          $setOnInsert: { created_at: new Date() }
+        },
+        { upsert: true }
+      );
+    }
+    console.log('[MongoDB] All roles verified and synced into staff_credentials collection!');
+  } catch (err) {
+    console.warn('[MongoDB] Staff seeding notice:', err.message);
+  }
+}
 
 
 app.get('/api/staff/validate', async (req, res) => {
@@ -637,6 +713,22 @@ app.post('/api/scores/save', async (req, res) => {
       total: Number(total) || 0,
       comments: comments || '',
       lastUpdated: nowTs
+    });
+
+    // Instant SQL Watch push to all connected monitor and judge clients
+    broadcastToAllClients({
+      type: 'sql_watch',
+      table: 'scoring_subjects',
+      eventType: 'UPDATE',
+      payload: {
+        participantId: cleanPid,
+        judgeId,
+        round: round || 'audition',
+        scores: scores || {},
+        total: Number(total) || 0,
+        comments: comments || '',
+        lastUpdated: nowTs
+      }
     });
 
     res.json({ status: 'success', message: 'Score saved to MongoDB successfully.' });
