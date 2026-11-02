@@ -498,6 +498,38 @@ const SEED_STAFF = [
   { email: 'laxmi@gmail.com', password_hash: '6fd8fc7d5d2a01a4112fe0d3d408ff4552f9a6ef9279d407352528285b07d574', name: 'kalikapur', role: 'monitor' }
 ];
 
+
+app.get('/api/staff/validate', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) return res.json({ valid: false, reason: 'No email provided.' });
+
+    // Super Admin & Super Monitor permanent immunity
+    if (email === 'souravbairagi121999@gmail.com') {
+      return res.json({ valid: true, email, role: 'admin', name: 'Super Admin' });
+    }
+    if (email === 'kalikapurnabinsanghaclub@gmail.com') {
+      return res.json({ valid: true, email, role: 'monitor', name: 'KNSDC Super Monitor' });
+    }
+
+    let staff = null;
+    if (db) {
+      staff = await db.collection('staff_credentials').findOne({ email });
+    }
+    if (!staff) {
+      staff = SEED_STAFF.find(s => s.email === email);
+    }
+
+    if (staff && staff.active !== false) {
+      return res.json({ valid: true, email: staff.email, role: staff.role || 'staff', name: staff.name });
+    }
+
+    res.json({ valid: false, reason: 'Staff account not recognized.' });
+  } catch (err) {
+    res.status(500).json({ valid: false, error: err.message });
+  }
+});
+
 app.post('/api/staff/login', async (req, res) => {
   try {
     const { email, password } = req.body;
