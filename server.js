@@ -112,7 +112,7 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
-      if (msg.type === 'broadcast' || msg.type === 'state_update' || msg.type === 'sql_watch' || msg.type === 'score_update') {
+      if (msg.type === 'broadcast' || msg.type === 'state_update' || msg.type === 'sql_watch' || msg.type === 'score_update' || msg.type === 'audio_control' || msg.type === 'stage_update') {
         broadcastToAllClients(msg, ws);
       } else if (msg.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
@@ -1954,6 +1954,112 @@ app.delete("/api/events/transactions/:id", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ══════════════════════════════════════════════════════════════
+// 🎭 LIVE STAGE & QUEUE SYNC ENGINE (MONGODB + WEBSOCKET)
+// ══════════════════════════════════════════════════════════════
+
+app.get('/api/stage/state', async (req, res) => {
+  try {
+    if (db) {
+      const doc = await db.collection('stage_state').findOne({ id: 'global_stage_state' });
+      if (doc) return res.json({ status: 'ok', data: doc });
+    }
+    const state = loadState();
+    return res.json({
+      status: 'ok',
+      data: {
+        currentOnStage: state.currentOnStage || null,
+        venueStageState: state.venueStageState || {},
+        stageTransitionAt: state.stageTransitionAt || null
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+app.post('/api/stage/update', async (req, res) => {
+  try {
+    const { currentOnStage, venueId, stageStatus, transitionAt, queueOrder, participantId, queuedAt, roundPresence, updates } = req.body;
+    const now = transitionAt || Date.now();
+    const venKey = venueId ? String(venueId) : 'global';
+
+    if (db) {
+      const col = db.collection('stage_state');
+      const updateDoc = {
+        $set: {
+          lastUpdated: now,
+          ...(currentOnStage !== undefined ? { currentOnStage } : {}),
+          ...(stageStatus !== undefined ? { stageStatus } : {}),
+          ...(now ? { stageTransitionAt: now } : {})
+        }
+      };
+      if (venueId || currentOnStage !== undefined) {
+        updateDoc.$set[`venueStageState.${venKey}`] = {
+          currentOnStage: currentOnStage || null,
+          stageStatus: stageStatus || 'active',
+          transitionAt: now
+        };
+      }
+      await col.updateOne({ id: 'global_stage_state' }, updateDoc, { upsert: true });
+
+      // Save participant queue details to MongoDB
+      if (participantId && (queueOrder !== undefined || stageStatus !== undefined)) {
+        const pCol = db.collection('stage_queue');
+        await pCol.updateOne(
+          { id: String(participantId) },
+          { 
+            $set: { 
+              id: String(participantId),
+              ...(queueOrder !== undefined ? { queueOrder } : {}),
+              ...(stageStatus !== undefined ? { stageStatus } : {}),
+              ...(queuedAt !== undefined ? { queuedAt } : {}),
+              ...(roundPresence !== undefined ? { roundPresence } : {}),
+              updatedAt: now
+            }
+          },
+          { upsert: true }
+        );
+      }
+    }
+
+    // Save to local sync_state.json
+    const state = loadState();
+    if (currentOnStage !== undefined) state.currentOnStage = currentOnStage;
+    if (now) state.stageTransitionAt = now;
+    if (!state.venueStageState) state.venueStageState = {};
+    state.venueStageState[venKey] = {
+      currentOnStage: currentOnStage || null,
+      stageStatus: stageStatus || 'active',
+      transitionAt: now
+    };
+    saveState(state);
+
+    // Broadcast live stage event to all connected clients (Monitors, Hosts, Participants)
+    broadcastToAllClients({
+      type: 'stage_update',
+      payload: {
+        currentOnStage,
+        venueId,
+        venKey,
+        stageStatus,
+        transitionAt: now,
+        participantId,
+        queueOrder,
+        queuedAt,
+        roundPresence,
+        updates: updates || []
+      }
+    });
+
+    return res.json({ status: 'ok', success: true });
+  } catch (err) {
+    console.error('[API stage/update] error:', err);
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 
 // ══════════════════════════════════════════════════════════════
 // 👥 MEMBERS DIRECTORY & 🎛️ PLANS & 📋 CHECKLIST MONGODB CLOUD ENGINE
