@@ -5619,29 +5619,9 @@ function showGoldenRibbonCelebration(participantName, judgeName) {
 }
 window.showGoldenRibbonCelebration = showGoldenRibbonCelebration;
 
-// 5-second auto-polling loop: only runs when participant is logged in and form is currently locked
-setInterval(async () => {
-  if (CURRENT_USER && window.syncEngine) {
-    const state = window.syncEngine.getData() || {};
-    const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-    if (p) {
-      const formLocked = p.formLocked === true;
-      if (formLocked) {
-        try {
-          await window.syncEngine.loadParticipants();
-        } catch(e) {
-          console.error('[Participant] Auto-poll status failed:', e);
-        }
-      }
-    }
-  }
-}, 5000);
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && window.syncEngine) {
-    window.syncEngine.loadParticipants().catch(e => console.error(e));
-  }
-});
+// ─── ZERO-POLLING ARCHITECTURE (Zero Supabase Egress) ───
+// No periodic queries or polling loops to Supabase database.
+// All live stage updates, queue movements, and scores are delivered via targeted WebSocket stream.
 
 function getParticipantPublicVotes(p, state) {
   const s = state || (window.syncEngine && window.syncEngine.getData()) || {};
@@ -8055,6 +8035,15 @@ function connectParticipantWebSocket() {
         const msg = JSON.parse(event.data);
         if (msg.type === 'score_updated') {
           applyLiveScoreUpdate(msg);
+        } else if (msg.type === 'stage_update' || msg.type === 'state_update') {
+          if (CURRENT_USER && document.getElementById('dashboard-view') && document.getElementById('dashboard-view').style.display === 'block') {
+            const state = window.syncEngine ? window.syncEngine.getData() : {};
+            const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+            if (p) {
+              renderParticipantUpcomingQueue(p, state);
+              updateParticipantFlashMessage(p, state);
+            }
+          }
         }
       } catch (err) {}
     };
