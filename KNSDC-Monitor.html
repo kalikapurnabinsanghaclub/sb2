@@ -15054,6 +15054,8 @@ async function pushParticipantDirectToStage(participantId) {
   p.stageStatus = 'on-stage';
   p.venueId = venId;
   p.isReady = true;
+  p.snul = true; // Retain S.N.U.L until all judges finish
+  p.snulResolved = false;
   currentOnStage = p.id;
   p.localMutatedAt = Date.now();
 
@@ -18152,8 +18154,10 @@ function renderPromoList(){
     const pct = maxPoss>0?Math.round(total/maxPoss*100):0;
     const checked = promoSelections.has(p.id);
 
-    // Auto-resolve S.N.U.L if all scores are present or total > 0
-    if (p.snul && total > 0) {
+    // Auto-resolve S.N.U.L ONLY if ALL present judges have completed scoring
+    const expectedJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
+    const allJudgesScored = eventPresentJudges.length > 0 ? (judgesWhoScored.size >= eventPresentJudges.length) : (total > 0);
+    if (p.snul && allJudgesScored) {
       p.snul = false;
       p.snulResolved = true;
     }
@@ -18172,8 +18176,8 @@ function renderPromoList(){
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-weight:700;font-size:14px;color:var(--text)">${escapeHtml(p.name)}</span>
-          ${isSnul ? `<span style="background:#2563eb;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(37,99,235,0.3);letter-spacing:0.3px;" title="Offline Paper Score Pending">📝 S.N.U.L</span>` : ''}
-          ${isSnulResolved ? `<span style="background:#10b981;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(16,185,129,0.3);" title="Offline Score Updated">✓ Score Updated</span>` : ''}
+          ${isSnul ? `<span style="background:#2563eb;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(37,99,235,0.3);letter-spacing:0.3px;display:inline-flex;align-items:center;gap:3px;" title="Offline Paper Score Pending (${judgesWhoScored.size}/${expectedJudgesCount} Judges Scored)">📝 S.N.U.L (${judgesWhoScored.size}/${expectedJudgesCount} Judges)</span>` : ''}
+          ${isSnulResolved ? `<span style="background:#10b981;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(16,185,129,0.3);display:inline-flex;align-items:center;gap:3px;" title="All Judges Completed Scoring">✓ All Scores Updated</span>` : ''}
         </div>
         <div style="font-size:8px;color:var(--text-muted)">${p.id} · ${cat?cat.name.substring(0,15):'—'}</div>
         <div style="margin-top:6px">
