@@ -11856,6 +11856,55 @@ function getParticipantDirectLoginUrl(p) {
 let currentWaParticipantId = null;
 let currentWaTemplateType = 'registration';
 
+function formatAuditionDateFriendly(dStr) {
+  if (!dStr) return '';
+  const raw = String(dStr).trim();
+  const dateOnly = raw.includes('T') ? raw.split('T')[0] : raw;
+  const parts = dateOnly.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+  }
+  return dateOnly;
+}
+
+function getParticipantAuditionDate(p, activeEv) {
+  if (!p) return 'Date TBA';
+  // 1. Check direct auditionDate or date field on participant
+  let d = p.auditionDate || p.date || '';
+  // 2. Check form answers submitted during registration
+  if (!d && p.formAnswers) {
+    d = p.formAnswers['Audition Date'] || p.formAnswers['auditionDate'] || p.formAnswers['AuditionDate'] ||
+        p.formAnswers['Audition'] || p.formAnswers['Preferred Date'] || p.formAnswers['preferred_date'] ||
+        p.formAnswers['audition_date'] || p.formAnswers['Date'] || p.formAnswers['date'] || '';
+  }
+  // 3. Check if mapped to a venue with defined dates
+  if (!d && typeof venues !== 'undefined' && venues && venues.length) {
+    const v = resolveParticipantVenue(p, venues);
+    if (v && v.dates && v.dates.length === 1) {
+      d = v.dates[0];
+    }
+  }
+  // 4. Fallback to event date if no specific audition date was selected
+  if (!d && activeEv) {
+    d = activeEv.date || activeEv.startDate || activeEv.eventDate || '';
+  }
+  return formatAuditionDateFriendly(d) || 'Date TBA';
+}
+
+function getParticipantAuditionSlot(p) {
+  if (!p) return '';
+  let slot = p.auditionSlot || p.slot || p.reportingTime || '';
+  if (!slot && p.formAnswers) {
+    slot = p.formAnswers['Audition Slot'] || p.formAnswers['Slot'] || p.formAnswers['slot'] ||
+           p.formAnswers['Reporting Time'] || p.formAnswers['reportingTime'] ||
+           p.formAnswers['Time Slot'] || p.formAnswers['timeSlot'] || '';
+  }
+  return slot ? String(slot).trim() : '';
+}
+
 function getWhatsAppTemplateText(type, p) {
   const s = syncEngine.getData();
   const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
@@ -11863,7 +11912,9 @@ function getWhatsAppTemplateText(type, p) {
   const organizerName = activeEv?.organizer || activeEv?.org || 'Kalikapur Nabin Sangha';
   const venName = getParticipantVenueName(p, venues);
   const venueName = (venName && venName !== '—') ? venName : (activeEv?.venue || 'Venue TBA');
-  const eventDate = activeEv?.date || activeEv?.startDate || 'Date TBA';
+  const auditionDate = getParticipantAuditionDate(p, activeEv);
+  const auditionSlot = getParticipantAuditionSlot(p);
+  const auditionDateWithSlot = auditionSlot ? `${auditionDate} (Slot: ${auditionSlot})` : auditionDate;
   const directLink = getParticipantDirectLoginUrl(p);
   const name = p.name || 'Participant';
   const id = p.id;
@@ -11878,7 +11929,7 @@ You are successfully registered for *${eventName}*! 🎉
 • Registration ID: *#${id}*
 • Organizer: *${organizerName}*
 • Venue: *${venueName}*
-• Date: *${eventDate}*
+• Audition Date: *${auditionDateWithSlot}*
 
 🔐 *Your Direct 1-Click Login Link:*
 👉 ${directLink}
@@ -11887,7 +11938,7 @@ You are successfully registered for *${eventName}*! 🎉
 *⚠️ PLEASE CHECK YOUR DETAILS CAREFULLY:*
 *If there is any mistake in your registration details, please tap the link above to review & edit your details immediately.*
 
-We kindly request you to arrive on time.
+We kindly request you to arrive on time for your audition.
 
 ---
 This is an automatically generated message to remind you. Thank you!
@@ -12002,8 +12053,14 @@ function openWhatsAppModal(id, defaultTemplate = 'registration') {
     return;
   }
 
-  currentWaParticipantId = id;
+    currentWaParticipantId = id;
   currentWaTemplateType = defaultTemplate;
+
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
+  const auditionDate = getParticipantAuditionDate(p, activeEv);
+  const auditionSlot = getParticipantAuditionSlot(p);
+  const auditionDateWithSlot = auditionSlot ? `${auditionDate} (Slot: ${auditionSlot})` : auditionDate;
 
   const existing = document.getElementById('participant-wa-modal');
   if (existing) existing.remove();
@@ -12031,12 +12088,14 @@ function openWhatsAppModal(id, defaultTemplate = 'registration') {
           <div style="width:38px;height:38px;background:#25D366;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
           </div>
-          <div>
+                    <div>
             <div style="font-weight:900;font-size:15px;letter-spacing:-0.2px;">Send WhatsApp Message</div>
-            <div style="font-size:11.5px;opacity:0.9;display:flex;align-items:center;gap:6px;">
+            <div style="font-size:11.5px;opacity:0.9;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span><strong>${escapeHtml(p.name)}</strong> (ID: #${p.id})</span>
               <span>•</span>
               <span style="font-family:var(--fm);">${p.phone}</span>
+              <span>•</span>
+              <span style="background:rgba(255,255,255,0.22);padding:1px 6px;border-radius:4px;font-size:11px;">📅 Audition: <strong>${auditionDateWithSlot}</strong></span>
             </div>
           </div>
         </div>
@@ -12113,7 +12172,7 @@ function openWhatsAppModal(id, defaultTemplate = 'registration') {
           <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{id}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ ID</button>
           <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{event}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Event</button>
           <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{venue}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Venue</button>
-          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{date}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Date</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{date}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Audition Date</button>
           <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{link}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Direct Link</button>
         </div>
 
@@ -12210,7 +12269,9 @@ function insertWaTag(tag) {
   const organizerName = activeEv?.organizer || activeEv?.org || 'Kalikapur Nabin Sangha';
   const venName = getParticipantVenueName(p, venues);
   const venueName = (venName && venName !== '—') ? venName : (activeEv?.venue || 'Venue TBA');
-  const eventDate = activeEv?.date || activeEv?.startDate || 'Date TBA';
+    const auditionDate = getParticipantAuditionDate(p, activeEv);
+  const auditionSlot = getParticipantAuditionSlot(p);
+  const auditionDateWithSlot = auditionSlot ? `${auditionDate} (Slot: ${auditionSlot})` : auditionDate;
   const directLink = getParticipantDirectLoginUrl(p);
 
   let replacement = tag;
@@ -12218,7 +12279,7 @@ function insertWaTag(tag) {
   else if (tag === '{id}') replacement = p.id;
   else if (tag === '{event}') replacement = eventName;
   else if (tag === '{venue}') replacement = venueName;
-  else if (tag === '{date}') replacement = eventDate;
+  else if (tag === '{date}' || tag === '{audition_date}') replacement = auditionDateWithSlot;
   else if (tag === '{link}') replacement = directLink;
 
   const start = textarea.selectionStart;
@@ -22241,6 +22302,9 @@ window.sendSelectedWhatsApp = sendSelectedWhatsApp;
 window.openParticipantActionMenu = openParticipantActionMenu;
 window.closeParticipantActionMenu = closeParticipantActionMenu;
 window.lockParticipantForm = lockParticipantForm;
+window.getParticipantAuditionDate = getParticipantAuditionDate;
+window.getParticipantAuditionSlot = getParticipantAuditionSlot;
+window.formatAuditionDateFriendly = formatAuditionDateFriendly;
 window.openBulkWhatsApp = openBulkWhatsApp;
 window.filterApplied = filterApplied;
 window.filterAppliedCat = filterAppliedCat;
