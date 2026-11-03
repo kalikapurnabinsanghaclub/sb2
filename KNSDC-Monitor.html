@@ -2731,6 +2731,20 @@
   }
 </style>
 
+
+<style id="round-presence-popover-styles">
+@keyframes popoverFadeIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.round-presence-popover {
+  animation: popoverFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 16px 42px rgba(0,0,0,0.18), 0 0 1px rgba(0,0,0,0.2);
+}
+.round-presence-popover::-webkit-scrollbar { width: 5px; }
+.round-presence-popover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+</style>
+
 </head>
 <body>
 <!-- STOP DANCING VIDEO BROADCAST OVERLAY -->
@@ -3239,7 +3253,7 @@
       </div>
       <div class="tbl-wrap">
         <table>
-          <thead id="applied-thead"><tr><th>ID</th><th>Name</th><th>Phone</th><th>Address</th><th>Category</th><th>Age</th><th>Venue</th><th>Audition</th><th>Qualified</th><th>Semifinal</th><th>Final</th><th>Actions</th></tr></thead>
+          <thead id="applied-thead"><tr><th>ID</th><th>Name</th><th>Phone</th><th>Address</th><th>Category</th><th>Age</th><th>Venue</th><th style="text-align:center;min-width:130px;">Round Presence</th><th>Actions</th></tr></thead>
           <tbody id="applied-tbody"></tbody>
         </table>
       </div>
@@ -10074,6 +10088,179 @@ function regTab(tab, el){
   if(tab==='venues') renderVenueDates();
 }
 
+
+// ══════════════════════════════════════════
+// COMPACT ROUND PRESENCE POPOVER MENU
+// ══════════════════════════════════════════
+let activePresencePopover = null;
+
+function closeRoundPresenceMenu() {
+  if (activePresencePopover) {
+    activePresencePopover.remove();
+    activePresencePopover = null;
+  }
+}
+
+// Global click outside listener to close popover
+document.addEventListener('click', (e) => {
+  if (activePresencePopover && !activePresencePopover.contains(e.target) && !e.target.closest('.round-presence-btn')) {
+    closeRoundPresenceMenu();
+  }
+});
+
+// Escape key listener to close popover
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeRoundPresenceMenu();
+});
+
+function openRoundPresenceMenu(e, participantId) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // If clicking on same participant's already open popover, close it
+  if (activePresencePopover && activePresencePopover._participantId === participantId) {
+    closeRoundPresenceMenu();
+    return;
+  }
+
+  closeRoundPresenceMenu();
+
+  const p = participants.find(x => String(x.id) === String(participantId));
+  if (!p) return;
+
+  const btn = e ? e.currentTarget : null;
+  const rect = btn ? btn.getBoundingClientRect() : { top: 150, bottom: 180, left: 200, width: 120 };
+  const rounds = getEventRounds();
+
+  const popover = document.createElement('div');
+  popover.className = 'round-presence-popover glass-card';
+  popover.style.cssText = `
+    position: fixed;
+    z-index: 10000;
+    width: 290px;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    backdrop-filter: blur(14px);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  `;
+
+  // Compute position (stay fully visible on screen)
+  let top = rect.bottom + 8;
+  let left = rect.left + (rect.width / 2) - 145;
+
+  if (left < 10) left = 10;
+  if (left + 295 > window.innerWidth) left = window.innerWidth - 305;
+  if (top + 340 > window.innerHeight) {
+    top = Math.max(10, rect.top - 340);
+  }
+
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+
+  const renderPopoverContent = () => {
+    const presentCount = rounds.filter(r => getRoundPresent(p, r.id)).length;
+    popover.innerHTML = `
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:10px;">
+        <div style="max-width:230px;">
+          <div style="font-weight:900;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <span>📋</span> ${escapeHtml(p.name || 'Participant')}
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">
+            ID: <span style="font-family:var(--fm);color:var(--amber2);font-weight:700;">${p.id}</span> · Present in <strong>${presentCount}/${rounds.length}</strong> Rounds
+          </div>
+        </div>
+        <button type="button" onclick="closeRoundPresenceMenu()" style="border:none;background:transparent;cursor:pointer;font-size:15px;color:var(--text-muted);padding:2px 6px;border-radius:6px;transition:all 0.15s;" onmouseover="this.style.background='rgba(0,0,0,0.06)'" onmouseout="this.style.background='transparent'">✕</button>
+      </div>
+
+      <!-- Multiple Round Selectors -->
+      <div style="display:flex;flex-direction:column;gap:7px;max-height:220px;overflow-y:auto;padding-right:2px;">
+        ${rounds.map((r, i) => {
+          const isPresent = getRoundPresent(p, r.id);
+          const reached = hasReachedRound(p, r.id);
+          return `
+            <div onclick="toggleRoundPresenceInMenu('${p.id}', '${r.id}')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:10px;border:1.5px solid ${isPresent ? 'rgba(5,150,105,0.45)' : 'var(--border)'};background:${isPresent ? 'rgba(5,150,105,0.09)' : 'var(--surface2)'};cursor:pointer;transition:all 0.15s;user-select:none;" onmouseover="this.style.transform='translateX(2px)'" onmouseout="this.style.transform='none'">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:10px;">${reached ? '🟢' : '⚪'}</span>
+                <div>
+                  <div style="font-weight:800;font-size:12px;color:var(--text);">${escapeHtml(r.name)}</div>
+                  <div style="font-size:9px;color:var(--text-muted);font-weight:600;">Stage ${i+1}${reached ? ' · Reached' : ''}</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;">
+                <span class="badge ${isPresent ? 'b-green' : 'b-gray'}" style="font-size:10px;font-weight:800;padding:3px 8px;letter-spacing:0.3px;">
+                  ${isPresent ? '✓ Present' : 'Absent'}
+                </span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- Footer Quick Multi-Actions -->
+      <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;gap:6px;">
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-xs btn-ghost" onclick="setAllRoundPresenceInMenu('${p.id}', true)" style="border-radius:6px;font-weight:700;font-size:10px;padding:4px 8px;border:1px solid var(--border);">All ✓</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="setAllRoundPresenceInMenu('${p.id}', false)" style="border-radius:6px;font-weight:700;font-size:10px;padding:4px 8px;color:var(--red);border:1px solid var(--border);">Clear</button>
+        </div>
+        <button type="button" class="btn btn-xs btn-amber" onclick="closeRoundPresenceMenu()" style="border-radius:8px;font-weight:800;font-size:11px;padding:5px 14px;">Done</button>
+      </div>
+    `;
+  };
+
+  renderPopoverContent();
+  document.body.appendChild(popover);
+  activePresencePopover = popover;
+  activePresencePopover._render = renderPopoverContent;
+  activePresencePopover._participantId = participantId;
+}
+
+function toggleRoundPresenceInMenu(participantId, roundId) {
+  const p = participants.find(x => String(x.id) === String(participantId));
+  if (!p) return;
+  markPresent(participantId, roundId);
+  if (activePresencePopover && activePresencePopover._render) {
+    activePresencePopover._render();
+  }
+}
+
+function setAllRoundPresenceInMenu(participantId, isPresent) {
+  const p = participants.find(x => String(x.id) === String(participantId));
+  if (!p) return;
+  const rounds = getEventRounds();
+  rounds.forEach(r => {
+    setRoundPresent(p, r.id, isPresent);
+  });
+  if (!isPresent) {
+    p.queueOrder = null;
+    if (p.stageStatus === 'queue' || p.stageStatus === 'on-stage') {
+      p.stageStatus = 'waiting';
+    }
+  }
+  if (window.syncEngine && window.syncEngine.updateParticipant) {
+    window.syncEngine.updateParticipant(p.id, {
+      present: p.present,
+      presentMarkedAt: p.presentMarkedAt,
+      queueOrder: p.queueOrder,
+      stageStatus: p.stageStatus,
+      roundPresence: p.roundPresence
+    }).catch(e => console.error(e));
+  }
+  syncAll();
+  renderVenueParticipants();
+  if (document.getElementById('pp-registration')?.classList.contains('active')) renderApplied();
+  toast(isPresent ? 'Marked present in all rounds!' : 'Cleared presence for all rounds');
+  if (activePresencePopover && activePresencePopover._render) {
+    activePresencePopover._render();
+  }
+}
+
 function renderApplied(){
   const search = regSearchFilter;
   const catFilter = regCatFilter;
@@ -10137,17 +10324,17 @@ function renderApplied(){
   const countEl = document.getElementById('reg-count');
   if(countEl) countEl.textContent = data.length;
 
-  // Dynamically update registration table header to match configured rounds
-  const rounds = getEventRounds();
+  // Compact registration table header with single Round Presence column to keep width short
   const thead = document.getElementById('applied-thead');
   if (thead) {
     thead.innerHTML = `<tr>
       <th>ID</th><th>Name</th><th>Phone</th><th>Address</th><th>Category</th><th>Age</th><th>Venue</th>
-      ${rounds.map(r => `<th>${escapeHtml(r.name)}</th>`).join('')}
+      <th style="text-align:center;min-width:130px;">Round Presence</th>
       <th>Actions</th>
     </tr>`;
   }
 
+  const rounds = getEventRounds();
   const tbody = document.getElementById('applied-tbody');
   if (!tbody) return;
   tbody.innerHTML = data.map(p=>{
@@ -10163,17 +10350,26 @@ function renderApplied(){
          <div style="display:inline-flex; align-items:center; gap:3px; background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; font-size:8.5px; font-weight:800; padding:2px 6px; border-radius:4px; margin-left:4px; box-shadow:0 2px 6px rgba(245,158,11,0.35); text-transform:uppercase;">🎖️ GOLDEN RIBBON (${p.goldenRibbonBy || 'Judge'})</div>`
       : `<div style="font-weight:700;">${p.name || '—'}</div>`;
 
-    // Dynamic presence cells for each configured round
-    const roundCells = rounds.map(r => `
-      <td>
-        <div style="display:flex;align-items:center;gap:6px;font-size:10px">
-          ${hasReachedRound(p, r.id) ? '🟢' : '🔴'}
-          <span class="badge ${getRoundPresent(p, r.id)?'b-green':'b-red'}" style="cursor:pointer" onclick="markPresent('${p.id}', '${r.id}')" title="Click to toggle presence for ${escapeHtml(r.name)}">
-            ${getRoundPresent(p, r.id)?'✓ Yes':'✗ No'}
-          </span>
-        </div>
-      </td>
-    `).join('');
+    // Compact multiple round presence button
+    const presentRounds = rounds.filter(r => getRoundPresent(p, r.id));
+    const pCount = presentRounds.length;
+    const totalR = rounds.length;
+
+    let presenceSummaryHtml = '';
+    if (pCount === 0) {
+      presenceSummaryHtml = `
+        <button type="button" class="btn btn-xs round-presence-btn" onclick="openRoundPresenceMenu(event, '${p.id}')" style="display:inline-flex;align-items:center;gap:5px;border-radius:18px;padding:4px 10px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);color:#dc2626;font-weight:800;font-size:11px;cursor:pointer;white-space:nowrap;transition:all 0.15s;" onmouseover="this.style.background='rgba(239,68,68,0.12)'" onmouseout="this.style.background='rgba(239,68,68,0.06)'">
+          <span style="font-size:8px;">🔴</span> None (0/${totalR}) <span style="font-size:8px;opacity:0.6;">▾</span>
+        </button>
+      `;
+    } else {
+      const labelText = presentRounds.map(r => r.name.slice(0, 4)).join(', ');
+      presenceSummaryHtml = `
+        <button type="button" class="btn btn-xs round-presence-btn" onclick="openRoundPresenceMenu(event, '${p.id}')" style="display:inline-flex;align-items:center;gap:5px;border-radius:18px;padding:4px 10px;border:1px solid rgba(5,150,105,0.35);background:rgba(5,150,105,0.08);color:var(--green2);font-weight:800;font-size:11px;cursor:pointer;white-space:nowrap;transition:all 0.15s;" onmouseover="this.style.background='rgba(5,150,105,0.15)'" onmouseout="this.style.background='rgba(5,150,105,0.08)'" title="${presentRounds.map(r=>r.name).join(', ')}">
+          <span style="font-size:8px;">🟢</span> ${escapeHtml(labelText)} (${pCount}/${totalR}) <span style="font-size:8px;opacity:0.6;">▾</span>
+        </button>
+      `;
+    }
 
     return `<tr>
       <td><span style="font-family:var(--fm);color:var(--amber2);font-size:12px">${p.id}</span></td>
@@ -10186,7 +10382,7 @@ function renderApplied(){
       <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
       <td>${ageGrp}</td>
       <td style="font-size:12px">${venName}</td>
-      ${roundCells}
+      <td style="text-align:center;">${presenceSummaryHtml}</td>
       <td style="display:flex;gap:5px;align-items:center">
         ${p.formLocked ? `<button title="Unlock Participant Portal Form" class="btn btn-ghost btn-xs" style="background:#fef08a" onclick="unlockParticipantForm('${p.id}')">🔓</button>` : `<button title="Form Unlocked" class="btn btn-ghost btn-xs" style="opacity:0.3;cursor:not-allowed">🔓</button>`}
         <button class="btn btn-ghost btn-xs" onclick="openEditReg('${p.id}')">✏️</button>
@@ -10196,7 +10392,7 @@ function renderApplied(){
         </button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="${8 + rounds.length}" style="text-align:center;color:var(--text-muted);padding:30px">No registrations found</td></tr>`;
+  }).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:30px">No registrations found</td></tr>`;
 }
 
 
@@ -21007,6 +21203,10 @@ window.closeFullImageModal = closeFullImageModal;
 window.downloadPromoJPG = downloadPromoJPG;
 window.exportStatistics = exportStatistics;
 window.settingsTab = settingsTab;
+window.openRoundPresenceMenu = openRoundPresenceMenu;
+window.closeRoundPresenceMenu = closeRoundPresenceMenu;
+window.toggleRoundPresenceInMenu = toggleRoundPresenceInMenu;
+window.setAllRoundPresenceInMenu = setAllRoundPresenceInMenu;
 window.saveRoundRules = saveRoundRules;
 window.renderRoundRules = renderRoundRules;
 window.changeTotalRounds = changeTotalRounds;
