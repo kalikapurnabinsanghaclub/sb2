@@ -3664,7 +3664,7 @@
              <button class="btn btn-ghost btn-sm" onclick="downloadRankingsJPG()" style="color:var(--text);border:1px solid var(--border);display:flex;align-items:center;gap:4px">🖼️ JPG</button>
           </div>
        </div>
-       <div class="tabs" style="display:flex;gap:8px;flex-wrap:wrap;">
+       <div class="tabs" id="leaderboard-round-tabs" style="display:flex;gap:8px;flex-wrap:wrap;">
          <div class="tab active" onclick="leaderTab('audition',this)">Audition</div>
          <div class="tab" onclick="leaderTab('qualified',this)">Qualified</div>
          <div class="tab" onclick="leaderTab('semifinal',this)">Semifinal</div>
@@ -7874,7 +7874,7 @@ function hydrate() {
     } else if (pageId === 'statistics' && typeof currentStatsTab !== 'undefined') {
       if (currentStatsTab === 'feedback' && typeof renderFeedbacks === 'function') renderFeedbacks();
       if (currentStatsTab === 'publicvotes' && typeof renderPublicVotes === 'function') renderPublicVotes();
-    } else if (pageId === 'scoring') {
+    } else if (pageId === 'leaderboard' || pageId === 'scoring') {
       if (typeof renderLeaderboard === 'function') renderLeaderboard();
     } else if (pageId === 'events') {
       if (typeof renderMonitorEvents === 'function') renderMonitorEvents();
@@ -8036,9 +8036,53 @@ function renderLeaderboard() {
     const container = document.getElementById('leaderboard-content');
     if(!container) return;
 
+    // Resolve active event ID reliably
+    const activeEvId = activeEventId || 
+      (window.syncEngine && typeof window.syncEngine.getData === 'function' && window.syncEngine.getData().activeEventId) || 
+      (window.EVENTS && window.EVENTS[0] ? String(window.EVENTS[0].id) : null) || 
+      localStorage.getItem('knsdc_activeEventId');
+
+    // Dynamically render round tabs based on active event's round rules
+    const roundTabsContainer = document.getElementById('leaderboard-round-tabs');
+    if (roundTabsContainer) {
+      const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [
+        { id: 'audition', name: 'Audition' },
+        { id: 'qualified', name: 'Qualified' },
+        { id: 'semifinal', name: 'Semifinal' },
+        { id: 'final', name: 'Final' }
+      ];
+
+      // Ensure currentLeaderRound is valid
+      if (!currentLeaderRound) {
+        currentLeaderRound = eventRounds[0]?.id || 'audition';
+      }
+
+      let tabsHtml = '';
+      eventRounds.forEach((r, idx) => {
+        const isActive = currentLeaderRound === r.id;
+        tabsHtml += `<div class="tab ${isActive ? 'active' : ''}" onclick="leaderTab('${r.id}',this)">${r.name}</div>`;
+      });
+
+      // Keep combined tabs for standard progression
+      const hasAud = eventRounds.some(r => r.id === 'audition');
+      const hasQual = eventRounds.some(r => r.id === 'qualified');
+      if (hasAud && hasQual) {
+        const isAQ = currentLeaderRound === 'audition_qualified';
+        tabsHtml += `<div class="tab ${isAQ ? 'active' : ''}" style="font-weight:800;border:1.5px solid #10b981;color:#10b981;" onclick="leaderTab('audition_qualified',this)">Audition + Qualified</div>`;
+      }
+      const hasSemi = eventRounds.some(r => r.id === 'semifinal');
+      const hasFin = eventRounds.some(r => r.id === 'final');
+      if (hasSemi && hasFin) {
+        const isSF = currentLeaderRound === 'semifinal_final';
+        tabsHtml += `<div class="tab ${isSF ? 'active' : ''}" style="font-weight:800;border:1.5px solid #6366f1;color:#6366f1;" onclick="leaderTab('semifinal_final',this)">Semifinal + Final</div>`;
+      }
+
+      roundTabsContainer.innerHTML = tabsHtml;
+    }
+
     const eventPresentJudges = judges.filter(j => 
       j.present === true && 
-      (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0') && 
+      (!activeEvId || String(j.eventId) === String(activeEvId) || String(j.eventId) === '0') && 
       agreements.some(a => 
         (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
         (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
@@ -8048,10 +8092,9 @@ function renderLeaderboard() {
 
     // Dynamically sync and populate Category Selector options
     const catSelect = document.getElementById('leaderboard-cat-filter');
+    const eventCats = categories.filter(c => !activeEvId || String(c.eventId) === String(activeEvId) || !c.eventId);
     if (catSelect) {
-      const eventCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
       const activeFilterVal = catSelect.value;
-      
       let selectHtml = '<option value="">All Categories</option>';
       eventCats.forEach(c => {
         selectHtml += `<option value="${c.id}" ${String(c.id) === String(activeFilterVal) ? 'selected' : ''}>${c.name}</option>`;
@@ -8066,18 +8109,25 @@ function renderLeaderboard() {
     const isCombined = isCombinedAQ || isCombinedSF;
     const combinedRoundList = isCombinedAQ ? ['audition', 'qualified'] : (isCombinedSF ? ['semifinal', 'final'] : [currentLeaderRound]);
 
-    // Base participant pool for this event
-    let baseParticipants = [];
-    if (isCombined) {
-      baseParticipants = participants.filter(p => 
-        (String(p.eventId) === String(activeEventId) || !p.eventId) &&
-        (combinedRoundList.includes(p.round) || (p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0)))
-      );
-    } else {
-      baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
-    }
+    // Base participant pool for this event with flexible round matching
+    const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
+    const baseParticipants = participants.filter(p => {
+      // 1. Event filter
+      const matchesEvent = !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId);
+      if (!matchesEvent) return false;
 
-    // Scored participants
+      // 2. Round filter
+      if (isCombined) {
+        const hasScoreInRound = p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0);
+        return combinedRoundList.includes(p.round) || hasScoreInRound;
+      } else {
+        const pRound = String(p.round || 'audition').toLowerCase();
+        const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
+        return pRound === targetRoundClean || hasScoreInTarget;
+      }
+    });
+
+    // Compute scores for each participant
     const scoredList = baseParticipants.map(p => {
         const pClone = { ...p };
         if (isCombined) {
@@ -8085,48 +8135,54 @@ function renderLeaderboard() {
           pClone.totalScore = res.grandTotal;
           pClone.roundBreakdown = res.breakDown;
         } else {
-          if (!pClone.roundScores) pClone.roundScores = {};
-          if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-          pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
+          // Look up scores in roundScores[targetRoundClean], fallback to p.scores
+          let scoresObj = (pClone.roundScores && pClone.roundScores[targetRoundClean] && Object.keys(pClone.roundScores[targetRoundClean]).length > 0)
+            ? pClone.roundScores[targetRoundClean]
+            : (String(pClone.round || 'audition').toLowerCase() === targetRoundClean ? pClone.scores : null);
+          
+          if (!scoresObj && pClone.scores && Object.keys(pClone.scores).length > 0) {
+            scoresObj = pClone.scores;
+          }
 
           let total = 0;
-          Object.values(pClone.scores || {}).forEach(jScores => {
-              Object.values(jScores).forEach(val => total += (Number(val) || 0));
-          });
+          if (scoresObj) {
+            Object.values(scoresObj).forEach(jScores => {
+              if (typeof jScores === 'number') {
+                total += jScores;
+              } else if (jScores && typeof jScores === 'object') {
+                Object.values(jScores).forEach(val => total += (Number(val) || 0));
+              }
+            });
+          }
           pClone.totalScore = total;
         }
         return pClone;
     });
 
     let html = '';
-    // Determine which categories to render
-    const activeCats = activeCatId 
-      ? categories.filter(c => String(c.id) === String(activeCatId))
-      : categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+    const renderedPids = new Set();
 
-    activeCats.forEach(cat => {
-      const catScored = scoredList.filter(p => String(p.catId) === String(cat.id))
-                                  .sort((a, b) => b.totalScore - a.totalScore);
+    // Helper to render a category leaderboard section
+    const renderCategoryBlock = (catName, catColor, catScoredList) => {
+      if (!catScoredList || catScoredList.length === 0) return '';
+      catScoredList.sort((a, b) => b.totalScore - a.totalScore);
+      const top3 = catScoredList.slice(0, 3);
       
-      if (catScored.length === 0) return;
-
-      const top3 = catScored.slice(0, 3);
-      
-      html += `
+      let blockHtml = `
       <div class="category-leaderboard-section" style="margin-bottom:40px; border-bottom:1px solid var(--border); padding-bottom:30px;">
         <div style="font-family:var(--fh); font-size:18px; font-weight:800; color:var(--text); margin-bottom:20px; display:flex; align-items:center; gap:8px;">
-          <span style="background:${cat.color}20; color:${cat.color}; padding:4px 12px; border-radius:12px; font-size:14px; border:1px solid ${cat.color}30">📂 Category: ${cat.name}</span>
-          <span style="color:var(--text-muted); font-size:12px; font-weight:normal;">(${catScored.length} participant${catScored.length > 1 ? 's' : ''})</span>
+          <span style="background:${catColor ? catColor + '20' : 'rgba(217,119,6,0.1)'}; color:${catColor || 'var(--amber2)'}; padding:4px 12px; border-radius:12px; font-size:14px; border:1px solid ${catColor ? catColor + '30' : 'rgba(217,119,6,0.2)'}">📂 Category: ${catName}</span>
+          <span style="color:var(--text-muted); font-size:12px; font-weight:normal;">(${catScoredList.length} participant${catScoredList.length > 1 ? 's' : ''})</span>
         </div>
       `;
 
       if (top3.length > 0) {
-        html += `
+        blockHtml += `
         <div class="podium-wrap">
             ${top3[1] ? `
             <div class="podium-item">
                 <div class="podium-player">
-                    <div class="podium-avatar" style="border-color:var(--blue2)">${top3[1].name[0]}</div>
+                    <div class="podium-avatar" style="border-color:var(--blue2)">${(top3[1].name||'P')[0]}</div>
                     <div class="podium-name">${top3[1].name}</div>
                     <div class="podium-score"><span class="judge-score-val">${top3[1].totalScore} pts</span></div>
                 </div>
@@ -8135,7 +8191,7 @@ function renderLeaderboard() {
             
             <div class="podium-item">
                 <div class="podium-player">
-                    <div class="podium-avatar" style="width:72px;height:72px;font-size:32px;border-color:var(--amber2)">${top3[0].name[0]}</div>
+                    <div class="podium-avatar" style="width:72px;height:72px;font-size:32px;border-color:var(--amber2)">${(top3[0].name||'P')[0]}</div>
                     <div class="podium-name" style="font-size:18px">${top3[0].name}</div>
                     <div class="podium-score" style="font-size:14px;color:var(--amber2)"><span class="judge-score-val">${top3[0].totalScore} pts</span></div>
                 </div>
@@ -8145,7 +8201,7 @@ function renderLeaderboard() {
             ${top3[2] ? `
             <div class="podium-item">
                 <div class="podium-player">
-                    <div class="podium-avatar" style="border-color:var(--cyan2)">${top3[2].name[0]}</div>
+                    <div class="podium-avatar" style="border-color:var(--cyan2)">${(top3[2].name||'P')[0]}</div>
                     <div class="podium-name">${top3[2].name}</div>
                     <div class="podium-score"><span class="judge-score-val">${top3[2].totalScore} pts</span></div>
                 </div>
@@ -8154,7 +8210,7 @@ function renderLeaderboard() {
         </div>`;
       }
 
-      html += `
+      blockHtml += `
         <div class="tbl-wrap">
             <table class="glass-table">
                 <thead>
@@ -8166,7 +8222,7 @@ function renderLeaderboard() {
                     </tr>
                 </thead>
                 <tbody>
-                    ${catScored.map((p, i) => {
+                    ${catScoredList.map((p, i) => {
                         const isTop3 = i < 3;
                         return `
                             <tr class="${isTop3 ? 'top-row' : ''}">
@@ -8177,14 +8233,14 @@ function renderLeaderboard() {
                                 </td>
                                 <td>
                                     <div style="display:flex;align-items:center;gap:12px">
-                                        <div class="avatar-circle" style="width:36px;height:36px;font-size:14px;background:${isTop3 ? 'var(--amber2)20' : 'var(--surface3)'};color:${isTop3 ? 'var(--amber2)' : 'var(--text-dim)'}">${p.name[0]}</div>
+                                        <div class="avatar-circle" style="width:36px;height:36px;font-size:14px;background:${isTop3 ? 'var(--amber2)20' : 'var(--surface3)'};color:${isTop3 ? 'var(--amber2)' : 'var(--text-dim)'}">${(p.name||'P')[0]}</div>
                                         <div>
-                                            <div style="font-weight:700;font-size:14px">${p.name}</div>
+                                            <div style="font-weight:700;font-size:14px">${p.name || 'Participant'}</div>
                                             <div style="font-size:9px;color:var(--text-muted)">${p.id}</div>
                                         </div>
                                     </div>
                                 </td>
-                                <td><span class="badge ${cat ? cat.color : 'b-gray'}">${cat ? cat.name : 'Unknown'}</span></td>
+                                <td><span class="badge ${catColor || 'b-gray'}">${catName}</span></td>
                                 <td style="text-align:right">
                                     <div class="judge-score-val" style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore} <span style="font-size:12px;font-weight:normal;opacity:0.8">pts</span></div>
                                     ${isCombined ? `
@@ -8209,11 +8265,44 @@ function renderLeaderboard() {
         </div>
       </div>
       `;
-    });
+      return blockHtml;
+    };
+
+    // 1. Iterate configured categories
+    const activeCats = activeCatId 
+      ? eventCats.filter(c => String(c.id) === String(activeCatId))
+      : eventCats;
+
+    if (activeCats.length > 0) {
+      activeCats.forEach(cat => {
+        const catScored = scoredList.filter(p => {
+          const matches = String(p.catId) === String(cat.id) || (p.category && String(p.category).toLowerCase() === String(cat.name).toLowerCase());
+          if (matches) renderedPids.add(p.id);
+          return matches;
+        });
+        html += renderCategoryBlock(cat.name, cat.color, catScored);
+      });
+    }
+
+    // 2. Fallback for unclassified participants (or if no categories defined)
+    const unmatched = scoredList.filter(p => !renderedPids.has(p.id));
+    if (unmatched.length > 0 && (!activeCatId || activeCats.length === 0)) {
+      html += renderCategoryBlock('General / All Participants', 'var(--blue2)', unmatched);
+    }
 
     if (html === '') {
-      html = `<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">No participants found for ${currentLeaderRound} in this venue.</div>`;
+      const roundLabel = (typeof getRoundLabel === 'function') ? (getRoundLabel(currentLeaderRound) || currentLeaderRound) : currentLeaderRound;
+      html = `
+        <div class="card" style="text-align:center;padding:50px 20px;color:var(--text-muted)">
+          <div style="font-size:36px;margin-bottom:12px">🏆</div>
+          <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">No Rankings Available for ${roundLabel}</div>
+          <div style="font-size:12px;max-width:440px;margin:0 auto;line-height:1.5">
+            Participants will appear here automatically once judges submit scores for this round.
+          </div>
+        </div>
+      `;
     }
+
     container.innerHTML = html;
 }
 
@@ -22382,3 +22471,12 @@ window.scrollMainContent = function(amount) {
 </body>
 
 </html>
+
+// Realtime score sync listener for Leaderboard
+window.addEventListener('knsdc:score_received', function() {
+  const activeNavItem = document.querySelector('.nav-item.active');
+  const pageId = activeNavItem?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+  if (pageId === 'leaderboard') {
+    if (typeof renderLeaderboard === 'function') renderLeaderboard();
+  }
+});
