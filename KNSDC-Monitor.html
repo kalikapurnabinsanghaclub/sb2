@@ -7914,6 +7914,21 @@ function hydrate() {
       if (venues.length === 0) venues = [...s.venues];
     }
 
+    // Sanitize venues.dates
+    (venues || []).forEach(v => {
+      if (typeof v.dates === 'string') {
+        try {
+          const parsed = JSON.parse(v.dates);
+          v.dates = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+        } catch(e) {
+          v.dates = v.dates ? [v.dates] : [];
+        }
+      }
+      if (Array.isArray(v.dates)) {
+        v.dates = v.dates.map(d => String(d).trim()).filter(d => d && d !== '[]' && d !== 'null' && d !== 'undefined');
+      }
+    });
+
     // Load Audition Dates
     auditionDates = (activeEv && activeEv.auditionDates && activeEv.auditionDates.length > 0)
       ? activeEv.auditionDates
@@ -7921,16 +7936,21 @@ function hydrate() {
     if (auditionDates.length === 0 && s.auditionDates && s.auditionDates.length > 0) {
       auditionDates = s.auditionDates.filter(a => !a.eventId || String(a.eventId) === String(activeEventId));
     }
+    // Filter out corrupted dates like '[]'
+    auditionDates = (auditionDates || []).filter(a => a && a.date && a.date !== '[]' && a.date !== 'null' && a.date !== 'undefined');
+
     // Auto-seed from venues if auditionDates empty
     if (auditionDates.length === 0 && venues.length > 0) {
       venues.forEach(v => {
-        (v.dates || []).forEach(d => {
-          if (d && !auditionDates.some(a => a.date === d && String(a.venueId) === String(v.id))) {
+        const vDates = (Array.isArray(v.dates) ? v.dates : []).filter(d => d && d !== '[]' && d !== 'null' && d !== 'undefined');
+        vDates.forEach(d => {
+          if (!auditionDates.some(a => a.date === d && String(a.venueId) === String(v.id))) {
             auditionDates.push({
               id: Date.now() + Math.floor(Math.random() * 1000),
               eventId: activeEventId,
               date: d,
-              title: `Audition (${d})`,
+              title: 'Audition',
+              roundName: 'Audition',
               time: '09:00 AM - 05:00 PM',
               venueId: v.id,
               venueName: v.name,
@@ -10831,16 +10851,16 @@ function renderApplied(){
   const dsel = document.getElementById('date-filter-sel');
   if(dsel) {
     const allUniqueDates = new Set();
-    (auditionDates || []).forEach(a => { if(a && a.date) allUniqueDates.add(a.date); });
-    (venues || []).forEach(v => { (v.dates || []).forEach(d => { if(d) allUniqueDates.add(d); }); });
+    (auditionDates || []).forEach(a => { if(a && a.date && a.date !== '[]' && a.date !== 'null' && a.date !== 'undefined') allUniqueDates.add(a.date); });
+    (venues || []).forEach(v => { (v.dates || []).forEach(d => { if(d && d !== '[]' && d !== 'null' && d !== 'undefined') allUniqueDates.add(d); }); });
     (participants || []).forEach(p => {
       const isEv = String(p.eventId) === String(activeEventId) || !p.eventId;
       if (isEv) {
         const pd = p.date || p.auditionDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date']));
-        if(pd && typeof pd === 'string' && pd.trim()) allUniqueDates.add(pd.trim());
+        if(pd && typeof pd === 'string' && pd.trim() && pd.trim() !== '[]' && pd.trim() !== 'null') allUniqueDates.add(pd.trim());
       }
     });
-    const sortedDates = Array.from(allUniqueDates).sort();
+    const sortedDates = Array.from(allUniqueDates).filter(d => d && d !== '[]' && d !== 'null' && d !== 'undefined' && d.trim() !== '').sort();
     dsel.innerHTML = '<option value="">📅 All Audition Dates</option>' + sortedDates.map(d => {
       const matchAud = (auditionDates || []).find(a => a.date === d);
       let label = d;
@@ -13656,7 +13676,7 @@ function renderVenueDates(){
         <span class="badge b-amber">${regs} reg</span>
       </div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">📍 ${v.location} · Capacity: ${v.capacity}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${v.dates.map(d=>`<span class="badge b-blue">${d}</span>`).join('')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${(Array.isArray(v.dates)?v.dates:[]).filter(d=>d&&d!=='[]'&&d!=='null'&&d!=='undefined').map(d=>`<span class="badge b-blue">${d}</span>`).join('')}</div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-xs" onclick="openVenueModal(${v.id})">✏️ Edit</button>
         <button class="btn-delete-fancy" onclick="deleteVenue(${v.id})" title="Delete">
@@ -13681,7 +13701,7 @@ function renderVenueDates(){
         <span style="font-weight:600">${v.name}</span>
         <span>${present}/${vr.length} present</span>
       </div>
-      ${v.dates.map(d=>{
+      ${(Array.isArray(v.dates)?v.dates:[]).filter(d=>d&&d!=='[]'&&d!=='null'&&d!=='undefined').map(d=>{
         const dr=vr.filter(p=>p.date===d); const dp=dr.filter(p=>p.present).length;
         const pct=dr.length>0?Math.round(dp/dr.length*100):0;
         return `<div style="margin-bottom:4px">
@@ -22238,7 +22258,7 @@ window.deleteVenue = deleteVenue;
 // ══════════════════════════════════════════════════════════════════
 
 function renderAuditionDates() {
-  const filteredAuditions = (auditionDates || []).filter(a => String(a.eventId) === String(activeEventId) || !a.eventId);
+  const filteredAuditions = (auditionDates || []).filter(a => (String(a.eventId) === String(activeEventId) || !a.eventId) && a.date && a.date !== '[]' && a.date !== 'null' && a.date !== 'undefined');
   const listEl = document.getElementById('audition-date-list');
   const statsEl = document.getElementById('audition-date-stats');
   
