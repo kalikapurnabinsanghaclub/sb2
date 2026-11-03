@@ -10513,6 +10513,7 @@ if (typeof escapeHTML === 'undefined') {
 }
 
 let activePresencePopover = null;
+let activeActionPopover = null;
 
 function closeRoundPresenceMenu() {
   if (activePresencePopover) {
@@ -10521,17 +10522,146 @@ function closeRoundPresenceMenu() {
   }
 }
 
-// Global click outside listener to close popover
+function closeParticipantActionMenu() {
+  if (activeActionPopover) {
+    activeActionPopover.remove();
+    activeActionPopover = null;
+  }
+}
+
+// Global click outside listener to close popovers
 document.addEventListener('click', (e) => {
   if (activePresencePopover && !activePresencePopover.contains(e.target) && !e.target.closest('.round-presence-btn')) {
     closeRoundPresenceMenu();
   }
+  if (activeActionPopover && !activeActionPopover.contains(e.target) && !e.target.closest('.action-menu-btn')) {
+    closeParticipantActionMenu();
+  }
 });
 
-// Escape key listener to close popover
+// Escape key listener to close popovers and modals
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeRoundPresenceMenu();
+  if (e.key === 'Escape') {
+    closeRoundPresenceMenu();
+    closeParticipantActionMenu();
+    closeWhatsAppModal();
+  }
 });
+
+function openParticipantActionMenu(e, participantId) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // If clicking on same participant's already open popover, close it
+  if (activeActionPopover && activeActionPopover._participantId === participantId) {
+    closeParticipantActionMenu();
+    return;
+  }
+
+  closeParticipantActionMenu();
+  closeRoundPresenceMenu();
+
+  const p = participants.find(x => String(x.id) === String(participantId));
+  if (!p) return;
+
+  const btn = e ? e.currentTarget : null;
+  const rect = btn ? btn.getBoundingClientRect() : { top: 150, bottom: 180, left: 200, width: 120 };
+
+  const popover = document.createElement('div');
+  popover.className = 'action-menu-popover glass-card';
+  popover.style.cssText = `
+    position: fixed;
+    z-index: 10000;
+    width: 270px;
+    background: var(--surface, #ffffff);
+    border: 1.5px solid var(--border, #e2e8f0);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  `;
+
+  // Compute position (stay fully visible on screen)
+  let top = rect.bottom + 6;
+  let left = rect.left + (rect.width / 2) - 135;
+
+  if (left < 10) left = 10;
+  if (left + 280 > window.innerWidth) left = window.innerWidth - 285;
+  if (top + 300 > window.innerHeight) {
+    top = Math.max(10, rect.top - 300);
+  }
+
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+  popover._participantId = participantId;
+
+  const hasAnswers = p.formAnswers && Object.keys(p.formAnswers).length > 0;
+  const isLocked = !!p.formLocked;
+
+  popover.innerHTML = `
+    <div style="padding:6px 10px 8px;border-bottom:1px solid var(--border, #e2e8f0);margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">
+        <div style="font-weight:900;font-size:12.5px;color:var(--text);display:flex;align-items:center;gap:5px;">
+          <span>👤</span> ${escapeHtml(p.name || 'Participant')}
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--fm);margin-top:1px;">ID: <span style="color:var(--amber2);font-weight:800;">#${p.id}</span></div>
+      </div>
+      <button type="button" onclick="closeParticipantActionMenu()" style="border:none;background:transparent;cursor:pointer;font-size:15px;color:var(--text-muted);padding:2px 6px;border-radius:6px;transition:all 0.15s;" onmouseover="this.style.background='rgba(0,0,0,0.06)'" onmouseout="this.style.background='transparent'">✕</button>
+    </div>
+
+    <!-- 1. Send WhatsApp Message -->
+    <button type="button" class="action-menu-item" onclick="closeParticipantActionMenu(); openWhatsAppModal('${p.id}')"
+      style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:none;background:rgba(37,211,102,0.1);color:#128c7e;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;text-align:left;transition:all 0.15s;"
+      onmouseover="this.style.background='rgba(37,211,102,0.2)'" onmouseout="this.style.background='rgba(37,211,102,0.1)'">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;background:#25D366;border-radius:6px;color:#fff;flex-shrink:0;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      </span>
+      <span>💬 Send WhatsApp</span>
+    </button>
+
+    <!-- 2. Edit Registration -->
+    <button type="button" class="action-menu-item" onclick="closeParticipantActionMenu(); openEditReg('${p.id}')"
+      style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:none;background:transparent;color:var(--text);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;transition:all 0.15s;"
+      onmouseover="this.style.background='var(--surface2, rgba(0,0,0,0.05))'" onmouseout="this.style.background='transparent'">
+      <span style="font-size:15px;width:24px;text-align:center;">✏️</span>
+      <span>Edit Registration</span>
+    </button>
+
+    <!-- 3. Lock / Unlock Form -->
+    <button type="button" class="action-menu-item" onclick="closeParticipantActionMenu(); ${isLocked ? `unlockParticipantForm('${p.id}')` : `lockParticipantForm('${p.id}')`}"
+      style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:none;background:transparent;color:var(--text);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;transition:all 0.15s;"
+      onmouseover="this.style.background='var(--surface2, rgba(0,0,0,0.05))'" onmouseout="this.style.background='transparent'">
+      <span style="font-size:15px;width:24px;text-align:center;">${isLocked ? '🔓' : '🔒'}</span>
+      <span>${isLocked ? 'Unlock Participant Form' : 'Lock Participant Form'}</span>
+    </button>
+
+    <!-- 4. View Form Answers -->
+    ${hasAnswers ? `
+    <button type="button" class="action-menu-item" onclick="closeParticipantActionMenu(); viewFormAnswers('${p.id}')"
+      style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:none;background:transparent;color:var(--blue2, #2563eb);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;transition:all 0.15s;"
+      onmouseover="this.style.background='var(--surface2, rgba(0,0,0,0.05))'" onmouseout="this.style.background='transparent'">
+      <span style="font-size:15px;width:24px;text-align:center;">📋</span>
+      <span>View Form Answers</span>
+    </button>` : ''}
+
+    <div style="height:1px;background:var(--border, #e2e8f0);margin:4px 0;"></div>
+
+    <!-- 5. Delete Registration -->
+    <button type="button" class="action-menu-item" onclick="closeParticipantActionMenu(); permanentDeleteReg('${p.id}')"
+      style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:none;background:rgba(239,68,68,0.08);color:#dc2626;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;transition:all 0.15s;"
+      onmouseover="this.style.background='rgba(239,68,68,0.18)'" onmouseout="this.style.background='rgba(239,68,68,0.08)'">
+      <span style="font-size:15px;width:24px;text-align:center;">🗑️</span>
+      <span>Delete Registration</span>
+    </button>
+  `;
+
+  document.body.appendChild(popover);
+  activeActionPopover = popover;
+}
 
 function openRoundPresenceMenu(e, participantId) {
   if (e) {
@@ -10843,13 +10973,17 @@ function renderApplied(){
         })()}
       </td>
       <td style="text-align:center;">${presenceSummaryHtml}</td>
-      <td style="display:flex;gap:5px;align-items:center">
-        ${p.formLocked ? `<button title="Unlock Participant Portal Form" class="btn btn-ghost btn-xs" style="background:#fef08a" onclick="unlockParticipantForm('${p.id}')">🔓</button>` : `<button title="Form Unlocked" class="btn btn-ghost btn-xs" style="opacity:0.3;cursor:not-allowed">🔓</button>`}
-        <button class="btn btn-ghost btn-xs" onclick="openEditReg('${p.id}')">✏️</button>
-        <button title="Permanently Delete (IRREVERSIBLE)" class="btn btn-danger btn-xs" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5" onclick="permanentDeleteReg('${p.id}')">🗑</button>
-        <button title="Send WhatsApp" style="background:#25D366;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all 0.2s" onmouseover="this.style.background='#128C7E'" onmouseout="this.style.background='#25D366'" onclick="sendWhatsAppReg('${p.id}')">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-        </button>
+      <td style="white-space:nowrap;">
+        <div style="display:inline-flex;gap:5px;align-items:center;">
+          <button type="button" class="btn btn-secondary btn-xs action-menu-btn" onclick="openParticipantActionMenu(event, '${p.id}')"
+            style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:7px;font-weight:800;font-size:11px;background:var(--surface2, #f1f5f9);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:all 0.15s;box-shadow:0 1px 2px rgba(0,0,0,0.05);"
+            onmouseover="this.style.background='var(--surface3, #e2e8f0)'" onmouseout="this.style.background='var(--surface2, #f1f5f9)'" title="View all options">
+            <span>⚡ Action</span> <span style="font-size:8px;opacity:0.65;">▼</span>
+          </button>
+          <button type="button" title="Send WhatsApp (Choose Message)" style="background:#25D366;border:none;border-radius:7px;width:26px;height:26px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:all 0.2s;box-shadow:0 1px 3px rgba(37,211,102,0.3);flex-shrink:0;" onmouseover="this.style.background='#128C7E'" onmouseout="this.style.background='#25D366'" onclick="openWhatsAppModal('${p.id}')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          </button>
+        </div>
       </td>
     </tr>`;
   }).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:30px">No registrations found</td></tr>`;
@@ -11613,11 +11747,32 @@ async function unlockParticipantForm(id) {
       await window.syncEngine.updateParticipant(id, { formLocked: false, localMutatedAt: now });
       syncAll();
       renderApplied();
-      toast('Form unlocked successfully!');
+      toast('🔓 Form unlocked successfully!');
     }
   } catch(e) {
     console.error('[unlockParticipantForm] error:', e);
     toast('Error unlocking form');
+  }
+}
+
+async function lockParticipantForm(id) {
+  if(!confirm("Lock this participant's form? They will NOT be able to edit their data via the Participant Portal.")) return;
+  try {
+    const now = Date.now();
+    const p = participants.find(x => String(x.id) === String(id));
+    if (p) {
+      p.formLocked = true;
+      p.localMutatedAt = now;
+    }
+    if(window.syncEngine && window.syncEngine.updateParticipant) {
+      await window.syncEngine.updateParticipant(id, { formLocked: true, localMutatedAt: now });
+      syncAll();
+      renderApplied();
+      toast('🔒 Form locked successfully!');
+    }
+  } catch(e) {
+    console.error('[lockParticipantForm] error:', e);
+    toast('Error locking form');
   }
 }
 
@@ -11675,17 +11830,13 @@ function getParticipantDirectLoginUrl(p) {
   return `${baseUrl}?auth=${token}`;
 }
 
-function sendWhatsAppReg(id) {
-  const p = participants.find(x => x.id === id);
-  if (!p) return;
+// ==========================================
+// WHATSAPP TEMPLATE ENGINE & MODAL HUB
+// ==========================================
+let currentWaParticipantId = null;
+let currentWaTemplateType = 'registration';
 
-  const phone = (p.phone || '').replace(/\D/g, '');
-  if (!phone) {
-    toast('⚠️ No phone number found for this participant!', 'warn');
-    return;
-  }
-
-  // Get event details
+function getWhatsAppTemplateText(type, p) {
   const s = syncEngine.getData();
   const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
   const eventName = activeEv?.name || activeEv?.title || 'Our Competition';
@@ -11694,15 +11845,17 @@ function sendWhatsAppReg(id) {
   const venueName = (venName && venName !== '—') ? venName : (activeEv?.venue || 'Venue TBA');
   const eventDate = activeEv?.date || activeEv?.startDate || 'Date TBA';
   const directLink = getParticipantDirectLoginUrl(p);
+  const name = p.name || 'Participant';
+  const id = p.id;
 
-  // Build message using template (dynamic organizer, direct encrypted link, bold edit notice)
-  const msg =
-`Hi ${p.name || 'Participant'},
+  switch (type) {
+    case 'registration':
+      return `Hi ${name},
 
 You are successfully registered for *${eventName}*! 🎉
 
 📋 *Your Event & Registration Details:*
-• Registration ID: *#${p.id}*
+• Registration ID: *#${id}*
 • Organizer: *${organizerName}*
 • Venue: *${venueName}*
 • Date: *${eventDate}*
@@ -11720,9 +11873,374 @@ We kindly request you to arrive on time.
 This is an automatically generated message to remind you. Thank you!
 — *${organizerName}*`;
 
-  // Add country code 91 (India) if 10-digit number
+    case 'features':
+      return `Hi ${name},
+
+Welcome to the *${eventName}* Participant Portal! 🌟
+
+Here are the key features available on your personal portal dashboard:
+
+🎵 *Upload Performance Music / Audio:*
+Upload, test, and preview your performance audio track directly before your round.
+
+📅 *Live Event Schedule & Rules:*
+Check venue timings, round updates, category schedules, and competition guidelines.
+
+🎨 *Custom Participation Poster:*
+Create and download your personalized promotional poster with your photo!
+
+📜 *Digital E-Certificate:*
+Download and verify your official participation credential once issued.
+
+📊 *Live Scores & Progression:*
+Follow round results, judges' evaluations, and your performance journey in real-time.
+
+✏️ *Edit Profile & Info:*
+Review and update your profile details anytime before your event round.
+
+🔗 *Access Your Portal Instantly (No Password Needed):*
+👉 ${directLink}
+
+We look forward to seeing your performance!
+✨ *${organizerName}*`;
+
+    case 'poster':
+      return `Hi ${name}! 🎉
+
+Your official *Participation Poster* for *${eventName}* is ready! 📸
+
+Showcase your talent and share your excitement with family and friends:
+1. Tap your link below to open your participant dashboard.
+2. Snap a selfie or upload your favourite photo.
+3. Choose your poster theme and colors.
+4. Share directly to WhatsApp Status, Instagram, and Facebook!
+
+👉 *Create & Share Your Poster Now:*
+${directLink}
+
+Don't forget to tag us in your story! Let's make this event memorable! 🔥
+✨ *${organizerName}*`;
+
+    case 'certificate':
+      return `Dear ${name},
+
+Congratulations on completing your performance in *${eventName}*! 🏆🎓
+
+We are pleased to present your official *E-Certificate of Participation*.
+
+🏅 *Participant:* ${name}
+🆔 *Registration ID:* #${id}
+🏛️ *Organizer:* ${organizerName}
+
+You can view, download, or verify your authentic certificate using your secure participant link:
+👉 ${directLink}
+
+Thank you for being an inspiring part of this event! Keep shining! 🌟
+✨ *${organizerName}*`;
+
+    case 'score':
+      return `Hi ${name},
+
+The scores and performance reviews for *${eventName}* have been published! 📊⭐
+
+Check your official round scores, judge ratings, and leaderboard rankings directly on your personal dashboard:
+
+👤 *Participant:* ${name} (#${id})
+📈 *Live Performance Journey & Scores:*
+👉 ${directLink}
+
+Tap the link above to see your complete round breakdown!
+
+Best regards,
+✨ *${organizerName}*`;
+
+    case 'custom':
+      return `Hi ${name},
+
+We have an important announcement regarding *${eventName}*.
+
+[Type your message here...]
+
+🔗 Access your dashboard:
+👉 ${directLink}
+
+Best regards,
+✨ *${organizerName}*`;
+
+    default:
+      return '';
+  }
+}
+
+function openWhatsAppModal(id, defaultTemplate = 'registration') {
+  const p = participants.find(x => String(x.id) === String(id));
+  if (!p) return;
+
+  const phone = (p.phone || '').replace(/\D/g, '');
+  if (!phone) {
+    toast('⚠️ No phone number found for this participant!', 'warn');
+    return;
+  }
+
+  currentWaParticipantId = id;
+  currentWaTemplateType = defaultTemplate;
+
+  const existing = document.getElementById('participant-wa-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'participant-wa-modal';
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(6px);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: fadeIn 0.15s ease-out;
+  `;
+
+  modal.innerHTML = `
+    <div style="background:var(--surface, #ffffff);border:1.5px solid var(--border, #e2e8f0);border-radius:20px;width:100%;max-width:640px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.35);">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg, #10b981, #059669);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;color:#fff;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:38px;height:38px;background:#25D366;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          </div>
+          <div>
+            <div style="font-weight:900;font-size:15px;letter-spacing:-0.2px;">Send WhatsApp Message</div>
+            <div style="font-size:11.5px;opacity:0.9;display:flex;align-items:center;gap:6px;">
+              <span><strong>${escapeHtml(p.name)}</strong> (ID: #${p.id})</span>
+              <span>•</span>
+              <span style="font-family:var(--fm);">${p.phone}</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" onclick="closeWhatsAppModal()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">✕</button>
+      </div>
+
+      <!-- Body / Template Selection -->
+      <div style="padding:16px 20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);margin-bottom:8px;">
+            Select Which Message to Send:
+          </label>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:8px;" id="wa-template-buttons-grid">
+            <!-- 1. Registration -->
+            <button type="button" class="wa-tmpl-btn" data-type="registration" onclick="selectWaTemplate('registration')"
+              style="display:flex;flex-direction:column;align-items:flex-start;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2, #f8fafc);cursor:pointer;text-align:left;transition:all 0.15s;">
+              <div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:12px;color:var(--text);">
+                <span>📝</span> <span>Registration</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.2;">Confirmation & 1-click login</div>
+            </button>
+
+            <!-- 2. Features -->
+            <button type="button" class="wa-tmpl-btn" data-type="features" onclick="selectWaTemplate('features')"
+              style="display:flex;flex-direction:column;align-items:flex-start;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2, #f8fafc);cursor:pointer;text-align:left;transition:all 0.15s;">
+              <div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:12px;color:var(--text);">
+                <span>🚀</span> <span>Portal Features</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.2;">Music upload & tools guide</div>
+            </button>
+
+            <!-- 3. Share Poster -->
+            <button type="button" class="wa-tmpl-btn" data-type="poster" onclick="selectWaTemplate('poster')"
+              style="display:flex;flex-direction:column;align-items:flex-start;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2, #f8fafc);cursor:pointer;text-align:left;transition:all 0.15s;">
+              <div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:12px;color:var(--text);">
+                <span>📢</span> <span>Share Poster</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.2;">Broadcast participation poster</div>
+            </button>
+
+            <!-- 4. Download Certificate -->
+            <button type="button" class="wa-tmpl-btn" data-type="certificate" onclick="selectWaTemplate('certificate')"
+              style="display:flex;flex-direction:column;align-items:flex-start;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2, #f8fafc);cursor:pointer;text-align:left;transition:all 0.15s;">
+              <div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:12px;color:var(--text);">
+                <span>🏆</span> <span>Download Certificate</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.2;">Official e-certificate credential</div>
+            </button>
+
+            <!-- 5. Show Score -->
+            <button type="button" class="wa-tmpl-btn" data-type="score" onclick="selectWaTemplate('score')"
+              style="display:flex;flex-direction:column;align-items:flex-start;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2, #f8fafc);cursor:pointer;text-align:left;transition:all 0.15s;">
+              <div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:12px;color:var(--text);">
+                <span>📊</span> <span>Show Your Score</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.2;">Live round marks & rankings</div>
+            </button>
+
+            <!-- 6. Custom Message -->
+            <button type="button" class="wa-tmpl-btn" data-type="custom" onclick="selectWaTemplate('custom')"
+              style="display:flex;flex-direction:column;align-items:flex-start;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2, #f8fafc);cursor:pointer;text-align:left;transition:all 0.15s;">
+              <div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:12px;color:var(--text);">
+                <span>✍️</span> <span>Custom Message</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.2;">Freeform text with placeholders</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Placeholder insertion bar -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:rgba(0,0,0,0.03);padding:7px 10px;border-radius:9px;border:1px solid var(--border);">
+          <span style="font-size:10.5px;font-weight:800;color:var(--text-muted);">Insert Tag:</span>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{name}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Name</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{id}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ ID</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{event}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Event</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{venue}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Venue</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{date}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Date</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertWaTag('{link}')" style="font-size:10.5px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;">+ Direct Link</button>
+        </div>
+
+        <!-- Editable Message Box -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <label style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);">
+              Message Text Preview & Edit:
+            </label>
+            <span id="wa-char-count" style="font-size:11px;color:var(--text-muted);font-family:var(--fm);">0 chars</span>
+          </div>
+          <textarea id="wa-message-textarea" rows="8"
+            style="width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;line-height:1.45;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface, #ffffff);color:var(--text);resize:vertical;"
+            oninput="updateWaCharCount()"></textarea>
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="padding:12px 20px;background:var(--surface2, #f8fafc);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <button type="button" onclick="copyWaMessageText()"
+          style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;transition:all 0.15s;"
+          onmouseover="this.style.background='var(--surface3, #e2e8f0)'" onmouseout="this.style.background='var(--surface)'">
+          📋 Copy Text
+        </button>
+
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button type="button" onclick="closeWhatsAppModal()"
+            style="padding:7px 12px;border-radius:8px;border:none;background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;">
+            Cancel
+          </button>
+
+          <button type="button" onclick="sendSelectedWhatsApp()"
+            style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:none;background:#25D366;color:#ffffff;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(37,211,102,0.3);transition:all 0.2s;"
+            onmouseover="this.style.background='#128C7E'" onmouseout="this.style.background='#25D366'">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            Send via WhatsApp
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  selectWaTemplate(defaultTemplate);
+}
+
+function closeWhatsAppModal() {
+  const m = document.getElementById('participant-wa-modal');
+  if (m) m.remove();
+  currentWaParticipantId = null;
+}
+
+function selectWaTemplate(type) {
+  currentWaTemplateType = type;
+  const p = participants.find(x => String(x.id) === String(currentWaParticipantId));
+  if (!p) return;
+
+  // Highlight active button
+  document.querySelectorAll('.wa-tmpl-btn').forEach(btn => {
+    if (btn.getAttribute('data-type') === type) {
+      btn.style.borderColor = '#10b981';
+      btn.style.background = 'rgba(16,185,129,0.12)';
+      btn.style.boxShadow = '0 0 0 1.5px #10b981';
+    } else {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.background = 'var(--surface2, #f8fafc)';
+      btn.style.boxShadow = 'none';
+    }
+  });
+
+  const textarea = document.getElementById('wa-message-textarea');
+  if (textarea) {
+    textarea.value = getWhatsAppTemplateText(type, p);
+    updateWaCharCount();
+  }
+}
+
+function updateWaCharCount() {
+  const textarea = document.getElementById('wa-message-textarea');
+  const countEl = document.getElementById('wa-char-count');
+  if (textarea && countEl) {
+    countEl.textContent = `${textarea.value.length} chars`;
+  }
+}
+
+function insertWaTag(tag) {
+  const textarea = document.getElementById('wa-message-textarea');
+  const p = participants.find(x => String(x.id) === String(currentWaParticipantId));
+  if (!textarea || !p) return;
+
+  const s = syncEngine.getData();
+  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
+  const eventName = activeEv?.name || activeEv?.title || 'Our Competition';
+  const organizerName = activeEv?.organizer || activeEv?.org || 'Kalikapur Nabin Sangha';
+  const venName = getParticipantVenueName(p, venues);
+  const venueName = (venName && venName !== '—') ? venName : (activeEv?.venue || 'Venue TBA');
+  const eventDate = activeEv?.date || activeEv?.startDate || 'Date TBA';
+  const directLink = getParticipantDirectLoginUrl(p);
+
+  let replacement = tag;
+  if (tag === '{name}') replacement = p.name || 'Participant';
+  else if (tag === '{id}') replacement = p.id;
+  else if (tag === '{event}') replacement = eventName;
+  else if (tag === '{venue}') replacement = venueName;
+  else if (tag === '{date}') replacement = eventDate;
+  else if (tag === '{link}') replacement = directLink;
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const val = textarea.value;
+  textarea.value = val.substring(0, start) + replacement + val.substring(end);
+  textarea.selectionStart = textarea.selectionEnd = start + replacement.length;
+  textarea.focus();
+  updateWaCharCount();
+}
+
+function copyWaMessageText() {
+  const textarea = document.getElementById('wa-message-textarea');
+  if (!textarea || !textarea.value) return;
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    toast('📋 Message text copied to clipboard!');
+  }).catch(() => {
+    toast('Error copying text');
+  });
+}
+
+function sendSelectedWhatsApp() {
+  const p = participants.find(x => String(x.id) === String(currentWaParticipantId));
+  if (!p) return;
+  const phone = (p.phone || '').replace(/\D/g, '');
+  if (!phone) {
+    toast('⚠️ No phone number found for this participant!', 'warn');
+    return;
+  }
+  const textarea = document.getElementById('wa-message-textarea');
+  const msg = textarea ? textarea.value : '';
+  if (!msg.trim()) {
+    toast('Please enter a message to send!', 'warn');
+    return;
+  }
+
   const intlPhone = phone.length === 10 ? '91' + phone : phone;
   window.open(`https://api.whatsapp.com/send?phone=${intlPhone}&text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+function sendWhatsAppReg(id) {
+  openWhatsAppModal(id, 'registration');
 }
 
 function openBulkWhatsApp() {
@@ -11814,8 +12332,6 @@ This is an automatically generated message to remind you. Thank you!
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
 }
-
-
 
 function openAddRegModal(){
   const s = syncEngine.getData();
@@ -21696,6 +22212,15 @@ window.saveEditReg = saveEditReg;
 window.openEditReg = openEditReg;
 window.deleteReg = deleteReg;
 window.sendWhatsAppReg = sendWhatsAppReg;
+window.openWhatsAppModal = openWhatsAppModal;
+window.closeWhatsAppModal = closeWhatsAppModal;
+window.selectWaTemplate = selectWaTemplate;
+window.insertWaTag = insertWaTag;
+window.copyWaMessageText = copyWaMessageText;
+window.sendSelectedWhatsApp = sendSelectedWhatsApp;
+window.openParticipantActionMenu = openParticipantActionMenu;
+window.closeParticipantActionMenu = closeParticipantActionMenu;
+window.lockParticipantForm = lockParticipantForm;
 window.openBulkWhatsApp = openBulkWhatsApp;
 window.filterApplied = filterApplied;
 window.filterAppliedCat = filterAppliedCat;
