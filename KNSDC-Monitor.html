@@ -3164,6 +3164,7 @@
             <button class="btn btn-amber btn-sm" onclick="pushNextToStage()">⬆ Push Next</button>
             <button class="btn btn-success btn-sm" onclick="markStageDone()">✓ Complete</button>
             <button class="btn btn-danger btn-sm" onclick="dropToQueue()">⬇ Drop</button>
+            <button class="btn btn-sm" onclick="markStageDoneSNUL()" style="background:#2563eb;color:#fff;font-weight:800;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Mark Complete with Offline Paper Score (S.N.U.L)">📝 S.N.U.L</button>
           </div>
           <div id="on-stage-judge-status" style="margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border);"></div>
         </div>
@@ -3414,6 +3415,7 @@
             <div style="display:flex;gap:8px;align-items:center">
               <button class="btn btn-success btn-sm" onclick="markStageDone()">✓ Complete</button>
               <button class="btn btn-danger btn-sm" onclick="dropToQueue()">⬇ Drop</button>
+              <button class="btn btn-sm" onclick="markStageDoneSNUL()" style="background:#2563eb;color:#fff;font-weight:800;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;box-shadow:0 2px 4px rgba(37,99,235,0.25);" title="Mark Complete with Offline Paper Score (S.N.U.L)">📝 S.N.U.L</button>
             </div>
             <div id="venue-onstage-audio-container"></div>
           </div>
@@ -3769,7 +3771,7 @@
             <option value="semifinal">Semifinal → Final</option>
           </select>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
           <div class="fg">
             <label class="fl">Filter Category</label>
             <select id="promo-cat-filter" onchange="renderPromoList()"><option value="">All Categories</option></select>
@@ -3777,6 +3779,14 @@
           <div class="fg">
             <label class="fl">Filter Venue</label>
             <select id="promo-venue-filter" onchange="renderPromoList()"><option value="">All Venues</option></select>
+          </div>
+          <div class="fg">
+            <label class="fl">Scoring / S.N.U.L</label>
+            <select id="promo-snul-filter" onchange="renderPromoList()" style="background:var(--surface);border-radius:10px;font-weight:700;">
+              <option value="">All Scoring Types</option>
+              <option value="snul">S.N.U.L Only (Paper Score)</option>
+              <option value="live">Live Scored Only</option>
+            </select>
           </div>
         </div>
       </div>
@@ -10987,7 +10997,12 @@ function renderApplied(){
           return pd ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-size:8.5px; margin-top:3px; display:inline-flex; align-items:center; gap:2px; padding:1px 5px; font-weight:700;">📅 ${pd}</span>` : '';
         })()}
       </td>
-      <td style="text-align:center;">${presenceSummaryHtml}</td>
+      <td style="text-align:center;">
+        <div style="display:inline-flex;align-items:center;gap:4px;justify-content:center;flex-wrap:wrap;">
+          ${presenceSummaryHtml}
+          ${p.snul ? `<span style="display:inline-block;background:#2563eb;color:#fff;font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(37,99,235,0.25);" title="S.N.U.L: Offline Paper Score Pending">S.N.U.L</span>` : (p.snulResolved ? `<span style="display:inline-block;background:#10b981;color:#fff;font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:4px;" title="Offline Score Updated">✓ S.N.U.L</span>` : '')}
+        </div>
+      </td>
       <td style="white-space:nowrap;">
         <div style="display:inline-flex;gap:5px;align-items:center;">
           <button type="button" class="btn btn-secondary btn-xs action-menu-btn" onclick="openParticipantActionMenu(event, '${p.id}')"
@@ -14981,6 +14996,77 @@ async function markStageDone(){
 }
 window.markStageDone = markStageDone;
 
+async function markStageDoneSNUL() {
+  if (_stageOpInProgress) return;
+  _stageOpInProgress = true;
+  try {
+    const venId = currentVenueMonitor;
+    const p = participants.find(x => x.id === currentOnStage || (venId ? (String(x.venueId) === String(venId) && x.stageStatus === 'on-stage') : false) || x.stageStatus === 'on-stage');
+    
+    currentOnStage = null;
+    const now = Date.now();
+    if (p) {
+      p.stageStatus = 'done';
+      p.isReady = false;
+      p.snul = true; // S.N.U.L flag: Score Not Updated Live (Paper score pending)
+      p.snulResolved = false;
+      if (!p.snulRounds) p.snulRounds = {};
+      p.snulRounds[p.round || 'audition'] = true;
+      p.localMutatedAt = now;
+    }
+    if (typeof resetOnStageTimers === 'function') resetOnStageTimers();
+
+    renderVenueParticipants();
+    renderStageView();
+    if (typeof renderApplied === 'function') renderApplied();
+    if (typeof renderPromoList === 'function') renderPromoList();
+    toast('📝 Marked Complete with S.N.U.L status (Offline paper score pending)');
+
+    if (window.syncEngine && typeof window.syncEngine.stageComplete === 'function') {
+      window.syncEngine.stageComplete(p ? p.id : null, venId).catch(e => console.error('[markStageDoneSNUL] sync error:', e));
+    }
+    syncAll();
+  } catch (err) {
+    console.error('Error in markStageDoneSNUL:', err);
+  } finally {
+    setTimeout(() => { _stageOpInProgress = false; }, 120);
+  }
+}
+window.markStageDoneSNUL = markStageDoneSNUL;
+
+async function pushParticipantDirectToStage(participantId) {
+  const p = participants.find(x => x.id === participantId);
+  if (!p) { toast('Participant not found!'); return; }
+  
+  if (!confirm(`Push ${p.name} (#${p.id}) directly to Stage for score update?`)) return;
+
+  const venId = p.venueId || currentVenueMonitor || (venues[0] ? venues[0].id : null);
+  
+  // Clear any existing participant on stage
+  participants.forEach(x => {
+    if (x.id !== p.id && x.stageStatus === 'on-stage' && (!venId || String(x.venueId) === String(venId))) {
+      x.stageStatus = 'done';
+    }
+  });
+
+  p.stageStatus = 'on-stage';
+  p.venueId = venId;
+  p.isReady = true;
+  currentOnStage = p.id;
+  p.localMutatedAt = Date.now();
+
+  renderVenueParticipants();
+  renderStageView();
+  if (typeof renderPromoList === 'function') renderPromoList();
+  toast(`🎤 ${p.name} pushed directly to Stage! Judge screens are ready for score entry.`);
+
+  if (window.syncEngine && typeof window.syncEngine.pushToStage === 'function') {
+    window.syncEngine.pushToStage(p.id, venId).catch(e => console.error('[pushParticipantDirectToStage] sync error:', e));
+  }
+  syncAll();
+}
+window.pushParticipantDirectToStage = pushParticipantDirectToStage;
+
 async function dropToQueue(){
   if (_stageOpInProgress) return;
   _stageOpInProgress = true;
@@ -15528,10 +15614,17 @@ function saveScores(){
       });
     });
 
+    if (p.snul) {
+      p.snul = false;
+      p.snulResolved = true;
+      if (typeof renderPromoList === 'function') renderPromoList();
+      toast('✓ Offline scores updated & S.N.U.L resolved!');
+    } else {
+      toast('Scores saved!');
+    }
     closeM('score-modal');
     syncAll();
     renderVenueParticipants();
-    toast('Scores saved!');
 
     // Direct Supabase write so scores survive rapid subsequent actions
     if (window.syncEngine && window.syncEngine.updateParticipant) {
@@ -17981,10 +18074,13 @@ function renderPromoList(){
     vsel.value = venueFilter;
   }
 
+  const snulFilter = document.getElementById('promo-snul-filter') ? document.getElementById('promo-snul-filter').value : '';
   const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   let data = eventParticipants.filter(p=>p.round===fromRound&&p.stageStatus==='done');
   if(catFilter) data = data.filter(p=>String(p.catId)===String(catFilter));
   if(venueFilter) data = data.filter(p=>String(p.venueId)===String(venueFilter));
+  if(snulFilter === 'snul') data = data.filter(p=>!!p.snul);
+  else if(snulFilter === 'live') data = data.filter(p=>!p.snul);
   data = data.map(p => {
     const pClone = { ...p };
     if (!pClone.roundScores) pClone.roundScores = {};
@@ -18025,7 +18121,7 @@ function renderPromoList(){
        Next Stage: <strong style="color:var(--orange2);text-transform:uppercase">${getRoundLabel(toRound) || toRound || 'None'}</strong>
     </div>`;
 
-  document.getElementById('promo-list').innerHTML = data.map((p,rank)=>{
+  const promoCardsHtml = data.map((p,rank)=>{
     const cat = categories.find(c=>String(c.id)===String(p.catId));
     let total = 0;
     let judgesWhoScored = new Set();
@@ -18053,8 +18149,18 @@ function renderPromoList(){
     const maxPoss = baseJudgesCount * subjects.length * 10;
     const pct = maxPoss>0?Math.round(total/maxPoss*100):0;
     const checked = promoSelections.has(p.id);
+
+    // Auto-resolve S.N.U.L if all scores are present or total > 0
+    if (p.snul && total > 0) {
+      p.snul = false;
+      p.snulResolved = true;
+    }
+
+    const isSnul = !!p.snul;
+    const isSnulResolved = !isSnul && !!p.snulResolved;
+
     return `
-    <div class="promo-card card-hover ${checked?'checked':''}" style="background:#fff;border:1px solid ${checked?'var(--blue)':'var(--border)'};padding:15px;border-radius:16px;display:flex;align-items:center;gap:15px;cursor:pointer" onclick="togglePromo('${p.id}')">
+    <div class="promo-card card-hover ${checked?'checked':''}" style="background:#fff;border:1px solid ${checked?'var(--blue)':'var(--border)'};border-left:${isSnul ? '5px solid #2563eb' : (isSnulResolved ? '5px solid #10b981' : (checked?'1px solid var(--blue)':'1px solid var(--border)'))};padding:15px;border-radius:16px;display:flex;align-items:center;gap:15px;cursor:pointer" onclick="togglePromo('${p.id}')">
       <div class="promo-check ${checked?'checked':''}" style="margin-right:0">
         ${checked?'✓':''}
       </div>
@@ -18062,18 +18168,43 @@ function renderPromoList(){
         ${rank+1}
       </div>
       <div style="flex:1">
-        <div style="font-weight:700;font-size:14px;color:var(--text)">${p.name}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-weight:700;font-size:14px;color:var(--text)">${escapeHtml(p.name)}</span>
+          ${isSnul ? `<span style="background:#2563eb;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(37,99,235,0.3);letter-spacing:0.3px;" title="Offline Paper Score Pending">📝 S.N.U.L</span>` : ''}
+          ${isSnulResolved ? `<span style="background:#10b981;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(16,185,129,0.3);" title="Offline Score Updated">✓ Score Updated</span>` : ''}
+        </div>
         <div style="font-size:8px;color:var(--text-muted)">${p.id} · ${cat?cat.name.substring(0,15):'—'}</div>
         <div style="margin-top:6px">
           <div class="score-bar judge-score-val" style="height:4px"><div class="score-bar-fill" style="width:${pct}%;background:${rank<3?'var(--amber2)':'var(--blue2)'}"></div></div>
         </div>
+        ${isSnul ? `
+        <div style="display:flex;gap:6px;margin-top:8px;" onclick="event.stopPropagation()">
+          <button type="button" class="btn btn-xs" onclick="openScoreModalFor('${p.id}')" style="background:#2563eb;color:#fff;font-size:10px;font-weight:800;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">✏️ Enter Scores</button>
+          <button type="button" class="btn btn-xs" onclick="pushParticipantDirectToStage('${p.id}')" style="background:linear-gradient(135deg, #f59e0b, #d97706);color:#fff;font-size:10px;font-weight:800;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">🎤 Push to Stage</button>
+        </div>` : ''}
       </div>
       <div style="text-align:right">
         <div class="judge-score-val" style="font-family:var(--fh);font-size:18px;font-weight:900;color:${rank<3?'var(--amber2)':'var(--text)'}">${total}</div>
         <div class="judge-score-val" style="font-size:9px;color:var(--text-muted)">${pct}%</div>
       </div>
     </div>`;
-  }).join('') || '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)">No participants ready for promotion in this round.</div>';
+  }).join('');
+
+  // Amber warning banner if any selected participant has S.N.U.L
+  const snulSelectedList = Array.from(promoSelections).map(id => participants.find(x => x.id === id)).filter(x => x && x.snul);
+  const snulWarningBannerHtml = snulSelectedList.length > 0 ? `
+    <div style="grid-column: 1 / -1; background: rgba(245, 158, 11, 0.12); border: 1.5px solid rgba(245, 158, 11, 0.4); border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; color: #b45309;">
+      <span style="font-size: 22px;">⚠️</span>
+      <div style="flex:1;">
+        <div style="font-weight: 800; font-size: 13px;">Attention: ${snulSelectedList.length} Selected Participant(s) have Offline Paper Scores (S.N.U.L)</div>
+        <div style="font-size: 11px; margin-top: 2px; color: var(--text-dim);">
+          Participants: <strong>${snulSelectedList.map(x => `${escapeHtml(x.name)} (#${x.id})`).join(', ')}</strong>. Please click <strong>✏️ Enter Scores</strong> or <strong>🎤 Push to Stage</strong> before promoting!
+        </div>
+      </div>
+    </div>
+  ` : '';
+
+  document.getElementById('promo-list').innerHTML = snulWarningBannerHtml + (promoCardsHtml || '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)">No participants ready for promotion in this round.</div>');
 }
 
 function togglePromo(id){
@@ -18130,6 +18261,43 @@ let _isPromoting = false;
 async function promoteSelected() {
   if (_isPromoting) { toast('⏳ Promotion in progress, please wait…'); return; }
   if(!promoSelections.size){ toast('Select participants to promote!'); return; }
+
+  // ── S.N.U.L 2-STEP SECURITY VERIFICATION GUARD ──
+  const snulSelectedList = Array.from(promoSelections).map(id => participants.find(x => x.id === id)).filter(x => x && x.snul);
+  if (snulSelectedList.length > 0) {
+    const listNames = snulSelectedList.map(x => `• ${x.name} (#${x.id})`).join('\n');
+    
+    // Step 1: Confirm offline paper score updated
+    const q1 = confirm(
+      `⚠️ S.N.U.L VERIFICATION (Step 1 of 2):\n\n` +
+      `The following ${snulSelectedList.length} participant(s) have offline paper scores (S.N.U.L):\n` +
+      `${listNames}\n\n` +
+      `QUESTION 1: Have all paper scores for these participant(s) been entered/updated into the system?\n\n` +
+      `Click OK for YES, or Cancel for NO.`
+    );
+    if (!q1) {
+      toast('⚠️ Promotion cancelled: Please update offline scores first.');
+      return;
+    }
+
+    // Step 2: Confirm all judges finished scoring
+    const q2 = confirm(
+      `⚠️ S.N.U.L VERIFICATION (Step 2 of 2):\n\n` +
+      `QUESTION 2: Have ALL judges completed their scoring for these participant(s)?\n\n` +
+      `Click OK for YES, or Cancel for NO.`
+    );
+    if (!q2) {
+      toast('⚠️ Promotion cancelled: Judge scoring not completed.');
+      return;
+    }
+
+    // Both confirmed YES: resolve SNUL status
+    snulSelectedList.forEach(p => {
+      p.snul = false;
+      p.snulResolved = true;
+    });
+  }
+
   if(!confirm(`Promote ${promoSelections.size} participants via Bulk Sync?`)) return;
 
   const fromRound = document.getElementById('promo-from-round').value;
@@ -22300,6 +22468,9 @@ window.lockParticipantForm = lockParticipantForm;
 window.getParticipantAuditionDate = getParticipantAuditionDate;
 window.getParticipantAuditionSlot = getParticipantAuditionSlot;
 window.formatAuditionDateFriendly = formatAuditionDateFriendly;
+window.markStageDoneSNUL = markStageDoneSNUL;
+window.pushParticipantDirectToStage = pushParticipantDirectToStage;
+window.openScoreModalFor = openScoreModalFor;
 window.openBulkWhatsApp = openBulkWhatsApp;
 window.filterApplied = filterApplied;
 window.filterAppliedCat = filterAppliedCat;
