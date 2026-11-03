@@ -5411,8 +5411,18 @@
         <input type="date" id="adm-date" required style="font-weight:700;"/>
       </div>
       <div class="fg">
-        <label class="fl">Slot Title / Round Name</label>
-        <input id="adm-title" placeholder="e.g. Day 1 Audition / Morning Batch" />
+        <label class="fl" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>⚖️ Select Competition Round (From Event Round Rules) *</span>
+          <span style="font-size:10px; color:var(--text-muted); cursor:pointer;" onclick="settingsTab('rules'); closeM('audition-date-modal');" title="Manage Round Rules in Settings">⚙️ Manage Rules</span>
+        </label>
+        <select id="adm-round-select" onchange="window.onAdmRoundChange(this.value)" style="font-weight:700; background:var(--surface2);">
+          <!-- Populated dynamically from ⚖️ Round Rules (getEventRounds) -->
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">Slot Title / Batch Name</label>
+        <input id="adm-title" placeholder="e.g. Batch A / Slot 1 (Morning)" />
+        <div style="font-size:10px; color:var(--text-muted); margin-top:3px;">Optionally give this date/slot a specific batch title or leave empty to use Round Name.</div>
       </div>
       <div class="g2">
         <div class="fg">
@@ -10708,7 +10718,12 @@ function renderApplied(){
     const sortedDates = Array.from(allUniqueDates).sort();
     dsel.innerHTML = '<option value="">📅 All Audition Dates</option>' + sortedDates.map(d => {
       const matchAud = (auditionDates || []).find(a => a.date === d);
-      const label = matchAud ? `${d} (${matchAud.title || 'Audition'})` : d;
+      let label = d;
+      if (matchAud) {
+        const rName = matchAud.roundName || 'Audition';
+        const titleStr = (matchAud.title && matchAud.title !== rName) ? ` · ${matchAud.title}` : '';
+        label = `${d} — ⚖️ ${rName}${titleStr}`;
+      }
       return `<option value="${d}">${label}</option>`;
     }).join('');
     dsel.value = regDateFilter || '';
@@ -21737,9 +21752,10 @@ function renderAuditionDates() {
       <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; transition:box-shadow 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.06)'" onmouseout="this.style.boxShadow='none'">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
           <div>
-            <div style="display:flex; align-items:center; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span style="font-size:16px; font-weight:800; font-family:var(--fh); color:var(--text);">📅 ${a.date}</span>
-              <span class="badge b-amber" style="font-size:10px;">${a.title || 'Audition Round'}</span>
+              <span class="badge b-purple" style="font-size:10px; font-weight:800;">⚖️ ${escapeHtml(a.roundName || 'Audition')}</span>
+              <span class="badge b-amber" style="font-size:10px;">${escapeHtml(a.title || a.roundName || 'Audition Round')}</span>
             </div>
             <div style="font-size:12px; color:var(--text-muted); margin-top:4px; display:flex; gap:12px; flex-wrap:wrap;">
               <span>⏰ ${a.time || '09:00 AM - 05:00 PM'}</span>
@@ -21811,7 +21827,21 @@ function openAuditionDateModal(id = null) {
   const titleEl = document.getElementById('adm-modal-title');
   if (titleEl) titleEl.textContent = id ? '📅 Edit Audition Date' : '📅 Add Audition Date';
 
-  // Populate Venues dropdown
+  // 1. Populate ⚖️ Round Rules dropdown dynamically from current event's getEventRounds()
+  const roundSel = document.getElementById('adm-round-select');
+  const rounds = (typeof getEventRounds === 'function') ? getEventRounds() : [
+    { id: 'audition', name: 'Audition' },
+    { id: 'qualified', name: 'Qualified' },
+    { id: 'semifinal', name: 'Semifinal' },
+    { id: 'final', name: 'Final' }
+  ];
+  if (roundSel) {
+    roundSel.innerHTML = rounds.map((r, i) => 
+      `<option value="${r.id}" data-name="${escapeHtml(r.name)}" ${i === 0 ? 'selected' : ''}>⚖️ ${escapeHtml(r.name)}</option>`
+    ).join('');
+  }
+
+  // 2. Populate Venues dropdown
   const vSel = document.getElementById('adm-venue');
   if (vSel) {
     const activeVens = venues.filter(v => String(v.eventId) === String(activeEventId) || !v.eventId);
@@ -21822,7 +21852,8 @@ function openAuditionDateModal(id = null) {
     const a = (auditionDates || []).find(x => String(x.id) === String(id));
     if (a) {
       document.getElementById('adm-date').value = a.date || '';
-      document.getElementById('adm-title').value = a.title || '';
+      if (roundSel && a.roundId) roundSel.value = a.roundId;
+      document.getElementById('adm-title').value = a.title || a.roundName || '';
       document.getElementById('adm-time').value = a.time || '';
       document.getElementById('adm-cap').value = a.capacity || '';
       document.getElementById('adm-notes').value = a.notes || '';
@@ -21830,7 +21861,8 @@ function openAuditionDateModal(id = null) {
     }
   } else {
     document.getElementById('adm-date').value = new Date().toISOString().split('T')[0];
-    document.getElementById('adm-title').value = '';
+    const defaultRoundName = (rounds[0] && rounds[0].name) || 'Audition';
+    document.getElementById('adm-title').value = `${defaultRoundName} - Slot 1`;
     document.getElementById('adm-time').value = '09:00 AM - 05:00 PM';
     document.getElementById('adm-cap').value = '100';
     document.getElementById('adm-notes').value = '';
@@ -21840,13 +21872,33 @@ function openAuditionDateModal(id = null) {
   openM('audition-date-modal');
 }
 
+window.onAdmRoundChange = function(roundId) {
+  const roundSel = document.getElementById('adm-round-select');
+  const titleInp = document.getElementById('adm-title');
+  if (!roundSel || !titleInp) return;
+
+  const opt = roundSel.options[roundSel.selectedIndex];
+  const roundName = opt ? (opt.getAttribute('data-name') || opt.text.replace(/^⚖️\s*/, '')) : 'Round';
+
+  // Count existing slots for this round to suggest next slot number
+  const existingCount = (auditionDates || []).filter(a => String(a.eventId) === String(activeEventId) && a.roundId === roundId).length;
+  titleInp.value = `${roundName} - Slot ${existingCount + 1}`;
+};
+
 let _isSavingAuditionDate = false;
 async function saveAuditionDate() {
   if (_isSavingAuditionDate) return;
   const dateVal = document.getElementById('adm-date').value.trim();
   if (!dateVal) { toast('⚠️ Please select an Audition Date!'); return; }
 
-  const titleVal = document.getElementById('adm-title').value.trim();
+  const roundSel = document.getElementById('adm-round-select');
+  const roundId = roundSel ? roundSel.value : 'audition';
+  const opt = roundSel ? roundSel.options[roundSel.selectedIndex] : null;
+  const roundName = opt ? (opt.getAttribute('data-name') || opt.text.replace(/^⚖️\s*/, '')) : 'Audition';
+
+  let titleVal = document.getElementById('adm-title').value.trim();
+  if (!titleVal) titleVal = `${roundName} (${dateVal})`;
+
   const timeVal = document.getElementById('adm-time').value.trim();
   const capVal = parseInt(document.getElementById('adm-cap').value) || 100;
   const vSel = document.getElementById('adm-venue');
@@ -21864,7 +21916,9 @@ async function saveAuditionDate() {
       id: editingAuditionDateId ? editingAuditionDateId : Date.now(),
       eventId: activeEventId,
       date: dateVal,
-      title: titleVal || `Audition (${dateVal})`,
+      roundId: roundId,
+      roundName: roundName,
+      title: titleVal,
       time: timeVal || '09:00 AM - 05:00 PM',
       venueId: venueIdVal,
       venueName: venueNameVal,
