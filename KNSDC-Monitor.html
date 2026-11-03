@@ -16582,14 +16582,20 @@ function renderIndividualStats(){
         if (hasScore) judgesWhoScored.add(jId);
       });
     }
-    const eventPresentJudges = judges.filter(j => 
+    // Strictly filter ONLY Present Judges (Absent judges are completely excluded)
+    let eventPresentJudges = judges.filter(j => 
       j.present === true && 
-      (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0') && 
-      agreements.some(a => 
-        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-      )
+      (!activeEventId || String(j.eventId) === String(activeEventId) || String(j.eventId) === '0' || !j.eventId)
     );
+    if (agreements && agreements.length > 0) {
+      const matchedAgreements = eventPresentJudges.filter(j => 
+        agreements.some(a => 
+          (a.email && j.email && String(a.email).toLowerCase().trim() === String(j.email).toLowerCase().trim()) || 
+          (a.name && j.name && String(a.name).toLowerCase().trim() === String(j.name).toLowerCase().trim())
+        )
+      );
+      if (matchedAgreements.length > 0) eventPresentJudges = matchedAgreements;
+    }
     const baseJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
     const totalMaxScore = subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0);
     const maxPossible = baseJudgesCount * totalMaxScore;
@@ -18141,14 +18147,20 @@ function renderPromoList(){
         if (hasScore) judgesWhoScored.add(jId);
       });
     }
-    const eventPresentJudges = judges.filter(j => 
+    // Strictly filter ONLY Present Judges (Absent judges are completely excluded)
+    let eventPresentJudges = judges.filter(j => 
       j.present === true && 
-      (String(j.eventId) === String(activeEventId) || String(j.eventId) === '0') && 
-      agreements.some(a => 
-        (a.email && j.email && String(a.email).toLowerCase() === String(j.email).toLowerCase()) || 
-        (a.name && j.name && String(a.name).toLowerCase() === String(j.name).toLowerCase())
-      )
+      (!activeEventId || String(j.eventId) === String(activeEventId) || String(j.eventId) === '0' || !j.eventId)
     );
+    if (agreements && agreements.length > 0) {
+      const matchedAgreements = eventPresentJudges.filter(j => 
+        agreements.some(a => 
+          (a.email && j.email && String(a.email).toLowerCase().trim() === String(j.email).toLowerCase().trim()) || 
+          (a.name && j.name && String(a.name).toLowerCase().trim() === String(j.name).toLowerCase().trim())
+        )
+      );
+      if (matchedAgreements.length > 0) eventPresentJudges = matchedAgreements;
+    }
     const baseJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
     const maxPoss = baseJudgesCount * subjects.length * 10;
     const pct = maxPoss>0?Math.round(total/maxPoss*100):0;
@@ -18288,7 +18300,7 @@ async function promoteSelected() {
     // Step 2: Confirm all judges finished scoring
     const q2 = confirm(
       `⚠️ S.N.U.L VERIFICATION (Step 2 of 2):\n\n` +
-      `QUESTION 2: Have ALL judges completed their scoring for these participant(s)?\n\n` +
+      `QUESTION 2: Have ALL PRESENT judges completed their scoring for these participant(s)? (Absent judges are excluded)\n\n` +
       `Click OK for YES, or Cancel for NO.`
     );
     if (!q2) {
