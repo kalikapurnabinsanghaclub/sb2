@@ -3664,14 +3664,60 @@
              <button class="btn btn-ghost btn-sm" onclick="downloadRankingsJPG()" style="color:var(--text);border:1px solid var(--border);display:flex;align-items:center;gap:4px">🖼️ JPG</button>
           </div>
        </div>
-       <div class="tabs" id="leaderboard-round-tabs" style="display:flex;gap:8px;flex-wrap:wrap;">
-         <div class="tab active" onclick="leaderTab('audition',this)">Audition</div>
-         <div class="tab" onclick="leaderTab('qualified',this)">Qualified</div>
-         <div class="tab" onclick="leaderTab('semifinal',this)">Semifinal</div>
-         <div class="tab" onclick="leaderTab('final',this)">Final</div>
-         <div class="tab" style="font-weight:800;border:1px solid #10b981;color:#10b981;" onclick="leaderTab('audition_qualified',this)">Audition + Qualified</div>
-         <div class="tab" style="font-weight:800;border:1px solid #6366f1;color:#6366f1;" onclick="leaderTab('semifinal_final',this)">Semifinal + Final</div>
+       <div class="tabs" id="leaderboard-round-tabs" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+         <!-- Dynamically generated individual round tabs + Custom Formula tab -->
        </div>
+
+       <!-- 📐 Custom Ranking Formula Builder Card -->
+       <div id="leaderboard-formula-card" style="display:none;background:var(--surface2);border:1.5px solid rgba(217,119,6,0.3);border-radius:16px;padding:16px 20px;margin-top:14px;margin-bottom:20px;box-shadow:0 4px 16px rgba(0,0,0,0.03);">
+         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+           <div style="display:flex;align-items:center;gap:8px;">
+             <span style="font-size:18px;">📐</span>
+             <div>
+               <div style="font-weight:800;font-size:13px;color:var(--text);letter-spacing:0.3px;">Custom Round Ranking Formula Builder</div>
+               <div style="font-size:10px;color:var(--text-muted);">Combine or subtract rounds to calculate custom total scores (e.g. 1+2-3, 1+2+3+4, 2+3)</div>
+             </div>
+           </div>
+           <div style="display:flex;gap:6px;align-items:center;">
+             <button type="button" class="btn btn-xs btn-ghost" onclick="resetRankingFormula()" style="border-radius:8px;font-weight:700;">↺ Reset (1+2)</button>
+             <button type="button" class="btn btn-xs btn-amber" onclick="applyRankingFormula()" style="border-radius:8px;font-weight:800;padding:4px 14px;">✓ Apply Formula</button>
+           </div>
+         </div>
+
+         <!-- Formula Input & Quick Chips -->
+         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+           <div style="flex:1;min-width:240px;position:relative;">
+             <input type="text" id="leaderboard-formula-input" value="1+2" placeholder="e.g. 1+2-3 or 1+2+3+4 or 2+3" oninput="onCustomFormulaInput(this.value)" style="width:100%;padding:9px 14px;border-radius:10px;border:1.5px solid var(--amber2);background:var(--surface);color:var(--text);font-family:var(--fm);font-weight:900;font-size:15px;outline:none;letter-spacing:1px;">
+           </div>
+           
+           <!-- Quick Presets -->
+           <div style="display:flex;gap:6px;flex-wrap:wrap;" id="formula-quick-presets">
+             <button type="button" class="btn btn-xs btn-ghost" onclick="setRankingFormula('1+2')" style="border-radius:8px;font-weight:700;font-family:var(--fm);">1 + 2</button>
+             <button type="button" class="btn btn-xs btn-ghost" onclick="setRankingFormula('2+3')" style="border-radius:8px;font-weight:700;font-family:var(--fm);">2 + 3</button>
+             <button type="button" class="btn btn-xs btn-ghost" onclick="setRankingFormula('1+2-3')" style="border-radius:8px;font-weight:700;font-family:var(--fm);border-color:rgba(217,119,6,0.3);color:var(--amber2);">1 + 2 − 3</button>
+             <button type="button" class="btn btn-xs btn-ghost" onclick="setRankingFormula('1+2+3+4')" style="border-radius:8px;font-weight:700;font-family:var(--fm);">1 + 2 + 3 + 4</button>
+             <button type="button" class="btn btn-xs btn-ghost" onclick="setRankingFormulaAllRounds()" style="border-radius:8px;font-weight:700;">All Rounds Sum</button>
+           </div>
+         </div>
+
+         <!-- Interactive Round Buttons & Operators -->
+         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px dashed var(--border);padding-top:10px;">
+           <div style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;">Click to Insert:</div>
+           <div style="display:flex;gap:6px;flex-wrap:wrap;" id="formula-round-insert-chips">
+             <!-- R1, R2, R3 chips rendered dynamically -->
+           </div>
+           <div style="display:flex;gap:4px;">
+             <button type="button" class="btn btn-xs btn-ghost" onclick="insertFormulaOperator('+')" style="border-radius:6px;font-weight:900;font-size:12px;padding:3px 8px;border:1px solid var(--border);">＋</button>
+             <button type="button" class="btn btn-xs btn-ghost" onclick="insertFormulaOperator('-')" style="border-radius:6px;font-weight:900;font-size:12px;padding:3px 8px;border:1px solid var(--border);color:#dc2626;">−</button>
+           </div>
+         </div>
+
+         <!-- Live Formula Preview Text -->
+         <div id="formula-preview-text" style="font-size:11px;font-weight:700;color:var(--amber2);margin-top:10px;padding:6px 12px;background:rgba(217,119,6,0.06);border-radius:8px;">
+           <!-- Live calculation text -->
+         </div>
+       </div>
+
        <div id="leaderboard-content"></div>
     </div>
   </div>
@@ -7997,10 +8043,173 @@ window.switchEvent = (val) => {
 
 // Identity logic removed
 
+
+// ══════════════════════════════════════════
+// CUSTOM RANKING FORMULA ENGINE
+// ══════════════════════════════════════════
+let currentRankingFormula = localStorage.getItem('knsdc_ranking_formula') || '1+2';
+let isCustomFormulaActive = localStorage.getItem('knsdc_ranking_formula_active') === '1';
+
+function getParticipantRoundScore(p, roundId) {
+  if (!p) return 0;
+  const targetR = String(roundId || '').toLowerCase();
+  let scoresObj = null;
+  if (p.roundScores && p.roundScores[targetR]) {
+    scoresObj = p.roundScores[targetR];
+  } else if (String(p.round || '').toLowerCase() === targetR && p.scores) {
+    scoresObj = p.scores;
+  }
+  let total = 0;
+  if (scoresObj) {
+    Object.values(scoresObj).forEach(jScores => {
+      if (typeof jScores === 'number') {
+        total += jScores;
+      } else if (jScores && typeof jScores === 'object') {
+        Object.values(jScores).forEach(val => {
+          total += (Number(val) || 0);
+        });
+      }
+    });
+  }
+  return total;
+}
+
+function parseRankingFormula(formulaStr, eventRounds) {
+  const raw = String(formulaStr || '1+2').trim();
+  const regex = /([+-]?)\s*(?:R|Round)?\s*(\d+)/gi;
+  const terms = [];
+  let match;
+  while ((match = regex.exec(raw)) !== null) {
+    const sign = match[1] === '-' ? -1 : 1;
+    const roundNum = parseInt(match[2], 10);
+    if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= eventRounds.length) {
+      const roundObj = eventRounds[roundNum - 1];
+      terms.push({
+        sign,
+        roundNum,
+        roundId: roundObj.id,
+        roundName: roundObj.name
+      });
+    }
+  }
+  if (terms.length === 0 && eventRounds.length >= 1) {
+    // Default fallback
+    terms.push({ sign: 1, roundNum: 1, roundId: eventRounds[0].id, roundName: eventRounds[0].name });
+    if (eventRounds.length >= 2) {
+      terms.push({ sign: 1, roundNum: 2, roundId: eventRounds[1].id, roundName: eventRounds[1].name });
+    }
+  }
+  return terms;
+}
+
+function evaluateParticipantFormula(p, terms) {
+  let netScore = 0;
+  const breakdown = [];
+  terms.forEach(t => {
+    const rScore = getParticipantRoundScore(p, t.roundId);
+    netScore += (t.sign * rScore);
+    breakdown.push({
+      roundName: t.roundName,
+      roundNum: t.roundNum,
+      sign: t.sign,
+      score: rScore
+    });
+  });
+  return { netScore, breakdown };
+}
+
+function getFormulaPreviewText(formulaStr, eventRounds) {
+  const terms = parseRankingFormula(formulaStr, eventRounds);
+  if (terms.length === 0) return 'Invalid formula. Use format like: 1+2-3, 1+2+3+4, or 2+3';
+  return '📐 Live Calculation: ' + terms.map((t, idx) => {
+    const op = idx === 0 ? (t.sign < 0 ? '− ' : '') : (t.sign < 0 ? ' − ' : ' ＋ ');
+    return `${op}Score(R${t.roundNum}: ${t.roundName})`;
+  }).join('');
+}
+
+function onCustomFormulaInput(val) {
+  currentRankingFormula = val;
+  const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [];
+  const previewEl = document.getElementById('formula-preview-text');
+  if (previewEl) previewEl.textContent = getFormulaPreviewText(val, eventRounds);
+  const badgeEl = document.getElementById('current-formula-pill-text');
+  if (badgeEl) badgeEl.textContent = val || '1+2';
+}
+
+function setRankingFormula(val) {
+  currentRankingFormula = val;
+  const inp = document.getElementById('leaderboard-formula-input');
+  if (inp) inp.value = val;
+  onCustomFormulaInput(val);
+  applyRankingFormula();
+}
+
+function setRankingFormulaAllRounds() {
+  const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [];
+  const formula = eventRounds.map((_, i) => String(i + 1)).join('+') || '1+2';
+  setRankingFormula(formula);
+}
+
+function insertFormulaRound(roundNum) {
+  const inp = document.getElementById('leaderboard-formula-input');
+  if (!inp) return;
+  const cur = inp.value.trim();
+  const lastChar = cur.slice(-1);
+  const appendStr = (cur === '' || lastChar === '+' || lastChar === '-') ? String(roundNum) : ('+' + roundNum);
+  inp.value = cur + appendStr;
+  onCustomFormulaInput(inp.value);
+}
+
+function insertFormulaOperator(op) {
+  const inp = document.getElementById('leaderboard-formula-input');
+  if (!inp) return;
+  const cur = inp.value.trim();
+  if (cur === '') return;
+  const lastChar = cur.slice(-1);
+  if (lastChar === '+' || lastChar === '-') {
+    inp.value = cur.slice(0, -1) + op;
+  } else {
+    inp.value = cur + op;
+  }
+  onCustomFormulaInput(inp.value);
+}
+
+function resetRankingFormula() {
+  setRankingFormula('1+2');
+}
+
+function applyRankingFormula() {
+  isCustomFormulaActive = true;
+  currentLeaderRound = 'custom_formula';
+  localStorage.setItem('knsdc_ranking_formula', currentRankingFormula);
+  localStorage.setItem('knsdc_ranking_formula_active', '1');
+  renderLeaderboard();
+  toast(`Applied Custom Ranking Formula: ${currentRankingFormula}`);
+}
+
+function selectCustomFormulaTab(el) {
+  isCustomFormulaActive = true;
+  currentLeaderRound = 'custom_formula';
+  localStorage.setItem('knsdc_ranking_formula_active', '1');
+  const card = document.getElementById('leaderboard-formula-card');
+  if (card) card.style.display = 'block';
+  renderLeaderboard();
+}
+
+function toggleFormulaCard() {
+  const card = document.getElementById('leaderboard-formula-card');
+  if (!card) return;
+  card.style.display = card.style.display === 'none' ? 'block' : 'none';
+}
+
 window.leaderTab = (round, el) => {
+    isCustomFormulaActive = (round === 'custom_formula');
+    localStorage.setItem('knsdc_ranking_formula_active', isCustomFormulaActive ? '1' : '0');
     currentLeaderRound = round;
     document.querySelectorAll('#pp-leaderboard .tab').forEach(t => t.classList.remove('active'));
     if(el) el.classList.add('active');
+    const formulaCard = document.getElementById('leaderboard-formula-card');
+    if (formulaCard) formulaCard.style.display = isCustomFormulaActive ? 'block' : 'none';
     renderLeaderboard();
 };
 
@@ -8042,42 +8251,58 @@ function renderLeaderboard() {
       (window.EVENTS && window.EVENTS[0] ? String(window.EVENTS[0].id) : null) || 
       localStorage.getItem('knsdc_activeEventId');
 
-    // Dynamically render round tabs based on active event's round rules
+    const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [
+      { id: 'audition', name: 'Audition' },
+      { id: 'qualified', name: 'Qualified' },
+      { id: 'semifinal', name: 'Semifinal' },
+      { id: 'final', name: 'Final' }
+    ];
+
+    if (!currentLeaderRound) {
+      currentLeaderRound = isCustomFormulaActive ? 'custom_formula' : (eventRounds[0]?.id || 'audition');
+    }
+
+    const isFormulaMode = isCustomFormulaActive || currentLeaderRound === 'custom_formula';
+
+    // 1. Render dynamic round tabs & Custom Formula Pill
     const roundTabsContainer = document.getElementById('leaderboard-round-tabs');
     if (roundTabsContainer) {
-      const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [
-        { id: 'audition', name: 'Audition' },
-        { id: 'qualified', name: 'Qualified' },
-        { id: 'semifinal', name: 'Semifinal' },
-        { id: 'final', name: 'Final' }
-      ];
-
-      // Ensure currentLeaderRound is valid
-      if (!currentLeaderRound) {
-        currentLeaderRound = eventRounds[0]?.id || 'audition';
-      }
-
       let tabsHtml = '';
       eventRounds.forEach((r, idx) => {
-        const isActive = currentLeaderRound === r.id;
+        const isActive = !isFormulaMode && currentLeaderRound === r.id;
         tabsHtml += `<div class="tab ${isActive ? 'active' : ''}" onclick="leaderTab('${r.id}',this)">${r.name}</div>`;
       });
 
-      // Keep combined tabs for standard progression
-      const hasAud = eventRounds.some(r => r.id === 'audition');
-      const hasQual = eventRounds.some(r => r.id === 'qualified');
-      if (hasAud && hasQual) {
-        const isAQ = currentLeaderRound === 'audition_qualified';
-        tabsHtml += `<div class="tab ${isAQ ? 'active' : ''}" style="font-weight:800;border:1.5px solid #10b981;color:#10b981;" onclick="leaderTab('audition_qualified',this)">Audition + Qualified</div>`;
-      }
-      const hasSemi = eventRounds.some(r => r.id === 'semifinal');
-      const hasFin = eventRounds.some(r => r.id === 'final');
-      if (hasSemi && hasFin) {
-        const isSF = currentLeaderRound === 'semifinal_final';
-        tabsHtml += `<div class="tab ${isSF ? 'active' : ''}" style="font-weight:800;border:1.5px solid #6366f1;color:#6366f1;" onclick="leaderTab('semifinal_final',this)">Semifinal + Final</div>`;
-      }
+      // Custom Formula Pill replacing old hardcoded combined tabs
+      tabsHtml += `
+        <div class="tab custom-formula-pill ${isFormulaMode ? 'active' : ''}" onclick="selectCustomFormulaTab(this)" style="font-weight:800;border:1.5px solid var(--amber2);color:${isFormulaMode ? '#fff' : 'var(--amber2)'};background:${isFormulaMode ? 'var(--amber2)' : 'rgba(217,119,6,0.06)'};display:inline-flex;align-items:center;gap:6px;border-radius:12px;padding:6px 14px;cursor:pointer;box-shadow:${isFormulaMode ? '0 2px 10px rgba(217,119,6,0.35)' : 'none'};" title="Click to view or edit Custom Formula (e.g. 1+2-3, 1+2+3+4, 2+3)">
+          <span>⚡ Custom Formula:</span>
+          <strong id="current-formula-pill-text" style="font-family:var(--fm);letter-spacing:0.5px;">${currentRankingFormula || '1+2'}</strong>
+          <span onclick="event.stopPropagation(); toggleFormulaCard();" style="font-size:11px;opacity:0.9;cursor:pointer;padding:1px 4px;border-radius:4px;background:${isFormulaMode ? 'rgba(0,0,0,0.15)' : 'rgba(217,119,6,0.1)'}" title="Open/Close Formula Builder">⚙️</span>
+        </div>
+      `;
 
       roundTabsContainer.innerHTML = tabsHtml;
+    }
+
+    // 2. Sync Formula Builder Card controls
+    const formulaCard = document.getElementById('leaderboard-formula-card');
+    if (formulaCard) {
+      formulaCard.style.display = isFormulaMode ? 'block' : 'none';
+      const inp = document.getElementById('leaderboard-formula-input');
+      if (inp && inp.value !== currentRankingFormula) inp.value = currentRankingFormula;
+      const previewEl = document.getElementById('formula-preview-text');
+      if (previewEl) previewEl.textContent = getFormulaPreviewText(currentRankingFormula, eventRounds);
+      
+      // Render interactive insert chips
+      const chipsContainer = document.getElementById('formula-round-insert-chips');
+      if (chipsContainer) {
+        chipsContainer.innerHTML = eventRounds.map((r, i) => `
+          <button type="button" class="btn btn-xs btn-ghost" onclick="insertFormulaRound(${i+1})" style="border-radius:6px;font-weight:700;font-size:11px;padding:3px 8px;border:1px solid var(--border);">
+            R${i+1} (${escapeHtml(r.name.slice(0, 8))})
+          </button>
+        `).join('');
+      }
     }
 
     const eventPresentJudges = judges.filter(j => 
@@ -8090,7 +8315,7 @@ function renderLeaderboard() {
     );
     const presentJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
 
-    // Dynamically sync and populate Category Selector options
+    // Dynamically sync Category Selector options
     const catSelect = document.getElementById('leaderboard-cat-filter');
     const eventCats = categories.filter(c => !activeEvId || String(c.eventId) === String(activeEvId) || !c.eventId);
     if (catSelect) {
@@ -8103,23 +8328,26 @@ function renderLeaderboard() {
     }
     const activeCatId = catSelect ? catSelect.value : "";
 
-    // Check if combined round mode is active
-    const isCombinedAQ = currentLeaderRound === 'audition_qualified';
-    const isCombinedSF = currentLeaderRound === 'semifinal_final';
-    const isCombined = isCombinedAQ || isCombinedSF;
-    const combinedRoundList = isCombinedAQ ? ['audition', 'qualified'] : (isCombinedSF ? ['semifinal', 'final'] : [currentLeaderRound]);
+    // 3. Filter participant pool & compute scores
+    let formulaTerms = [];
+    if (isFormulaMode) {
+      formulaTerms = parseRankingFormula(currentRankingFormula, eventRounds);
+    }
 
-    // Base participant pool for this event with flexible round matching
     const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
     const baseParticipants = participants.filter(p => {
-      // 1. Event filter
+      // Event filter
       const matchesEvent = !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId);
       if (!matchesEvent) return false;
 
-      // 2. Round filter
-      if (isCombined) {
-        const hasScoreInRound = p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0);
-        return combinedRoundList.includes(p.round) || hasScoreInRound;
+      if (isFormulaMode) {
+        // In formula mode, include participants who reached any formula round or have scores in them
+        const hasAnyFormulaScore = formulaTerms.some(t => {
+          const score = getParticipantRoundScore(p, t.roundId);
+          return score > 0;
+        });
+        const inAnyFormulaRound = formulaTerms.some(t => String(p.round || '').toLowerCase() === String(t.roundId).toLowerCase());
+        return inAnyFormulaRound || hasAnyFormulaScore || !p.round;
       } else {
         const pRound = String(p.round || 'audition').toLowerCase();
         const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
@@ -8127,34 +8355,14 @@ function renderLeaderboard() {
       }
     });
 
-    // Compute scores for each participant
     const scoredList = baseParticipants.map(p => {
         const pClone = { ...p };
-        if (isCombined) {
-          const res = getParticipantCombinedScore(pClone, combinedRoundList);
-          pClone.totalScore = res.grandTotal;
-          pClone.roundBreakdown = res.breakDown;
+        if (isFormulaMode) {
+          const evalRes = evaluateParticipantFormula(pClone, formulaTerms);
+          pClone.totalScore = evalRes.netScore;
+          pClone.formulaBreakdown = evalRes.breakdown;
         } else {
-          // Look up scores in roundScores[targetRoundClean], fallback to p.scores
-          let scoresObj = (pClone.roundScores && pClone.roundScores[targetRoundClean] && Object.keys(pClone.roundScores[targetRoundClean]).length > 0)
-            ? pClone.roundScores[targetRoundClean]
-            : (String(pClone.round || 'audition').toLowerCase() === targetRoundClean ? pClone.scores : null);
-          
-          if (!scoresObj && pClone.scores && Object.keys(pClone.scores).length > 0) {
-            scoresObj = pClone.scores;
-          }
-
-          let total = 0;
-          if (scoresObj) {
-            Object.values(scoresObj).forEach(jScores => {
-              if (typeof jScores === 'number') {
-                total += jScores;
-              } else if (jScores && typeof jScores === 'object') {
-                Object.values(jScores).forEach(val => total += (Number(val) || 0));
-              }
-            });
-          }
-          pClone.totalScore = total;
+          pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
         }
         return pClone;
     });
@@ -8162,7 +8370,7 @@ function renderLeaderboard() {
     let html = '';
     const renderedPids = new Set();
 
-    // Helper to render a category leaderboard section
+    // Helper to render category block
     const renderCategoryBlock = (catName, catColor, catScoredList) => {
       if (!catScoredList || catScoredList.length === 0) return '';
       catScoredList.sort((a, b) => b.totalScore - a.totalScore);
@@ -8218,12 +8426,28 @@ function renderLeaderboard() {
                         <th style="width:70px">Rank</th>
                         <th>Participant Info</th>
                         <th>Category</th>
-                        <th style="text-align:right">Global Score</th>
+                        <th style="text-align:right">${isFormulaMode ? 'Formula Score & Breakdown' : 'Global Score'}</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${catScoredList.map((p, i) => {
                         const isTop3 = i < 3;
+                        
+                        let breakdownHtml = '';
+                        if (isFormulaMode && p.formulaBreakdown && p.formulaBreakdown.length > 0) {
+                          breakdownHtml = `
+                            <div style="font-size:10px;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;margin-top:4px;">
+                              ${p.formulaBreakdown.map((b, bIdx) => {
+                                const signText = bIdx === 0 ? (b.sign < 0 ? '− ' : '') : (b.sign < 0 ? ' − ' : ' ＋ ');
+                                const col = b.sign < 0 ? '#dc2626' : '#059669';
+                                return `<span style="background:${b.sign < 0 ? 'rgba(239,68,68,0.1)' : 'rgba(5,150,105,0.08)'};color:${col};padding:2px 6px;border-radius:4px;font-weight:700;">${signText}R${b.roundNum}: ${b.score}</span>`;
+                              }).join('')}
+                            </div>
+                          `;
+                        } else if (!isFormulaMode) {
+                          breakdownHtml = `<div style="font-size:9px;color:var(--text-muted)">/ ${(presentJudgesCount * subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0))} max</div>`;
+                        }
+
                         return `
                             <tr class="${isTop3 ? 'top-row' : ''}">
                                 <td>
@@ -8236,26 +8460,14 @@ function renderLeaderboard() {
                                         <div class="avatar-circle" style="width:36px;height:36px;font-size:14px;background:${isTop3 ? 'var(--amber2)20' : 'var(--surface3)'};color:${isTop3 ? 'var(--amber2)' : 'var(--text-dim)'}">${(p.name||'P')[0]}</div>
                                         <div>
                                             <div style="font-weight:700;font-size:14px">${p.name || 'Participant'}</div>
-                                            <div style="font-size:9px;color:var(--text-muted)">${p.id}</div>
+                                            <div style="font-size:9px;color:var(--text-muted)">ID: ${p.id} · Round: ${p.round || 'Audition'}</div>
                                         </div>
                                     </div>
                                 </td>
                                 <td><span class="badge ${catColor || 'b-gray'}">${catName}</span></td>
                                 <td style="text-align:right">
                                     <div class="judge-score-val" style="font-family:var(--fh);font-size:20px;font-weight:900;color:${isTop3 ? 'var(--amber2)' : 'var(--blue)'}">${p.totalScore} <span style="font-size:12px;font-weight:normal;opacity:0.8">pts</span></div>
-                                    ${isCombined ? `
-                                      <div style="font-size:10px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px;align-items:flex-end;margin-top:4px;">
-                                        ${isCombinedAQ ? `
-                                          <span style="background:rgba(16,185,129,0.15);color:#059669;padding:2px 7px;border-radius:5px;font-weight:700">Audition: ${p.roundBreakdown?.audition || 0} pts</span>
-                                          <span style="background:rgba(59,130,246,0.15);color:#2563eb;padding:2px 7px;border-radius:5px;font-weight:700">Qualified: ${p.roundBreakdown?.qualified || 0} pts</span>
-                                        ` : `
-                                          <span style="background:rgba(99,102,241,0.15);color:#4f46e5;padding:2px 7px;border-radius:5px;font-weight:700">Semifinal: ${p.roundBreakdown?.semifinal || 0} pts</span>
-                                          <span style="background:rgba(236,72,153,0.15);color:#db2777;padding:2px 7px;border-radius:5px;font-weight:700">Final: ${p.roundBreakdown?.final || 0} pts</span>
-                                        `}
-                                      </div>
-                                    ` : `
-                                      <div style="font-size:9px;color:var(--text-muted)">/ ${(presentJudgesCount * subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0))} max</div>
-                                    `}
+                                    ${breakdownHtml}
                                 </td>
                             </tr>
                         `;
@@ -8268,7 +8480,7 @@ function renderLeaderboard() {
       return blockHtml;
     };
 
-    // 1. Iterate configured categories
+    // 4. Render category sections
     const activeCats = activeCatId 
       ? eventCats.filter(c => String(c.id) === String(activeCatId))
       : eventCats;
@@ -8284,20 +8496,19 @@ function renderLeaderboard() {
       });
     }
 
-    // 2. Fallback for unclassified participants (or if no categories defined)
     const unmatched = scoredList.filter(p => !renderedPids.has(p.id));
     if (unmatched.length > 0 && (!activeCatId || activeCats.length === 0)) {
       html += renderCategoryBlock('General / All Participants', 'var(--blue2)', unmatched);
     }
 
     if (html === '') {
-      const roundLabel = (typeof getRoundLabel === 'function') ? (getRoundLabel(currentLeaderRound) || currentLeaderRound) : currentLeaderRound;
+      const displayLabel = isFormulaMode ? `Formula (${currentRankingFormula})` : ((typeof getRoundLabel === 'function' ? getRoundLabel(currentLeaderRound) : currentLeaderRound) || currentLeaderRound);
       html = `
         <div class="card" style="text-align:center;padding:50px 20px;color:var(--text-muted)">
           <div style="font-size:36px;margin-bottom:12px">🏆</div>
-          <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">No Rankings Available for ${roundLabel}</div>
+          <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">No Rankings Available for ${displayLabel}</div>
           <div style="font-size:12px;max-width:440px;margin:0 auto;line-height:1.5">
-            Participants will appear here automatically once judges submit scores for this round.
+            ${isFormulaMode ? 'No scores recorded yet for the rounds in this formula. Adjust formula or submit judge scores.' : 'Participants will appear here automatically once judges submit scores for this round.'}
           </div>
         </div>
       `;
@@ -8369,37 +8580,34 @@ async function downloadRankingsPDF() {
     ? categories.filter(c => String(c.id) === String(activeCatId))
     : categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
 
-  const isCombinedAQ = currentLeaderRound === 'audition_qualified';
-  const isCombinedSF = currentLeaderRound === 'semifinal_final';
-  const isCombined = isCombinedAQ || isCombinedSF;
-  const combinedRoundList = isCombinedAQ ? ['audition', 'qualified'] : (isCombinedSF ? ['semifinal', 'final'] : [currentLeaderRound]);
-
-  let baseParticipants = [];
-  if (isCombined) {
-    baseParticipants = participants.filter(p => 
-      (String(p.eventId) === String(activeEventId) || !p.eventId) &&
-      (combinedRoundList.includes(p.round) || (p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0)))
-    );
-  } else {
-    baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const isFormulaMode = isCustomFormulaActive || currentLeaderRound === 'custom_formula';
+  let formulaTerms = [];
+  const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [];
+  if (isFormulaMode) {
+    formulaTerms = parseRankingFormula(currentRankingFormula, eventRounds);
   }
+
+  const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
+  const baseParticipants = participants.filter(p => {
+    const matchesEvent = !activeEventId || !p.eventId || String(p.eventId) === String(activeEventId);
+    if (!matchesEvent) return false;
+    if (isFormulaMode) {
+      const hasAnyScore = formulaTerms.some(t => getParticipantRoundScore(p, t.roundId) > 0);
+      return hasAnyScore || !p.round;
+    } else {
+      const pRound = String(p.round || 'audition').toLowerCase();
+      const hasScore = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
+      return pRound === targetRoundClean || hasScore;
+    }
+  });
 
   const scoredList = baseParticipants.map(p => {
       const pClone = { ...p };
-      if (isCombined) {
-        const res = getParticipantCombinedScore(pClone, combinedRoundList);
-        pClone.totalScore = res.grandTotal;
-        pClone.roundBreakdown = res.breakDown;
+      if (isFormulaMode) {
+        const evalRes = evaluateParticipantFormula(pClone, formulaTerms);
+        pClone.totalScore = evalRes.netScore;
       } else {
-        if (!pClone.roundScores) pClone.roundScores = {};
-        if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-        pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
-
-        let total = 0;
-        Object.values(pClone.scores || {}).forEach(jScores => {
-            Object.values(jScores).forEach(val => total += (Number(val) || 0));
-        });
-        pClone.totalScore = total;
+        pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
       }
       return pClone;
   });
@@ -8462,7 +8670,7 @@ async function downloadRankingsPDF() {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(217, 119, 6);
     doc.setFontSize(11);
-    doc.text(`ROUND: ${currentLeaderRound.toUpperCase()}`, 196, 16, { align: 'right' });
+    doc.text(`ROUND: ${isFormulaMode ? ('FORMULA ' + currentRankingFormula).toUpperCase() : currentLeaderRound.toUpperCase()}`, 196, 16, { align: 'right' });
     
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(37, 99, 235);
@@ -8528,7 +8736,7 @@ async function downloadRankingsPDF() {
     doc.text(' of ' + pageCount, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10, { align: 'right' });
   }
 
-  doc.save(`Rankings_${currentLeaderRound}_${new Date().getTime()}.pdf`);
+  doc.save(`Rankings_${isFormulaMode ? ('Formula_' + currentRankingFormula.replace(/[^a-z0-9]/gi, '_')) : currentLeaderRound}_${new Date().getTime()}.pdf`);
   toast('✅ Downloaded PDF!');
 }
 
@@ -8553,37 +8761,34 @@ async function downloadRankingsJPG() {
     ? categories.filter(c => String(c.id) === String(activeCatId))
     : categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
 
-  const isCombinedAQ = currentLeaderRound === 'audition_qualified';
-  const isCombinedSF = currentLeaderRound === 'semifinal_final';
-  const isCombined = isCombinedAQ || isCombinedSF;
-  const combinedRoundList = isCombinedAQ ? ['audition', 'qualified'] : (isCombinedSF ? ['semifinal', 'final'] : [currentLeaderRound]);
-
-  let baseParticipants = [];
-  if (isCombined) {
-    baseParticipants = participants.filter(p => 
-      (String(p.eventId) === String(activeEventId) || !p.eventId) &&
-      (combinedRoundList.includes(p.round) || (p.roundScores && combinedRoundList.some(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0)))
-    );
-  } else {
-    baseParticipants = participants.filter(p => p.round === currentLeaderRound && (String(p.eventId) === String(activeEventId) || !p.eventId));
+  const isFormulaMode = isCustomFormulaActive || currentLeaderRound === 'custom_formula';
+  let formulaTerms = [];
+  const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [];
+  if (isFormulaMode) {
+    formulaTerms = parseRankingFormula(currentRankingFormula, eventRounds);
   }
+
+  const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
+  const baseParticipants = participants.filter(p => {
+    const matchesEvent = !activeEventId || !p.eventId || String(p.eventId) === String(activeEventId);
+    if (!matchesEvent) return false;
+    if (isFormulaMode) {
+      const hasAnyScore = formulaTerms.some(t => getParticipantRoundScore(p, t.roundId) > 0);
+      return hasAnyScore || !p.round;
+    } else {
+      const pRound = String(p.round || 'audition').toLowerCase();
+      const hasScore = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
+      return pRound === targetRoundClean || hasScore;
+    }
+  });
 
   const scoredList = baseParticipants.map(p => {
       const pClone = { ...p };
-      if (isCombined) {
-        const res = getParticipantCombinedScore(pClone, combinedRoundList);
-        pClone.totalScore = res.grandTotal;
-        pClone.roundBreakdown = res.breakDown;
+      if (isFormulaMode) {
+        const evalRes = evaluateParticipantFormula(pClone, formulaTerms);
+        pClone.totalScore = evalRes.netScore;
       } else {
-        if (!pClone.roundScores) pClone.roundScores = {};
-        if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-        pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
-
-        let total = 0;
-        Object.values(pClone.scores || {}).forEach(jScores => {
-            Object.values(jScores).forEach(val => total += (Number(val) || 0));
-        });
-        pClone.totalScore = total;
+        pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
       }
       return pClone;
   });
@@ -8644,7 +8849,7 @@ async function downloadRankingsJPG() {
         </div>
         <div style="text-align:right">
           <div style="font-size:16px; font-weight:800; color:#d97706; text-transform:uppercase; letter-spacing:0.5px">Live Event Rankings</div>
-          <div style="font-size:13px; color:#2563eb; font-weight:700; margin-top:4px; text-transform:uppercase;">ROUND: ${currentLeaderRound}</div>
+          <div style="font-size:13px; color:#2563eb; font-weight:700; margin-top:4px; text-transform:uppercase;">ROUND: ${isFormulaMode ? ('FORMULA ' + currentRankingFormula) : currentLeaderRound}</div>
           <div style="font-size:12px; color:#64748b; margin-top:2px; font-weight:600; text-transform:uppercase;">CATEGORY: ${cat.name}</div>
         </div>
       </div>
@@ -22480,3 +22685,14 @@ window.addEventListener('knsdc:score_received', function() {
     if (typeof renderLeaderboard === 'function') renderLeaderboard();
   }
 });
+
+window.parseRankingFormula = parseRankingFormula;
+window.setRankingFormula = setRankingFormula;
+window.setRankingFormulaAllRounds = setRankingFormulaAllRounds;
+window.insertFormulaRound = insertFormulaRound;
+window.insertFormulaOperator = insertFormulaOperator;
+window.resetRankingFormula = resetRankingFormula;
+window.applyRankingFormula = applyRankingFormula;
+window.selectCustomFormulaTab = selectCustomFormulaTab;
+window.toggleFormulaCard = toggleFormulaCard;
+window.onCustomFormulaInput = onCustomFormulaInput;
