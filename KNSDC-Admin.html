@@ -1531,8 +1531,8 @@
       </div>
       <div class="fg"><label class="fl">Expected Participants</label><input type="number" id="cev-capacity" placeholder="500"/></div>
       <div class="fg">
-        <label class="fl">Upload Banner Image</label>
-        <input type="file" id="cev-banner-file" accept="image/*" multiple onchange="handleBannerUpload(event, 'cev-banner')"/>
+        <label class="fl">Upload Banner Image or Video (Cloudflare)</label>
+        <input type="file" id="cev-banner-file" accept="image/*,video/*" multiple onchange="handleBannerUpload(event, 'cev-banner')"/>
         <input type="hidden" id="cev-banner"/>
         <div id="cev-banner-preview-below" style="margin-top:8px; display:none;"></div>
         <div style="font-size:10px;color:var(--text-muted);margin-top:4px;font-family:var(--fm)">Tip: Select one or more image files to preview below in real time</div>
@@ -1750,8 +1750,8 @@
       </div>
       <div class="fg"><label class="fl">Expected Participants</label><input type="number" id="edit-cev-capacity" placeholder="500"/></div>
       <div class="fg">
-        <label class="fl">Upload Banner Image</label>
-        <input type="file" id="edit-cev-banner-file" accept="image/*" multiple onchange="handleBannerUpload(event, 'edit-cev-banner')"/>
+        <label class="fl">Upload Banner Image or Video (Cloudflare)</label>
+        <input type="file" id="edit-cev-banner-file" accept="image/*,video/*" multiple onchange="handleBannerUpload(event, 'edit-cev-banner')"/>
         <input type="hidden" id="edit-cev-banner"/>
         <div id="edit-ev-banner-preview" style="margin-top:8px; display:none;"></div>
         <div style="font-size:10px;color:var(--text-muted);margin-top:4px;font-family:var(--fm)">Tip: Select one or more image files to preview below in real time</div>
@@ -1868,10 +1868,15 @@ window.handleBannerUpload = async (evt, hiddenId) => {
   const hiddenInput = document.getElementById(hiddenId);
   const existingUrls = typeof window.parseBanners === 'function' ? window.parseBanners(hiddenInput.value) : [];
   
-  toast(`🖼️ Optimizing ${files.length} banner(s)...`);
+  toast(`⚡ Processing ${files.length} media file(s)...`);
 
-  // 1. Compress and read selected files for real-time instant preview
-  const localUrls = await Promise.all(files.map(file => window.compressImageFile(file)));
+  // 1. Instant local preview (video blob or compressed image)
+  const localUrls = await Promise.all(files.map(file => {
+    if (file.type && file.type.startsWith('video/')) {
+      return URL.createObjectURL(file);
+    }
+    return window.compressImageFile(file);
+  }));
   const validLocalUrls = localUrls.filter(Boolean);
   
   // Display instant local previews immediately below the input
@@ -1881,17 +1886,18 @@ window.handleBannerUpload = async (evt, hiddenId) => {
   if (hiddenId === 'cev-banner') previewEventBanner();
   if (hiddenId === 'edit-cev-banner') previewEditEventBanner();
   
-  toast(`📤 Uploading ${files.length} banner(s)...`);
+  toast(`☁️ Uploading directly to Cloudflare R2 CDN...`);
   
-  // 2. Upload to Cloud / Supabase one by one and update in real-time
+  // 2. Upload to Cloudflare R2 one by one and update in real-time
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const localData = validLocalUrls[i];
     if (window.syncEngine && window.syncEngine.uploadFile) {
       try {
-        const cloudUrl = await window.syncEngine.uploadFile(file);
+        const prefix = (file.type && file.type.startsWith('video/')) ? 'videos' : 'banners';
+        const cloudUrl = await window.syncEngine.uploadFile(file, prefix);
         if (cloudUrl) {
-          // Replace the local DataURL with permanent cloud URL
+          // Replace the local preview with permanent Cloudflare R2 URL
           const idx = currentUrls.indexOf(localData);
           if (idx !== -1) {
             currentUrls[idx] = cloudUrl;
@@ -1903,13 +1909,13 @@ window.handleBannerUpload = async (evt, hiddenId) => {
           if (hiddenId === 'edit-cev-banner') previewEditEventBanner();
         }
       } catch (err) {
-        console.warn('Upload error for image', i + 1, err);
+        console.warn('Cloudflare R2 upload error for file', i + 1, err);
       }
     }
   }
   
-  toast(`✅ ${files.length} banner(s) ready!`);
-  fileInput.value = ''; // Reset file input so user can pick more if desired
+  toast(`✅ ${files.length} file(s) saved to Cloudflare!`);
+  fileInput.value = ''; // Reset file input
 };
 
 window.renderBannerThumbnails = (containerId, urls, onRemove) => {
@@ -1931,67 +1937,94 @@ window.renderBannerThumbnails = (containerId, urls, onRemove) => {
   container.style.border = '1px dashed var(--border)';
   
   urls.forEach((url, idx) => {
+    const isVid = typeof url === 'string' && (
+      url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.includes('/videos/') || url.startsWith('data:video') || (url.startsWith('blob:') && url.includes('video'))
+    );
     const card = document.createElement('div');
     card.style.cssText = 'position:relative; width:90px; height:70px; border-radius:8px; overflow:hidden; border:1px solid var(--border); box-shadow:0 2px 6px rgba(0,0,0,0.06); background:#000; flex-shrink:0;';
     
-    const img = document.createElement('img');
-    img.src = url;
-    img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
-    
-    // Badge for Cover Image
-    if (idx === 0) {
+    if (isVid) {
+      const vid = document.createElement('video');
+      vid.src = url;
+      vid.autoplay = true;
+      vid.muted = true;
+      vid.loop = true;
+      vid.playsInline = true;
+      vid.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
+      card.appendChild(vid);
+
       const badge = document.createElement('div');
-      badge.textContent = 'COVER';
-      badge.style.cssText = 'position:absolute; bottom:2px; left:2px; background:rgba(37,99,235,0.9); color:#fff; font-size:8px; font-weight:800; padding:1px 4px; border-radius:3px; font-family:var(--fm); letter-spacing:0.5px;';
+      badge.style.cssText = 'position:absolute; bottom:2px; left:2px; background:rgba(0,0,0,0.75); color:#fff; font-size:8px; padding:1px 4px; border-radius:3px; font-weight:800; pointer-events:none;';
+      badge.innerText = '▶ Video';
       card.appendChild(badge);
+    } else {
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
+      card.appendChild(img);
     }
     
-    // Delete Button
     const delBtn = document.createElement('button');
-    delBtn.innerHTML = '&times;';
-    delBtn.type = 'button';
-    delBtn.title = 'Remove banner';
-    delBtn.style.cssText = 'position:absolute; top:2px; right:2px; background:rgba(239,68,68,0.9); color:white; border:none; border-radius:50%; width:18px; height:18px; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:bold; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,0.3);';
+    delBtn.innerHTML = '✕';
+    delBtn.style.cssText = 'position:absolute; top:3px; right:3px; background:rgba(220,38,38,0.85); color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:10px; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 4px rgba(0,0,0,0.3);';
     delBtn.onclick = (e) => {
-      e.preventDefault();
       e.stopPropagation();
-      onRemove(idx);
+      if (typeof onRemove === 'function') onRemove(idx);
     };
     
-    card.appendChild(img);
     card.appendChild(delBtn);
     container.appendChild(card);
   });
+  
+  container.style.display = 'flex';
 };
 
 window.previewEventBanner = () => {
   const urlVal = document.getElementById('cev-banner').value;
-  const name = document.getElementById('cev-name').value.trim();
   const heroPreview = document.getElementById('ev-banner-preview');
   const heroImg = document.getElementById('ev-banner-img');
+  let heroVid = document.getElementById('ev-banner-video');
+  if (!heroVid && heroPreview) {
+    heroVid = document.createElement('video');
+    heroVid.id = 'ev-banner-video';
+    heroVid.autoplay = true;
+    heroVid.muted = true;
+    heroVid.loop = true;
+    heroVid.playsInline = true;
+    heroVid.style.cssText = 'width:100%; height:100%; object-fit:cover; display:none;';
+    heroPreview.appendChild(heroVid);
+  }
   const ph = document.getElementById('ev-banner-placeholder');
   
   const urls = typeof window.parseBanners === 'function' ? window.parseBanners(urlVal) : (urlVal ? [urlVal] : []);
   
   // 1. Update Top Hero Banner Preview
   if (urls.length > 0) {
-    if (heroImg) {
-      heroImg.src = urls[0];
-      heroImg.style.display = 'block';
+    const firstUrl = urls[0];
+    const isVid = typeof firstUrl === 'string' && (
+      firstUrl.endsWith('.mp4') || firstUrl.endsWith('.webm') || firstUrl.endsWith('.mov') || firstUrl.includes('/videos/') || firstUrl.startsWith('data:video') || (firstUrl.startsWith('blob:') && firstUrl.includes('video'))
+    );
+    if (isVid) {
+      if (heroImg) heroImg.style.display = 'none';
+      if (heroVid) {
+        heroVid.src = firstUrl;
+        heroVid.style.display = 'block';
+      }
+    } else {
+      if (heroVid) heroVid.style.display = 'none';
+      if (heroImg) {
+        heroImg.src = firstUrl;
+        heroImg.style.display = 'block';
+      }
     }
     if (ph) ph.style.display = 'none';
   } else {
-    if (heroImg) {
-      heroImg.src = '';
-      heroImg.style.display = 'none';
-    }
-    if (ph) {
-      ph.style.display = 'block';
-      ph.innerHTML = name ? '<div style="font-family:var(--fh);font-size:22px;font-weight:800;color:#fff;letter-spacing:1px">'+name.toUpperCase()+'</div>' : '<div style="font-size:36px">🎪</div><div style="font-size:12px;font-family:var(--fm);letter-spacing:2px;margin-top:6px;color:rgba(255,255,255,0.7)">EVENT BANNER</div>';
-    }
+    if (heroImg) heroImg.style.display = 'none';
+    if (heroVid) heroVid.style.display = 'none';
+    if (ph) ph.style.display = 'block';
   }
   
-  // 2. Render Thumbnails Strip Directly Below File Input in Real Time
+  // 2. Render Thumbnails Directly Below File Input in Real Time
   window.renderBannerThumbnails('cev-banner-preview-below', urls, (removeIdx) => {
     const updatedUrls = urls.filter((_, i) => i !== removeIdx);
     document.getElementById('cev-banner').value = updatedUrls.length > 0 ? JSON.stringify(updatedUrls) : '';
