@@ -14,16 +14,9 @@
 </script>
 <script>
   window.addEventListener('error', function(e) {
-    const div = document.createElement('div');
-    div.id = 'runtime-error-overlay';
-    div.style.cssText = 'position:fixed; top:0; left:0; right:0; background:#ef4444; color:white; z-index:100000; padding:20px; font-family:monospace; font-size:14px; word-break:break-all; border-bottom:4px solid #991b1b; box-shadow:0 10px 30px rgba(0,0,0,0.5)';
-    div.innerHTML = `
-      <div style="font-weight:bold; font-size:18px; margin-bottom:10px">⚠️ Monitor View Error</div>
-      <div style="margin-bottom:10px">Message: ${e.message}</div>
-      <div style="font-size:12px; opacity:0.8">Source: ${e.filename}:${e.lineno}</div>
-      <button onclick="this.parentElement.remove()" style="margin-top:15px; padding:8px 16px; background:#991b1b; color:white; border:none; border-radius:4px; cursor:pointer">Close Overlay</button>
-    `;
-    document.body ? document.body.appendChild(div) : document.documentElement.appendChild(div);
+    console.warn('[Monitor Portal Notice]', e.message, e.filename, e.lineno);
+    const existing = document.getElementById('runtime-error-overlay');
+    if (existing) existing.remove();
   });
 
   // Early stubs — prevent "X is not defined" errors if nav items are clicked before main script loads
@@ -11453,7 +11446,7 @@ function openAddRegModal(){
   if (!html) {
     html = `<div style="grid-column:1/-1; text-align:center; padding:20px; color:var(--text-muted)">
       No form fields defined for this event. 
-      <br/><button class="btn btn-ghost btn-xs" onclick="closeM('add-reg-modal'); nav('registration', document.querySelector('[onclick*=\\'registration\\']')); regTab('formbuilder', document.querySelector('[onclick*=\\'formbuilder\\']'))">Go to Form Builder</button>
+      <br/><button class="btn btn-ghost btn-xs" onclick="closeM('add-reg-modal'); nav('registration'); regTab('formbuilder');">Go to Form Builder</button>
     </div>`;
   }
 
@@ -12065,7 +12058,7 @@ function renderFormBuilder(){
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
         ${filteredCats.map(c => `<span class="badge ${c.color}">${c.name}</span>`).join('') || '<span style="font-size:9px; color:var(--text-muted)">No categories for this event yet.</span>'}
       </div>
-      <button class="btn btn-ghost btn-xs" style="margin-top:10px" onclick="regTab('categories', document.querySelector('[onclick*=\"categories\"]'))">⚙️ Manage Categories</button>
+      <button class="btn btn-ghost btn-xs" style="margin-top:10px" onclick="regTab('categories')">⚙️ Manage Categories</button>
     </div>`;
   }
 
@@ -12076,7 +12069,7 @@ function renderFormBuilder(){
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
         ${filteredVens.map(v => `<span class="badge b-blue">${v.name}</span>`).join('') || '<span style="font-size:9px; color:var(--text-muted)">No venues for this event yet.</span>'}
       </div>
-      <button class="btn btn-ghost btn-xs" style="margin-top:10px" onclick="regTab('venues', document.querySelector('[onclick*=\"venues\"]'))">⚙️ Manage Venues</button>
+      <button class="btn btn-ghost btn-xs" style="margin-top:10px" onclick="regTab('venues')">⚙️ Manage Venues</button>
     </div>`;
   }
 
@@ -13621,17 +13614,17 @@ function renderVenueParticipants(){
                 <audio id="monitor-audio-${idx}" src="${item.url}" style="display:none;" ontimeupdate="updateCustomAudioUI('monitor', ${idx})" onloadedmetadata="updateCustomAudioUI('monitor', ${idx})" onended="window.markAudioCompleted('${onStage.id}')"></audio>
                 
                 <!-- Custom Play/Pause Button -->
-                <button id="monitor-play-btn-${idx}" onclick="toggleCustomAudio('monitor', '${onStage.id}', '${item.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")}', ${idx})" style="width:60px; height:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:white; border:2px solid rgba(255,255,255,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(16,185,129,0.5); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
+                <button id="monitor-play-btn-${idx}" onclick="toggleCustomAudio('monitor', '${onStage.id}', decodeURIComponent('${encodeURIComponent(item.url || '')}'), ${idx})" style="width:60px; height:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:white; border:2px solid rgba(255,255,255,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(16,185,129,0.5); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
                   <svg id="monitor-play-icon-${idx}" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="margin-left:4px;"><path d="M8 5v14l11-7z"/></svg>
                   <svg id="monitor-pause-icon-${idx}" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                 </button>
   
                 <!-- Custom Seek Bar -->
                 <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
-                  <input type="range" id="monitor-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('monitor', ${idx})" onchange="seekCustomAudioEnd('monitor', '${onStage.id}', '${item.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")}', ${idx})" style="width:100%; cursor:pointer; height:8px; border-radius:4px; appearance:none; background:rgba(0,0,0,0.3); outline:none; border:1px solid rgba(255,255,255,0.2);">
+                  <input type="range" id="monitor-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('monitor', ${idx})" onchange="seekCustomAudioEnd('monitor', '${onStage.id}', decodeURIComponent('${encodeURIComponent(item.url || '')}'), ${idx})" style="width:100%; cursor:pointer; height:8px; border-radius:4px; appearance:none; background:rgba(0,0,0,0.3); outline:none; border:1px solid rgba(255,255,255,0.2);">
                   <style>
-                    #monitor-seek-bar-${idx}::-webkit-slider-thumb { appearance:none; width:18px; height:18px; border-radius:50%; background:#ffffff; box-shadow:0 0 12px rgba(255,255,255,0.8); cursor:pointer; transition:all 0.1s; }
-                    #monitor-seek-bar-${idx}::-webkit-slider-thumb:hover { transform:scale(1.2); }
+                  <input type="range" id="monitor-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('monitor', ${idx})" onchange="seekCustomAudioEnd('monitor', '${onStage.id}', decodeURIComponent('${encodeURIComponent(item.url || '')}'), ${idx})" style="width:100%; cursor:pointer; height:8px; border-radius:4px; appearance:none; background:rgba(0,0,0,0.3); outline:none; border:1px solid rgba(255,255,255,0.2);">
+                  <input type="range" id="monitor-seek-bar-${idx}" min="0" max="100" value="0" oninput="seekCustomAudioDrag('monitor', ${idx})" onchange="seekCustomAudioEnd('monitor', '${onStage.id}', decodeURIComponent('${encodeURIComponent(item.url || '')}'), ${idx})" style="width:100%; cursor:pointer; height:8px; border-radius:4px; appearance:none; background:rgba(0,0,0,0.3); outline:none; border:1px solid rgba(255,255,255,0.2);">
                   </style>
                   <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#f8fafc; font-weight:700; font-family:monospace; letter-spacing:0.5px; text-shadow:0 1px 2px rgba(0,0,0,0.4);">
                     <span id="monitor-time-current-${idx}">0:00</span>
@@ -14789,7 +14782,7 @@ function renderPublicVotes() {
 
     const photoUrl = p.photo || p.selfieImage || '';
     const avatarHtml = photoUrl
-      ? `<img src="${photoUrl.replace(/'/g, '&apos;').replace(/"/g, '&quot;')}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--primary);box-shadow:0 2px 6px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\\'width:44px;height:44px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;\\'>${(p.name||'P').charAt(0).toUpperCase()}</div>';" />`
+      ? `<img src="${photoUrl.replace(/'/g, '&apos;').replace(/"/g, '&quot;')}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--primary);box-shadow:0 2px 6px rgba(0,0,0,0.1);" onerror="this.onerror=null; this.src='assets/default-avatar.png';" />`
       : `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg, #7C3AED, #4F46E5);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;box-shadow:0 2px 6px rgba(124,58,237,0.25);">${(p.name||'P').charAt(0).toUpperCase()}</div>`;
 
     const votesRowsHtml = filteredVotes.length === 0
@@ -20129,15 +20122,17 @@ function renderAssignedJudges() {
     const lockPassword = jSession && jSession.lockPassword ? jSession.lockPassword : '';
     const attLogs = jSession && jSession.attendanceLog ? jSession.attendanceLog : [];
 
+    const judgeIdentifier = encodeURIComponent(a.email || a.name || '');
+
     // CHECK 1: Presence Badge (Judge Check-In or Monitor click)
-    const presentBadge = '<div class="badge ' + (isPresent ? 'b-green' : 'b-red') + '" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(\'' + (a.email||a.name) + '\', ' + (!isPresent) + ')" title="Check 1: ' + (isPresent ? 'Mark Absent' : 'Mark Present') + '">' +
+    const presentBadge = '<div class="badge ' + (isPresent ? 'b-green' : 'b-red') + '" style="margin-bottom:6px;cursor:pointer;user-select:none;" onclick="toggleJudgePresence(decodeURIComponent(\'' + judgeIdentifier + '\'), ' + (!isPresent) + ')" title="Check 1: ' + (isPresent ? 'Mark Absent' : 'Mark Present') + '">' +
       (isPresent ? '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;margin-right:4px;animation:blink 1.5s infinite"></span>PRESENT' : 'ABSENT') +
       '</div>';
 
     // CHECK 2: Monitor Scoring Authorization Claw Toggle Switch
     const unlockSwitch = '<div style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:6px">' +
       '<label class="claw-toggle-wrapper" style="font-size: 3px; margin: 0; flex-shrink: 0;" title="Check 2: ' + (isUnlocked ? 'Lock Scoring' : 'Unlock Scoring') + ' for ' + a.name + '">' +
-      '<input type="checkbox" class="claw-toggle-input" onchange="toggleJudgeUnlock(\'' + (a.email||a.name) + '\', this.checked)" ' + (isUnlocked ? 'checked' : '') + ' />' +
+      '<input type="checkbox" class="claw-toggle-input" onchange="toggleJudgeUnlock(decodeURIComponent(\'' + judgeIdentifier + '\'), this.checked)" ' + (isUnlocked ? 'checked' : '') + ' />' +
       '<div class="claw-toggle-track">' +
       '<div class="claw-toggle-slot"><div class="claw-toggle-slot-fill"></div></div>' +
       '<div class="claw-toggle-core"><div class="claw-toggle-core-gear"></div><div class="claw-toggle-core-inner"></div></div>' +
@@ -20216,7 +20211,7 @@ function renderAssignedJudges() {
       (isScoresLocked ? 
         '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;background:rgba(239,68,68,0.08);border:1.5px solid rgba(239,68,68,0.3);padding:8px 12px;border-radius:10px;">' +
         '<div style="font-size:11px;color:#dc2626;font-weight:800;">&#x1F511; Final Lock Password: <strong style="font-family:var(--fm);letter-spacing:1px;font-size:13px;color:#991b1b;background:white;padding:2px 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);">' + (lockPassword || 'SET') + '</strong></div>' +
-        '<button class="btn btn-xs" style="background:#10b981;color:white;border:none;border-radius:8px;font-weight:800;font-size:11px;padding:6px 12px;cursor:pointer;box-shadow:0 2px 6px rgba(16,185,129,0.3);display:flex;align-items:center;gap:4px;" onclick="monitorUnlockJudgeFinalScores(\'' + (a.email||a.name) + '\')">&#x1F513; Unlock Judge</button>' +
+        '<button class="btn btn-xs" style="background:#10b981;color:white;border:none;border-radius:8px;font-weight:800;font-size:11px;padding:6px 12px;cursor:pointer;box-shadow:0 2px 6px rgba(16,185,129,0.3);display:flex;align-items:center;gap:4px;" onclick="monitorUnlockJudgeFinalScores(decodeURIComponent(\'' + encodeURIComponent(a.email||a.name||'') + '\'))">&#x1F513; Unlock Judge</button>' +
         '</div>' : '') +
 
       (a.notes ? '<div style="margin-top:10px;font-size:9px;color:#64748b;padding:8px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--amber2)">&#x1F4DD; ' + a.notes + '</div>' : '') +
