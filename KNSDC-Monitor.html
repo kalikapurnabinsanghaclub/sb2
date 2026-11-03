@@ -7888,9 +7888,12 @@ function hydrate() {
     } else if (pageId === 'promotion') {
       if (typeof renderPromoList === 'function') renderPromoList();
     } else if (pageId === 'settings') {
-      if (document.getElementById('st-rules')?.style.display === 'block' && typeof updateRoundRulesUI === 'function') {
-        currentEventRounds = JSON.parse(JSON.stringify(getEventRounds()));
-        updateRoundRulesUI();
+      if (!_isSavingRoundRules && document.getElementById('st-rules')?.style.display === 'block' && typeof updateRoundRulesUI === 'function') {
+        // Only hydrate if empty to protect user edits while configuring
+        if (!currentEventRounds || currentEventRounds.length === 0) {
+          currentEventRounds = JSON.parse(JSON.stringify(getEventRounds()));
+          updateRoundRulesUI();
+        }
       }
     }
   }
@@ -10092,6 +10095,21 @@ function regTab(tab, el){
 // ══════════════════════════════════════════
 // COMPACT ROUND PRESENCE POPOVER MENU
 // ══════════════════════════════════════════
+// Global HTML escaping utility
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
+if (typeof escapeHTML === 'undefined') {
+  window.escapeHTML = escapeHtml;
+}
+
 let activePresencePopover = null;
 
 function closeRoundPresenceMenu() {
@@ -17354,7 +17372,12 @@ const DEFAULT_ROUNDS = [
 ];
 
 function getEventRounds() {
-  const activeEv = (window.EVENTS || []).find(e => String(e.id) === String(activeEventId));
+  let evId = activeEventId;
+  if (!evId) {
+    const s = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : (window.syncEngine ? window.syncEngine.state : {});
+    evId = (s && s.activeEventId) || (window.EVENTS && window.EVENTS[0] ? String(window.EVENTS[0].id) : null) || localStorage.getItem('knsdc_activeEventId');
+  }
+  const activeEv = (window.EVENTS || []).find(e => String(e.id) === String(evId));
   // 1. Check active event in EVENTS (from Supabase events table)
   if (activeEv) {
     let r = activeEv.rounds;
@@ -17643,6 +17666,9 @@ function changeTotalRounds(delta) {
 }
 
 function setTotalRoundsCount(targetCount) {
+  if (!currentEventRounds || currentEventRounds.length === 0) {
+    currentEventRounds = JSON.parse(JSON.stringify(getEventRounds()));
+  }
   const count = Math.max(2, Math.min(10, parseInt(targetCount) || 4));
   
   if (count === currentEventRounds.length) return;
@@ -17675,6 +17701,13 @@ function handleTotalRoundsChange(val) {
 }
 
 function addNewRoundRow() {
+  if (!currentEventRounds || currentEventRounds.length === 0) {
+    currentEventRounds = JSON.parse(JSON.stringify(getEventRounds()));
+  }
+  if (currentEventRounds.length >= 10) {
+    toast('Maximum 10 rounds allowed');
+    return;
+  }
   const nextIdx = currentEventRounds.length;
   const newName = `Round ${nextIdx + 1}`;
   const newId = `round_${nextIdx + 1}_${Date.now().toString(36).slice(-4)}`;
@@ -17716,10 +17749,20 @@ let _isSavingRoundRules = false;
 async function saveRoundRules() {
   if (_isSavingRoundRules) return;
 
+  // Resolve activeEventId if not already set
+  if (!activeEventId) {
+    const s = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : (window.syncEngine ? window.syncEngine.state : {});
+    activeEventId = (s && s.activeEventId) || (window.EVENTS && window.EVENTS[0] ? String(window.EVENTS[0].id) : null) || localStorage.getItem('knsdc_activeEventId');
+  }
+
+  if (!currentEventRounds || currentEventRounds.length === 0) {
+    currentEventRounds = JSON.parse(JSON.stringify(getEventRounds()));
+  }
+
   // Read inputs from DOM to ensure any uncommitted keystrokes are captured
   currentEventRounds.forEach((r, i) => {
     const inp = document.getElementById(`round-name-input-${i}`);
-    if (inp && inp.value.trim()) {
+    if (inp && inp.value && inp.value.trim()) {
       r.name = inp.value.trim();
     }
   });
@@ -17767,11 +17810,17 @@ async function saveRoundRules() {
     };
 
     // 1. Update in-memory state for this active event
-    const s = syncEngine.getData();
-    if (!s.eventRounds) s.eventRounds = {};
-    if (activeEventId) {
-      s.eventRounds[activeEventId] = [...currentEventRounds];
-      s.eventRounds[String(activeEventId)] = [...currentEventRounds];
+    if (window.syncEngine && typeof window.syncEngine.getData === 'function') {
+      try {
+        const s = syncEngine.getData();
+        if (!s.eventRounds) s.eventRounds = {};
+        if (activeEventId) {
+          s.eventRounds[activeEventId] = [...currentEventRounds];
+          s.eventRounds[String(activeEventId)] = [...currentEventRounds];
+        }
+      } catch(sErr) {
+        console.warn('[saveRoundRules] in-memory state update warn:', sErr);
+      }
     }
 
     const activeEv = (window.EVENTS || []).find(e => String(e.id) === String(activeEventId));
@@ -17784,34 +17833,48 @@ async function saveRoundRules() {
 
     // 2. Persist to localStorage for immediate resilience
     if (activeEventId) {
-      localStorage.setItem(`knsdc_rounds_${activeEventId}`, JSON.stringify(currentEventRounds));
-      localStorage.setItem(`knsdc_roundRules_${activeEventId}`, JSON.stringify(roundRulesPayload));
+      try {
+        localStorage.setItem(`knsdc_rounds_${activeEventId}`, JSON.stringify(currentEventRounds));
+        localStorage.setItem(`knsdc_roundRules_${activeEventId}`, JSON.stringify(roundRulesPayload));
+      } catch(lsErr) {
+        console.warn('[saveRoundRules] localStorage save warn:', lsErr);
+      }
     }
 
     // 3. Write to Supabase sync_state globally so any other device gets this state
-    syncEngine.setData(st => {
-      const updated = { ...st, lastUpdated: Date.now() };
-      if (!updated.eventRounds) updated.eventRounds = {};
-      if (activeEventId) {
-        updated.eventRounds[activeEventId] = [...currentEventRounds];
-        updated.eventRounds[String(activeEventId)] = [...currentEventRounds];
+    if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+      try {
+        syncEngine.setData(st => {
+          const updated = { ...st, lastUpdated: Date.now() };
+          if (!updated.eventRounds) updated.eventRounds = {};
+          if (activeEventId) {
+            updated.eventRounds[activeEventId] = [...currentEventRounds];
+            updated.eventRounds[String(activeEventId)] = [...currentEventRounds];
+          }
+          if (updated.events) {
+            const evIdx = updated.events.findIndex(e => String(e.id) === String(activeEventId));
+            if (evIdx !== -1) {
+              updated.events[evIdx].rounds = [...currentEventRounds];
+              updated.events[evIdx].roundRules = roundRulesPayload;
+            }
+          }
+          return updated;
+        });
+      } catch(setDataErr) {
+        console.warn('[saveRoundRules] setData warn:', setDataErr);
       }
-      if (updated.events) {
-        const evIdx = updated.events.findIndex(e => String(e.id) === String(activeEventId));
-        if (evIdx !== -1) {
-          updated.events[evIdx].rounds = [...currentEventRounds];
-          updated.events[evIdx].roundRules = roundRulesPayload;
-        }
-      }
-      return updated;
-    });
+    }
 
     // 4. Push directly to Supabase events table via updateEvent
     if (window.syncEngine && activeEventId && typeof window.syncEngine.updateEvent === 'function') {
-      await window.syncEngine.updateEvent(activeEventId, {
-        rounds: currentEventRounds,
-        roundRules: roundRulesPayload
-      }).catch(err => console.warn('[saveRoundRules] updateEvent warning:', err));
+      try {
+        await window.syncEngine.updateEvent(activeEventId, {
+          rounds: currentEventRounds,
+          roundRules: roundRulesPayload
+        });
+      } catch(ueErr) {
+        console.warn('[saveRoundRules] updateEvent warn:', ueErr);
+      }
     }
 
     // 5. Send Realtime WebSocket broadcast for sub-50ms instant sync across all other devices
@@ -17846,18 +17909,18 @@ async function saveRoundRules() {
       bc.close();
     } catch(bce) {}
 
-    // 7. Update UI across all sections on the current device
-    populateAllRoundDropdowns();
-    if (typeof renderRoundPipeline === 'function') renderRoundPipeline();
-    if (typeof renderPromoList === 'function') renderPromoList();
-    if (typeof renderApplied === 'function') renderApplied();
-    if (typeof refreshVenueView === 'function') refreshVenueView();
-    updateRoundRulesUI();
+    // 7. Update UI across all sections on the current device (safely isolated)
+    try { populateAllRoundDropdowns(); } catch(e) { console.warn('populateAllRoundDropdowns err:', e); }
+    try { if (typeof renderRoundPipeline === 'function') renderRoundPipeline(); } catch(e) { console.warn('renderRoundPipeline err:', e); }
+    try { if (typeof renderPromoList === 'function') renderPromoList(); } catch(e) { console.warn('renderPromoList err:', e); }
+    try { if (typeof renderApplied === 'function') renderApplied(); } catch(e) { console.warn('renderApplied err:', e); }
+    try { if (typeof refreshVenueView === 'function') refreshVenueView(); } catch(e) { console.warn('refreshVenueView err:', e); }
+    try { updateRoundRulesUI(); } catch(e) { console.warn('updateRoundRulesUI err:', e); }
 
     toast(`✅ Round rules saved globally for this event! (${currentEventRounds.length} rounds synced across devices)`);
   } catch(err) {
     console.error('[saveRoundRules] Error:', err);
-    toast('❌ Error saving round rules');
+    toast('❌ Error saving round rules: ' + (err.message || err));
   } finally {
     _isSavingRoundRules = false;
     if (btn) {
