@@ -5242,8 +5242,8 @@ function renderOnStage() {
 
                     
                     <div style="flex:1; display:flex; align-items:center; gap:16px;">
-                      <!-- Hidden MUTED audio element -->
-                      <audio id="judge-audio-${idx}" src="${safeUrl}" muted style="display:none;" ontimeupdate="updateCustomAudioUI('judge', ${idx})" onloadedmetadata="updateCustomAudioUI('judge', ${idx})" onended="window.markAudioCompleted('${p.id}')"></audio>
+                      <!-- Pure Zero-Egress Remote Control Virtual Anchor (0 KB Audio Download) -->
+                      <div id="judge-audio-${idx}" data-url="${safeUrl}" data-participant-id="${p.id}" style="display:none;"></div>
                       
                       <!-- Custom Play/Pause Button -->
                       <button id="judge-play-btn-${idx}" onclick="toggleCustomAudio('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:60px; height:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:white; border:2px solid rgba(255,255,255,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(16,185,129,0.5); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
@@ -5325,28 +5325,58 @@ function renderOnStage() {
   }
 }
 
-// --- AUDIO MARKER LOGIC ---
+// --- ZERO-EGRESS VIRTUAL AUDIO CONTROLLER (0 KB Audio Download) ---
 window.judgeAudioMarks = window.judgeAudioMarks || {};
+window.judgeAudioState = window.judgeAudioState || {};
+
+function getOrCreateJudgeAudioState(idx, url, participantId) {
+  if (!window.judgeAudioState[idx]) {
+    window.judgeAudioState[idx] = {
+      isPlaying: false,
+      currentTime: 0,
+      duration: 180, // Default 3 mins if not reported
+      timer: null,
+      url: url || '',
+      participantId: participantId || ''
+    };
+  }
+  if (url) window.judgeAudioState[idx].url = url;
+  if (participantId) window.judgeAudioState[idx].participantId = participantId;
+  return window.judgeAudioState[idx];
+}
 
 window.toggleCustomAudio = function(source, participantId, url, idx) {
-  const audioEl = document.getElementById(`${source}-audio-${idx}`);
-  if (!audioEl) return;
-  if (audioEl.paused) {
-    audioEl.play().catch(e => console.error("Playback prevented", e));
-    dispatchRemoteAudioCommand(participantId, url, 'play', audioEl.currentTime, source);
+  const st = getOrCreateJudgeAudioState(idx, url, participantId);
+  if (!st.isPlaying) {
+    st.isPlaying = true;
+    if (st.timer) clearInterval(st.timer);
+    st.timer = setInterval(() => {
+      st.currentTime++;
+      if (st.currentTime >= st.duration) {
+        st.isPlaying = false;
+        clearInterval(st.timer);
+        st.timer = null;
+        window.markAudioCompleted(participantId);
+      }
+      window.updateCustomAudioUI(source, idx);
+    }, 1000);
+    window.updateCustomAudioUI(source, idx);
+    dispatchRemoteAudioCommand(participantId, url, 'play', st.currentTime, source);
   } else {
-    audioEl.pause();
-    dispatchRemoteAudioCommand(participantId, url, 'pause', audioEl.currentTime, source);
+    st.isPlaying = false;
+    if (st.timer) { clearInterval(st.timer); st.timer = null; }
+    window.updateCustomAudioUI(source, idx);
+    dispatchRemoteAudioCommand(participantId, url, 'pause', st.currentTime, source);
   }
 };
 
 window.seekCustomAudioDrag = function(source, idx) {
-  // Just update UI while dragging, don't dispatch yet to avoid spamming
-  const audioEl = document.getElementById(`${source}-audio-${idx}`);
   const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
   const currentSpan = document.getElementById(`${source}-time-current-${idx}`);
-  if (audioEl && seekBar && currentSpan && audioEl.duration) {
-    const time = (seekBar.value / 100) * audioEl.duration;
+  const st = window.judgeAudioState && window.judgeAudioState[idx];
+  const dur = (st && st.duration) || 180;
+  if (seekBar && currentSpan) {
+    const time = (seekBar.value / 100) * dur;
     currentSpan.textContent = formatAudioTime(time);
   }
 };
@@ -5363,17 +5393,23 @@ window.markAudioCompleted = function(participantId) {
 };
 
 window.seekCustomAudioEnd = function(source, participantId, url, idx) {
-  const audioEl = document.getElementById(`${source}-audio-${idx}`);
   const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
-  if (!audioEl || !seekBar || !audioEl.duration) return;
-  
-  const time = (seekBar.value / 100) * audioEl.duration;
-  audioEl.currentTime = time;
-  dispatchRemoteAudioCommand(participantId, url, 'seek', time, source);
+  const st = getOrCreateJudgeAudioState(idx, url, participantId);
+  const dur = st.duration || 180;
+  if (seekBar) {
+    const time = Math.round((seekBar.value / 100) * dur);
+    st.currentTime = time;
+    window.updateCustomAudioUI(source, idx);
+    dispatchRemoteAudioCommand(participantId, url, 'seek', time, source);
+  }
 };
 
 window.updateCustomAudioUI = function(source, idx) {
-  const audioEl = document.getElementById(`${source}-audio-${idx}`);
+  const st = window.judgeAudioState && window.judgeAudioState[idx];
+  const isPlaying = st ? st.isPlaying : false;
+  const currentTime = st ? st.currentTime : 0;
+  const duration = (st && st.duration) ? st.duration : 180;
+
   const playIcon = document.getElementById(`${source}-play-icon-${idx}`);
   const pauseIcon = document.getElementById(`${source}-pause-icon-${idx}`);
   const seekBar = document.getElementById(`${source}-seek-bar-${idx}`);
@@ -5381,15 +5417,13 @@ window.updateCustomAudioUI = function(source, idx) {
   const totalSpan = document.getElementById(`${source}-time-total-${idx}`);
   const wave = document.getElementById(source === 'judge' ? `sound-wave-${idx}` : `monitor-sound-wave-${idx}`);
 
-  if (!audioEl) return;
-  
   if (playIcon && pauseIcon) {
-    playIcon.style.display = audioEl.paused ? 'block' : 'none';
-    pauseIcon.style.display = audioEl.paused ? 'none' : 'block';
+    playIcon.style.display = !isPlaying ? 'block' : 'none';
+    pauseIcon.style.display = !isPlaying ? 'none' : 'block';
   }
-  
+
   if (wave) {
-    if (audioEl.paused) {
+    if (!isPlaying) {
       wave.classList.remove('sound-wave-active');
       wave.style.opacity = '0.2';
     } else {
@@ -5398,12 +5432,10 @@ window.updateCustomAudioUI = function(source, idx) {
     }
   }
 
-  if (audioEl.duration && !isNaN(audioEl.duration)) {
-    if (totalSpan) totalSpan.textContent = formatAudioTime(audioEl.duration);
-    if (currentSpan) currentSpan.textContent = formatAudioTime(audioEl.currentTime);
-    if (seekBar && document.activeElement !== seekBar) {
-      seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
-    }
+  if (totalSpan && duration) totalSpan.textContent = formatAudioTime(duration);
+  if (currentSpan) currentSpan.textContent = formatAudioTime(currentTime);
+  if (seekBar && document.activeElement !== seekBar && duration > 0) {
+    seekBar.value = Math.min(100, Math.max(0, (currentTime / duration) * 100));
   }
 };
 
@@ -5442,9 +5474,8 @@ function formatAudioTime(seconds) {
 }
 
 window.markAudioTime = function(participantId, audioElId, trackIdx) {
-  const audioEl = document.getElementById(audioElId);
-  if (!audioEl) return;
-  const time = audioEl.currentTime;
+  const st = window.judgeAudioState && window.judgeAudioState[trackIdx];
+  const time = st ? st.currentTime : 0;
   
   if (!window.judgeAudioMarks[participantId]) {
     window.judgeAudioMarks[participantId] = [];
@@ -5474,15 +5505,29 @@ window.markAudioTime = function(participantId, audioElId, trackIdx) {
 };
 
 window.seekAudioTime = function(audioElId, time, participantId) {
-  const audioEl = document.getElementById(audioElId);
-  if (audioEl) {
-    audioEl.currentTime = time;
-    audioEl.play().catch(e => console.error("Auto-play prevented", e));
-    
-    // Broadcast the seek/play command so Monitor syncs to the comment mark
-    if (participantId && window.dispatchRemoteAudioCommand) {
-      dispatchRemoteAudioCommand(participantId, audioEl.src, 'play', time, 'judge');
-    }
+  const trackIdxMatch = audioElId ? String(audioElId).match(/(\d+)/) : null;
+  const trackIdx = trackIdxMatch ? trackIdxMatch[1] : 0;
+  const st = window.judgeAudioState && window.judgeAudioState[trackIdx];
+  const url = st ? st.url : '';
+  
+  if (st) {
+    st.currentTime = time;
+    st.isPlaying = true;
+    if (st.timer) clearInterval(st.timer);
+    st.timer = setInterval(() => {
+      st.currentTime++;
+      if (st.currentTime >= st.duration) {
+        st.isPlaying = false;
+        clearInterval(st.timer);
+        st.timer = null;
+      }
+      window.updateCustomAudioUI('judge', trackIdx);
+    }, 1000);
+    window.updateCustomAudioUI('judge', trackIdx);
+  }
+  
+  if (participantId && window.dispatchRemoteAudioCommand) {
+    dispatchRemoteAudioCommand(participantId, url, 'play', time, 'judge');
   }
 };
 
@@ -5557,7 +5602,7 @@ function loadScorePanel(id) {
         <div style="width:36px;height:36px;border-radius:50%;background:rgba(240,180,41,0.15);border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:16px;font-weight:800;color:var(--gold2)">${p.name[0]}</div>
         <div>
           <div style="font-weight:700;font-family:var(--fh);font-size:15px;text-transform:uppercase">${p.name}</div>
-          <div style="font-size:11px;color:var(--tdim);font-family:var(--fm)">${p.id} · Age ${p.age} · ${cat?cat.name:'—'}</div>
+          <div style="font-size:11px;color:var(--tdim);font-family:var(--fm)">${p.id} · Age ${p.age} · ${cat?cat.name:'—'}${p.address ? ' · 📍 ' + p.address : ''}</div>
         </div>
       </div>
       <span class="badge ${roundBadge(p.round)}">${p.round.toUpperCase()}</span>
@@ -5796,7 +5841,21 @@ async function saveScores() {
 
     let success = false;
     try {
-      success = await syncEngine.updateParticipant(p.id, p);
+      const scoreData = {
+        eventId: (typeof activeEventId !== 'undefined' ? activeEventId : null) || p.eventId || JUDGE.eventId,
+        judgeId: JUDGE.id,
+        round: p.round || 'audition',
+        scores: p.scores,
+        roundScores: p.roundScores,
+        roundComments: p.roundComments,
+        total: totalScoreVal,
+        comment: p.roundComments[p.round][JUDGE.id]
+      };
+      if (typeof syncEngine.updateParticipantScores === 'function') {
+        success = await syncEngine.updateParticipantScores(p.id, scoreData);
+      } else {
+        success = await syncEngine.updateParticipant(p.id, p);
+      }
     } catch(netErr) {
       console.warn('[saveScores] Network error, score is safely preserved locally:', netErr);
       success = false;
@@ -6234,7 +6293,21 @@ async function runTwoSecondPushPull() {
             })
           }).catch(() => {});
 
-          const ok = await syncEngine.updateParticipant(item.participantId, p);
+          const scoreData = {
+            eventId: (typeof activeEventId !== 'undefined' ? activeEventId : null) || p.eventId || JUDGE.eventId,
+            judgeId: item.judgeId,
+            round: item.round || 'audition',
+            scores: p.scores,
+            roundScores: p.roundScores,
+            roundComments: p.roundComments,
+            comment: item.comment
+          };
+          let ok = false;
+          if (typeof syncEngine.updateParticipantScores === 'function') {
+            ok = await syncEngine.updateParticipantScores(item.participantId, scoreData);
+          } else {
+            ok = await syncEngine.updateParticipant(item.participantId, p);
+          }
           if (ok) {
             dequeuePendingScore(item.participantId, item.round);
             flushedAny = true;
@@ -6253,14 +6326,7 @@ async function runTwoSecondPushPull() {
       }
     }
 
-    // 2. PULL PHASE: Smart throttled reconciliation
-    if (isOnline && window.syncEngine && !document.hidden) {
-      if (typeof syncEngine.runHeartbeatSync === 'function') {
-        syncEngine.runHeartbeatSync().catch(() => {});
-      }
-    }
-
-    // 3. UI Status updates
+    // 2. UI Status updates (Heartbeat is managed centrally by syncEngine to eliminate redundant polling)
     updateSyncStatusPills();
   } catch (e) {
     console.warn('[Judge 2s Push/Pull Error]:', e);
@@ -7899,7 +7965,7 @@ syncEngine.subscribe((state) => {
   // Sync onstage timer
   handleJudgeTimerSync(state.onstageTimer);
 
-  // Handle remote audio commands from Monitor
+  // Handle remote audio commands from Monitor (Zero-Egress Virtual Sync)
   if (state.remoteAudioCommand) {
     const cmd = state.remoteAudioCommand;
     if (cmd.timestamp && cmd.timestamp !== window.lastRemoteAudioCommandTime) {
@@ -7907,24 +7973,29 @@ syncEngine.subscribe((state) => {
       
       // Ignore stale commands and commands we sent ourselves
       if (Date.now() - cmd.timestamp < 10000 && cmd.senderId !== JUDGE.id) {
-        const allAudios = document.querySelectorAll('audio[id^="judge-audio-"]');
-        allAudios.forEach(audioEl => {
-          if (audioEl.src.includes(cmd.url.replace(/"/g, '&quot;').replace(/'/g, "\\'")) || audioEl.src.includes(encodeURI(cmd.url))) {
-            const idxMatch = audioEl.id.match(/judge-audio-(\d+)/);
-            if (idxMatch) {
-              const idx = idxMatch[1];
-              if (cmd.action === 'play') {
-                audioEl.currentTime = cmd.time;
-                audioEl.play().catch(e => {});
-              } else if (cmd.action === 'pause') {
-                audioEl.pause();
-                audioEl.currentTime = cmd.time;
-              } else if (cmd.action === 'seek') {
-                audioEl.currentTime = cmd.time;
-              }
-              // Immediately update UI
-              updateCustomAudioUI('judge', idx);
+        Object.keys(window.judgeAudioState || {}).forEach(idx => {
+          const st = window.judgeAudioState[idx];
+          if (st && cmd.url && (st.url.includes(cmd.url) || cmd.url.includes(st.url))) {
+            st.currentTime = cmd.time || 0;
+            if (cmd.action === 'play') {
+              st.isPlaying = true;
+              if (st.timer) clearInterval(st.timer);
+              st.timer = setInterval(() => {
+                st.currentTime++;
+                if (st.currentTime >= st.duration) {
+                  st.isPlaying = false;
+                  clearInterval(st.timer);
+                  st.timer = null;
+                }
+                window.updateCustomAudioUI('judge', idx);
+              }, 1000);
+            } else if (cmd.action === 'pause') {
+              st.isPlaying = false;
+              if (st.timer) { clearInterval(st.timer); st.timer = null; }
+            } else if (cmd.action === 'seek') {
+              st.currentTime = cmd.time || 0;
             }
+            window.updateCustomAudioUI('judge', idx);
           }
         });
       }
