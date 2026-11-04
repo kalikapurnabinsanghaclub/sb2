@@ -6,6 +6,7 @@
 <title>KNSDC — Judge Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Barlow:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <script>
+  window.IS_JUDGE_PORTAL = true;
   // Apply theme immediately to prevent FOUC
   (function() {
     const savedTheme = localStorage.getItem('knsdc_judge_theme');
@@ -2733,10 +2734,9 @@
 <!-- TOAST -->
 <div id="toast"></div>
 
-<script src="lib/jspdf.umd.min.js"></script>
-<script src="lib/jspdf.plugin.autotable.min.js"></script>
+<!-- jsPDF & autoTable are loaded dynamically on demand to save ~452 KB on initial page load -->
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=240"></script>
+<script src="lib/localSync-v4.js?v=241"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
 const syncEngine = new (window.LocalSync || LocalSync)();
@@ -3377,6 +3377,15 @@ function initIdentity() {
       if (JUDGE.eventId && state.events && (!JUDGE.eventName || JUDGE.eventName === 'Dance Competition')) {
         const evFound = state.events.find(e => String(e.id) === JUDGE.eventId);
         if (evFound) JUDGE.eventName = evFound.name || evFound.title || JUDGE.eventName;
+      }
+      if (JUDGE.eventId) {
+        try { localStorage.setItem('knsdc_judge_eventId', String(JUDGE.eventId)); } catch(e){}
+        if (window.syncEngine && typeof window.syncEngine.loadParticipants === 'function') {
+          if (!window._lastJudgeLoadedEventId || String(window._lastJudgeLoadedEventId) !== String(JUDGE.eventId)) {
+            window._lastJudgeLoadedEventId = String(JUDGE.eventId);
+            window.syncEngine.loadParticipants(JUDGE.eventId).catch(e => console.warn('[Judge loadParticipants]', e));
+          }
+        }
       }
     }
   } catch(e) { console.error('initIdentity error', e); }
@@ -4320,9 +4329,33 @@ function collectReportData() {
 }
 
 // ════════════════════════════
-// PDF REPORT (jsPDF + autoTable)
+// PDF REPORT (jsPDF + autoTable - Lazy Loaded)
 // ════════════════════════════
-function downloadEventReportPDF() {
+let _jspdfLoadingPromise = null;
+function loadJsPdfLibraries() {
+  if (window.jspdf && (window.jspdf.jsPDF || typeof window.jspdf === 'function')) {
+    return Promise.resolve();
+  }
+  if (_jspdfLoadingPromise) return _jspdfLoadingPromise;
+
+  _jspdfLoadingPromise = new Promise((resolve, reject) => {
+    toast('⏳ Loading PDF Generator (~450KB)...');
+    const s1 = document.createElement('script');
+    s1.src = 'lib/jspdf.umd.min.js';
+    s1.onload = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'lib/jspdf.plugin.autotable.min.js';
+      s2.onload = () => resolve();
+      s2.onerror = () => reject(new Error('Failed to load jspdf autotable plugin'));
+      document.head.appendChild(s2);
+    };
+    s1.onerror = () => reject(new Error('Failed to load jspdf core'));
+    document.head.appendChild(s1);
+  });
+  return _jspdfLoadingPromise;
+}
+
+async function downloadEventReportPDF() {
   try {
   var data = collectReportData();
   if (data.rows.length === 0) { toast('⚠️ No scores found! Score participants first.'); return; }
@@ -4333,6 +4366,14 @@ function downloadEventReportPDF() {
   const reportTime = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
   const maxTotal = SUBJECTS.reduce((a, s) => a + s.maxMarks, 0);
 
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    try {
+      await loadJsPdfLibraries();
+    } catch(err) {
+      toast('❌ PDF library failed to load. Check internet.');
+      return;
+    }
+  }
   if (!window.jspdf) { toast('❌ PDF library not loaded. Check internet.'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF('p', 'mm', 'a4');

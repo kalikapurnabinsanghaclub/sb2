@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>KNSDC — Host Panel</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&display=swap" rel="stylesheet"/>
+<!-- Zero-Egress Native System Font Stack (0 KB download overhead) -->
 <script>
   // Apply theme immediately to prevent FOUC
   (function() {
@@ -55,9 +55,9 @@
     --orange: #ea580c; --orange2: #f97316;
     --cyan: #0891b2; --cyan2: #06b6d4;
 
-    --fh: 'Inter', sans-serif;
-    --fb: 'Inter', sans-serif;
-    --fm: 'monospace';
+    --fh: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --fb: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --fm: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   }
 
   [data-theme="dark"] {
@@ -651,7 +651,7 @@
 <!-- SIDEBAR -->
 <nav class="sidebar">
   <div class="logo" style="display:flex;align-items:center;gap:10px">
-    <img src="logo.png" alt="Logo" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
+    <img src="logo.png" alt="Logo" loading="lazy" decoding="async" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
     <div>
       <div class="logo-mark">KNSDC</div>
       <div class="logo-sub">Host Panel</div>
@@ -920,7 +920,7 @@
 
 <!-- MOBILE MENU FAB & DRAWER -->
 <button class="mobile-menu-fab" onclick="toggleMobileDrawer()">
-  <img src="logo.png" alt="Menu" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">
+  <img src="logo.png" alt="Menu" loading="lazy" decoding="async" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">
 </button>
 
 <div class="mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="toggleMobileDrawer()"></div>
@@ -958,7 +958,7 @@
 <div id="toast"></div>
 
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=240"></script>
+<script src="lib/localSync-v4.js?v=241"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
 // Reuse the authenticated syncEngine created by localSync-v4.js.
@@ -1537,7 +1537,23 @@ setTimeout(() => {
   const initHost = async () => {
     try {
       if (typeof syncEngine.loadEvents === 'function') await syncEngine.loadEvents();
-      if (typeof syncEngine.loadParticipants === 'function') await syncEngine.loadParticipants();
+
+      // Scoped Event Resolution for Ultra-Low Egress
+      let targetEvId = hostAssignedEventId;
+      if (!targetEvId) {
+        try {
+          const u = JSON.parse(localStorage.getItem('kns_user') || '{}');
+          const email = (u.email || '').trim().toLowerCase();
+          const s = syncEngine.getData() || {};
+          const assignment = (s.hostAssignments || []).find(h => h.email && h.email.toLowerCase() === email);
+          if (assignment && assignment.eventId) targetEvId = String(assignment.eventId);
+          if (!targetEvId) targetEvId = s.activeEventId || localStorage.getItem('knsdc_activeEventId');
+        } catch(e) {}
+      }
+
+      if (typeof syncEngine.loadParticipants === 'function') {
+        await syncEngine.loadParticipants(targetEvId, { lean: true });
+      }
     } catch(e) { console.warn('[Host init] load error:', e); }
     const data = syncEngine.getData();
     if(data) { hydrateChat(data); renderDashboard(); renderStage(); renderLeaderboard(); }
@@ -1651,7 +1667,7 @@ function renderDashboard() {
         <div style="display:flex; flex-direction:column; gap:6px;">
           ${eventSponsors.filter(s => s.isActive !== false).map(sp => `
             <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:8px 12px; display:flex; align-items:center; gap:10px; box-shadow:var(--shadow-sm);">
-              ${sp.logoData ? `<img src="${sp.logoData}" alt="${sp.name}" style="height:24px; max-width:40px; object-fit:contain; border-radius:4px;">` : `<div style="width:24px;height:24px;background:rgba(0,0,0,0.1);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;">🏢</div>`}
+              ${sp.logoData ? `<img src="${sp.logoData}" alt="${sp.name}" loading="lazy" decoding="async" style="height:24px; max-width:40px; object-fit:contain; border-radius:4px;">` : `<div style="width:24px;height:24px;background:rgba(0,0,0,0.1);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;">🏢</div>`}
               <div style="font-weight:700; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${sp.name}</div>
             </div>
           `).join('')}
@@ -2890,7 +2906,7 @@ function renderHostSponsors() {
   
   listEl.innerHTML = sponsors.map(sp => `
     <div style="display:flex; align-items:center; gap:12px; background:var(--surface2); border:1px solid var(--border); padding:12px 14px; border-radius:12px;">
-      ${sp.logo ? `<img src="${sp.logo}" alt="Logo" style="width:44px; height:44px; object-fit:contain; border-radius:8px; background:#fff; border:1px solid rgba(0,0,0,0.1); padding:2px;"/>` : `<div style="width:44px; height:44px; border-radius:8px; background:var(--surface3); border:1px dashed var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:10px; font-weight:700;">No Logo</div>`}
+      ${sp.logo ? `<img src="${sp.logo}" alt="Logo" loading="lazy" decoding="async" style="width:44px; height:44px; object-fit:contain; border-radius:8px; background:#fff; border:1px solid rgba(0,0,0,0.1); padding:2px;"/>` : `<div style="width:44px; height:44px; border-radius:8px; background:var(--surface3); border:1px dashed var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:10px; font-weight:700;">No Logo</div>`}
       <div style="flex:1;">
         <div style="font-weight:800; font-size:15px; color:var(--text);">${sp.name}</div>
         ${sp.tagline ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;"><i>"${sp.tagline}"</i></div>` : ''}
