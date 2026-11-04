@@ -21544,8 +21544,23 @@ function openAgreementModal(id=null){
       sel.innerHTML = `<option value="">No Events Available</option>`;
     }
     if (activeEventId) sel.value = String(activeEventId);
-    const isSuperAdmin = monitorEmail && monitorEmail.toLowerCase() === 'kalikapurnabinsanghaclub@gmail.com';
-    sel.disabled = !isSuperAdmin;
+    sel.disabled = false; // Always permit selection of target event
+
+    sel.onchange = () => {
+      const selectedEvId = sel.value;
+      const curEvs = ((syncEngine && syncEngine.getData() && syncEngine.getData().events) || EVENTS || []);
+      const chosenEv = curEvs.find(e => String(e.id) === String(selectedEvId));
+      if (chosenEv) {
+        if (chosenEv.startDate || chosenEv.date) {
+          const dInput = document.getElementById('agr-date');
+          if (dInput) dInput.value = chosenEv.startDate || chosenEv.date || '';
+        }
+        if (chosenEv.startTime || chosenEv.time) {
+          const tInput = document.getElementById('agr-time');
+          if (tInput) tInput.value = chosenEv.startTime || chosenEv.time || '';
+        }
+      }
+    };
   }
 
   const vSel = document.getElementById('agr-venue');
@@ -21859,8 +21874,22 @@ function getJudgeBriefData(agrId) {
   const allAgr = (agreements && agreements.length > 0) ? agreements : (sData.judgeAgreements || sData.agreements || []);
   const agr = (allAgr || []).find(a => String(a.id) === String(agrId));
   if (!agr) return null;
-  const allEv = (EVENTS && EVENTS.length > 0) ? EVENTS : (sData.events || []);
-  const ev = (allEv || []).find(e => String(e.id) === String(agr.eventId || activeEventId)) || (allEv[0] || {});
+
+  // Always use the freshest events from syncEngine or local memory
+  const allEv = (sData.events && sData.events.length > 0) ? sData.events : (EVENTS || []);
+  
+  // Find matching event: check agr.eventId, then activeEventId, fallback to first
+  let ev = null;
+  if (agr.eventId) {
+    ev = allEv.find(e => String(e.id) === String(agr.eventId));
+  }
+  if (!ev && activeEventId) {
+    ev = allEv.find(e => String(e.id) === String(activeEventId));
+  }
+  if (!ev) {
+    ev = allEv[0] || {};
+  }
+
   const directLink = getJudgeDirectLoginUrl(agr);
   const portalUrl = directLink.split('?')[0];
   const balance = Math.max(0, (agr.amount || 0) - (agr.advance || 0));
@@ -21869,13 +21898,54 @@ function getJudgeBriefData(agrId) {
 
 function generateJudgeBriefPlainText(data) {
   const { agr, ev, directLink, portalUrl, balance } = data;
-  const orgName = ev.org || ev.organizer || 'Kalikapur Nabin Sangha';
-  const evName = ev.name || ev.title || 'Competition';
-  const evDate = agr.date || ev.startDate || ev.date || 'As scheduled';
-  const evDateUpto = agr.dateUpto ? ` to ${agr.dateUpto}` : '';
-  const venue = agr.venueName || ev.venue || 'Kalikapur Nabin Sangha Ground';
-  const helplinePhone = ev.organizerPhone || ev.organizer_phone || (ev.social_links && ev.social_links.organizerPhone) || ev.phone || ev.whatsapp || '+91 7001865288';
-  const venueMap = ev.venueMapLink || ev.venue_map_link || (ev.social_links && ev.social_links.venueMapLink) || ev.mapLink || '';
+
+  // 1. Organization Name: dynamically resolve from event, filtering out invalid placeholders like '0'
+  const rawOrg = (ev.org && String(ev.org).trim() !== '0' ? String(ev.org).trim() : '') ||
+                 (ev.organizer && String(ev.organizer).trim() !== '0' ? String(ev.organizer).trim() : '') ||
+                 (agr.org && String(agr.org).trim() !== '0' ? String(agr.org).trim() : '') ||
+                 'Kalikapur Nabin Sangha';
+  const orgName = rawOrg;
+
+  // 2. Event Name:
+  const rawEvName = (ev.name && String(ev.name).trim() !== '0' ? String(ev.name).trim() : '') ||
+                    (ev.title && String(ev.title).trim() !== '0' ? String(ev.title).trim() : '') ||
+                    (agr.eventName && String(agr.eventName).trim() !== '0' ? String(agr.eventName).trim() : '') ||
+                    'Competition';
+  const evName = rawEvName;
+
+  // 3. Event Date:
+  const evDate = (agr.date && String(agr.date).trim() !== '0' ? String(agr.date).trim() : '') ||
+                 (ev.startDate && String(ev.startDate).trim() !== '0' ? String(ev.startDate).trim() : '') ||
+                 (ev.date && String(ev.date).trim() !== '0' ? String(ev.date).trim() : '') ||
+                 'As scheduled';
+  const evDateUpto = (agr.dateUpto && String(agr.dateUpto).trim() !== '0') ? ` to ${agr.dateUpto}` : ((ev.endDate && String(ev.endDate).trim() !== '0' && ev.endDate !== ev.startDate) ? ` to ${ev.endDate}` : '');
+
+  // 4. Reporting Time:
+  const repTime = (agr.time && String(agr.time).trim() !== '0' ? String(agr.time).trim() : '') ||
+                  (ev.startTime && String(ev.startTime).trim() !== '0' ? String(ev.startTime).trim() : '') ||
+                  (ev.time && String(ev.time).trim() !== '0' ? String(ev.time).trim() : '') ||
+                  '15 minutes prior to start';
+
+  // 5. Venue / Stage:
+  const venue = (agr.venueName && String(agr.venueName).trim() !== '0' && String(agr.venueName).trim() !== 'Venue TBA' ? String(agr.venueName).trim() : '') ||
+                (ev.venue && String(ev.venue).trim() !== '0' ? String(ev.venue).trim() : '') ||
+                'Main Stage';
+
+  // 6. Venue Map Link:
+  const venueMap = (ev.venueMapLink && String(ev.venueMapLink).trim() !== '0' ? String(ev.venueMapLink).trim() : '') ||
+                   (ev.venue_map_link && String(ev.venue_map_link).trim() !== '0' ? String(ev.venue_map_link).trim() : '') ||
+                   (ev.social_links && ev.social_links.venueMapLink ? String(ev.social_links.venueMapLink).trim() : '') ||
+                   (agr.venueMapLink ? String(agr.venueMapLink).trim() : '') ||
+                   '';
+
+  // 7. Helpline Phone:
+  const helplinePhone = (ev.organizerPhone && String(ev.organizerPhone).trim() !== '0' ? String(ev.organizerPhone).trim() : '') ||
+                        (ev.organizer_phone && String(ev.organizer_phone).trim() !== '0' ? String(ev.organizer_phone).trim() : '') ||
+                        (ev.social_links && ev.social_links.organizerPhone ? String(ev.social_links.organizerPhone).trim() : '') ||
+                        (ev.phone && String(ev.phone).trim() !== '0' ? String(ev.phone).trim() : '') ||
+                        (ev.whatsapp && String(ev.whatsapp).trim() !== '0' ? String(ev.whatsapp).trim() : '') ||
+                        '+91 7001865288';
+
   const supportEmail = ev.email || ev.supportEmail || 'kalikapurnabinsanghaclub@gmail.com';
   const websiteUrl = ev.website || 'https://knsdc.in';
 
@@ -21894,7 +21964,7 @@ We are honored to confirm your appointment as an *Official Adjudicator / Judge* 
 ──────────────
 • *Event Name:* ${evName}
 • *Date:* ${evDate}${evDateUpto}
-• *Reporting Time:* ${agr.time || '15 minutes prior to start'}
+• *Reporting Time:* ${repTime}
 • *Venue / Stage:* ${venue}
 ${venueMap ? `• *📍 Google Maps Directions:* ${venueMap}\n` : ''}• *Judging Category:* ${agr.spec || 'General Judging'}
 • *City:* ${agr.city || 'Kalikapur'}
@@ -21941,12 +22011,32 @@ Warm regards,
 
 function generateJudgeBriefHtml(data) {
   const { agr, ev, directLink, portalUrl, balance } = data;
-  const evName = ev.name || ev.title || 'Kalikapur Nabin Sangha Dance Competition';
-  const evDate = agr.date || ev.startDate || 'As scheduled';
-  const evDateUpto = agr.dateUpto ? ` &ndash; ${agr.dateUpto}` : '';
-  const venue = agr.venueName || ev.venue || 'Main Auditorium';
-  const helplinePhone = ev.organizerPhone || ev.organizer_phone || ev.phone || ev.whatsapp || '+91 7001865288';
-  const venueMap = ev.venueMapLink || ev.venue_map_link || ev.mapLink || '';
+  const orgName = (ev.org && String(ev.org).trim() !== '0' ? String(ev.org).trim() : '') ||
+                 (ev.organizer && String(ev.organizer).trim() !== '0' ? String(ev.organizer).trim() : '') ||
+                 'Kalikapur Nabin Sangha';
+  const evName = (ev.name && String(ev.name).trim() !== '0' ? String(ev.name).trim() : '') ||
+                 (ev.title && String(ev.title).trim() !== '0' ? String(ev.title).trim() : '') ||
+                 'Competition';
+  const evDate = (agr.date && String(agr.date).trim() !== '0' ? String(agr.date).trim() : '') ||
+                 (ev.startDate && String(ev.startDate).trim() !== '0' ? String(ev.startDate).trim() : '') ||
+                 'As scheduled';
+  const evDateUpto = (agr.dateUpto && String(agr.dateUpto).trim() !== '0') ? ` &ndash; ${agr.dateUpto}` : '';
+  const repTime = (agr.time && String(agr.time).trim() !== '0' ? String(agr.time).trim() : '') ||
+                  (ev.startTime && String(ev.startTime).trim() !== '0' ? String(ev.startTime).trim() : '') ||
+                  '15 mins prior to start';
+  const venue = (agr.venueName && String(agr.venueName).trim() !== '0' && String(agr.venueName).trim() !== 'Venue TBA' ? String(agr.venueName).trim() : '') ||
+                (ev.venue && String(ev.venue).trim() !== '0' ? String(ev.venue).trim() : '') ||
+                'Main Stage';
+  const helplinePhone = (ev.organizerPhone && String(ev.organizerPhone).trim() !== '0' ? String(ev.organizerPhone).trim() : '') ||
+                        (ev.organizer_phone && String(ev.organizer_phone).trim() !== '0' ? String(ev.organizer_phone).trim() : '') ||
+                        (ev.social_links && ev.social_links.organizerPhone ? String(ev.social_links.organizerPhone).trim() : '') ||
+                        (ev.phone && String(ev.phone).trim() !== '0' ? String(ev.phone).trim() : '') ||
+                        (ev.whatsapp && String(ev.whatsapp).trim() !== '0' ? String(ev.whatsapp).trim() : '') ||
+                        '+91 7001865288';
+  const venueMap = (ev.venueMapLink && String(ev.venueMapLink).trim() !== '0' ? String(ev.venueMapLink).trim() : '') ||
+                   (ev.venue_map_link && String(ev.venue_map_link).trim() !== '0' ? String(ev.venue_map_link).trim() : '') ||
+                   (ev.social_links && ev.social_links.venueMapLink ? String(ev.social_links.venueMapLink).trim() : '') ||
+                   '';
 
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;color:#1e293b;">
