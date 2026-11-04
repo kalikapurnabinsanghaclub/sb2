@@ -1812,7 +1812,8 @@
 <script src="lib/supabase.js"></script>
 <script src="lib/localSync-v4.js?v=240"></script>
 <script>
-window.syncEngine = new (window.LocalSync || LocalSync)();
+window.IS_PARTICIPANT_PORTAL = true;
+window.syncEngine = new (window.LocalSync || LocalSync)({ role: 'participant' });
 
 // Strict Voter Privacy Interceptor: Guarantee that voter phone numbers are completely stripped
 // from client memory and never exposed in window.syncEngine state on the Participant Portal
@@ -3270,7 +3271,7 @@ function initApp() {
       if (targetVerifyId && window.syncEngine && window.syncEngine.supabase) {
         window.syncEngine.supabase
           .from('public_registrations')
-          .select('id, name, phone, category, event_id, venue, stage_status, round, scores, round_scores, reg_date, created_at, form_answers')
+          .select('id, name, phone, age, gender, event_id, category, venue, form_answers, stage_status, round, present, reg_date, scores, round_scores, round_comments, is_verified')
           .ilike('id', targetVerifyId)
           .maybeSingle()
           .then(({ data, error }) => {
@@ -3986,33 +3987,61 @@ window.uploadParticipantFileToCloud = async function(input, targetId) {
         previewLink.style.display = 'inline';
       }
 
+      // Clear any prior retry warning box
+      const existingRetry = document.getElementById(targetId + '-retry-box');
+      if (existingRetry) existingRetry.remove();
+
       toast(`✅ ${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} uploaded successfully!`);
 
-      // Automatically sync participant state
-      if (window.syncEngine) {
+      // Automatically sync participant state via targeted updateParticipant (minimal egress, 1 row updated)
+      if (window.syncEngine && CURRENT_USER) {
         const state = window.syncEngine.getData() || {};
         const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-        if (p) {
-          if (!p.formAnswers) p.formAnswers = {};
-          const fieldLabel = targetInput ? (targetInput.getAttribute('data-label') || targetId) : targetId;
-          p.formAnswers[fieldLabel] = freshUrl;
-          if (isAudio) p.musicUrl = freshUrl;
-          if (!isAudio && !isVideo) p.photo = freshUrl;
+        const updatedFormAnswers = p && p.formAnswers ? { ...p.formAnswers } : {};
+        const fieldLabel = targetInput ? (targetInput.getAttribute('data-label') || targetId) : targetId;
+        updatedFormAnswers[fieldLabel] = freshUrl;
 
-          // LOW-EGRESS: Targeted single-row update instead of full sync_state cloud serialization
-          await window.syncEngine.updateParticipant(CURRENT_USER, {
-            formAnswers: p.formAnswers,
-            musicUrl: isAudio ? freshUrl : p.musicUrl,
-            photo: (!isAudio && !isVideo) ? freshUrl : p.photo
-          });
+        const updatePayload = {
+          formAnswers: updatedFormAnswers
+        };
+        if (isAudio) {
+          updatePayload.musicUrl = freshUrl;
+          updatedFormAnswers._musicUrl = freshUrl;
         }
+        if (!isAudio && !isVideo) {
+          updatePayload.photo = freshUrl;
+          updatePayload.photoUrl = freshUrl;
+          updatedFormAnswers._photo = freshUrl;
+        }
+        if (isVideo) {
+          updatePayload.videoUrl = freshUrl;
+          updatedFormAnswers._videoUrl = freshUrl;
+        }
+
+        await window.syncEngine.updateParticipant(CURRENT_USER, updatePayload);
       }
     } else {
       throw new Error('Upload returned empty response');
     }
   } catch (err) {
     console.error('[Participant Upload Error]', err);
-    toast(`⚠️ Upload failed: ${err.message || 'Please check your connection and retry.'}`);
+    toast('⚠️ নেটওয়ার্ক সমস্যার কারণে অডিও আপলোড হয়নি, পুনরায় চেষ্টা করুন (Retry)');
+
+    // Smart Auto-Retry UX Box with instant one-click Retry button
+    const previewContainer = document.getElementById(`${targetId}-loader-container`) || input.parentNode;
+    if (previewContainer) {
+      let retryBox = document.getElementById(targetId + '-retry-box');
+      if (!retryBox) {
+        retryBox = document.createElement('div');
+        retryBox.id = targetId + '-retry-box';
+        previewContainer.appendChild(retryBox);
+      }
+      retryBox.style.cssText = 'margin-top:8px; padding:10px 14px; background:#fef2f2; border:1px solid #f87171; border-radius:10px; color:#991b1b; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 8px rgba(239,68,68,0.15);';
+      retryBox.innerHTML = `
+        <div style="font-size:12px; font-weight:700;">⚠️ নেটওয়ার্ক সমস্যার কারণে অডিও আপলোড হয়নি, পুনরায় চেষ্টা করুন।</div>
+        <button type="button" onclick="document.getElementById('${input.id}').click()" style="background:#dc2626; color:#fff; border:none; padding:6px 12px; border-radius:8px; font-weight:800; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(220,38,38,0.3); transition:transform 0.15s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">🔄 Retry</button>
+      `;
+    }
   } finally {
     input.disabled = false;
     if (loaderContainer) {
@@ -6017,9 +6046,7 @@ function renderDetailedResults(p) {
     return a + (Number(b) || 0);
   }, 0);
   
-  const subjects = (ev && ev.subjects && ev.subjects.length > 0)
-    ? ev.subjects
-    : (state.subjects || []).filter(s => String(s.eventId || s.event_id) === String(p.eventId));
+  const subjects = (ev && ev.subjects) || state.subjects || [];
   
   const scoredJudgeCount = Object.keys(p.scores).length || 1;
   const maxTotalScore = scoredJudgeCount * subjects.reduce((a, s) => a + (Number(s.maxMarks) || 10), 0);
@@ -6199,9 +6226,7 @@ function renderPerformanceJourney(p) {
   
   const ctx2d = canvasEl.getContext('2d');
   
-  const subjects = (ev && ev.subjects && ev.subjects.length > 0)
-    ? ev.subjects
-    : (state.subjects || []).filter(s => String(s.eventId || s.event_id) === String(p.eventId));
+  const subjects = state.subjects || [];
   const participants = state.participants || [];
   
   const rounds = ['audition', 'qualified', 'semifinal', 'final'];
@@ -8144,40 +8169,15 @@ async function fetchInitialScoreOnce() {
   } catch(e) {}
 }
 
-// Persistent WebSocket stream connection to Render backend (Smart Multi-Hosting Guard)
-let _wsRetryCount = 0;
-const MAX_WS_RETRIES = 3;
-
+// Persistent WebSocket stream connection to Render backend
 function connectParticipantWebSocket() {
   if (!CURRENT_USER) return;
   if (_wsReconnectTimer) clearTimeout(_wsReconnectTimer);
 
   const cleanPid = String(CURRENT_USER).trim().toUpperCase();
-  const hostname = window.location.hostname || '';
-
-  // 1. Static / Serverless hosting detection (Vercel, Cloudflare Pages, GitHub Pages)
-  const isStaticPlatform = hostname.includes('vercel.app') || 
-                           hostname.includes('pages.dev') || 
-                           hostname.includes('github.io');
-
-  // Backend host resolution: Use configured backend or only local host if not on static/serverless
-  const backendHost = window.RENDER_BACKEND_URL || window.BACKEND_API_URL || (isStaticPlatform ? null : window.location.host);
-
-  // If on Vercel/Cloudflare/GitHub Pages and no external backend is configured, skip local /ws to prevent failed connection spam
-  if (!backendHost) {
-    console.log('[Targeted WS] Serverless/static host detected. Skipping local /ws; Supabase Realtime is primary.');
-    return;
-  }
-
-  // 2. Circuit Breaker: Stop infinite reconnect loop after max retries
-  if (_wsRetryCount >= MAX_WS_RETRIES) {
-    console.warn('[Targeted WS] Backend unreachable after 3 attempts. Stopping retry loop. Supabase Realtime active.');
-    return;
-  }
-
-  const protocol = (window.location.protocol === 'https:' || String(backendHost).startsWith('https')) ? 'wss:' : 'ws:';
-  const cleanHost = String(backendHost).replace(/^https?:\/\//, '').replace(/\/+$/, '');
-  const wsUrl = `${protocol}//${cleanHost}/ws?participantId=${encodeURIComponent(cleanPid)}`;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  const wsUrl = `${protocol}//${host}/ws?participantId=${encodeURIComponent(cleanPid)}`;
 
   try {
     if (_participantWs) {
@@ -8187,7 +8187,6 @@ function connectParticipantWebSocket() {
 
     _participantWs.onopen = () => {
       console.log(`[Targeted WS] Connected for participant: ${cleanPid}`);
-      _wsRetryCount = 0; // Reset retry counter on successful connection
       fetchInitialScoreOnce();
     };
 
@@ -8210,21 +8209,15 @@ function connectParticipantWebSocket() {
     };
 
     _participantWs.onclose = () => {
-      _wsRetryCount++;
-      if (_wsRetryCount < MAX_WS_RETRIES) {
-        const delay = Math.min(_wsRetryCount * 3000, 10000);
-        console.log(`[Targeted WS] Attempt ${_wsRetryCount}/${MAX_WS_RETRIES} closed. Retrying in ${delay / 1000}s...`);
-        _wsReconnectTimer = setTimeout(connectParticipantWebSocket, delay);
-      } else {
-        console.warn('[Targeted WS] Max retries reached. Cleanly falling back to Supabase Realtime (0 egress waste).');
-      }
+      console.log('[Targeted WS] Connection dropped. Auto-reconnecting in 3s...');
+      _wsReconnectTimer = setTimeout(connectParticipantWebSocket, 3000);
     };
 
     _participantWs.onerror = () => {
       try { _participantWs.close(); } catch(e) {}
     };
   } catch (err) {
-    _wsRetryCount++;
+    _wsReconnectTimer = setTimeout(connectParticipantWebSocket, 4000);
   }
 }
 
