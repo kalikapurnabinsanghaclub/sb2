@@ -23468,13 +23468,14 @@ function showHelpdeskToast(msg, pName) {
   setTimeout(() => { if(toast.parentElement) toast.remove(); }, 10000);
 }
 
-// LOW-EGRESS: Helpdesk polling — reduced from 1s to 3s and replaced expensive JSON.stringify
-// comparison with a lightweight id-hash string to avoid serialising the full messages array every second.
+// ZERO-EGRESS / WEBSOCKET-DRIVEN REACTIVE HELPDESK LISTENER
+// Replaced setInterval polling completely. Reacts immediately when syncEngine receives
+// WebSocket broadcasts or realtime state updates without any background polling timers.
 let _lastChatIds = new Set();
 let _lastHelpdeskSig = '';
-setInterval(() => {
-  if (!window.syncEngine) return;
-  const state = window.syncEngine.getData() || {};
+
+function checkHelpdeskFromState(state) {
+  if (!state) return;
   const msgs = [...(state.helpdeskMessages || []), ...(state.chatMessages || [])];
   const curEventId = String(activeEventId || '');
   
@@ -23496,13 +23497,24 @@ setInterval(() => {
       }
     }
   });
-  // LOW-EGRESS: Use a lightweight id-based signature instead of full JSON.stringify to detect changes
+  // Lightweight signature check to avoid unnecessary DOM renders
   const newSig = msgs.map(m => m.id + ':' + (m.read ? '1' : '0')).join('|');
   if (newFound || newSig !== _lastHelpdeskSig) {
     _lastHelpdeskSig = newSig;
     renderHelpdesk();
   }
-}, 3000); // Reduced from 1s → 3s poll interval to cut CPU and reactive-write pressure
+}
+
+// Hook directly into syncEngine's WebSocket subscriber loop
+if (window.syncEngine && typeof window.syncEngine.subscribe === 'function') {
+  window.syncEngine.subscribe(checkHelpdeskFromState);
+} else {
+  window.addEventListener('DOMContentLoaded', () => {
+    if (window.syncEngine && typeof window.syncEngine.subscribe === 'function') {
+      window.syncEngine.subscribe(checkHelpdeskFromState);
+    }
+  });
+}
 
 // --- CUSTOM AUDIO PLAYER UI FUNCTIONS ---
 window.toggleCustomAudio = function(source, participantId, url, idx) {
