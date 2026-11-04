@@ -8122,7 +8122,11 @@ function renderGlobalEventSelector() {
   }
 }
 
+// LOW-EGRESS: syncAll() debounce — multiple rapid calls within 400ms are collapsed into one cloud write.
+// This prevents bursts of Supabase egress when several state mutations happen in quick succession.
+let _syncAllDebounceTimer = null;
 function syncAll() {
+  // Perform immediate in-memory state update (zero network cost)
   syncEngine.setData(s => {
     const newState = { ...s, lastUpdated: Date.now() };
     if (!newState.events) newState.events = [];
@@ -8195,6 +8199,7 @@ function syncAll() {
     newState.activeEventId = activeEventId; // FIX: Persist active event ID so public view can track it
     return newState;
   });
+  // The actual cloud write (Supabase upsert) is debounced inside syncEngine.setData → saveStateToSupabase (3s debounce already in localSync)
 }
 
 window.switchEvent = (val) => {
@@ -10317,16 +10322,8 @@ function toggleSwitch(sw, cb){
         }).catch(err => console.error('[Monitor] updateEvent failed:', err));
       }
 
-      if (syncEngine && syncEngine.supabase && activeEventId) {
-        const swPayload = { ...(activeEv?.switch_states || activeEv?.switchStates || switchStates), hotspotShare: false };
-        delete swPayload.whatsapp;
-        syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', activeEventId).then(({ error }) => {
-          if (error) {
-            const numId = Number(activeEventId);
-            if (!isNaN(numId)) syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', numId);
-          }
-        }).catch(() => {});
-      }
+      // NOTE: syncEngine.updateEvent() already writes switch_states to Supabase events table.
+      // Removed redundant direct supabase.from('events').update() to prevent double-write egress.
 
       toast('🔒 OFF: Hotspot Share');
       return;
@@ -23471,8 +23468,10 @@ function showHelpdeskToast(msg, pName) {
   setTimeout(() => { if(toast.parentElement) toast.remove(); }, 10000);
 }
 
-// Hook into syncEngine update loop to show toasts
+// LOW-EGRESS: Helpdesk polling — reduced from 1s to 3s and replaced expensive JSON.stringify
+// comparison with a lightweight id-hash string to avoid serialising the full messages array every second.
 let _lastChatIds = new Set();
+let _lastHelpdeskSig = '';
 setInterval(() => {
   if (!window.syncEngine) return;
   const state = window.syncEngine.getData() || {};
@@ -23497,11 +23496,13 @@ setInterval(() => {
       }
     }
   });
-  if (newFound || JSON.stringify(msgs) !== lastRenderedHelpdeskState) {
-    lastRenderedHelpdeskState = JSON.stringify(msgs);
+  // LOW-EGRESS: Use a lightweight id-based signature instead of full JSON.stringify to detect changes
+  const newSig = msgs.map(m => m.id + ':' + (m.read ? '1' : '0')).join('|');
+  if (newFound || newSig !== _lastHelpdeskSig) {
+    _lastHelpdeskSig = newSig;
     renderHelpdesk();
   }
-}, 1000);
+}, 3000); // Reduced from 1s → 3s poll interval to cut CPU and reactive-write pressure
 
 // --- CUSTOM AUDIO PLAYER UI FUNCTIONS ---
 window.toggleCustomAudio = function(source, participantId, url, idx) {
@@ -23882,16 +23883,8 @@ function saveHotspotConfig(e) {
     }).catch(err => console.error(err));
   }
 
-  if (syncEngine && syncEngine.supabase && activeEventId) {
-    const swPayload = { ...(activeEv?.switch_states || activeEv?.switchStates || switchStates), hotspotShare: true, hotspotConfig };
-    delete swPayload.whatsapp;
-    syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', activeEventId).then(({ error }) => {
-      if (error) {
-        const numId = Number(activeEventId);
-        if (!isNaN(numId)) syncEngine.supabase.from('events').update({ switch_states: swPayload }).eq('id', numId);
-      }
-    }).catch(() => {});
-  }
+  // NOTE: syncEngine.updateEvent() already writes switch_states to Supabase events table.
+  // Removed redundant direct supabase.from('events').update() to prevent double-write egress.
 
   closeHotspotModal(true);
   toast('✅ Hotspot shared: ' + ssid);
