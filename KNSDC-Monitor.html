@@ -7814,6 +7814,7 @@ function hydrate() {
   });
   sosActive = s.sosActive || false;
   sosHistory = s.sosHistory || [];
+  if (typeof updateSOSUI === 'function') updateSOSUI();
   
   // ── Deterministic Stage & Queue Reconciliation ──
   // Respect authoritative currentOnStage from syncEngine
@@ -8175,6 +8176,10 @@ function syncAll() {
     if (activeEventId) newState.eventFormFields[activeEventId] = [...formFields];
 
     newState.participants = [...participants];
+    // Pipeline 4 Fix: Synchronize chat & SOS state to syncEngine for network broadcast
+    newState.chatMessages = Array.isArray(chatHistory) ? [...chatHistory] : [];
+    newState.sosActive = Boolean(sosActive);
+    newState.sosHistory = Array.isArray(sosHistory) ? [...sosHistory] : [];
     if (!newState.publicVotes) newState.publicVotes = {};
     newState.judges = [...judges];
     // Staff messages are strictly stored in chatMessages (no participant helpdesk messages)
@@ -20669,12 +20674,24 @@ function sendPageMsg(){
 function triggerSOS(){
   sosActive=true;
   const now=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-  sosHistory.push({time:now,msg:'SOS Broadcast triggered by Monitor'});
+  const sosEntry = {time:now,msg:'SOS Broadcast triggered by Monitor'};
+  sosHistory.push(sosEntry);
   
   addChatMsg('MONITOR · SOS','🚨 EMERGENCY BROADCAST — Monitor needs immediate assistance! All staff please respond NOW.', 'out', true);
   
+  if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+    window.syncEngine.setData(s => ({
+      ...s,
+      sosActive: true,
+      sosHistory: [...sosHistory],
+      chatMessages: [...chatHistory]
+    }));
+  }
   syncAll();
   updateSOSUI();
+  if (window.staffAudio && typeof window.staffAudio.playAlert === 'function') {
+    window.staffAudio.playAlert();
+  }
   toast('🚨 SOS Broadcast sent to all staff!');
 }
 
@@ -20682,6 +20699,14 @@ function stopSOS(){
   sosActive=false;
   addChatMsg('Monitor Staff', '✅ SOS CANCELLED — Situation resolved. Thank you all for responding!', 'out');
   
+  if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+    window.syncEngine.setData(s => ({
+      ...s,
+      sosActive: false,
+      sosHistory: [...sosHistory],
+      chatMessages: [...chatHistory]
+    }));
+  }
   syncAll();
   updateSOSUI();
   toast('SOS cancelled.');
@@ -23360,7 +23385,8 @@ function renderHelpdesk() {
       ? (String(pEvId) === curEventId || (!pEvId && (!state.events || state.events.length <= 1)))
       : true;
     
-    if (!isLockedEvent) return; // Exclude messages from other events
+    const isEmergencyThread = Boolean(pMsgs.some(m => m.sos || m.type === 'sos' || (m.from && m.from.includes('SOS')) || (m.text && m.text.includes('EMERGENCY'))));
+    if (!isLockedEvent && !isEmergencyThread) return; // Exclude messages from other events unless emergency
 
     const unread = pMsgs.filter(m => m.senderRole === 'participant' && !m.read).length;
     totalUnread += unread;
@@ -23584,6 +23610,19 @@ let _lastHelpdeskSig = '';
 
 function checkHelpdeskFromState(state) {
   if (!state) return;
+
+  // Pipeline 4 Fix: Network-wide SOS state synchronization
+  if (state.sosActive !== undefined && Boolean(state.sosActive) !== Boolean(sosActive)) {
+    sosActive = Boolean(state.sosActive);
+    if (state.sosHistory && Array.isArray(state.sosHistory)) {
+      sosHistory = state.sosHistory;
+    }
+    if (typeof updateSOSUI === 'function') updateSOSUI();
+    if (sosActive && window.staffAudio && typeof window.staffAudio.playAlert === 'function') {
+      window.staffAudio.playAlert();
+    }
+  }
+
   const msgs = [...(state.helpdeskMessages || []), ...(state.chatMessages || [])];
   const curEventId = String(activeEventId || '');
   
@@ -23592,6 +23631,18 @@ function checkHelpdeskFromState(state) {
     if (!_lastChatIds.has(m.id)) {
       _lastChatIds.add(m.id);
       newFound = true;
+
+      // Pipeline 4 Fix: Immediate alert for inbound emergency SOS messages
+      const isSosMsg = Boolean(m.sos || m.type === 'sos' || (m.from && m.from.includes('SOS')) || (m.text && m.text.includes('EMERGENCY')));
+      if (isSosMsg && (Date.now() - (m.timestamp || 0) < 60000)) {
+        if (typeof handleIncomingSOS === 'function') {
+          handleIncomingSOS({ from: m.from || 'Emergency Alert', msg: m.text || 'Emergency broadcast received' });
+        }
+        if (window.staffAudio && typeof window.staffAudio.playAlert === 'function') {
+          window.staffAudio.playAlert();
+        }
+      }
+
       // Show toast if it's from participant, unread, and belongs to this monitor's locked event
       if (m.senderRole === 'participant' && !m.read && (Date.now() - m.timestamp < 30000)) {
         const pInfo = (state.participants || []).find(x => String(x.id) === String(m.participantId));
@@ -23599,8 +23650,8 @@ function checkHelpdeskFromState(state) {
         const isLockedEvent = curEventId
           ? (String(pEvId) === curEventId || (!pEvId && (!state.events || state.events.length <= 1)))
           : true;
-        if (isLockedEvent) {
-          showHelpdeskToast(m, pInfo ? pInfo.name : 'Participant');
+        if (isLockedEvent || isSosMsg) {
+          showHelpdeskToast(m, pInfo ? pInfo.name : (m.from || 'Participant'));
         }
       }
     }
@@ -24143,6 +24194,39 @@ window.scrollMainContent = function(amount) {
 })();
 </script>
 
+<!-- PIPELINE 4 SAFETY & AUDIO UNLOCKER -->
+<script>
+(function initPipeline4Safety() {
+  function unlockAllAudio() {
+    try {
+      if (window.staffAudio && window.staffAudio.ctx && window.staffAudio.ctx.state === 'suspended') {
+        window.staffAudio.ctx.resume();
+      }
+      if (window.audioCtx && window.audioCtx.state === 'suspended') {
+        window.audioCtx.resume();
+      }
+    } catch(e) {}
+  }
+  ['click', 'touchstart', 'keydown'].forEach(ev => {
+    document.addEventListener(ev, unlockAllAudio, { passive: true });
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    if (!document.getElementById('golden-ribbon-celebration-overlay')) {
+      const el = document.createElement('div');
+      el.id = 'golden-ribbon-celebration-overlay';
+      el.style.display = 'none';
+      document.body.appendChild(el);
+    }
+    if (!document.getElementById('sos-history')) {
+      const el = document.createElement('div');
+      el.id = 'sos-history';
+      el.style.display = 'none';
+      document.body.appendChild(el);
+    }
+  });
+})();
+</script>
 </body>
 
 </html>
