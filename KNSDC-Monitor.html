@@ -5083,7 +5083,7 @@
         <div class="fg"><label class="fl">Judge City</label><input id="agr-city" placeholder="City of judge" autocomplete="off"/></div>
         <div class="fg"><label class="fl">Event</label>
           <select id="agr-event">
-            <option value="ev-2026-05-09">Dance Ignition Season 6</option>
+            <option value="">Select Event</option>
           </select>
         </div>
         <div class="fg"><label class="fl">Agreement Date</label><input id="agr-date" type="date"/></div>
@@ -21511,12 +21511,15 @@ function openAgreementModal(id=null){
 
   const sel = document.getElementById('agr-event');
   if (sel) {
-    if (EVENTS && EVENTS.length > 0) {
-      sel.innerHTML = EVENTS.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+    const curEvents = (EVENTS && EVENTS.length > 0) ? EVENTS : ((syncEngine && syncEngine.getData() && syncEngine.getData().events) || []);
+    if (curEvents.length > 0) {
+      sel.innerHTML = curEvents.map(e => `<option value="${e.id}">${e.name || e.title || 'Event'}</option>`).join('');
+    } else if (activeEventId) {
+      sel.innerHTML = `<option value="${activeEventId}">Current Active Event</option>`;
     } else {
       sel.innerHTML = `<option value="">No Events Available</option>`;
     }
-    if (activeEventId) sel.value = activeEventId;
+    if (activeEventId) sel.value = String(activeEventId);
     const isSuperAdmin = monitorEmail && monitorEmail.toLowerCase() === 'kalikapurnabinsanghaclub@gmail.com';
     sel.disabled = !isSuperAdmin;
   }
@@ -21586,7 +21589,22 @@ async function saveAgreement(){
     const password = document.getElementById('agr-password').value;
     const venueEl = document.getElementById('agr-venue');
     const venueName = venueEl ? (venueEl.options[venueEl.selectedIndex]?.text || '') : '';
-    const eventId = document.getElementById('agr-event')?.value || activeEventId;
+    
+    let rawEventId = document.getElementById('agr-event')?.value;
+    if (!rawEventId || rawEventId === 'ev-2026-05-09' || rawEventId === '') {
+      rawEventId = activeEventId;
+    }
+    let cleanEventId = null;
+    if (rawEventId && !isNaN(Number(rawEventId))) {
+      cleanEventId = Number(rawEventId);
+    } else if (activeEventId && !isNaN(Number(activeEventId))) {
+      cleanEventId = Number(activeEventId);
+    } else if (EVENTS && EVENTS.length > 0) {
+      const matchEv = EVENTS.find(e => String(e.id) === String(rawEventId)) || EVENTS[0];
+      if (matchEv && !isNaN(Number(matchEv.id))) {
+        cleanEventId = Number(matchEv.id);
+      }
+    }
     
     // Preserve existing agreement properties if editing
     const existingAgr = editingAgrId ? (agreements || []).find(a => String(a.id) === String(editingAgrId)) : null;
@@ -21597,7 +21615,7 @@ async function saveAgreement(){
       email,
       password,
       city: document.getElementById('agr-city').value,
-      eventId: eventId ? (Number(eventId) || eventId) : (activeEventId ? (Number(activeEventId) || activeEventId) : null),
+      eventId: cleanEventId || (rawEventId ? String(rawEventId) : null),
       date: document.getElementById('agr-date').value,
       dateUpto: document.getElementById('agr-date-upto').value,
       time: document.getElementById('agr-time').value,
@@ -21691,6 +21709,7 @@ async function saveAgreement(){
     toast('Error saving agreement');
   } finally {
     saveAgreementInProgress = false;
+    editingAgrId = null;
     if (btn) { btn.disabled = false; btn.textContent = 'Save Agreement'; }
   }
 }
