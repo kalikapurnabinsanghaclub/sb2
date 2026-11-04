@@ -4055,8 +4055,6 @@ window.uploadParticipantFileToCloud = async function(input, targetId) {
 function renderDashboard() {
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('dashboard-view').style.display = 'block';
-  // Initialize inline chat read tracking
-  setTimeout(() => initInlineChatReadTracking(), 500);
   
   const state = window.syncEngine.getData() || {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
@@ -4229,7 +4227,6 @@ function renderDashboard() {
       const isChecked = val ? 'checked' : '';
       const fullTc = f.tcText || 'I agree to the terms and conditions of KNSDC.';
       const isLong = fullTc.length > 70;
-      const shortTc = isLong ? fullTc.substring(0, 65) + '...' : fullTc;
 
       html += `<div style="background:#f8fafc; padding:12px 14px; border-radius:12px; border:1px solid #cbd5e1; margin-top:8px;">
         <label style="display:flex; align-items:flex-start; gap:10px; font-weight:normal; text-transform:none; font-size:13px; line-height:1.4; cursor:pointer; margin:0;">
@@ -4768,34 +4765,7 @@ async function generateParticipantCertificateHTML(targetParticipantId) {
     ? ev.venues
     : (state.venues || []).filter(v => (v.eventId || v.event_id) ? String(v.eventId || v.event_id) === String(ev.id) : true);
 
-  function resolveVenue(part, venList) {
-    if (!part) return null;
-    const list = (Array.isArray(venList) && venList.length > 0) ? venList : ((state && state.venues) ? state.venues : []);
-    if (part.venueId !== undefined && part.venueId !== null && part.venueId !== '') {
-      let v = list.find(x => String(x.id) === String(part.venueId));
-      if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venueId));
-      if (v) return v;
-    }
-    if (part.venue !== undefined && part.venue !== null && part.venue !== '') {
-      let v = list.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
-      if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(part.venue) || (x.name && String(x.name).trim().toLowerCase() === String(part.venue).trim().toLowerCase()));
-      if (v) return v;
-    }
-    const rawVen = part.formAnswers && (part.formAnswers['Venue Field'] || part.formAnswers['Venue'] || part.formAnswers['venue'] || part.formAnswers['venue_field']);
-    if (rawVen) {
-      let v = list.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
-      if (!v && state && state.venues) v = state.venues.find(x => String(x.id) === String(rawVen) || (x.name && String(x.name).trim().toLowerCase() === String(rawVen).trim().toLowerCase()));
-      if (v) return v;
-    }
-    if (part.venueId && typeof part.venueId === 'string' && isNaN(Number(part.venueId))) {
-      let v = list.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
-      if (!v && state && state.venues) v = state.venues.find(x => x.name && String(x.name).trim().toLowerCase() === String(part.venueId).trim().toLowerCase());
-      if (v) return v;
-    }
-    return null;
-  }
-
-  const venObj = resolveVenue(p, eventVenues);
+  const venObj = resolveParticipantVenue(p, eventVenues, state);
   let certVenue = '';
   if (venObj) {
     const vName = (venObj.name || '').trim();
@@ -6361,10 +6331,6 @@ function renderPerformanceJourney(p) {
   });
 }
 
-function renderGlobalEventStatistics(p) {
-  // Deprecated: Global event stats excluded to preserve competitor privacy & show individual ratings only
-}
-
 
 // ==========================================
 // CHAT / HELPDESK
@@ -6386,9 +6352,6 @@ function toggleChatModal() {
     }, 60);
   }
 }
-
-// dummy — no longer needed for inline mode
-function initInlineChatReadTracking() {}
 
 let _isSendingChat = false;
 
