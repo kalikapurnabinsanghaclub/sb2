@@ -21321,6 +21321,7 @@ function renderAgreements() {
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
           <button class="btn btn-ghost btn-xs" onclick="openAgreementModal(${a.id})" style="font-size:11px;padding:6px 12px;border-radius:8px;white-space:nowrap">✏️ Edit</button>
           <button class="btn btn-xs" style="background:#2563eb;color:#fff;font-weight:700;font-size:11px;padding:6px 12px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(37,99,235,0.25)" onclick="openJudgeBriefModal(${a.id})">📧 Send Brief &amp; Login</button>
+          <button class="btn btn-xs" style="background:#22c55e;color:#fff;font-weight:700;font-size:11px;padding:6px 11px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;box-shadow:0 2px 8px rgba(34,197,94,0.25)" onclick="triggerJudgeWhatsApp(${a.id})" title="Send WhatsApp Appointment Message">📱 WhatsApp</button>
         </div>
         <button class="btn-delete-fancy" onclick="deleteAgreement(${a.id})" title="Delete" style="flex-shrink:0">
           <svg viewBox="0 0 448 512" class="svgIcon"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
@@ -21677,7 +21678,13 @@ async function saveAgreement(){
 
     // Auto-open Judge Appointment Brief & Direct Login Credentials Modal
     if (agrId) {
-      setTimeout(() => openJudgeBriefModal(agrId), 350);
+      setTimeout(() => {
+        openJudgeBriefModal(agrId);
+        // Automatically dispatch WhatsApp appointment template to judge
+        if (obj.phone && !editingAgrId) {
+          triggerJudgeWhatsApp(agrId);
+        }
+      }, 350);
     }
   } catch (err) {
     console.error(err);
@@ -21805,9 +21812,12 @@ function getJudgeDirectLoginUrl(agr) {
 }
 
 function getJudgeBriefData(agrId) {
-  const agr = (agreements || []).find(a => String(a.id) === String(agrId));
+  const sData = (syncEngine && syncEngine.getData()) || {};
+  const allAgr = (agreements && agreements.length > 0) ? agreements : (sData.judgeAgreements || sData.agreements || []);
+  const agr = (allAgr || []).find(a => String(a.id) === String(agrId));
   if (!agr) return null;
-  const ev = (EVENTS || []).find(e => String(e.id) === String(agr.eventId || activeEventId)) || {};
+  const allEv = (EVENTS && EVENTS.length > 0) ? EVENTS : (sData.events || []);
+  const ev = (allEv || []).find(e => String(e.id) === String(agr.eventId || activeEventId)) || (allEv[0] || {});
   const directLink = getJudgeDirectLoginUrl(agr);
   const portalUrl = directLink.split('?')[0];
   const balance = Math.max(0, (agr.amount || 0) - (agr.advance || 0));
@@ -21816,63 +21826,74 @@ function getJudgeBriefData(agrId) {
 
 function generateJudgeBriefPlainText(data) {
   const { agr, ev, directLink, portalUrl, balance } = data;
-  const evName = ev.name || ev.title || 'Kalikapur Nabin Sangha Dance Competition';
-  const evDate = agr.date || ev.startDate || 'As scheduled';
+  const orgName = ev.org || ev.organizer || 'Kalikapur Nabin Sangha';
+  const evName = ev.name || ev.title || 'Competition';
+  const evDate = agr.date || ev.startDate || ev.date || 'As scheduled';
   const evDateUpto = agr.dateUpto ? ` to ${agr.dateUpto}` : '';
-  const venue = agr.venueName || ev.venue || 'Main Auditorium';
-  const helplinePhone = ev.organizerPhone || ev.organizer_phone || ev.phone || ev.whatsapp || '+91 7001865288';
-  const venueMap = ev.venueMapLink || ev.venue_map_link || ev.mapLink || '';
+  const venue = agr.venueName || ev.venue || 'Kalikapur Nabin Sangha Ground';
+  const helplinePhone = ev.organizerPhone || ev.organizer_phone || (ev.social_links && ev.social_links.organizerPhone) || ev.phone || ev.whatsapp || '+91 7001865288';
+  const venueMap = ev.venueMapLink || ev.venue_map_link || (ev.social_links && ev.social_links.venueMapLink) || ev.mapLink || '';
+  const supportEmail = ev.email || ev.supportEmail || 'kalikapurnabinsanghaclub@gmail.com';
+  const websiteUrl = ev.website || 'https://knsdc.in';
 
-  return `🏛️ KALIKAPUR NABIN SANGHA DANCE COMPETITION (KNSDC)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OFFICIAL JUDGE APPOINTMENT & EVENT BRIEF
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  return `🏛️ *${orgName.toUpperCase()}*
+━━━━━━━━━━━━━━━━━━━━━━
+📜 *OFFICIAL JUDGE APPOINTMENT & EVENT BRIEF*
+━━━━━━━━━━━━━━━━━━━━━━
 
-Dear ${agr.name},
+Dear *${agr.name}*,
 
-Greetings from Kalikapur Nabin Sangha!
-We are honored to confirm your appointment as an Official Adjudicator for ${evName}. Below are your official appointment briefing, schedule, venue details, and your secure 1-click login access to the digital scoring desk.
+Greetings from *${orgName}*!
+We are honored to confirm your appointment as an *Official Adjudicator / Judge* for *${evName}*. Below are your appointment details, schedule, and secure digital scoring access.
 
-📅 1. EVENT & VENUE SCHEDULE
---------------------------------------------------
-• Event Name       : ${evName}
-• Date             : ${evDate}${evDateUpto}
-• Reporting Time   : ${agr.time || '15 minutes prior to start'}
-• Venue / Stage    : ${venue}
-${venueMap ? `• Venue Map Link   : ${venueMap}\n` : ''}• Stream / Category: ${agr.spec || 'General Judging'}
-• City             : ${agr.city || 'Kalikapur'}
+──────────────
+📅 *1. EVENT & VENUE DETAILS*
+──────────────
+• *Event Name:* ${evName}
+• *Date:* ${evDate}${evDateUpto}
+• *Reporting Time:* ${agr.time || '15 minutes prior to start'}
+• *Venue / Stage:* ${venue}
+${venueMap ? `• *📍 Google Maps Directions:* ${venueMap}\n` : ''}• *Judging Category:* ${agr.spec || 'General Judging'}
+• *City:* ${agr.city || 'Kalikapur'}
 
-💰 2. REMUNERATION & FINANCIAL TERMS
---------------------------------------------------
-• Agreed Honorarium : ₹${(agr.amount || 0).toLocaleString()}
-• Advance Remitted  : ₹${(agr.advance || 0).toLocaleString()}
-• Balance on Event  : ₹${balance.toLocaleString()}
-${agr.notes ? `• Special Notes     : ${agr.notes}\n` : ''}
-🚀 3. DIRECT 1-CLICK INSTANT LOGIN (NO PASSWORD NEEDED)
---------------------------------------------------
-Tap this secure link to immediately open your digital scoring portal and auto-login:
+──────────────
+💰 *2. REMUNERATION & TERMS*
+──────────────
+• *Agreed Honorarium:* ₹${(agr.amount || 0).toLocaleString()}
+• *Advance Remitted:* ₹${(agr.advance || 0).toLocaleString()}
+• *Balance on Event Day:* ₹${balance.toLocaleString()}
+${agr.notes ? `• *Special Notes:* ${agr.notes}\n` : ''}
+──────────────
+🚀 *3. DIRECT 1-CLICK INSTANT LOGIN*
+──────────────
+Tap to open your digital scoring portal (no password needed):
 👉 ${directLink}
 
-🔐 4. MANUAL LOGIN CREDENTIALS
---------------------------------------------------
-If you are logging in manually from another device:
-• Portal URL: ${portalUrl}
-• Username  : ${agr.email}
-• Password  : ${agr.password}
+──────────────
+🔐 *4. MANUAL LOGIN CREDENTIALS*
+──────────────
+_(Use if accessing via laptop, tablet, or alternate browser)_
+• *Portal URL:* ${portalUrl}
+• *Username:* ${agr.email}
+• *Password:* ${agr.password}
 
-📋 5. JUDGING GUIDELINES
---------------------------------------------------
-1. The digital scoring panel automatically assigns your judge seat and lists on-stage performers.
-2. Mark criteria scores in real time; all entries are encrypted and synced live with the Monitor Desk.
-3. For technical support or assistance, please reach our help desk.
+──────────────
+⚖️ *5. JUDGING GUIDELINES*
+──────────────
+1. The scoring system automatically links your judge seat with on-stage participants.
+2. Mark and submit scores in real time; all entries sync live with the Central Desk.
+3. In case of connectivity or scoring issues, alert the technical coordinator immediately.
 
-📞 Organizing Helpline : ${helplinePhone}
-📧 Support Email       : kalikapurnabinsanghaclub@gmail.com
-🌐 Official Website    : https://knsdc.in
+──────────────
+📞 *CONTACT & SUPPORT*
+──────────────
+• *📞 Organizing Helpline:* ${helplinePhone}
+• *📧 Support Email:* ${supportEmail}
+• *🌐 Website:* ${websiteUrl}
 
-With warm regards,
-Organizing Committee
-Kalikapur Nabin Sangha`;
+Warm regards,  
+*Organizing Committee*  
+*${orgName}*`;
 }
 
 function generateJudgeBriefHtml(data) {
@@ -22106,9 +22127,10 @@ function openJudgeWebGmail() {
   window.open(gmailUrl, '_blank');
 }
 
-function triggerJudgeWhatsApp() {
-  if (!currentBriefAgr) return;
-  const data = getJudgeBriefData(currentBriefAgr.id);
+function triggerJudgeWhatsApp(specificAgrId) {
+  const targetId = specificAgrId || (currentBriefAgr && currentBriefAgr.id);
+  if (!targetId) return;
+  const data = getJudgeBriefData(targetId);
   if (!data) return;
   let phone = (data.agr.phone || '').replace(/[^0-9]/g, '');
   if (phone.length === 10) phone = '91' + phone;
