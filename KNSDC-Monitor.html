@@ -7792,7 +7792,15 @@ function hydrate() {
   });
   judges = s.judges || [];
   nxtId = s.nxtId || nxtId;
-  agreements = s.judgeAgreements || s.agreements || [];
+  const sAgreements = s.judgeAgreements || s.agreements;
+  if (Array.isArray(sAgreements) && sAgreements.length > 0) {
+    agreements = sAgreements;
+  } else if (!agreements || agreements.length === 0) {
+    try {
+      const lsAgr = localStorage.getItem('knsdc_judgeAgreements');
+      if (lsAgr) agreements = JSON.parse(lsAgr) || [];
+    } catch(e) {}
+  }
   hostAssignments = (s.hostAssignments || []).filter(h => h && h.email && h.email.trim().toLowerCase() !== 'x@' && h.email.trim().toLowerCase() !== 'x');
   partnerAssignments = s.partnerAssignments || [];
   directorAssignments = s.directorAssignments || [];
@@ -21256,15 +21264,28 @@ function renderAgreements() {
   const container = document.getElementById('agreements-list');
   if (!container) return;
   
-  const activeAgreements = (agreements || []).filter(a => String(a.eventId) === String(activeEventId));
+  const sData = (syncEngine && syncEngine.getData()) || {};
+  const allAgr = (agreements && agreements.length > 0) ? agreements : (sData.judgeAgreements || sData.agreements || []);
+  const activeAgreements = allAgr.filter(a => {
+    if (!activeEventId) return true;
+    const aEvId = a.eventId !== undefined ? a.eventId : a.event_id;
+    return !aEvId || String(aEvId) === String(activeEventId);
+  });
   
   if (activeAgreements.length === 0) {
     container.innerHTML = '<div style="color:var(--text-muted);grid-column:1/-1;text-align:center;padding:40px">No agreements created for this event.</div>';
     return;
   }
   
-  container.innerHTML = activeAgreements.map(a => `
-    <div class="card glass-card card-hover" style="padding:16px;border-radius:14px;border-left:4px solid ${(a.status === 'confirmed' || a.status === 'verified') ? 'var(--green)' : 'var(--amber2)'};display:flex;flex-direction:column;justify-content:space-between;gap:12px;background:var(--surface)">
+  container.innerHTML = activeAgreements.map(a => {
+    let specText = a.spec || 'General Judge';
+    if (typeof specText === 'string' && specText.trim().startsWith('{') && specText.trim().endsWith('}')) {
+      try { specText = JSON.parse(specText).spec || specText; } catch(e){}
+    }
+    const st = a.status || 'pending';
+    const isConfirmed = (st === 'confirmed' || st === 'verified' || st === 'approved' || a.submitted === true);
+    return `
+    <div class="card glass-card card-hover" style="padding:16px;border-radius:14px;border-left:4px solid ${isConfirmed ? 'var(--green)' : 'var(--amber2)'};display:flex;flex-direction:column;justify-content:space-between;gap:12px;background:var(--surface)">
       <div>
         <!-- Top: Judge Name & Status Badge -->
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
@@ -21272,12 +21293,12 @@ function renderAgreements() {
             <div style="font-weight:800;font-size:15px;color:var(--text);line-height:1.2">${a.name}</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:2px;font-family:var(--fm)">${a.phone || 'No phone'}</div>
           </div>
-          <span class="badge ${(a.status === 'confirmed' || a.status === 'verified' || a.status === 'approved' || a.submitted === true) ? 'b-green' : 'b-amber'}" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">${a.status.toUpperCase()}</span>
+          <span class="badge ${isConfirmed ? 'b-green' : 'b-amber'}" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">${st.toUpperCase()}</span>
         </div>
 
         <!-- Specialization & Fee -->
         <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:12px">
-          <span style="font-weight:600;color:var(--text)">📍 ${a.spec || 'General Judge'}</span>
+          <span style="font-weight:600;color:var(--text)">📍 ${specText}</span>
           <span style="color:var(--border)">•</span>
           <span style="font-weight:700;color:var(--green2);font-family:var(--fm)">₹${Number(a.amount || 0).toLocaleString()}</span>
         </div>
@@ -21305,7 +21326,8 @@ function renderAgreements() {
           <svg viewBox="0 0 448 512" class="svgIcon"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
         </button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderAssignedJudges() {
@@ -21314,10 +21336,12 @@ function renderAssignedJudges() {
 
   // Filter: agreements for the ACTIVE event that are confirmed/verified
   const sData = (syncEngine && syncEngine.getData()) || {};
-  const currentEventId = String(sData.activeEventId || activeEventId);
-  const verified = (agreements || []).filter(function(a) {
+  const currentEventId = String(sData.activeEventId || activeEventId || '');
+  const allAgr = (agreements && agreements.length > 0) ? agreements : (sData.judgeAgreements || sData.agreements || []);
+  const verified = allAgr.filter(function(a) {
     const isVerified = (a.status === 'confirmed' || a.status === 'verified' || a.status === 'approved' || a.submitted === true);
-    const isForActiveEvent = String(a.eventId || a.event_id) === currentEventId;
+    const aEvId = a.eventId !== undefined ? a.eventId : a.event_id;
+    const isForActiveEvent = !currentEventId || !aEvId || String(aEvId) === currentEventId;
     return isVerified && isForActiveEvent;
   });
 
@@ -21506,25 +21530,30 @@ function openAgreementModal(id=null){
   }
 
   if(id){
-    const a=agreements.find(x=>x.id===id);
-    document.getElementById('agr-name').value=a.name;
-    document.getElementById('agr-phone').value=a.phone;
+    const a = (agreements || []).find(x => String(x.id) === String(id));
+    if (!a) return;
+    let specText = a.spec || '';
+    if (typeof specText === 'string' && specText.trim().startsWith('{') && specText.trim().endsWith('}')) {
+      try { specText = JSON.parse(specText).spec || specText; } catch(e){}
+    }
+    document.getElementById('agr-name').value=a.name||'';
+    document.getElementById('agr-phone').value=a.phone||'';
     document.getElementById('agr-email').value=a.email||'';
     document.getElementById('agr-password').value=a.password||'';
-    document.getElementById('agr-city').value=a.city;
+    document.getElementById('agr-city').value=a.city||'';
     if(sel) {
-      sel.value = a.eventId || activeEventId;
+      sel.value = a.eventId || a.event_id || activeEventId;
       const isSuperAdmin = monitorEmail && monitorEmail.toLowerCase() === 'kalikapurnabinsanghaclub@gmail.com';
       sel.disabled = !isSuperAdmin;
     }
-    document.getElementById('agr-date').value=a.date;
+    document.getElementById('agr-date').value=a.date||'';
     document.getElementById('agr-date-upto').value=a.dateUpto||'';
-    document.getElementById('agr-time').value=a.time;
-    if(vSel) vSel.value = a.venueId;
-    document.getElementById('agr-spec').value=a.spec;
-    document.getElementById('agr-amount').value=a.amount;
-    document.getElementById('agr-advance').value=a.advance;
-    document.getElementById('agr-notes').value=a.notes;
+    document.getElementById('agr-time').value=a.time||'';
+    if(vSel) vSel.value = a.venueId||'';
+    document.getElementById('agr-spec').value=specText;
+    document.getElementById('agr-amount').value=a.amount||'';
+    document.getElementById('agr-advance').value=a.advance||'';
+    document.getElementById('agr-notes').value=a.notes||'';
   } else {
     ['agr-name','agr-phone','agr-email','agr-password','agr-city','agr-spec','agr-notes','agr-amount','agr-advance', 'agr-date-upto'].forEach(i=>document.getElementById(i).value='');
     if(sel && activeEventId) sel.value = activeEventId;
@@ -21557,26 +21586,72 @@ async function saveAgreement(){
     const venueEl = document.getElementById('agr-venue');
     const venueName = venueEl ? (venueEl.options[venueEl.selectedIndex]?.text || '') : '';
     const eventId = document.getElementById('agr-event')?.value || activeEventId;
-    const obj={name,phone,email,password,city:document.getElementById('agr-city').value,eventId:eventId,date:document.getElementById('agr-date').value,dateUpto:document.getElementById('agr-date-upto').value,time:document.getElementById('agr-time').value,venueId:parseInt(document.getElementById('agr-venue').value),venueName:venueName,spec:document.getElementById('agr-spec').value,amount:parseInt(document.getElementById('agr-amount').value)||0,advance:parseInt(document.getElementById('agr-advance').value)||0,notes:document.getElementById('agr-notes').value,status:'pending',submitted:false,paymentReceived:0,photoUrl:'',agreedTc:false};
+    
+    // Preserve existing agreement properties if editing
+    const existingAgr = editingAgrId ? (agreements || []).find(a => String(a.id) === String(editingAgrId)) : null;
+
+    const obj = {
+      name,
+      phone,
+      email,
+      password,
+      city: document.getElementById('agr-city').value,
+      eventId: eventId ? (Number(eventId) || eventId) : (activeEventId ? (Number(activeEventId) || activeEventId) : null),
+      date: document.getElementById('agr-date').value,
+      dateUpto: document.getElementById('agr-date-upto').value,
+      time: document.getElementById('agr-time').value,
+      venueId: parseInt(document.getElementById('agr-venue').value) || null,
+      venueName: venueName,
+      spec: document.getElementById('agr-spec').value,
+      amount: parseInt(document.getElementById('agr-amount').value) || 0,
+      advance: parseInt(document.getElementById('agr-advance').value) || 0,
+      notes: document.getElementById('agr-notes').value,
+      status: existingAgr ? (existingAgr.status || 'pending') : 'pending',
+      submitted: existingAgr ? (existingAgr.submitted !== undefined ? existingAgr.submitted : false) : false,
+      paymentReceived: existingAgr ? (existingAgr.paymentReceived || 0) : 0,
+      photoUrl: existingAgr ? (existingAgr.photoUrl || '') : '',
+      agreedTc: existingAgr ? (existingAgr.agreedTc || false) : false,
+      signature: existingAgr ? (existingAgr.signature || null) : null
+    };
     
     let oldEmail = null;
     let agrId = editingAgrId;
     if(editingAgrId){
-      const oldAgr = (agreements || []).find(a => a.id === editingAgrId);
+      const oldAgr = (agreements || []).find(a => String(a.id) === String(editingAgrId));
       if(oldAgr && oldAgr.email && oldAgr.email.toLowerCase() !== email.toLowerCase()) {
         oldEmail = oldAgr.email;
       }
+      obj.id = editingAgrId;
       const success = await syncEngine.updateAgreement(editingAgrId, obj);
       if(!success){toast('❌ Error updating agreement');return;}
+      agreements = (agreements || []).map(a => String(a.id) === String(editingAgrId) ? { ...a, ...obj } : a);
     } else {
       // Generate a random 9-digit integer to prevent PostgreSQL integer overflow (max 32-bit signed int is 2,147,483,647)
       obj.id = Math.floor(Math.random() * 1000000000) + 1;
       agrId = obj.id;
       const success = await syncEngine.createAgreement(obj);
       if(!success){toast('❌ Error creating agreement');return;}
+      agreements = [...(agreements || []), obj];
     }
+
+    // Proactively persist to local storage and sync state
+    try {
+      localStorage.setItem('knsdc_judgeAgreements', JSON.stringify(agreements));
+    } catch(e) {}
+    if (syncEngine && syncEngine.setData) {
+      syncEngine.setData(st => ({
+        ...st,
+        agreements: [...agreements],
+        judgeAgreements: [...agreements]
+      }));
+    }
+    if (syncEngine && syncEngine.forceSaveStateToSupabase) {
+      syncEngine.forceSaveStateToSupabase().catch(() => {});
+    }
+
     closeM('agreement-modal');
     renderAgreements();
+    if (typeof renderAssignedJudges === 'function') renderAssignedJudges();
 
     // ── Auto-create judge credentials in Supabase ──
     if(email && password && syncEngine && syncEngine.saveJudgeCredential) {
