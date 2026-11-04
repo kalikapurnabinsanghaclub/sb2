@@ -3270,7 +3270,7 @@ function initApp() {
       if (targetVerifyId && window.syncEngine && window.syncEngine.supabase) {
         window.syncEngine.supabase
           .from('public_registrations')
-          .select('*')
+          .select('id, name, phone, category, event_id, venue, stage_status, round, scores, round_scores, reg_date, created_at, form_answers')
           .ilike('id', targetVerifyId)
           .maybeSingle()
           .then(({ data, error }) => {
@@ -3998,8 +3998,14 @@ window.uploadParticipantFileToCloud = async function(input, targetId) {
           p.formAnswers[fieldLabel] = freshUrl;
           if (isAudio) p.musicUrl = freshUrl;
           if (!isAudio && !isVideo) p.photo = freshUrl;
+
+          // LOW-EGRESS: Targeted single-row update instead of full sync_state cloud serialization
+          await window.syncEngine.updateParticipant(CURRENT_USER, {
+            formAnswers: p.formAnswers,
+            musicUrl: isAudio ? freshUrl : p.musicUrl,
+            photo: (!isAudio && !isVideo) ? freshUrl : p.photo
+          });
         }
-        await window.syncEngine.forceSaveStateToSupabase();
       }
     } else {
       throw new Error('Upload returned empty response');
@@ -8138,15 +8144,40 @@ async function fetchInitialScoreOnce() {
   } catch(e) {}
 }
 
-// Persistent WebSocket stream connection to Render backend
+// Persistent WebSocket stream connection to Render backend (Smart Multi-Hosting Guard)
+let _wsRetryCount = 0;
+const MAX_WS_RETRIES = 3;
+
 function connectParticipantWebSocket() {
   if (!CURRENT_USER) return;
   if (_wsReconnectTimer) clearTimeout(_wsReconnectTimer);
 
   const cleanPid = String(CURRENT_USER).trim().toUpperCase();
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  const wsUrl = `${protocol}//${host}/ws?participantId=${encodeURIComponent(cleanPid)}`;
+  const hostname = window.location.hostname || '';
+
+  // 1. Static / Serverless hosting detection (Vercel, Cloudflare Pages, GitHub Pages)
+  const isStaticPlatform = hostname.includes('vercel.app') || 
+                           hostname.includes('pages.dev') || 
+                           hostname.includes('github.io');
+
+  // Backend host resolution: Use configured backend or only local host if not on static/serverless
+  const backendHost = window.RENDER_BACKEND_URL || window.BACKEND_API_URL || (isStaticPlatform ? null : window.location.host);
+
+  // If on Vercel/Cloudflare/GitHub Pages and no external backend is configured, skip local /ws to prevent failed connection spam
+  if (!backendHost) {
+    console.log('[Targeted WS] Serverless/static host detected. Skipping local /ws; Supabase Realtime is primary.');
+    return;
+  }
+
+  // 2. Circuit Breaker: Stop infinite reconnect loop after max retries
+  if (_wsRetryCount >= MAX_WS_RETRIES) {
+    console.warn('[Targeted WS] Backend unreachable after 3 attempts. Stopping retry loop. Supabase Realtime active.');
+    return;
+  }
+
+  const protocol = (window.location.protocol === 'https:' || String(backendHost).startsWith('https')) ? 'wss:' : 'ws:';
+  const cleanHost = String(backendHost).replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const wsUrl = `${protocol}//${cleanHost}/ws?participantId=${encodeURIComponent(cleanPid)}`;
 
   try {
     if (_participantWs) {
@@ -8156,6 +8187,7 @@ function connectParticipantWebSocket() {
 
     _participantWs.onopen = () => {
       console.log(`[Targeted WS] Connected for participant: ${cleanPid}`);
+      _wsRetryCount = 0; // Reset retry counter on successful connection
       fetchInitialScoreOnce();
     };
 
@@ -8178,15 +8210,21 @@ function connectParticipantWebSocket() {
     };
 
     _participantWs.onclose = () => {
-      console.log('[Targeted WS] Connection dropped. Auto-reconnecting in 3s...');
-      _wsReconnectTimer = setTimeout(connectParticipantWebSocket, 3000);
+      _wsRetryCount++;
+      if (_wsRetryCount < MAX_WS_RETRIES) {
+        const delay = Math.min(_wsRetryCount * 3000, 10000);
+        console.log(`[Targeted WS] Attempt ${_wsRetryCount}/${MAX_WS_RETRIES} closed. Retrying in ${delay / 1000}s...`);
+        _wsReconnectTimer = setTimeout(connectParticipantWebSocket, delay);
+      } else {
+        console.warn('[Targeted WS] Max retries reached. Cleanly falling back to Supabase Realtime (0 egress waste).');
+      }
     };
 
     _participantWs.onerror = () => {
       try { _participantWs.close(); } catch(e) {}
     };
   } catch (err) {
-    _wsReconnectTimer = setTimeout(connectParticipantWebSocket, 4000);
+    _wsRetryCount++;
   }
 }
 
