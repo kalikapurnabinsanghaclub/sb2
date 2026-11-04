@@ -2442,9 +2442,9 @@
 
         <!-- DIGITAL ACCEPTANCE CONFIRMATION (COMPACT & SLEEK) -->
         <div id="vm-acceptance-section" style="margin-bottom:12px;">
-          <label id="vm-tc-wrap" for="vm-tc" style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface2); border:1.5px solid rgba(37,99,235,0.22); border-radius:12px; padding:10px 14px; cursor:pointer; transition:all 0.2s; box-shadow:0 2px 6px rgba(0,0,0,0.02);" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='rgba(37,99,235,0.22)'">
+          <label id="vm-tc-wrap" style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface2); border:1.5px solid rgba(37,99,235,0.22); border-radius:12px; padding:10px 14px; cursor:pointer; transition:all 0.2s; box-shadow:0 2px 6px rgba(0,0,0,0.02);" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='rgba(37,99,235,0.22)'">
             <div style="display:flex; align-items:center; gap:10px; flex:1;">
-              <input type="checkbox" id="vm-tc" style="width:17px; height:17px; accent-color:var(--primary); cursor:pointer; flex-shrink:0;" onchange="this.closest('#vm-tc-wrap').style.background=this.checked?'rgba(37,99,235,0.06)':'var(--surface2)'">
+              <input type="checkbox" id="vm-tc" style="width:17px; height:17px; accent-color:var(--primary); cursor:pointer; flex-shrink:0;" onchange="document.getElementById('vm-tc-wrap').style.background=this.checked?'rgba(37,99,235,0.06)':'var(--surface2)'">
               <span style="font-size:12px; font-weight:700; color:var(--text); line-height:1.3;">
                 I accept the Appointment Terms &amp; Honorarium Schedule
               </span>
@@ -3272,6 +3272,7 @@ function initIdentity() {
         JUDGE.dateUpto = matchedAgr.dateUpto || '';
         JUDGE.time     = matchedAgr.time     || JUDGE.time;
         JUDGE.status   = matchedAgr.status   || JUDGE.status;
+        JUDGE.submitted = (matchedAgr.submitted === true || matchedAgr.status === 'verified' || matchedAgr.status === 'confirmed' || matchedAgr.status === 'approved');
         JUDGE.amount   = parseInt(matchedAgr.amount)  || 0;
         JUDGE.advance  = parseInt(matchedAgr.advance) || 0;
         JUDGE.remainingPaid = !!(matchedAgr.remainingPaid === true || matchedAgr.remainingStatus === 'paid');
@@ -3326,7 +3327,9 @@ function initIdentity() {
       });
 
       if (existingJudge) {
-        JUDGE.id = existingJudge.id;
+        if (existingJudge.id !== undefined && existingJudge.id !== null) {
+          JUDGE.id = existingJudge.id;
+        }
         if (!JUDGE.eventId && (existingJudge.eventId || existingJudge.event_id)) {
           JUDGE.eventId = String(existingJudge.eventId || existingJudge.event_id);
         }
@@ -3432,15 +3435,15 @@ function checkAgreementStatus() {
     return;
   }
   
-  const isVerified = (JUDGE.status === 'verified' || JUDGE.status === 'confirmed');
+  const isVerified = (JUDGE.status === 'verified' || JUDGE.status === 'confirmed' || JUDGE.status === 'approved' || JUDGE.submitted === true);
   
   if (wrap) {
     if (isVerified) {
-      const isConfirmed = JUDGE.status === 'confirmed';
+      const isConfirmed = (JUDGE.status === 'confirmed' || JUDGE.status === 'approved');
       const bg = isConfirmed ? 'rgba(16,185,129,0.1)' : 'rgba(37,99,235,0.08)';
       const color = isConfirmed ? '#059669' : '#2563eb';
       const border = isConfirmed ? 'rgba(16,185,129,0.25)' : 'rgba(37,99,235,0.25)';
-      const labelText = isConfirmed ? 'CONFIRMED' : 'VERIFIED';
+      const labelText = isConfirmed ? (JUDGE.status === 'approved' ? 'APPROVED' : 'CONFIRMED') : 'VERIFIED';
       
       wrap.innerHTML = `<button onclick="openVerificationModal()" style="display:inline-flex;align-items:center;gap:7px;background:${bg};color:${color};padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;border:1px solid ${border};cursor:pointer;transition:all 0.2s;box-shadow:0 2px 6px rgba(0,0,0,0.03)" title="Click to view full Agreement Details">
         <span style="font-size:13px">✨</span>
@@ -3472,7 +3475,7 @@ function checkAgreementStatus() {
 }
 
 function openVerificationModal() {
-  const isVerified = (JUDGE.status === 'verified' || JUDGE.status === 'confirmed');
+  const isVerified = (JUDGE.status === 'verified' || JUDGE.status === 'confirmed' || JUDGE.status === 'approved' || JUDGE.submitted === true);
 
   // Populate appointment details
   const elName = document.getElementById('vm-name');
@@ -3672,7 +3675,7 @@ function vmCalcRemaining() {
 }
 
 function vmUpdateRemainingStatus() {
-  const isVerified = (JUDGE.status === 'verified' || JUDGE.status === 'confirmed');
+  const isVerified = (JUDGE.status === 'verified' || JUDGE.status === 'confirmed' || JUDGE.status === 'approved' || JUDGE.submitted === true);
   const paidRadio = document.getElementById('vm-rem-paid');
   const unpaidLabel = document.getElementById('vm-rem-unpaid-label');
   const paidLabel = document.getElementById('vm-rem-paid-label');
@@ -3738,13 +3741,25 @@ function vmEnableSettleEdit() {
 function saveRemainingSettlement() {
   const settleInput = document.getElementById('vm-settle-amount');
   const remVal = parseInt(settleInput ? settleInput.value : 0) || 0;
-  const targetId = JUDGE.agreementId || JUDGE.id;
   
   if (window.syncEngine) {
-    const state = window.syncEngine.getData();
-    let judgeAgreements = [...(state.judgeAgreements || [])];
-    const idx = judgeAgreements.findIndex(a => String(a.id) === String(targetId));
+    const state = window.syncEngine.getData() || {};
+    let judgeAgreements = [...(state.judgeAgreements || state.agreements || window.agreements || [])];
+    const targetId = JUDGE.agreementId || JUDGE.id;
+    let idx = judgeAgreements.findIndex(a => a && String(a.id) === String(targetId));
+    if (idx === -1 && JUDGE.agreementId) {
+      idx = judgeAgreements.findIndex(a => a && String(a.id) === String(JUDGE.agreementId));
+    }
+    const myEmail = String(JUDGE.email || '').trim().toLowerCase();
+    const myName = String(JUDGE.name || '').trim().toLowerCase();
+    if (idx === -1 && myEmail) {
+      idx = judgeAgreements.findIndex(a => a && a.email && String(a.email).trim().toLowerCase() === myEmail);
+    }
+    if (idx === -1 && myName) {
+      idx = judgeAgreements.findIndex(a => a && a.name && String(a.name).trim().toLowerCase() === myName);
+    }
     if (idx >= 0) {
+      const actualAgrId = judgeAgreements[idx].id;
       const adv = parseInt(judgeAgreements[idx].advance || JUDGE.advance || 0);
       const isFullOrPaid = remVal > 0 || (JUDGE.amount && (adv + remVal) >= JUDGE.amount);
       
@@ -3759,7 +3774,7 @@ function saveRemainingSettlement() {
       
       window.syncEngine.updateState({ judgeAgreements });
       if (window.syncEngine.updateAgreement) {
-        window.syncEngine.updateAgreement(targetId, judgeAgreements[idx]);
+        window.syncEngine.updateAgreement(actualAgrId, judgeAgreements[idx]);
       }
       
       JUDGE.remainingPaid = isFullOrPaid;
@@ -3793,10 +3808,46 @@ function submitVerification() {
   const signature = JUDGE.name ? `${JUDGE.name} (Digital Acceptance)` : 'Accepted Digitally';
 
   if (window.syncEngine) {
-    const state = window.syncEngine.getData();
-    let judgeAgreements = [...(state.judgeAgreements || [])];
+    const state = window.syncEngine.getData() || {};
+    let judgeAgreements = [...(state.judgeAgreements || state.agreements || window.agreements || [])];
     const targetId = JUDGE.agreementId || JUDGE.id;
-    const idx = judgeAgreements.findIndex(a => String(a.id) === String(targetId));
+    let idx = judgeAgreements.findIndex(a => a && String(a.id) === String(targetId));
+    if (idx === -1 && JUDGE.agreementId) {
+      idx = judgeAgreements.findIndex(a => a && String(a.id) === String(JUDGE.agreementId));
+    }
+    const myEmail = String(JUDGE.email || '').trim().toLowerCase();
+    const myName = String(JUDGE.name || '').trim().toLowerCase();
+    if (idx === -1 && myEmail) {
+      idx = judgeAgreements.findIndex(a => a && a.email && String(a.email).trim().toLowerCase() === myEmail);
+    }
+    if (idx === -1 && myName) {
+      idx = judgeAgreements.findIndex(a => a && a.name && String(a.name).trim().toLowerCase() === myName);
+    }
+
+    if (idx === -1) {
+      // Auto-create local agreement record so judge is never blocked from accepting
+      const newAgrId = JUDGE.agreementId || JUDGE.id || (Math.floor(Math.random() * 1000000000) + 1);
+      const newAgr = {
+        id: newAgrId,
+        name: JUDGE.name || 'Judge',
+        email: JUDGE.email || '',
+        phone: JUDGE.phone || '',
+        eventId: JUDGE.eventId || state.activeEventId || 0,
+        venueId: JUDGE.venueId || '',
+        venueName: JUDGE.venue || '',
+        spec: JUDGE.spec || '',
+        amount: JUDGE.amount || 0,
+        advance: judgeAdvance,
+        status: 'verified',
+        submitted: true,
+        agreedTc: true
+      };
+      judgeAgreements.push(newAgr);
+      idx = judgeAgreements.length - 1;
+      JUDGE.agreementId = newAgrId;
+    }
+
+    const actualAgrId = judgeAgreements[idx].id;
     if (idx >= 0) {
       judgeAgreements[idx] = {
         ...judgeAgreements[idx],
@@ -3841,9 +3892,10 @@ function submitVerification() {
 
       window.syncEngine.updateState({ judgeAgreements, judges });
       if (window.syncEngine.updateAgreement) {
-        window.syncEngine.updateAgreement(targetId, judgeAgreements[idx]);
+        window.syncEngine.updateAgreement(actualAgrId, judgeAgreements[idx]);
       }
       JUDGE.status = 'verified';
+      JUDGE.submitted = true;
       JUDGE.advance = judgeAdvance;
       JUDGE.remainingPaid = remainingPaid;
       JUDGE.remainingStatus = remainingStatus;
@@ -3944,15 +3996,15 @@ function showJudgeProfileModal() {
     const rem = Math.max(0, (JUDGE.amount || 0) - (JUDGE.advance || 0));
     const isPaid = JUDGE.remainingPaid === true || JUDGE.remainingStatus === 'paid' || rem === 0;
     const paidBadge = `<span style="margin-left:6px; font-size:10px; padding:2px 6px; border-radius:10px; font-weight:700; background:${isPaid ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)'}; color:${isPaid ? '#059669' : '#d97706'}; border:1px solid ${isPaid ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}">${isPaid ? 'PAID' : 'NOT PAID'}</span>`;
-    const actionBtn = (!isPaid && (JUDGE.status === 'verified' || JUDGE.status === 'confirmed')) ? `<button onclick="document.getElementById('judge-profile-modal').style.display='none';openVerificationModal();" style="margin-top:4px;display:block;width:100%;padding:4px 8px;font-size:11px;font-weight:700;color:#2563eb;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.2);border-radius:6px;cursor:pointer">💳 Settle Remaining Amount</button>` : '';
+    const actionBtn = (!isPaid && (JUDGE.status === 'verified' || JUDGE.status === 'confirmed' || JUDGE.status === 'approved' || JUDGE.submitted === true)) ? `<button onclick="document.getElementById('judge-profile-modal').style.display='none';openVerificationModal();" style="margin-top:4px;display:block;width:100%;padding:4px 8px;font-size:11px;font-weight:700;color:#2563eb;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.2);border-radius:6px;cursor:pointer">💳 Settle Remaining Amount</button>` : '';
     pmRemaining.innerHTML = `<div><strong>₹${rem}</strong> ${paidBadge}</div>${actionBtn}`;
   }
 
   const statusEl = document.getElementById('pm-status');
   if (statusEl) {
     const status = JUDGE.status || 'none';
-    if (status === 'confirmed') {
-      statusEl.innerHTML = `<span style="background:rgba(16,185,129,0.1); color:#059669; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid rgba(16,185,129,0.2)">CONFIRMED</span>`;
+    if (status === 'confirmed' || status === 'approved') {
+      statusEl.innerHTML = `<span style="background:rgba(16,185,129,0.1); color:#059669; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid rgba(16,185,129,0.2)">✨ ${status.toUpperCase()}</span>`;
     } else if (status === 'verified') {
       statusEl.innerHTML = `<span style="background:rgba(245,158,11,0.1); color:#d97706; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid rgba(245,158,11,0.2)">VERIFIED</span>`;
     } else {
