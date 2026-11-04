@@ -3026,7 +3026,9 @@ function renderJudgeLeaderboard() {
   const allCategories = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : (state.categories || []);
   const allJudges = (state.judges || window.judges || []);
   const allAgreements = (state.judgeAgreements || state.agreements || window.agreements || []);
-  const allSubjects = (window.SUBJECTS && window.SUBJECTS.length > 0) ? window.SUBJECTS : (state.subjects || []);
+  const allSubjects = (window.SUBJECTS && window.SUBJECTS.length > 0)
+    ? window.SUBJECTS.filter(s => !s.eventId || String(s.eventId) === String(activeEvId))
+    : (state.subjects || []).filter(s => String(s.eventId || s.event_id) === String(activeEvId));
 
   const eventPresentJudges = allJudges.filter(j => 
     j.present === true && 
@@ -7567,26 +7569,33 @@ syncEngine.subscribe((state) => {
     : (state.events && state.events.length > 0 ? (state.events.find(e => e.active === true) || state.events[0]) : null);
 
   let rawSubs = [];
-  if (activeEv && activeEv.subjects && activeEv.subjects.length > 0) {
+  if (activeEv && Array.isArray(activeEv.subjects) && activeEv.subjects.length > 0) {
     rawSubs = activeEv.subjects;
   } else if (activeEv && activeEv.scoring_subjects && activeEv.scoring_subjects.length > 0) {
-    rawSubs = typeof activeEv.scoring_subjects === 'string' ? JSON.parse(activeEv.scoring_subjects) : activeEv.scoring_subjects;
+    try {
+      rawSubs = typeof activeEv.scoring_subjects === 'string' ? JSON.parse(activeEv.scoring_subjects) : activeEv.scoring_subjects;
+    } catch(e) {
+      rawSubs = [];
+    }
   } else if (activeEvId && state.subjects && state.subjects.length > 0) {
     rawSubs = state.subjects.filter(sub => {
       const sEv = sub.eventId || sub.event_id;
       return sEv && String(sEv) === String(activeEvId);
     });
-    if (rawSubs.length === 0) rawSubs = state.subjects;
-  } else if (state.subjects && state.subjects.length > 0) {
-    rawSubs = state.subjects;
   }
 
-  SUBJECTS = (rawSubs || []).map(s => ({
+  // STRICT EVENT-ISOLATION: Never include subjects from other events
+  rawSubs = (rawSubs || []).filter(sub => {
+    const sEv = sub.eventId || sub.event_id;
+    return !sEv || String(sEv) === String(activeEvId);
+  });
+
+  SUBJECTS = rawSubs.map(s => ({
     id: Number(s.id) || s.id,
     name: s.name || s.subject_name || 'Subject',
     maxMarks: Number(s.maxMarks || s.max_marks || s.max_score) || 10,
     desc: s.desc || s.description || '',
-    eventId: s.eventId || s.event_id || activeEvId
+    eventId: activeEvId ? (Number(activeEvId) || activeEvId) : null
   }));
 
   CATEGORIES = (activeEvId && activeEv && activeEv.categories && activeEv.categories.length > 0) 

@@ -7911,7 +7911,7 @@ function hydrate() {
 
   if (activeEventId) {
     let rawSubs = [];
-    if (activeEv && activeEv.subjects && activeEv.subjects.length > 0) {
+    if (activeEv && Array.isArray(activeEv.subjects) && activeEv.subjects.length > 0) {
       rawSubs = activeEv.subjects;
     } else if (activeEv && activeEv.scoring_subjects && activeEv.scoring_subjects.length > 0) {
       rawSubs = typeof activeEv.scoring_subjects === 'string' ? JSON.parse(activeEv.scoring_subjects) : activeEv.scoring_subjects;
@@ -7920,15 +7920,20 @@ function hydrate() {
         const sEv = sub.eventId || sub.event_id;
         return sEv && String(sEv) === String(activeEventId);
       });
-      if (rawSubs.length === 0) rawSubs = s.subjects.filter(sub => !sub.eventId && !sub.event_id);
-      if (rawSubs.length === 0) rawSubs = s.subjects;
     }
-    subjects = (rawSubs || []).map(sub => ({
+
+    // STRICT EVENT-ISOLATION: Only include subjects belonging strictly to activeEventId
+    rawSubs = (rawSubs || []).filter(sub => {
+      const sEv = sub.eventId || sub.event_id;
+      return !sEv || String(sEv) === String(activeEventId);
+    });
+
+    subjects = rawSubs.map(sub => ({
       id: Number(sub.id) || sub.id,
       name: sub.name || sub.subject_name || 'Subject',
       maxMarks: Number(sub.maxMarks || sub.max_marks || sub.max_score) || 10,
       desc: sub.desc || sub.description || '',
-      eventId: sub.eventId || sub.event_id || activeEventId
+      eventId: activeEventId ? (Number(activeEventId) || activeEventId) : null
     }));
     categories = (activeEv && activeEv.categories && activeEv.categories.length > 0) ? activeEv.categories : (s.categories || []).filter(c => (c.eventId || c.event_id) && String(c.eventId || c.event_id) === String(activeEventId));
     venues = (activeEv && activeEv.venues && activeEv.venues.length > 0) ? activeEv.venues : (s.venues || []).filter(v => (v.eventId || v.event_id) && String(v.eventId || v.event_id) === String(activeEventId));
@@ -8124,7 +8129,7 @@ function syncAll() {
     const evIdx = newState.events.findIndex(e => String(e.id) === String(activeEventId));
     if (evIdx !== -1) {
       newState.events[evIdx].switchStates = { ...switchStates };
-      newState.events[evIdx].subjects = [...subjects];
+      newState.events[evIdx].subjects = subjects.filter(sub => String(sub.eventId || sub.event_id) === String(activeEventId));
       newState.events[evIdx].categories = [...categories];
       newState.events[evIdx].venues = [...venues];
       newState.events[evIdx].auditionDates = [...auditionDates];
@@ -8142,8 +8147,12 @@ function syncAll() {
     const otherAuds = (s.auditionDates || []).filter(a => String(a.eventId) !== String(activeEventId) && a.eventId);
     newState.auditionDates = [...otherAuds, ...auditionDates];
 
-    const otherSubs = (s.subjects || []).filter(sub => String(sub.eventId) !== String(activeEventId) && sub.eventId);
-    newState.subjects = [...otherSubs, ...subjects];
+    const otherSubs = (s.subjects || []).filter(sub => {
+      const sEv = sub.eventId || sub.event_id;
+      return sEv && String(sEv) !== String(activeEventId);
+    });
+    const currentSubs = subjects.filter(sub => String(sub.eventId || sub.event_id) === String(activeEventId));
+    newState.subjects = [...otherSubs, ...currentSubs];
     
     if (!newState.eventRounds) newState.eventRounds = {};
     if (activeEventId) newState.eventRounds[activeEventId] = getEventRounds();
@@ -19349,7 +19358,7 @@ applyScoreVisibility();
 function renderSubjects(){
   const el = document.getElementById('subjects-list');
   if(!el) return;
-  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId) || !s.eventId);
+  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId));
   el.innerHTML = filteredSubjs.map(s=>`
     <div class="card glass-card card-hover" style="display:flex;align-items:center;gap:10px;padding:14px;border-radius:16px;margin-bottom:10px;background:#fff">
       <div style="width:38px;height:38px;border-radius:10px;background:rgba(217,119,6,0.1);color:var(--amber2);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px">${(s.name || '?')[0]}</div>
@@ -19379,7 +19388,7 @@ function renderSubjects(){
 }
 
 function renderScoreSheetPreview(){
-  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId) || !s.eventId);
+  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId));
   const total = filteredSubjs.reduce((a,s)=>a+(Number(s.maxMarks)||10),0);
   const container = document.getElementById('score-sheet-preview');
   if(!container) return;
@@ -19433,7 +19442,7 @@ const SUBJECT_TEMPLATES = [
 function renderTemplateChips() {
   const el = document.getElementById('template-chips');
   if (!el) return;
-  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId) || !s.eventId);
+  const filteredSubjs = subjects.filter(s => String(s.eventId) === String(activeEventId));
   const activeNames = filteredSubjs.map(s => s.name.toLowerCase().trim());
   el.innerHTML = SUBJECT_TEMPLATES.map(t => {
     const isAdded = activeNames.includes(t.name.toLowerCase().trim());
