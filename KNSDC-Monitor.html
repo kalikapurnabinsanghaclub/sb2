@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>KNSDC — Monitor Control</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<!-- Zero-Egress Native System Font Stack (0 KB download overhead) -->
 <script>
   // Apply theme immediately to prevent FOUC
   (function() {
@@ -60,9 +60,9 @@
     --orange: #f97316; --orange2: #ea580c;
     --cyan: #06b6d4; --cyan2: #0891b2;
 
-    --fh: 'Inter', sans-serif;
-    --fb: 'Inter', sans-serif;
-    --fm: 'monospace';
+    --fh: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --fb: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --fm: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
   @keyframes pulse {
     0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
@@ -4122,10 +4122,17 @@
         </div>
         
         <!-- Controls -->
-        <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div style="display:flex; gap:8px; margin-bottom:6px;">
           <button class="btn" style="background:#3b82f6; color:white; flex:1;" onclick="togglePlayDeck('A')" id="deck-A-play-btn">▶ Play</button>
           <button class="btn btn-secondary" onclick="stopDeck('A')">⏹ Stop</button>
           <button class="btn btn-danger" onclick="cueDeck('A')">CUE</button>
+        </div>
+        <!-- Tempo / Pitch Slider -->
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; background:#f1f5f9; padding:4px 8px; border-radius:6px; border:1px solid #e2e8f0;">
+          <span style="font-size:9px; font-weight:800; color:#475569;">TEMPO:</span>
+          <input type="range" min="0.5" max="1.5" step="0.01" value="1.0" oninput="changeSpeed('A', this.value)" style="flex:1; height:4px; accent-color:#3b82f6; cursor:pointer;">
+          <span id="deck-A-speed-val" style="font-size:9px; font-weight:800; color:#3b82f6; min-width:34px; text-align:right;">1.00x</span>
+          <button onclick="changeSpeed('A', 1.0); this.previousElementSibling.previousElementSibling.value=1.0;" style="background:none; border:none; color:#64748b; font-size:9px; cursor:pointer; font-weight:700;" title="Reset Tempo">↺</button>
         </div>
         
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -4452,10 +4459,17 @@
         </div>
         
         <!-- Controls -->
-        <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div style="display:flex; gap:8px; margin-bottom:6px;">
           <button class="btn" style="background:#ef4444; color:white; flex:1;" onclick="togglePlayDeck('B')" id="deck-B-play-btn">▶ Play</button>
           <button class="btn btn-secondary" onclick="stopDeck('B')">⏹ Stop</button>
           <button class="btn btn-danger" onclick="cueDeck('B')">CUE</button>
+        </div>
+        <!-- Tempo / Pitch Slider -->
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; background:#f1f5f9; padding:4px 8px; border-radius:6px; border:1px solid #e2e8f0;">
+          <span style="font-size:9px; font-weight:800; color:#475569;">TEMPO:</span>
+          <input type="range" min="0.5" max="1.5" step="0.01" value="1.0" oninput="changeSpeed('B', this.value)" style="flex:1; height:4px; accent-color:#ef4444; cursor:pointer;">
+          <span id="deck-B-speed-val" style="font-size:9px; font-weight:800; color:#ef4444; min-width:34px; text-align:right;">1.00x</span>
+          <button onclick="changeSpeed('B', 1.0); this.previousElementSibling.previousElementSibling.value=1.0;" style="background:none; border:none; color:#64748b; font-size:9px; cursor:pointer; font-weight:700;" title="Reset Tempo">↺</button>
         </div>
         
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -5764,7 +5778,7 @@
 
 <div id="toast"></div>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=240"></script>
+<script src="lib/localSync-v4.js?v=241"></script>
 <script src="lib/staffAudio.js"></script>
 <script>
 const staffAudio = window.staffAudio || (window.StaffAudio ? new StaffAudio() : null);
@@ -7388,20 +7402,32 @@ function autoPlayNext(deckId) {
 }
 
 window.changeSpeed = function(deckId, val) {
-  DJ.decks[deckId].audio.playbackRate = parseFloat(val);
-  document.getElementById('deck-'+deckId+'-speed-val').textContent = parseFloat(val).toFixed(2) + 'x';
+  if (DJ.decks[deckId] && DJ.decks[deckId].audio) {
+    DJ.decks[deckId].audio.playbackRate = parseFloat(val);
+  }
+  const el = document.getElementById('deck-'+deckId+'-speed-val');
+  if (el) el.textContent = parseFloat(val).toFixed(2) + 'x';
 };
 
 window.changeEQ = function(deckId, band, val) {
+  // Safe bridge from legacy 3-band EQ calls to modern 10-band EQ array
   const d = DJ.decks[deckId];
-  if(band === 'low') d.eq.low.gain.value = parseFloat(val);
-  if(band === 'mid') d.eq.mid.gain.value = parseFloat(val);
-  if(band === 'high') d.eq.high.gain.value = parseFloat(val);
+  if (!d || !d.eqNodes || d.eqNodes.length < 10) return;
+  const num = parseFloat(val);
+  if (band === 'low') {
+    [0, 1, 2].forEach(i => { if (d.eqNodes[i]) d.eqNodes[i].gain.value = num; });
+  } else if (band === 'mid') {
+    [3, 4, 5, 6].forEach(i => { if (d.eqNodes[i]) d.eqNodes[i].gain.value = num; });
+  } else if (band === 'high') {
+    [7, 8, 9].forEach(i => { if (d.eqNodes[i]) d.eqNodes[i].gain.value = num; });
+  }
 };
 
 window.changeEcho = function(deckId, val) {
-  const d = DJ.decks[deckId];
-  if(d.echo) d.echo.gain.value = parseFloat(val);
+  // Deprecated echo handler safely redirected to acoustic master reverb
+  if (typeof window.changeReverbMix === 'function') {
+    window.changeReverbMix(parseFloat(val) * 100);
+  }
 };
 
 window.changeMasterVol = function(val) {
@@ -7412,10 +7438,11 @@ window.changeMasterVol = function(val) {
 
 window.changeCrossfader = function(val) {
   const v = parseFloat(val);
-  if(DJ.decks['A'].gain) DJ.decks['A'].gain.gain.value = Math.cos(v * 0.5 * Math.PI);
-  if(DJ.decks['B'].gain) DJ.decks['B'].gain.gain.value = Math.cos((1.0 - v) * 0.5 * Math.PI);
+  // FIXED: Controls xfaderGain directly without overwriting channel volume faders (gain)
+  if(DJ.decks['A'] && DJ.decks['A'].xfaderGain) DJ.decks['A'].xfaderGain.gain.value = Math.cos(v * 0.5 * Math.PI);
+  if(DJ.decks['B'] && DJ.decks['B'].xfaderGain) DJ.decks['B'].xfaderGain.gain.value = Math.cos((1.0 - v) * 0.5 * Math.PI);
 };
-const syncEngine = new (window.LocalSync || LocalSync)();
+const syncEngine = window.syncEngine || new (window.LocalSync || LocalSync)();
 
 function toggleSidebarMenu() {
   const sidebar = document.querySelector('.sidebar');
