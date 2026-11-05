@@ -3094,8 +3094,19 @@ function renderJudgeLeaderboard() {
   if (!container) return;
 
   const state = (window.syncEngine && typeof syncEngine.getData === 'function') ? syncEngine.getData() : {};
-  const activeEvId = JUDGE.eventId || state.activeEventId || (state.events && state.events.length > 0 ? String(state.events[0].id) : null);
+  const isAllowed = (typeof isJudgeLbAllowed !== 'undefined') ? isJudgeLbAllowed : (state.switchStates?.judgeLeaderboard !== false);
+  if (!isAllowed) {
+    container.innerHTML = `
+      <div class="card" style="text-align:center;padding:50px 20px;color:var(--text-muted);background:var(--surface);">
+        <div style="font-size:42px;margin-bottom:12px;">🔒</div>
+        <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px;">Live Ranking Locked</div>
+        <div style="font-size:12px;color:var(--text-muted);">Venue Monitor has temporarily locked live leaderboard viewing for the Judge portal.</div>
+      </div>
+    `;
+    return;
+  }
 
+  const activeEvId = JUDGE.eventId || state.activeEventId || (state.events && state.events.length > 0 ? String(state.events[0].id) : null);
   const allParticipants = (participants && participants.length > 0) ? participants : (state.participants || []);
   const allCategories = (CATEGORIES && CATEGORIES.length > 0) ? CATEGORIES : (state.categories || []);
   const allJudges = (state.judges || window.judges || []);
@@ -3116,10 +3127,24 @@ function renderJudgeLeaderboard() {
   const totalSubMarks = allSubjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0) || 50;
   const maxPossibleScore = presentJudgesCount * totalSubMarks;
 
-  // Sync round dropdown if present
+  // Active formula from monitor (synced live)
+  const activeFormulaStr = state.currentRankingFormula || localStorage.getItem('knsdc_ranking_formula') || '1+4';
+  const isCustomFormula = (currentJudgeLeaderRound === 'custom_formula');
+
+  // Dynamic injection into "Select Round" dropdown: monitor what rule creates, only that rule automatically shows!
   const roundSel = document.getElementById('judge-lb-round-filter');
-  if (roundSel && roundSel.value !== currentJudgeLeaderRound) {
-    roundSel.value = currentJudgeLeaderRound;
+  if (roundSel) {
+    let customOpt = document.getElementById('judge-opt-custom-formula');
+    if (!customOpt) {
+      customOpt = document.createElement('option');
+      customOpt.id = 'judge-opt-custom-formula';
+      customOpt.value = 'custom_formula';
+      roundSel.appendChild(customOpt);
+    }
+    customOpt.textContent = `⚡ Custom Formula: ${activeFormulaStr}`;
+    if (roundSel.value !== currentJudgeLeaderRound) {
+      roundSel.value = currentJudgeLeaderRound;
+    }
   }
 
   // Dynamically sync and populate Category Selector options without destructive DOM wipes
@@ -3139,20 +3164,59 @@ function renderJudgeLeaderboard() {
   }
   const activeCatId = catSelect ? catSelect.value : "";
 
+  // Helper to parse formula for judge
+  const judgeEvRounds = [
+    { id: 'audition', name: 'Round 1 (Audition)' },
+    { id: 'qualified', name: 'Round 2 (Qualified)' },
+    { id: 'semifinal', name: 'Round 3 (Semifinal)' },
+    { id: 'final', name: 'Round 4 (Final)' }
+  ];
+
+  function parseJudgeFormula(formulaStr) {
+    const regex = /([+-]?)\s*(?:R|Round)?\s*(\d+)/gi;
+    const terms = [];
+    let match;
+    while ((match = regex.exec(formulaStr)) !== null) {
+      const sign = match[1] === '-' ? -1 : 1;
+      const roundNum = parseInt(match[2], 10);
+      if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= judgeEvRounds.length) {
+        terms.push({ sign, roundNum, roundId: judgeEvRounds[roundNum - 1].id, roundName: judgeEvRounds[roundNum - 1].name });
+      }
+    }
+    if (terms.length === 0) {
+      terms.push({ sign: 1, roundNum: 1, roundId: 'audition', roundName: 'Audition' });
+      terms.push({ sign: 1, roundNum: 4, roundId: 'final', roundName: 'Final' });
+    }
+    return terms;
+  }
+  const formulaTerms = isCustomFormula ? parseJudgeFormula(activeFormulaStr) : [];
+
   // Base participant pool for this event and round (zero egress in-memory calculation)
   const targetRoundClean = String(currentJudgeLeaderRound || 'audition').toLowerCase();
   let baseParticipants = allParticipants.filter(p => {
     const isEventMatch = !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId);
     if (!isEventMatch) return false;
+    if (isCustomFormula) return true;
     const pRound = String(p.round || 'audition').toLowerCase();
     const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
     return pRound === targetRoundClean || hasScoreInTarget;
   });
 
-  // Calculate scores for each participant
+  // Calculate scores for each participant 100% in browser RAM
   const scoredList = baseParticipants.map(p => {
     const pClone = { ...p };
-    pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
+    if (isCustomFormula) {
+      let net = 0;
+      pClone.formulaBreakdown = [];
+      formulaTerms.forEach(t => {
+        const sc = getParticipantRoundScore(pClone, t.roundId);
+        net += (t.sign * sc);
+        pClone.formulaBreakdown.push({ roundNum: t.roundNum, roundName: t.roundName, score: sc, sign: t.sign });
+      });
+      pClone.totalScore = Math.round(net * 100) / 100;
+    } else {
+      pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
+    }
     return pClone;
   });
 
@@ -8208,8 +8272,29 @@ if (window.BroadcastChannel) {
   try {
     const bc = new BroadcastChannel('knsdc_sync_channel');
     bc.onmessage = (e) => {
-      if (e.data && e.data.type === 'judge_leaderboard_toggle') {
+      if (!e.data) return;
+      if (e.data.type === 'judge_leaderboard_toggle') {
         updateJudgeLeaderboardAccess(Boolean(e.data.value));
+      } else if (e.data.type === 'ranking_formula_update') {
+        // Zero-Egress live update from Venue Monitor
+        if (e.data.formula) {
+          localStorage.setItem('knsdc_ranking_formula', e.data.formula);
+          const roundSel = document.getElementById('judge-lb-round-filter');
+          if (roundSel) {
+            let customOpt = document.getElementById('judge-opt-custom-formula');
+            if (!customOpt) {
+              customOpt = document.createElement('option');
+              customOpt.id = 'judge-opt-custom-formula';
+              customOpt.value = 'custom_formula';
+              roundSel.appendChild(customOpt);
+            }
+            customOpt.textContent = `⚡ Custom Formula: ${e.data.formula}`;
+          }
+          if (currentPage === 'leaderboard') {
+            window._lastJudgeLeaderboardHash = null;
+            renderJudgeLeaderboard();
+          }
+        }
       }
     };
   } catch(e) {}

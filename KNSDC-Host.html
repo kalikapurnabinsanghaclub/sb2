@@ -812,11 +812,12 @@
             <div class="card-title">Live Ranking</div>
             <button class="btn btn-ghost btn-sm" onclick="renderLeaderboard()">Refresh</button>
          </div>
-         <div style="display:flex; gap:10px; margin-bottom:20px; border-bottom: 1px solid rgba(226, 232, 240, 0.8); padding-bottom: 15px;">
+         <div style="display:flex; gap:10px; margin-bottom:20px; border-bottom: 1px solid rgba(226, 232, 240, 0.8); padding-bottom: 15px; flex-wrap:wrap;">
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('audition'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Audition</button>
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('qualified'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Qualified</button>
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('semifinal'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Semifinal</button>
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('final'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Final</button>
+           <button id="host-formula-tab-btn" class="btn btn-outline" style="flex:1.2; border:1.5px solid var(--amber2); color:var(--amber2); font-weight:800;" onclick="switchLeaderRound('custom_formula'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(245, 158, 11, 0.15)';">⚡ Custom Formula: <span id="host-formula-btn-txt">1+4</span></button>
          </div>
          <div id="leaderboard-content"></div>
       </div>
@@ -2330,10 +2331,44 @@ window.renderLeaderboard = () => {
       return Math.round(total * 100) / 100;
     }
 
+    const isCustomFormula = (currentLeaderRound === 'custom_formula');
     const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
+
+    // Active custom formula from state or storage
+    const activeFormulaStr = stData.currentRankingFormula || localStorage.getItem('knsdc_ranking_formula') || '1+4';
+    const formulaBtnTxt = document.getElementById('host-formula-btn-txt');
+    if (formulaBtnTxt) formulaBtnTxt.textContent = activeFormulaStr;
+
+    const hostEvRounds = [
+      { id: 'audition', name: 'Round 1 (Audition)' },
+      { id: 'qualified', name: 'Round 2 (Qualified)' },
+      { id: 'semifinal', name: 'Round 3 (Semifinal)' },
+      { id: 'final', name: 'Round 4 (Final)' }
+    ];
+
+    function parseHostFormula(formulaStr) {
+      const regex = /([+-]?)\s*(?:R|Round)?\s*(\d+)/gi;
+      const terms = [];
+      let match;
+      while ((match = regex.exec(formulaStr)) !== null) {
+        const sign = match[1] === '-' ? -1 : 1;
+        const roundNum = parseInt(match[2], 10);
+        if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= hostEvRounds.length) {
+          terms.push({ sign, roundNum, roundId: hostEvRounds[roundNum - 1].id, roundName: hostEvRounds[roundNum - 1].name });
+        }
+      }
+      if (terms.length === 0) {
+        terms.push({ sign: 1, roundNum: 1, roundId: 'audition', roundName: 'Audition' });
+        terms.push({ sign: 1, roundNum: 4, roundId: 'final', roundName: 'Final' });
+      }
+      return terms;
+    }
+    const formulaTerms = isCustomFormula ? parseHostFormula(activeFormulaStr) : [];
+
     let filtered = (participants || []).filter(p => {
       const isEventMatch = !activeEventId || !p.eventId || String(p.eventId) === String(activeEventId);
       if (!isEventMatch) return false;
+      if (isCustomFormula) return true;
       const pRound = String(p.round || 'audition').toLowerCase();
       const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
       return pRound === targetRoundClean || hasScoreInTarget;
@@ -2351,9 +2386,19 @@ window.renderLeaderboard = () => {
     const categoriesMap = new Map();
     (categories || []).forEach(c => categoriesMap.set(String(c.id), c));
 
+    // Calculate scores in browser RAM with 0 egress
     const scoredList = filtered.map(p => {
       const pClone = { ...p };
-      pClone.totalScore = getHostRoundScore(pClone, targetRoundClean);
+      if (isCustomFormula) {
+        let net = 0;
+        formulaTerms.forEach(t => {
+          const sc = getHostRoundScore(pClone, t.roundId);
+          net += (t.sign * sc);
+        });
+        pClone.totalScore = Math.round(net * 100) / 100;
+      } else {
+        pClone.totalScore = getHostRoundScore(pClone, targetRoundClean);
+      }
       return pClone;
     });
 
@@ -3118,5 +3163,32 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 </script>
+
+<script>
+// Host Zero-Egress Real-Time Sync Listener (<10ms, 0 bytes egress)
+if (typeof BroadcastChannel !== 'undefined') {
+  try {
+    const hostBc = new BroadcastChannel('knsdc_sync_channel');
+    hostBc.onmessage = (e) => {
+      if (!e.data) return;
+      if (e.data.type === 'host_leaderboard_toggle') {
+        const st = (typeof syncEngine !== 'undefined' && syncEngine.getData()) || {};
+        if (!st.switchStates) st.switchStates = {};
+        st.switchStates.hostLiveRanking = Boolean(e.data.value);
+        st.hostScoresVisible = Boolean(e.data.value);
+        renderLeaderboard();
+      } else if (e.data.type === 'ranking_formula_update') {
+        if (e.data.formula) {
+          localStorage.setItem('knsdc_ranking_formula', e.data.formula);
+          const formulaBtnTxt = document.getElementById('host-formula-btn-txt');
+          if (formulaBtnTxt) formulaBtnTxt.textContent = e.data.formula;
+          renderLeaderboard();
+        }
+      }
+    };
+  } catch(e) {}
+}
+</script>
+
 </body>
 </html>
