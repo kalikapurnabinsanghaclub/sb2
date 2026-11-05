@@ -17928,7 +17928,16 @@ function togglePromo(id){
 
 function selectAllPromo(){
   const fromRound = document.getElementById('promo-from-round').value;
-  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  const catFilter = document.getElementById('promo-cat-filter')?.value || '';
+  const venueFilter = document.getElementById('promo-venue-filter')?.value || '';
+  const snulFilter = document.getElementById('promo-snul-filter')?.value || '';
+  
+  let eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  if(catFilter) eligible = eligible.filter(p=>String(p.catId)===String(catFilter));
+  if(venueFilter) eligible = eligible.filter(p=>String(p.venueId)===String(venueFilter));
+  if(snulFilter === 'snul') eligible = eligible.filter(p=>!!p.snul);
+  else if(snulFilter === 'live') eligible = eligible.filter(p=>!p.snul);
+
   eligible.forEach(p=>promoSelections.add(p.id));
   renderPromoList();
 }
@@ -17936,12 +17945,19 @@ function selectAllPromo(){
 function autoSelectTopN(){
   const n = parseInt(document.getElementById('promo-auto-n').value) || 3;
   const fromRound = document.getElementById('promo-from-round').value;
+  const catFilter = document.getElementById('promo-cat-filter')?.value || '';
+  const venueFilter = document.getElementById('promo-venue-filter')?.value || '';
+  const snulFilter = document.getElementById('promo-snul-filter')?.value || '';
   
-  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  let eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  if(catFilter) eligible = eligible.filter(p=>String(p.catId)===String(catFilter));
+  if(venueFilter) eligible = eligible.filter(p=>String(p.venueId)===String(venueFilter));
+  if(snulFilter === 'snul') eligible = eligible.filter(p=>!!p.snul);
+  else if(snulFilter === 'live') eligible = eligible.filter(p=>!p.snul);
   
   const sortedEligible = eligible.map(p => {
     let total = 0;
-    const scores = p.roundScores && p.roundScores[p.round] ? p.roundScores[p.round] : {};
+    const scores = (p.scores && Object.keys(p.scores).length > 0) ? p.scores : (p.roundScores && p.roundScores[p.round] ? p.roundScores[p.round] : {});
     Object.keys(scores).forEach(jId => {
       subjects.forEach(s => total += Number(scores?.[jId]?.[s.id]) || 0);
     });
@@ -18138,7 +18154,7 @@ async function downloadPromoPDF(){
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(217, 119, 6); // Amber
     doc.setFontSize(12);
-    doc.text(`PROMOTION LIST: ${toRound.toUpperCase()}`, 195, 20, { align: 'right' });
+    doc.text(`PROMOTION LIST: ${toRound ? toRound.toUpperCase() : 'FINAL'}`, 195, 20, { align: 'right' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
@@ -18188,7 +18204,7 @@ async function downloadPromoPDF(){
     doc.text(' of ' + pageCount, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10, { align: 'right' });
   }
   
-  doc.save(`Promotion_${toRound}_${new Date().getTime()}.pdf`);
+  doc.save(`Promotion_${toRound || 'list'}_${new Date().getTime()}.pdf`);
   toast('✅ Downloaded PDF!');
 }
 
@@ -18240,7 +18256,7 @@ function downloadPromoJPG(){
         </div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:18px; font-weight:800; color:#d97706; text-transform:uppercase">PROMOTION LIST: ${toRound}</div>
+        <div style="font-size:18px; font-weight:800; color:#d97706; text-transform:uppercase">PROMOTION LIST: ${toRound ? toRound.toUpperCase() : 'FINAL'}</div>
         <div style="font-size:14px; color:#64748b; margin-top:4px;">${data.length} Participants</div>
       </div>
     </div>
@@ -18265,7 +18281,7 @@ function downloadPromoJPG(){
   
     html2canvas(div, { scale: 2, useCORS: true, logging: false }).then(canvas => {
       const link = document.createElement('a');
-      link.download = `Promotion_${toRound}_${new Date().getTime()}.png`;
+      link.download = `Promotion_${toRound || 'list'}_${new Date().getTime()}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
       document.body.removeChild(div);
