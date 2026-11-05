@@ -9467,6 +9467,7 @@ function renderStageView(){
   document.getElementById('upcoming-list').innerHTML = upcoming.map((p, i) => {
     const cat = categories.find(c => String(c.id) === String(p.catId));
     return `<div class="upcoming-card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">
+      <button class="btn btn-red btn-xs" onclick="dropFromQueue('${p.id}')" style="padding:2px 6px; font-size:11px; line-height:1; border-radius:4px; background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); cursor:pointer; font-weight:800; display:inline-flex; align-items:center; justify-content:center;" title="Drop from Queue to Waiting">✕</button>
       <div class="upcoming-num">${i + 1}</div>
       <div style="flex:1">
         <div style="font-weight:600;font-size:13px">${p.name}</div>
@@ -13931,6 +13932,45 @@ function addToUpcoming(id) {
 }
 window.addToUpcoming = addToUpcoming;
 
+function dropFromQueue(id) {
+  const p = participants.find(x => String(x.id) === String(id));
+  if (!p) return;
+
+  const prevName = p.name || p.id;
+  p.stageStatus = 'waiting';
+  p.queueOrder = null;
+  p.localMutatedAt = Date.now();
+
+  // Re-index remaining queue participants
+  const venId = currentVenueMonitor;
+  let remaining = participants.filter(x => x.stageStatus === 'queue' && (String(x.eventId) === String(activeEventId) || !x.eventId));
+  if (venId) remaining = remaining.filter(x => String(x.venueId) === String(venId));
+  remaining = sortQueue(remaining);
+  remaining.forEach((item, idx) => {
+    item.queueOrder = idx;
+  });
+
+  syncAll();
+  renderVenueParticipants();
+  renderStageView();
+  toast('↩️ ' + prevName + ' dropped from Queue to waiting!');
+
+  if (window.syncEngine && window.syncEngine.updateParticipant) {
+    window.syncEngine.updateParticipant(p.id, {
+      stageStatus: 'waiting',
+      queueOrder: null,
+      localMutatedAt: p.localMutatedAt
+    }).catch(e => console.error('[dropFromQueue] DB error:', e));
+
+    remaining.forEach(item => {
+      window.syncEngine.updateParticipant(item.id, {
+        queueOrder: item.queueOrder
+      }).catch(e => console.error('[dropFromQueue reindex] DB error:', e));
+    });
+  }
+}
+window.dropFromQueue = dropFromQueue;
+
 function sortQueue(queueArray) {
   return [...queueArray].sort((a, b) => {
     // 1. Explicit click sequence / manual move queueOrder (with fallback to formAnswers._queueOrder)
@@ -14700,6 +14740,7 @@ function _doRenderVenueParticipants(){
     const c=categories.find(x=>String(x.id)===String(p.catId));
     const pRnd = (p.round || 'audition').toUpperCase();
     return `<div class="participant-row" style="display:flex; align-items:center; gap:10px;">
+      <button class="btn btn-red btn-xs" onclick="dropFromQueue('${p.id}')" style="padding:2px 6px; font-size:11px; line-height:1; border-radius:4px; background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); cursor:pointer; font-weight:800; display:inline-flex; align-items:center; justify-content:center;" title="Drop from Queue to Waiting">✕</button>
       <div class="p-num" style="background:rgba(217,119,6,0.15);color:var(--amber2)">${i+1}</div>
       <div style="flex:1">
         <div style="${p.goldenRibbon ? 'font-weight:900; background:linear-gradient(135deg,#b45309,#d97706,#f59e0b); -webkit-background-clip:text; -webkit-text-fill-color:transparent;' : 'font-weight:600'}">
@@ -14769,7 +14810,7 @@ function _doRenderVenueParticipants(){
         <td style="display:flex;gap:4px;align-items:center;">
           ${p.stageStatus!=='on-stage' && (p.stageStatus!=='done' || (p.snul && !p.snulResolved)) ? `<button class="btn ${(p.snul && !p.snulResolved) ? 'btn-blue' : 'btn-amber'} btn-xs" onclick="pushToStage('${p.id}')" title="${(p.snul && !p.snulResolved) ? 'Push back to Stage for live score entry' : 'Push to Stage'}">&#9654; ${(p.snul && !p.snulResolved) ? 'Stage (Score)' : 'Stage'}</button>` : ''}
           ${(p.snul && !p.snulResolved) ? `<button class="btn btn-xs" onclick="openScoreModalFor('${p.id}')" style="background:#0284c7;color:#fff;border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;" title="Enter Scores Manually">⚖️ Score</button>` : ''}
-          ${p.stageStatus === 'waiting' ? `<button class="btn ${p.isReady ? 'btn-green' : 'btn-blue'} btn-xs" style="${p.isReady ? 'animation: pulse 1.5s infinite;' : ''}" onclick="addToUpcoming('${p.id}')">&#43; Queue ${p.isReady ? '(READY)' : ''}</button>` : ''}
+          ${(!p.stageStatus || p.stageStatus === 'waiting') ? `<button class="btn ${p.isReady ? 'btn-green' : 'btn-blue'} btn-xs" style="${p.isReady ? 'animation: pulse 1.5s infinite;' : ''}" onclick="addToUpcoming('${p.id}')">&#43; Queue ${p.isReady ? '(READY)' : ''}</button>` : ''}
           <button class="btn btn-xs" onclick="sendWhatsAppStageAlert('${p.id}', '${p.stageStatus === 'on-stage' ? 'on-stage' : 'upcoming'}')" style="${p.waAlertSent ? 'background:#0284c7;color:#fff;' : 'background:#25D366;color:#fff;'}border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="${p.waAlertSent ? 'WhatsApp Alert Sent (Click to re-send)' : 'Send WhatsApp Alert'}">${p.waAlertSent ? '✓ 📲 Sent' : '📲 WA'}</button>
         </td>
       </tr>`;
@@ -22694,6 +22735,7 @@ window.refreshVenueView = refreshVenueView;
 window.pushToStage = pushToStage;
 window.markPresent = markPresent;
 window.addToUpcoming = addToUpcoming;
+window.dropFromQueue = dropFromQueue;
 window.toggleAllAttendance = toggleAllAttendance;
 window.deleteAllParticipants = deleteAllParticipants;
 window.markAllPresent = markAllPresent;
