@@ -65,7 +65,7 @@
     --fm: 'monospace';
   }
 
-  [data-theme="dark"] {
+    [data-theme="dark"] {
     --primary: #3b82f6;
     --primary-dark: #60a5fa;
     --accent: #3b82f6;
@@ -92,6 +92,57 @@
     --amber-glow: rgba(245, 158, 11, 0.15);
     --aurora-1: rgba(59, 130, 246, 0.15);
     --aurora-2: rgba(139, 92, 246, 0.12);
+  }
+
+  /* DARK MODE UI/UX PRO CONTRAST & ACCESSIBILITY FIXES */
+  [data-theme="dark"] th,
+  [data-theme="dark"] thead th,
+  [data-theme="dark"] .glass-table th,
+  [data-theme="dark"] .glass-table thead th { 
+    background: rgba(15, 23, 42, 0.85) !important; 
+    color: #cbd5e1 !important; 
+    border-bottom: 1px solid rgba(51, 65, 85, 0.8) !important;
+  }
+  [data-theme="dark"] .glass-table td,
+  [data-theme="dark"] tbody td {
+    border-bottom: 1px solid rgba(51, 65, 85, 0.4) !important;
+    color: var(--text) !important;
+  }
+  [data-theme="dark"] .tbl-wrap {
+    background: var(--surface) !important;
+    border-color: rgba(51, 65, 85, 0.8) !important;
+  }
+  [data-theme="dark"] .tabs {
+    background: rgba(15, 23, 42, 0.75) !important;
+    border: 1px solid rgba(51, 65, 85, 0.8) !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+  }
+  [data-theme="dark"] .tab {
+    color: var(--text-dim) !important;
+  }
+  [data-theme="dark"] .tab:hover:not(.active) {
+    color: #f8fafc !important;
+    background: rgba(51, 65, 85, 0.5) !important;
+  }
+  [data-theme="dark"] .tab.active {
+    background: rgba(30, 41, 59, 0.95) !important;
+    color: #60a5fa !important;
+    border-color: rgba(59, 130, 246, 0.4) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+  }
+  [data-theme="dark"] .judge-select-control,
+  [data-theme="dark"] .judge-refresh-btn {
+    background: rgba(30, 41, 59, 0.85) !important;
+    color: #f8fafc !important;
+    border-color: rgba(51, 65, 85, 0.8) !important;
+  }
+  [data-theme="dark"] select option {
+    background: #1e293b !important;
+    color: #f8fafc !important;
+  }
+  [data-theme="dark"] .card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -3014,6 +3065,30 @@ function updateJudgeLeaderboardAccess(allowed) {
   }
 }
 
+function getParticipantRoundScore(p, roundId) {
+  if (!p) return 0;
+  const targetR = String(roundId || '').toLowerCase();
+  let scoresObj = null;
+  if (p.roundScores && p.roundScores[targetR]) {
+    scoresObj = p.roundScores[targetR];
+  } else if (String(p.round || '').toLowerCase() === targetR && p.scores) {
+    scoresObj = p.scores;
+  }
+  let total = 0;
+  if (scoresObj) {
+    Object.values(scoresObj).forEach(jScores => {
+      if (typeof jScores === 'number') {
+        total += jScores;
+      } else if (jScores && typeof jScores === 'object') {
+        Object.values(jScores).forEach(val => {
+          total += (Number(val) || 0);
+        });
+      }
+    });
+  }
+  return Math.round(total * 100) / 100;
+}
+
 function renderJudgeLeaderboard() {
   const container = document.getElementById('judge-leaderboard-content');
   if (!container) return;
@@ -3064,50 +3139,56 @@ function renderJudgeLeaderboard() {
   }
   const activeCatId = catSelect ? catSelect.value : "";
 
-  // Base participant pool for this event and round
+  // Base participant pool for this event and round (zero egress in-memory calculation)
+  const targetRoundClean = String(currentJudgeLeaderRound || 'audition').toLowerCase();
   let baseParticipants = allParticipants.filter(p => {
-    const pRound = (p.round || 'audition').toLowerCase();
-    const isRoundMatch = pRound === String(currentJudgeLeaderRound).toLowerCase();
     const isEventMatch = !activeEvId || !p.eventId || String(p.eventId) === String(activeEvId);
-    return isRoundMatch && isEventMatch;
+    if (!isEventMatch) return false;
+    const pRound = String(p.round || 'audition').toLowerCase();
+    const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
+    return pRound === targetRoundClean || hasScoreInTarget;
   });
 
   // Calculate scores for each participant
   const scoredList = baseParticipants.map(p => {
     const pClone = { ...p };
-    if (!pClone.roundScores) pClone.roundScores = {};
-    if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-    pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
-
-    let total = 0;
-    Object.values(pClone.scores || {}).forEach(jScores => {
-      if (typeof jScores === 'object' && jScores !== null) {
-        Object.values(jScores).forEach(val => total += (Number(val) || 0));
-      } else if (!isNaN(Number(jScores))) {
-        total += Number(jScores);
-      }
-    });
-    return { ...pClone, totalScore: Math.round(total * 100) / 100 };
+    pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
+    return pClone;
   });
 
-  // ── ELIMINATE CONTINUOUS BUFFERING / RELOADING ──
-  // Hash check: if data & filters haven't changed, DO NOT TOUCH DOM!
+  // State hash check to avoid redundant DOM thrashing
   const currentStateHash = `${currentJudgeLeaderRound}##${activeCatId}##${activeEvId}##${presentJudgesCount}##${maxPossibleScore}##${scoredList.map(p => `${p.id}:${p.totalScore}`).join('|')}`;
   if (window._lastJudgeLeaderboardHash === currentStateHash) {
     return;
   }
   window._lastJudgeLeaderboardHash = currentStateHash;
 
+  if (scoredList.length === 0) {
+    container.innerHTML = `
+      <div class="card" style="text-align:center;padding:50px 20px;color:var(--text-muted);background:var(--surface);">
+        <div style="font-size:42px;margin-bottom:12px;">🏆</div>
+        <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px;">No Scores Yet for ${targetRoundClean.toUpperCase()}</div>
+        <div style="font-size:12px;color:var(--text-muted);">Scores submitted by judges will appear here in real-time.</div>
+      </div>
+    `;
+    return;
+  }
+
   // Determine active categories to render
+  const eventCats = allCategories.filter(c => String(c.eventId) === String(activeEvId) || !c.eventId);
   const activeCats = activeCatId 
-    ? allCategories.filter(c => String(c.id) === String(activeCatId))
-    : allCategories.filter(c => String(c.eventId) === String(activeEvId) || !c.eventId);
+    ? eventCats.filter(c => String(c.id) === String(activeCatId))
+    : eventCats;
 
   let html = '';
+  const renderedPids = new Set();
 
   activeCats.forEach(cat => {
-    const catScored = scoredList.filter(p => String(p.catId) === String(cat.id))
-                                .sort((a, b) => b.totalScore - a.totalScore);
+    const catScored = scoredList.filter(p => {
+      const matches = String(p.catId) === String(cat.id) || (p.category && String(p.category).toLowerCase() === String(cat.name).toLowerCase());
+      if (matches) renderedPids.add(p.id);
+      return matches;
+    }).sort((a, b) => b.totalScore - a.totalScore);
     
     if (catScored.length === 0) return;
 
@@ -3117,7 +3198,7 @@ function renderJudgeLeaderboard() {
     <div class="category-leaderboard-section" style="margin-bottom:32px; border-bottom:1px solid var(--border); padding-bottom:24px;">
       <div style="font-family:var(--fh); font-size:15px; font-weight:800; color:var(--text); margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="background:${catColor}20; color:${catColor}; padding:4px 12px; border-radius:10px; font-size:13px; font-weight:800; border:1px solid ${catColor}30">📂 Category: ${cat.name}</span>
+          <span style="background:${catColor}20; color:${catColor}; padding:4px 12px; border-radius:10px; font-size:13px; font-weight:800; border:1px solid ${catColor}30">🏆 Category: ${cat.name}</span>
           <span style="color:var(--text-muted); font-size:12px; font-weight:normal;">(${catScored.length} participant${catScored.length > 1 ? 's' : ''})</span>
         </div>
         <span style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
@@ -3137,60 +3218,39 @@ function renderJudgeLeaderboard() {
               </thead>
               <tbody>
                   ${catScored.map((p, i) => {
-                      const rank = p.computedRank || (i + 1);
-                      const isGold = rank === 1;
-                      const isSilver = rank === 2;
-                      const isBronze = rank === 3;
-                      const isTop3 = rank <= 3;
-                      
-                      let rankBg = 'var(--surface2)';
-                      let rankColor = 'var(--text-muted)';
-                      let rankBorder = 'transparent';
-                      let medal = '';
-
-                      if (isGold) {
-                        rankBg = 'rgba(245, 158, 11, 0.15)';
-                        rankColor = 'var(--amber2, #f59e0b)';
-                        rankBorder = 'rgba(245, 158, 11, 0.35)';
-                        medal = '🥇 ';
-                      } else if (isSilver) {
-                        rankBg = 'rgba(100, 116, 139, 0.15)';
-                        rankColor = '#475569';
-                        rankBorder = 'rgba(100, 116, 139, 0.35)';
-                        medal = '🥈 ';
-                      } else if (isBronze) {
-                        rankBg = 'rgba(217, 119, 6, 0.12)';
-                        rankColor = '#b45309';
-                        rankBorder = 'rgba(217, 119, 6, 0.3)';
-                        medal = '🥉 ';
-                      }
+                      const isTop3 = i < 3;
+                      const rankBadgeStyle = isTop3 
+                        ? 'background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-weight:900;' 
+                        : 'background:var(--surface2); color:var(--text-muted); font-weight:700;';
 
                       return `
                           <tr class="${isTop3 ? 'top-row' : ''}">
                               <td style="text-align:center;">
-                                  <div class="upcoming-num" style="background:${rankBg}; color:${rankColor}; border:1px solid ${rankBorder}; font-weight:900; margin:0 auto;">
-                                      ${rank}
+                                  <div class="upcoming-num" style="display:inline-flex; width:28px; height:28px; align-items:center; justify-content:center; border-radius:8px; font-size:12px; ${rankBadgeStyle}">
+                                      ${i + 1}
                                   </div>
                               </td>
                               <td>
                                   <div style="display:flex; align-items:center; gap:10px;">
-                                      <div class="avatar-circle" style="width:36px; height:36px; font-size:14px; background:${isTop3 ? rankBg : 'var(--surface3)'}; color:${isTop3 ? rankColor : 'var(--text-dim)'}; border:1px solid ${rankBorder};">
-                                          ${(p.name || '?')[0]}
+                                      <div class="avatar-circle" style="width:34px; height:34px; font-size:13px; font-weight:800; border-radius:10px; background:${isTop3 ? 'rgba(245,158,11,0.15)' : 'var(--surface2)'}; color:${isTop3 ? '#d97706' : 'var(--text-dim)'}; display:flex; align-items:center; justify-content:center;">
+                                          ${(p.name || 'P')[0]}
                                       </div>
-                                      <div style="min-width:0;">
-                                          <div style="font-weight:700; font-size:14px; color:var(--text);">${medal}${p.name || 'Participant'}</div>
-                                          <div style="font-size:10px; color:var(--text-muted); font-family:var(--fm);">ID: ${p.id}</div>
+                                      <div>
+                                          <div style="font-weight:700; font-size:13px; color:var(--text);">${p.name || 'Participant'}</div>
+                                          <div style="font-size:10px; color:var(--text-dim); font-family:var(--fm);">ID: ${p.id}</div>
                                       </div>
                                   </div>
                               </td>
                               <td class="hide-mobile">
-                                  <span class="badge ${cat ? cat.color : 'b-gray'}">${cat ? cat.name : 'Unknown'}</span>
+                                  <span class="badge" style="background:${catColor}15; color:${catColor}; border:1px solid ${catColor}30; font-size:10px;">
+                                      ${cat.name}
+                                  </span>
                               </td>
                               <td style="text-align:right;">
-                                  <div class="judge-score-val" style="font-family:var(--fh); font-size:19px; font-weight:900; color:${isTop3 ? 'var(--amber2, #f59e0b)' : 'var(--blue, #2563eb)'};">
-                                      ${p.totalScore}
+                                  <div class="judge-score-val" style="font-family:var(--fh); font-size:18px; font-weight:900; color:${isTop3 ? 'var(--gold2)' : 'var(--blue)'};">
+                                      ${p.totalScore} <span style="font-size:11px; font-weight:normal; opacity:0.8;">pts</span>
                                   </div>
-                                  <div style="font-size:9px; color:var(--text-muted);">/ ${maxPossibleScore} max</div>
+                                  <div style="font-size:9px; color:var(--text-dim); font-family:var(--fm);">/ ${maxPossibleScore} max</div>
                               </td>
                           </tr>
                       `;
@@ -3202,18 +3262,107 @@ function renderJudgeLeaderboard() {
     `;
   });
 
-  if (html === '') {
-    html = `<div class="card" style="text-align:center;padding:40px;color:var(--text-muted);border-radius:14px;margin-top:10px;">No participants found for ${currentJudgeLeaderRound.toUpperCase()} in this venue.</div>`;
+  // Render unassigned participants if any
+  const unassigned = scoredList.filter(p => !renderedPids.has(p.id)).sort((a, b) => b.totalScore - a.totalScore);
+  if (!activeCatId && unassigned.length > 0) {
+    html += `
+    <div class="category-leaderboard-section" style="margin-bottom:32px; border-bottom:1px solid var(--border); padding-bottom:24px;">
+      <div style="font-family:var(--fh); font-size:15px; font-weight:800; color:var(--text); margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="background:rgba(107,114,128,0.2); color:#9ca3af; padding:4px 12px; border-radius:10px; font-size:13px; font-weight:800; border:1px solid rgba(107,114,128,0.3)">General / All Participants</span>
+          <span style="color:var(--text-muted); font-size:12px; font-weight:normal;">(${unassigned.length} participant${unassigned.length > 1 ? 's' : ''})</span>
+        </div>
+        <span style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
+          Round: <strong style="color:var(--text);">${currentJudgeLeaderRound.toUpperCase()}</strong>
+        </span>
+      </div>
+
+      <div class="tbl-wrap" style="border-radius:14px; overflow-x:auto;">
+          <table class="glass-table">
+              <thead>
+                  <tr>
+                      <th style="width:60px; text-align:center;">Rank</th>
+                      <th>Participant Info</th>
+                      <th class="hide-mobile">Category</th>
+                      <th style="text-align:right;">Global Score</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  ${unassigned.map((p, i) => {
+                      const isTop3 = i < 3;
+                      const rankBadgeStyle = isTop3 
+                        ? 'background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-weight:900;' 
+                        : 'background:var(--surface2); color:var(--text-muted); font-weight:700;';
+
+                      return `
+                          <tr class="${isTop3 ? 'top-row' : ''}">
+                              <td style="text-align:center;">
+                                  <div class="upcoming-num" style="display:inline-flex; width:28px; height:28px; align-items:center; justify-content:center; border-radius:8px; font-size:12px; ${rankBadgeStyle}">
+                                      ${i + 1}
+                                  </div>
+                              </td>
+                              <td>
+                                  <div style="display:flex; align-items:center; gap:10px;">
+                                      <div class="avatar-circle" style="width:34px; height:34px; font-size:13px; font-weight:800; border-radius:10px; background:${isTop3 ? 'rgba(245,158,11,0.15)' : 'var(--surface2)'}; color:${isTop3 ? '#d97706' : 'var(--text-dim)'}; display:flex; align-items:center; justify-content:center;">
+                                          ${(p.name || 'P')[0]}
+                                      </div>
+                                      <div>
+                                          <div style="font-weight:700; font-size:13px; color:var(--text);">${p.name || 'Participant'}</div>
+                                          <div style="font-size:10px; color:var(--text-dim); font-family:var(--fm);">ID: ${p.id}</div>
+                                      </div>
+                                  </div>
+                              </td>
+                              <td class="hide-mobile">
+                                  <span class="badge" style="background:rgba(107,114,128,0.2); color:#9ca3af; border:1px solid rgba(107,114,128,0.3); font-size:10px;">
+                                      ${p.category || 'General'}
+                                  </span>
+                              </td>
+                              <td style="text-align:right;">
+                                  <div class="judge-score-val" style="font-family:var(--fh); font-size:18px; font-weight:900; color:${isTop3 ? 'var(--gold2)' : 'var(--blue)'};">
+                                      ${p.totalScore} <span style="font-size:11px; font-weight:normal; opacity:0.8;">pts</span>
+                                  </div>
+                                  <div style="font-size:9px; color:var(--text-dim); font-family:var(--fm);">/ ${maxPossibleScore} max</div>
+                              </td>
+                          </tr>
+                      `;
+                  }).join('')}
+              </tbody>
+          </table>
+      </div>
+    </div>
+    `;
   }
+
   container.innerHTML = html;
 }
-window.renderJudgeLeaderboard = renderJudgeLeaderboard;
-window.judgeLeaderTab = judgeLeaderTab;
-window.updateJudgeLeaderboardAccess = updateJudgeLeaderboardAccess;
 
-// ════════════════════════════════════════
-// INIT IDENTITY
-// ════════════════════════════════════════
+function judgeLeaderTab(round, el) {
+  currentJudgeLeaderRound = round || 'audition';
+  const rSel = document.getElementById('judge-lb-round-filter');
+  if (rSel) rSel.value = currentJudgeLeaderRound;
+  window._lastJudgeLeaderboardHash = null;
+  renderJudgeLeaderboard();
+}
+
+function updateJudgeLeaderboardAccess(allowed) {
+  const isAllowed = allowed !== false;
+  const navEl = document.getElementById('nav-item-leaderboard');
+  const drawerEl = document.getElementById('drawer-item-leaderboard');
+  const bannerEl = document.getElementById('dash-leaderboard-banner');
+  if (navEl) navEl.style.display = isAllowed ? 'flex' : 'none';
+  if (drawerEl) drawerEl.style.display = isAllowed ? 'flex' : 'none';
+  if (bannerEl) bannerEl.style.display = isAllowed ? 'flex' : 'none';
+
+  if (currentPage === 'leaderboard') {
+    if (!isAllowed) {
+      showPage('dashboard');
+      if (typeof toast === 'function') toast('📕 Live Event Leaderboard has been closed by Administrator.');
+    } else {
+      renderJudgeLeaderboard();
+    }
+  }
+}
+
 function initIdentity() {
   const userJson = localStorage.getItem('kns_user');
   if (!userJson) return;
