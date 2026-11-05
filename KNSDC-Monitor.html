@@ -3857,6 +3857,7 @@
           <span class="mchip" onclick="insPageMention('@judge')">🧑‍⚖️ @judge</span>
           <span class="mchip" onclick="insPageMention('@admin')">👤 @admin</span>
           <span class="mchip" onclick="insPageMention('@host')">🎤 @host</span>
+          <span class="mchip" onclick="insPageMention('@all')" style="border-color:rgba(220,38,38,0.3);color:var(--red);">📢 @all</span>
         </div>
         <div class="chat-msgs" id="page-chat-msgs" style="max-height:none;flex:1;padding:20px;background:linear-gradient(180deg, transparent, rgba(37,99,235,0.02))"></div>
         <div class="chat-input-row" style="padding:15px 20px;background:#fff;border-top:1px solid var(--border)">
@@ -20171,7 +20172,7 @@ function renderGlobalChat() {
     if (last.timestamp && last.timestamp > window.lastProcessedChatTimestamp) {
       window.lastProcessedChatTimestamp = last.timestamp;
       
-      if (!last.from.includes('Monitor')) {
+      if (!String(last.from || '').includes('Monitor')) {
         if (window.staffAudio) staffAudio.playChime();
         
         if (last.text && /@(monitor|organizer|help|kalikapur|all)/i.test(last.text)) {
@@ -20264,6 +20265,34 @@ async function renderChatOnlineList(sendQuery = false){
 }
 
 // Realtime presence reactive listener for Monitor portal
+// Sub-millisecond cross-tab communication (0-Egress Local Channel)
+if (typeof BroadcastChannel !== 'undefined') {
+  try {
+    const staffChatChannel = new BroadcastChannel('knsdc_staff_chat_channel');
+    staffChatChannel.onmessage = (e) => {
+      if (e.data && e.data.type === 'staff_chat_message' && e.data.message) {
+        const incoming = e.data.message;
+        if (!chatHistory.some(m => String(m.id) === String(incoming.id))) {
+          chatHistory.push(incoming);
+          renderGlobalChat();
+        }
+      }
+    };
+  } catch(e) {}
+}
+
+window.addEventListener('storage', (e) => {
+  if (e.key === 'knsdc_latest_staff_chat' && e.newValue) {
+    try {
+      const parsed = JSON.parse(e.newValue);
+      if (parsed && parsed.msg && !chatHistory.some(m => String(m.id) === String(parsed.msg.id))) {
+        chatHistory.push(parsed.msg);
+        renderGlobalChat();
+      }
+    } catch(err) {}
+  }
+});
+
 window.onStaffPresenceChanged = function() {
   const el = document.getElementById('chat-online-list');
   if (el) {
@@ -20364,6 +20393,23 @@ function updateSOSUI() {
   const fstop = document.getElementById('float-stop-sos');
   if(fsos) fsos.style.display = sosActive ? 'none' : 'block';
   if(fstop) fstop.style.display = sosActive ? 'block' : 'none';
+
+  const psos = document.getElementById('page-sos-btn');
+  const pstop = document.getElementById('page-stop-sos');
+  if(psos) psos.style.display = sosActive ? 'none' : 'inline-flex';
+  if(pstop) pstop.style.display = sosActive ? 'inline-flex' : 'none';
+
+  const hist = document.getElementById('sos-history');
+  if (hist) {
+    if (Array.isArray(sosHistory) && sosHistory.length > 0) {
+      hist.innerHTML = sosHistory.slice().reverse().map(h => {
+        return '<div style="color:var(--red2);margin-bottom:4px;display:flex;gap:6px;align-items:flex-start;"><strong>' + 
+          escapeHTML(h.time || '') + ':</strong> <span>' + escapeHTML(h.msg || 'Emergency Alert') + '</span></div>';
+      }).join('');
+    } else {
+      hist.innerHTML = '<span style="color:var(--text-muted);font-style:italic">No SOS events recorded.</span>';
+    }
+  }
 }
 
 function addChatMsg(from,text,type='out',sos=false){
