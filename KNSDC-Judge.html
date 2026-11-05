@@ -3089,6 +3089,31 @@ function getParticipantRoundScore(p, roundId) {
   return Math.round(total * 100) / 100;
 }
 
+const judgeEvRounds = [
+  { id: 'audition', name: 'Round 1 (Audition)' },
+  { id: 'qualified', name: 'Round 2 (Qualified)' },
+  { id: 'semifinal', name: 'Round 3 (Semifinal)' },
+  { id: 'final', name: 'Round 4 (Final)' }
+];
+
+function parseJudgeFormula(formulaStr) {
+  const regex = /([+-]?)\s*(?:R|Round)?\s*(\d+)/gi;
+  const terms = [];
+  let match;
+  while ((match = regex.exec(formulaStr)) !== null) {
+    const sign = match[1] === '-' ? -1 : 1;
+    const roundNum = parseInt(match[2], 10);
+    if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= judgeEvRounds.length) {
+      terms.push({ sign, roundNum, roundId: judgeEvRounds[roundNum - 1].id, roundName: judgeEvRounds[roundNum - 1].name });
+    }
+  }
+  if (terms.length === 0) {
+    terms.push({ sign: 1, roundNum: 1, roundId: 'audition', roundName: 'Audition' });
+    terms.push({ sign: 1, roundNum: 4, roundId: 'final', roundName: 'Final' });
+  }
+  return terms;
+}
+
 function renderJudgeLeaderboard() {
   const container = document.getElementById('judge-leaderboard-content');
   if (!container) return;
@@ -3130,6 +3155,7 @@ function renderJudgeLeaderboard() {
   // Active formula from monitor (synced live)
   const activeFormulaStr = state.currentRankingFormula || localStorage.getItem('knsdc_ranking_formula') || '1+4';
   const isCustomFormula = (currentJudgeLeaderRound === 'custom_formula');
+  const formulaTerms = isCustomFormula ? parseJudgeFormula(activeFormulaStr) : [];
 
   // Dynamic injection into "Select Round" dropdown: monitor what rule creates, only that rule automatically shows!
   const roundSel = document.getElementById('judge-lb-round-filter');
@@ -3164,32 +3190,7 @@ function renderJudgeLeaderboard() {
   }
   const activeCatId = catSelect ? catSelect.value : "";
 
-  // Helper to parse formula for judge
-  const judgeEvRounds = [
-    { id: 'audition', name: 'Round 1 (Audition)' },
-    { id: 'qualified', name: 'Round 2 (Qualified)' },
-    { id: 'semifinal', name: 'Round 3 (Semifinal)' },
-    { id: 'final', name: 'Round 4 (Final)' }
-  ];
-
-  function parseJudgeFormula(formulaStr) {
-    const regex = /([+-]?)\s*(?:R|Round)?\s*(\d+)/gi;
-    const terms = [];
-    let match;
-    while ((match = regex.exec(formulaStr)) !== null) {
-      const sign = match[1] === '-' ? -1 : 1;
-      const roundNum = parseInt(match[2], 10);
-      if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= judgeEvRounds.length) {
-        terms.push({ sign, roundNum, roundId: judgeEvRounds[roundNum - 1].id, roundName: judgeEvRounds[roundNum - 1].name });
-      }
-    }
-    if (terms.length === 0) {
-      terms.push({ sign: 1, roundNum: 1, roundId: 'audition', roundName: 'Audition' });
-      terms.push({ sign: 1, roundNum: 4, roundId: 'final', roundName: 'Final' });
-    }
-    return terms;
-  }
-  const formulaTerms = isCustomFormula ? parseJudgeFormula(activeFormulaStr) : [];
+// Formula terms already parsed and initialized at function entry
 
   // Base participant pool for this event and round (zero egress in-memory calculation)
   const targetRoundClean = String(currentJudgeLeaderRound || 'audition').toLowerCase();
