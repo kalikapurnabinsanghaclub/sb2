@@ -7839,9 +7839,13 @@ function hydrate() {
   partnerAssignments = s.partnerAssignments || [];
   directorAssignments = s.directorAssignments || [];
   // Only load STAFF chat messages (exclusively: admin, monitor, host, judge; participants strictly excluded)
+  // Auto-delete / purge messages older than 2 days (Less Egress / Bandwidth optimization)
   const ALLOWED_STAFF_ROLES = ['admin', 'monitor', 'host', 'judge'];
+  const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+  const nowTs = Date.now();
   chatHistory = (s.chatMessages || []).filter(m => {
     if (!m || m.participantId || m.senderRole === 'participant' || m.role === 'participant') return false;
+    if (m.timestamp && (nowTs - m.timestamp > TWO_DAYS_MS)) return false;
     const r = String(m.role || m.senderRole || '').toLowerCase().trim();
     const fr = m.from ? String(m.from).split(' · ')[0].toLowerCase().trim() : '';
     return ALLOWED_STAFF_ROLES.includes(r) || ALLOWED_STAFF_ROLES.includes(fr);
@@ -8217,12 +8221,17 @@ function syncAll() {
     if (!newState.publicVotes) newState.publicVotes = {};
     newState.judges = [...judges];
     // Staff messages are strictly stored in chatMessages (no participant helpdesk messages)
-    newState.chatMessages = [...chatHistory];
-    // Helpdesk messages are strictly stored in helpdeskMessages
+    // Auto-purged after 2 days (48h TTL) to preserve minimal egress & storage
+    const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+    const nowSync = Date.now();
+    newState.chatMessages = chatHistory.filter(m => !m.timestamp || (nowSync - m.timestamp <= TWO_DAYS_MS));
+
+    // Helpdesk messages are strictly stored in helpdeskMessages (also purged after 2 days)
     const existingHelpdeskMsgs = [...(newState.helpdeskMessages || []), ...(s.helpdeskMessages || []), ...(s.chatMessages || [])].filter(m => m.participantId || m.senderRole === 'participant');
     const seenHIds = new Set();
     newState.helpdeskMessages = existingHelpdeskMsgs.filter(m => {
       if (!m || !m.id || seenHIds.has(m.id)) return false;
+      if (m.timestamp && (nowSync - m.timestamp > TWO_DAYS_MS)) return false;
       seenHIds.add(m.id);
       return true;
     });
