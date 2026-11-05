@@ -1,3 +1,11 @@
+<script>
+// Clean up stale default 1+4 formula from previous sessions
+try {
+  if (localStorage.getItem('knsdc_ranking_formula') === '1+4' && localStorage.getItem('knsdc_ranking_formula_active') !== '1') {
+    localStorage.removeItem('knsdc_ranking_formula');
+  }
+} catch(e) {}
+</script>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -817,7 +825,7 @@
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('qualified'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Qualified</button>
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('semifinal'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Semifinal</button>
            <button class="btn btn-outline" style="flex:1" onclick="switchLeaderRound('final'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(59, 130, 246, 0.1)';">Final</button>
-           <button id="host-formula-tab-btn" class="btn btn-outline" style="flex:1.2; border:1.5px solid var(--amber2); color:var(--amber2); font-weight:800;" onclick="switchLeaderRound('custom_formula'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(245, 158, 11, 0.15)';">⚡ Custom Formula: <span id="host-formula-btn-txt">1+4</span></button>
+           <button id="host-formula-tab-btn" class="btn btn-outline" style="display:none; flex:1.2; border:1.5px solid var(--amber2); color:var(--amber2); font-weight:800;" onclick="switchLeaderRound('custom_formula'); document.querySelectorAll('#sec-leaderboard .btn-outline').forEach(b=>b.style.background=''); this.style.background='rgba(245, 158, 11, 0.15)';">⚡ Custom Formula: <span id="host-formula-btn-txt"></span></button>
          </div>
          <div id="leaderboard-content"></div>
       </div>
@@ -1423,6 +1431,22 @@ syncEngine.subscribe((state) => {
   if (offlineWrapEl) offlineWrapEl.style.display = 'none';
   
   const seenIds = new Set();
+  // Live Sync: Monitor Custom Ranking Formula
+  const activeFormulaFromState = (state && state.currentRankingFormula && state.isCustomFormulaActive !== false)
+    ? String(state.currentRankingFormula).trim()
+    : '';
+  if (activeFormulaFromState) {
+    localStorage.setItem('knsdc_ranking_formula', activeFormulaFromState);
+    localStorage.setItem('knsdc_ranking_formula_active', '1');
+    updateHostCustomFormula(activeFormulaFromState);
+  } else if (state.isCustomFormulaActive === false || state.currentRankingFormula === '') {
+    localStorage.removeItem('knsdc_ranking_formula_active');
+    updateHostCustomFormula('');
+  }
+  if (currentLeaderRound === 'custom_formula') {
+    renderLeaderboard();
+  }
+
   participants = (state.participants || []).filter(p => {
     if (!p || !p.id) return false;
     if (p.stageStatus === 'Archived' || p.stage_status === 'Archived' || p.isArchived) return false;
@@ -2276,6 +2300,34 @@ window.switchLeaderRound = (round) => {
     renderLeaderboard();
 };
 
+function getActiveHostFormula() {
+  const state = (window.syncEngine && typeof syncEngine.getData === 'function') ? syncEngine.getData() : {};
+  if (state && state.currentRankingFormula && state.isCustomFormulaActive !== false) {
+    return String(state.currentRankingFormula).trim();
+  }
+  const storedActive = localStorage.getItem('knsdc_ranking_formula_active');
+  const storedFormula = localStorage.getItem('knsdc_ranking_formula');
+  if (storedActive === '1' && storedFormula && storedFormula.trim() !== '1+4') {
+    return String(storedFormula).trim();
+  }
+  return '';
+}
+
+function updateHostCustomFormula(formulaStr) {
+  const cleanFormula = formulaStr ? String(formulaStr).trim() : '';
+  const btn = document.getElementById('host-formula-tab-btn');
+  const txt = document.getElementById('host-formula-btn-txt');
+  if (cleanFormula) {
+    if (btn) btn.style.display = 'inline-flex';
+    if (txt) txt.textContent = cleanFormula;
+  } else {
+    if (btn) btn.style.display = 'none';
+    if (currentLeaderRound === 'custom_formula') {
+      currentLeaderRound = 'audition';
+    }
+  }
+}
+
 window.renderLeaderboard = () => {
     const container = document.getElementById('leaderboard-content');
     if(!container) return;
@@ -2334,12 +2386,13 @@ window.renderLeaderboard = () => {
     const isCustomFormula = (currentLeaderRound === 'custom_formula');
     const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
 
-    // Active custom formula from state or storage
-    const activeFormulaStr = stData.currentRankingFormula || localStorage.getItem('knsdc_ranking_formula') || '1+4';
-    const formulaBtnTxt = document.getElementById('host-formula-btn-txt');
-    if (formulaBtnTxt) formulaBtnTxt.textContent = activeFormulaStr;
-
-    const formulaTerms = isCustomFormula ? parseHostFormula(activeFormulaStr) : [];
+    // Active custom formula from state or storage (no default 1+4 fallback)
+    const activeFormulaStr = getActiveHostFormula();
+    updateHostCustomFormula(activeFormulaStr);
+    if (isCustomFormula && !activeFormulaStr) {
+      currentLeaderRound = 'audition';
+    }
+    const formulaTerms = (isCustomFormula && activeFormulaStr) ? parseHostFormula(activeFormulaStr) : [];
 
     let filtered = (participants || []).filter(p => {
       const isEventMatch = !activeEventId || !p.eventId || String(p.eventId) === String(activeEventId);
@@ -3154,12 +3207,17 @@ if (typeof BroadcastChannel !== 'undefined') {
         st.hostScoresVisible = Boolean(e.data.value);
         renderLeaderboard();
       } else if (e.data.type === 'ranking_formula_update') {
-        if (e.data.formula) {
-          localStorage.setItem('knsdc_ranking_formula', e.data.formula);
-          const formulaBtnTxt = document.getElementById('host-formula-btn-txt');
-          if (formulaBtnTxt) formulaBtnTxt.textContent = e.data.formula;
-          renderLeaderboard();
+        // Zero-Egress live update from Venue Monitor
+        const newFormula = e.data.formula ? String(e.data.formula).trim() : '';
+        if (newFormula && e.data.active !== false) {
+          localStorage.setItem('knsdc_ranking_formula', newFormula);
+          localStorage.setItem('knsdc_ranking_formula_active', '1');
+          updateHostCustomFormula(newFormula);
+        } else {
+          localStorage.removeItem('knsdc_ranking_formula_active');
+          updateHostCustomFormula('');
         }
+        renderLeaderboard();
       }
     };
   } catch(e) {}

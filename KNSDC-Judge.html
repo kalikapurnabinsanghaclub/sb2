@@ -1,3 +1,11 @@
+<script>
+// Clean up stale default 1+4 formula from previous sessions
+try {
+  if (localStorage.getItem('knsdc_ranking_formula') === '1+4' && localStorage.getItem('knsdc_ranking_formula_active') !== '1') {
+    localStorage.removeItem('knsdc_ranking_formula');
+  }
+} catch(e) {}
+</script>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3114,6 +3122,48 @@ function parseJudgeFormula(formulaStr) {
   return terms;
 }
 
+function getActiveJudgeFormula() {
+  const state = (window.syncEngine && typeof syncEngine.getData === 'function') ? syncEngine.getData() : {};
+  if (state && state.currentRankingFormula && state.isCustomFormulaActive !== false) {
+    return String(state.currentRankingFormula).trim();
+  }
+  const storedActive = localStorage.getItem('knsdc_ranking_formula_active');
+  const storedFormula = localStorage.getItem('knsdc_ranking_formula');
+  if (storedActive === '1' && storedFormula && storedFormula.trim() !== '1+4') {
+    return String(storedFormula).trim();
+  }
+  return '';
+}
+
+function updateJudgeCustomFormula(formulaStr) {
+  const cleanFormula = formulaStr ? String(formulaStr).trim() : '';
+  const roundSel = document.getElementById('judge-lb-round-filter');
+  let customOpt = document.getElementById('judge-opt-custom-formula');
+  
+  if (cleanFormula) {
+    if (roundSel) {
+      if (!customOpt) {
+        customOpt = document.createElement('option');
+        customOpt.id = 'judge-opt-custom-formula';
+        customOpt.value = 'custom_formula';
+        roundSel.appendChild(customOpt);
+      }
+      customOpt.textContent = `⚡ Custom Formula: ${cleanFormula}`;
+      if (currentJudgeLeaderRound === 'custom_formula' && roundSel.value !== 'custom_formula') {
+        roundSel.value = 'custom_formula';
+      }
+    }
+  } else {
+    if (customOpt) {
+      customOpt.remove();
+    }
+    if (currentJudgeLeaderRound === 'custom_formula') {
+      currentJudgeLeaderRound = 'audition';
+      if (roundSel) roundSel.value = 'audition';
+    }
+  }
+}
+
 function renderJudgeLeaderboard() {
   const container = document.getElementById('judge-leaderboard-content');
   if (!container) return;
@@ -3152,26 +3202,17 @@ function renderJudgeLeaderboard() {
   const totalSubMarks = allSubjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0) || 50;
   const maxPossibleScore = presentJudgesCount * totalSubMarks;
 
-  // Active formula from monitor (synced live)
-  const activeFormulaStr = state.currentRankingFormula || localStorage.getItem('knsdc_ranking_formula') || '1+4';
-  const isCustomFormula = (currentJudgeLeaderRound === 'custom_formula');
-  const formulaTerms = isCustomFormula ? parseJudgeFormula(activeFormulaStr) : [];
+  // Active formula from monitor (synced live, no default 1+4 fallback)
+  const activeFormulaStr = getActiveJudgeFormula();
+  updateJudgeCustomFormula(activeFormulaStr);
 
-  // Dynamic injection into "Select Round" dropdown: monitor what rule creates, only that rule automatically shows!
-  const roundSel = document.getElementById('judge-lb-round-filter');
-  if (roundSel) {
-    let customOpt = document.getElementById('judge-opt-custom-formula');
-    if (!customOpt) {
-      customOpt = document.createElement('option');
-      customOpt.id = 'judge-opt-custom-formula';
-      customOpt.value = 'custom_formula';
-      roundSel.appendChild(customOpt);
-    }
-    customOpt.textContent = `⚡ Custom Formula: ${activeFormulaStr}`;
-    if (roundSel.value !== currentJudgeLeaderRound) {
-      roundSel.value = currentJudgeLeaderRound;
-    }
+  const isCustomFormula = (currentJudgeLeaderRound === 'custom_formula');
+  if (isCustomFormula && !activeFormulaStr) {
+    currentJudgeLeaderRound = 'audition';
+    const roundSel = document.getElementById('judge-lb-round-filter');
+    if (roundSel) roundSel.value = 'audition';
   }
+  const formulaTerms = (isCustomFormula && activeFormulaStr) ? parseJudgeFormula(activeFormulaStr) : [];
 
   // Dynamically sync and populate Category Selector options without destructive DOM wipes
   const catSelect = document.getElementById('judge-lb-cat-filter');
@@ -8223,6 +8264,18 @@ syncEngine.subscribe((state) => {
     if (lsJl !== null) isJudgeLbAllowed = lsJl === 'true';
   }
   updateJudgeLeaderboardAccess(isJudgeLbAllowed);
+  // Live Sync: Monitor Ranking Formula
+  const activeFormulaFromState = (state && state.currentRankingFormula && state.isCustomFormulaActive !== false)
+    ? String(state.currentRankingFormula).trim()
+    : '';
+  if (activeFormulaFromState) {
+    localStorage.setItem('knsdc_ranking_formula', activeFormulaFromState);
+    localStorage.setItem('knsdc_ranking_formula_active', '1');
+    updateJudgeCustomFormula(activeFormulaFromState);
+  } else if (state.isCustomFormulaActive === false || state.currentRankingFormula === '') {
+    localStorage.removeItem('knsdc_ranking_formula_active');
+    updateJudgeCustomFormula('');
+  }
   if (currentPage === 'leaderboard' && isJudgeLbAllowed) {
     renderJudgeLeaderboard();
   }
@@ -8278,23 +8331,18 @@ if (window.BroadcastChannel) {
         updateJudgeLeaderboardAccess(Boolean(e.data.value));
       } else if (e.data.type === 'ranking_formula_update') {
         // Zero-Egress live update from Venue Monitor
-        if (e.data.formula) {
-          localStorage.setItem('knsdc_ranking_formula', e.data.formula);
-          const roundSel = document.getElementById('judge-lb-round-filter');
-          if (roundSel) {
-            let customOpt = document.getElementById('judge-opt-custom-formula');
-            if (!customOpt) {
-              customOpt = document.createElement('option');
-              customOpt.id = 'judge-opt-custom-formula';
-              customOpt.value = 'custom_formula';
-              roundSel.appendChild(customOpt);
-            }
-            customOpt.textContent = `⚡ Custom Formula: ${e.data.formula}`;
-          }
-          if (currentPage === 'leaderboard') {
-            window._lastJudgeLeaderboardHash = null;
-            renderJudgeLeaderboard();
-          }
+        const newFormula = e.data.formula ? String(e.data.formula).trim() : '';
+        if (newFormula && e.data.active !== false) {
+          localStorage.setItem('knsdc_ranking_formula', newFormula);
+          localStorage.setItem('knsdc_ranking_formula_active', '1');
+          updateJudgeCustomFormula(newFormula);
+        } else {
+          localStorage.removeItem('knsdc_ranking_formula_active');
+          updateJudgeCustomFormula('');
+        }
+        window._lastJudgeLeaderboardHash = null;
+        if (currentPage === 'leaderboard') {
+          renderJudgeLeaderboard();
         }
       }
     };
