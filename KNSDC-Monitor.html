@@ -3935,7 +3935,7 @@
             <option value="semifinal">Semifinal → Final</option>
           </select>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
           <div class="fg">
             <label class="fl">Filter Category</label>
             <select id="promo-cat-filter" onchange="renderPromoList()"><option value="">All Categories</option></select>
@@ -3950,6 +3950,14 @@
               <option value="">All Scoring Types</option>
               <option value="snul">S.N.U.L Only (Paper Score)</option>
               <option value="live">Live Scored Only</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">Status / Carbon Copy</label>
+            <select id="promo-status-filter" onchange="renderPromoList()" style="background:var(--surface);border-radius:10px;font-weight:700;">
+              <option value="">All (Carbon Copy View)</option>
+              <option value="promoted">Promoted Only (50% Opacity)</option>
+              <option value="not_promoted">Not Promoted Only</option>
             </select>
           </div>
         </div>
@@ -15289,7 +15297,12 @@ function _doRenderVenueParticipants(){
   queue = sortQueue(queue);
   
   // Present participants only — filtered by selected round's roundPresence
-  const presentOnly = allParts.filter(p => p.round === round && getRoundPresent(p, round));
+  // CARBON COPY SUPPORT: Also include participants who were present and promoted from this round!
+  const presentOnly = allParts.filter(p => {
+    const isDirectMatch = p.round === round && getRoundPresent(p, round);
+    const isPromotedCarbonCopy = (p.round !== round) && isPromotedFromRound(p, round) && getRoundPresent(p, round);
+    return isDirectMatch || isPromotedCarbonCopy;
+  });
   const presentCount = presentOnly.length;
   if(document.getElementById('venue-present-count')) document.getElementById('venue-present-count').textContent = `${presentCount} Present`;
   
@@ -15343,7 +15356,8 @@ function _doRenderVenueParticipants(){
     const rows = group.participants.map((p, idx) => {
       const songCount = getParticipantSongCount(p);
       const musicEmoji = songCount > 0 ? `<span style="font-size:14px; margin-right:8px;">${'🎵'.repeat(songCount)}</span>` : '';
-      return `<tr>
+      const isCarbonCopy = (p.round !== round);
+      return `<tr style="${isCarbonCopy ? 'opacity:0.5;background:rgba(16,185,129,0.03);' : ''}">
         <td style="font-weight:700;color:var(--text-muted)">${idx + 1}</td>
         <td>
           <div style="display:flex; align-items:center;">
@@ -15358,17 +15372,20 @@ function _doRenderVenueParticipants(){
         <td style="font-family:var(--fm);font-size:9px;color:var(--text-muted)">${p.id}</td>
         <td><span class="badge ${group.color}">${group.label}</span></td>
         <td>
-          ${p.stageStatus==='on-stage'?'<span class="badge b-amber">On Stage</span>':
+          ${p.round !== round ? `<span class="badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);font-weight:800;font-size:9px;padding:2px 7px;border-radius:4px;">✓ PROMOTED (${(getRoundLabel(p.round)||p.round).toUpperCase()})</span>` :
+            (p.stageStatus==='on-stage'?'<span class="badge b-amber">On Stage</span>':
             (p.snul && !p.snulResolved) ? '<span class="badge" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;font-weight:700;padding:2px 8px;border-radius:5px;box-shadow:0 1px 3px rgba(37,99,235,0.3);" title="Dance Complete but Score Not Updated Live">💃 Dance Complete (Score Not Updated)</span>' :
             p.stageStatus==='done'?'<span class="badge b-green">Done</span>':
             p.stageStatus==='queue'?'<span class="badge b-blue">In Queue</span>':
-            '<span class="badge b-gray">Waiting</span>'}
+            '<span class="badge b-gray">Waiting</span>')}
         </td>
         <td style="display:flex;gap:4px;align-items:center;">
-          ${p.stageStatus!=='on-stage' && (p.stageStatus!=='done' || (p.snul && !p.snulResolved)) ? `<button class="btn ${(p.snul && !p.snulResolved) ? 'btn-blue' : 'btn-amber'} btn-xs" onclick="pushToStage('${p.id}')" title="${(p.snul && !p.snulResolved) ? 'Push back to Stage for live score entry' : 'Push to Stage'}">&#9654; ${(p.snul && !p.snulResolved) ? 'Stage (Score)' : 'Stage'}</button>` : ''}
-          ${(p.snul && !p.snulResolved) ? `<button class="btn btn-xs" onclick="openScoreModalFor('${p.id}')" style="background:#0284c7;color:#fff;border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;" title="Enter Scores Manually">⚖️ Score</button>` : ''}
-          ${(!p.stageStatus || p.stageStatus === 'waiting') ? `<button class="btn ${p.isReady ? 'btn-green' : 'btn-blue'} btn-xs" style="${p.isReady ? 'animation: pulse 1.5s infinite;' : ''}" onclick="addToUpcoming('${p.id}')">&#43; Queue ${p.isReady ? '(READY)' : ''}</button>` : ''}
-          <button class="btn btn-xs" onclick="sendWhatsAppStageAlert('${p.id}', '${p.stageStatus === 'on-stage' ? 'on-stage' : 'upcoming'}')" style="${p.waAlertSent ? 'background:#0284c7;color:#fff;' : 'background:#25D366;color:#fff;'}border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="${p.waAlertSent ? 'WhatsApp Alert Sent (Click to re-send)' : 'Send WhatsApp Alert'}">${p.waAlertSent ? '✓ 📲 Sent' : '📲 WA'}</button>
+          ${p.round !== round ? `<span style="font-size:9px;color:var(--text-muted);font-style:italic;font-family:var(--fm)">📄 Carbon Copy</span>` : `
+            ${p.stageStatus!=='on-stage' && (p.stageStatus!=='done' || (p.snul && !p.snulResolved)) ? `<button class="btn ${(p.snul && !p.snulResolved) ? 'btn-blue' : 'btn-amber'} btn-xs" onclick="pushToStage('${p.id}')" title="${(p.snul && !p.snulResolved) ? 'Push back to Stage for live score entry' : 'Push to Stage'}">&#9654; ${(p.snul && !p.snulResolved) ? 'Stage (Score)' : 'Stage'}</button>` : ''}
+            ${(p.snul && !p.snulResolved) ? `<button class="btn btn-xs" onclick="openScoreModalFor('${p.id}')" style="background:#0284c7;color:#fff;border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;" title="Enter Scores Manually">⚖️ Score</button>` : ''}
+            ${(!p.stageStatus || p.stageStatus === 'waiting') ? `<button class="btn ${p.isReady ? 'btn-green' : 'btn-blue'} btn-xs" style="${p.isReady ? 'animation: pulse 1.5s infinite;' : ''}" onclick="addToUpcoming('${p.id}')">&#43; Queue ${p.isReady ? '(READY)' : ''}</button>` : ''}
+            <button class="btn btn-xs" onclick="sendWhatsAppStageAlert('${p.id}', '${p.stageStatus === 'on-stage' ? 'on-stage' : 'upcoming'}')" style="${p.waAlertSent ? 'background:#0284c7;color:#fff;' : 'background:#25D366;color:#fff;'}border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="${p.waAlertSent ? 'WhatsApp Alert Sent (Click to re-send)' : 'Send WhatsApp Alert'}">${p.waAlertSent ? '✓ 📲 Sent' : '📲 WA'}</button>
+          `}
         </td>
       </tr>`;
     }).join('');
@@ -18560,6 +18577,23 @@ function renderJudgeSubjectCharts(presentJudges) {
 // ══════════════════════════════════════════
 // PROMOTION
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+// CARBON COPY HELPER: Check if participant was promoted from round
+// ══════════════════════════════════════════
+function isPromotedFromRound(p, roundName) {
+  if (!p) return false;
+  if (p.promotedFrom && p.promotedFrom[roundName]) return true;
+  if (p.round !== roundName) {
+    if (p.roundScores && p.roundScores[roundName] && Object.keys(p.roundScores[roundName]).length > 0) return true;
+    const rounds = (typeof getEventRounds === 'function' ? getEventRounds().map(r => r.id) : null) || ['audition', 'qualified', 'semifinal', 'final'];
+    const fromIdx = rounds.indexOf(roundName);
+    const currIdx = rounds.indexOf(p.round);
+    if (fromIdx !== -1 && currIdx > fromIdx && p.roundScores && p.roundScores[roundName] !== undefined) return true;
+  }
+  return false;
+}
+window.isPromotedFromRound = isPromotedFromRound;
+
 function renderPromoList(){
   populateAllRoundDropdowns();
   const fromRoundEl = document.getElementById('promo-from-round');
@@ -18577,19 +18611,45 @@ function renderPromoList(){
   }
 
   const snulFilter = document.getElementById('promo-snul-filter') ? document.getElementById('promo-snul-filter').value : '';
+  const statusFilter = document.getElementById('promo-status-filter') ? document.getElementById('promo-status-filter').value : '';
   const eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
-  let data = eventParticipants.filter(p=>p.round===fromRound&&p.stageStatus==='done');
+
+  // CARBON COPY AUDIT ENGINE:
+  // Identify participants who competed in fromRound:
+  // 1) Currently in fromRound with stageStatus === 'done'
+  // 2) OR were promoted from fromRound to a subsequent round!
+  let data = eventParticipants.filter(p => {
+    const isDirect = (p.round === fromRound && p.stageStatus === 'done');
+    const isPromoted = isPromotedFromRound(p, fromRound);
+    return isDirect || isPromoted;
+  });
+
   if(catFilter) data = data.filter(p=>String(p.catId)===String(catFilter));
   if(venueFilter) data = data.filter(p=>String(p.venueId)===String(venueFilter));
   if(snulFilter === 'snul') data = data.filter(p=>!!p.snul);
   else if(snulFilter === 'live') data = data.filter(p=>!p.snul);
+
   data = data.map(p => {
     const pClone = { ...p };
+    pClone._isPromoted = isPromotedFromRound(p, fromRound);
     if (!pClone.roundScores) pClone.roundScores = {};
-    if (!pClone.roundScores[pClone.round]) pClone.roundScores[pClone.round] = {};
-    pClone.scores = (pClone.scores && Object.keys(pClone.scores).length > 0) ? pClone.scores : pClone.roundScores[pClone.round];
+    const roundScoresToUse = pClone.roundScores[fromRound] || pClone.roundScores[pClone.round] || pClone.scores || {};
+    pClone.scores = (roundScoresToUse && Object.keys(roundScoresToUse).length > 0) ? roundScoresToUse : (pClone.scores || {});
     return pClone;
   });
+
+  // Calculate live statistics for fromRound
+  const totalPresentCount = data.length;
+  const promotedCount = data.filter(p => p._isPromoted).length;
+  const notPromotedCount = data.filter(p => !p._isPromoted).length;
+
+  // Filter view if Status filter chosen
+  if (statusFilter === 'promoted') {
+    data = data.filter(p => p._isPromoted);
+  } else if (statusFilter === 'not_promoted') {
+    data = data.filter(p => !p._isPromoted);
+  }
+
   data = [...data].sort((a,b)=>{
     let sa = 0;
     if (a.scores) {
@@ -18606,21 +18666,34 @@ function renderPromoList(){
     return sb-sa;
   });
 
-  // Summary
+  // Summary Card: Displays Present, Promoted, Not Promoted & Selected
   document.getElementById('promo-summary').innerHTML = `
-    <div style="display:flex;gap:12px">
-      <div class="stat amber" style="flex:1;padding:15px;background:rgba(217,119,6,0.08);border-radius:16px;border:1px solid rgba(217,119,6,0.2)">
-        <div class="stat-num" style="font-size:24px;color:var(--amber2)">${data.length}</div>
-        <div class="stat-lbl" style="font-size:8px;text-transform:uppercase;letter-spacing:1px">Qualified Pool</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(110px, 1fr));gap:10px">
+      <div class="stat blue" style="padding:12px 10px;background:rgba(37,99,235,0.08);border-radius:14px;border:1px solid rgba(37,99,235,0.2);text-align:center">
+        <div class="stat-num" style="font-size:22px;color:var(--blue2);font-weight:800">${totalPresentCount}</div>
+        <div class="stat-lbl" style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-top:2px">উপস্থিত (Present)</div>
       </div>
-      <div class="stat green" style="flex:1;padding:15px;background:rgba(5,150,105,0.08);border-radius:16px;border:1px solid rgba(5,150,105,0.2)">
-        <div class="stat-num" style="font-size:24px;color:var(--green2)">${promoSelections.size}</div>
-        <div class="stat-lbl" style="font-size:8px;text-transform:uppercase;letter-spacing:1px">Selected for Promotion</div>
+      <div class="stat green" style="padding:12px 10px;background:rgba(16,185,129,0.08);border-radius:14px;border:1px solid rgba(16,185,129,0.2);text-align:center">
+        <div class="stat-num" style="font-size:22px;color:var(--green2);font-weight:800">${promotedCount}</div>
+        <div class="stat-lbl" style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-top:2px">প্রমোটেড (Promoted)</div>
+      </div>
+      <div class="stat red" style="padding:12px 10px;background:rgba(244,63,94,0.08);border-radius:14px;border:1px solid rgba(244,63,94,0.2);text-align:center">
+        <div class="stat-num" style="font-size:22px;color:#f43f5e;font-weight:800">${notPromotedCount}</div>
+        <div class="stat-lbl" style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-top:2px">নট প্রমোটেড (Not Promoted)</div>
+      </div>
+      <div class="stat amber" style="padding:12px 10px;background:rgba(217,119,6,0.08);border-radius:14px;border:1px solid rgba(217,119,6,0.2);text-align:center">
+        <div class="stat-num" style="font-size:22px;color:var(--amber2);font-weight:800">${promoSelections.size}</div>
+        <div class="stat-lbl" style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-top:2px">নির্বাচিত (Selected)</div>
       </div>
     </div>
-    <div style="font-size:9px;color:var(--text-muted);margin-top:15px;display:flex;align-items:center;gap:6px">
-       <span style="background:var(--orange2);width:6px;height:6px;border-radius:50%"></span>
-       Next Stage: <strong style="color:var(--orange2);text-transform:uppercase">${getRoundLabel(toRound) || toRound || 'None'}</strong>
+    <div style="font-size:9.5px;color:var(--text-muted);margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="background:var(--orange2);width:6px;height:6px;border-radius:50%"></span>
+        Next Stage: <strong style="color:var(--orange2);text-transform:uppercase">${getRoundLabel(toRound) || toRound || 'None'}</strong>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text-muted)">
+        <span style="display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.12);color:#10b981;font-weight:700">📄 50% Opacity</span> = Carbon Copy
+      </div>
     </div>`;
 
   const promoCardsHtml = data.map((p,rank)=>{
@@ -18656,7 +18729,9 @@ function renderPromoList(){
     const baseJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
     const maxPoss = baseJudgesCount * subjects.length * 10;
     const pct = maxPoss>0?Math.round(total/maxPoss*100):0;
-    const checked = promoSelections.has(p.id);
+
+    const isPromoted = !!p._isPromoted;
+    const checked = !isPromoted && promoSelections.has(p.id);
 
     // Auto-resolve S.N.U.L ONLY if ALL present judges have completed scoring
     const expectedJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
@@ -18669,10 +18744,15 @@ function renderPromoList(){
     const isSnul = !!p.snul;
     const isSnulResolved = !isSnul && !!p.snulResolved;
 
+    const rowOpacity = isPromoted ? 'opacity: 0.5;' : 'opacity: 1;';
+    const rowBg = isPromoted ? 'background: var(--surface2);' : 'background: var(--surface);';
+    const borderLeft = isPromoted ? '5px solid #10b981' : (isSnul ? '5px solid #2563eb' : (isSnulResolved ? '5px solid #10b981' : (checked ? '5px solid var(--blue)' : '1px solid var(--border)')));
+    const borderMain = isPromoted ? '1px dashed rgba(16,185,129,0.5)' : (checked ? '1px solid var(--blue)' : '1px solid var(--border)');
+
     return `
-    <div class="promo-card card-hover ${checked?'checked':''}" style="background:var(--surface);border:1px solid ${checked?'var(--blue)':'var(--border)'};border-left:${isSnul ? '5px solid #2563eb' : (isSnulResolved ? '5px solid #10b981' : (checked?'1px solid var(--blue)':'1px solid var(--border)'))};padding:15px;border-radius:16px;display:flex;align-items:center;gap:15px;cursor:pointer" onclick="togglePromo('${p.id}')">
-      <div class="promo-check ${checked?'checked':''}" style="margin-right:0">
-        ${checked?'✓':''}
+    <div class="promo-card card-hover ${checked?'checked':''} ${isPromoted?'promo-carbon-copy':''}" style="${rowBg};${borderMain};border-left:${borderLeft};padding:15px;border-radius:16px;display:flex;align-items:center;gap:15px;cursor:${isPromoted?'default':'pointer'};${rowOpacity}transition:all 0.3s ease;" onclick="${isPromoted?'':`togglePromo('${p.id}')`}">
+      <div class="promo-check ${checked?'checked':''}" style="margin-right:0;${isPromoted?'background:#10b981;border-color:#10b981;color:#fff;':''}">
+        ${isPromoted ? '✓' : (checked ? '✓' : '')}
       </div>
       <div style="width:32px;height:32px;border-radius:50%;background:${rank<3?'rgba(217,119,6,0.2)':'var(--surface2)'};border:1px solid ${rank<3?'var(--amber2)':'var(--border)'};display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:12px;font-weight:900;color:${rank<3?'var(--amber2)':'var(--text-dim)'}">
         ${rank+1}
@@ -18680,6 +18760,18 @@ function renderPromoList(){
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-weight:700;font-size:14px;color:var(--text)">${escapeHtml(p.name)}</span>
+          ${isPromoted ? `
+            <span style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:3px;box-shadow:0 1px 3px rgba(16,185,129,0.2);" title="Participant Promoted to Next Round">
+              <span style="width:5px;height:5px;border-radius:50%;background:#10b981"></span>PROMOTED (${(getRoundLabel(p.round)||p.round).toUpperCase()})
+            </span>
+            <span style="background:rgba(100,116,139,0.12);color:var(--text-muted);font-size:8.5px;font-weight:700;padding:1px 6px;border-radius:4px;font-style:italic;" title="Preserved Carbon Copy Record">
+              📄 Carbon Copy
+            </span>
+          ` : `
+            <span style="background:rgba(244,63,94,0.12);color:#f43f5e;border:1px solid rgba(244,63,94,0.3);font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:3px;">
+              <span style="width:5px;height:5px;border-radius:50%;background:#f43f5e"></span>NOT PROMOTED
+            </span>
+          `}
           ${isSnul ? `<span style="background:#2563eb;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(37,99,235,0.3);letter-spacing:0.3px;display:inline-flex;align-items:center;gap:3px;" title="Offline Paper Score Pending (${judgesWhoScored.size}/${expectedJudgesCount} Judges Scored)">📝 S.N.U.L (${judgesWhoScored.size}/${expectedJudgesCount} Judges)</span>` : ''}
           ${isSnulResolved ? `<span style="background:#10b981;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;box-shadow:0 1px 3px rgba(16,185,129,0.3);display:inline-flex;align-items:center;gap:3px;" title="All Judges Completed Scoring">✓ All Scores Updated</span>` : ''}
         </div>
@@ -18687,7 +18779,7 @@ function renderPromoList(){
         <div style="margin-top:6px">
           <div class="score-bar judge-score-val" style="height:4px"><div class="score-bar-fill" style="width:${pct}%;background:${rank<3?'var(--amber2)':'var(--blue2)'}"></div></div>
         </div>
-        ${isSnul ? `
+        ${(isSnul && !isPromoted) ? `
         <div style="display:flex;gap:6px;margin-top:8px;" onclick="event.stopPropagation()">
           <button type="button" class="btn btn-xs" onclick="pushParticipantDirectToStage('${p.id}')" style="background:linear-gradient(135deg, #f59e0b, #d97706);color:#fff;font-size:10px;font-weight:800;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">🎤 Push to Stage</button>
         </div>` : ''}
@@ -18717,6 +18809,12 @@ function renderPromoList(){
 }
 
 function togglePromo(id){
+  const fromRound = document.getElementById('promo-from-round')?.value || 'audition';
+  const p = participants.find(x => String(x.id) === String(id));
+  if (p && isPromotedFromRound(p, fromRound)) {
+    toast(`ℹ️ ${p.name} is already PROMOTED (Carbon Copy record)`);
+    return;
+  }
   if(promoSelections.has(id)) promoSelections.delete(id);
   else promoSelections.add(id);
   renderPromoList();
@@ -18724,7 +18822,7 @@ function togglePromo(id){
 
 function selectAllPromo(){
   const fromRound = document.getElementById('promo-from-round').value;
-  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId)&&!isPromotedFromRound(p, fromRound));
   eligible.forEach(p=>promoSelections.add(p.id));
   renderPromoList();
 }
@@ -18733,7 +18831,7 @@ function autoSelectTopN(){
   const n = parseInt(document.getElementById('promo-auto-n').value) || 3;
   const fromRound = document.getElementById('promo-from-round').value;
   
-  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId));
+  const eligible = participants.filter(p=>p.round===fromRound&&p.stageStatus==='done'&&(String(p.eventId)===String(activeEventId)||!p.eventId)&&!isPromotedFromRound(p, fromRound));
   
   const sortedEligible = eligible.map(p => {
     let total = 0;
@@ -18826,6 +18924,8 @@ async function promoteSelected() {
         if(!p.roundScores) p.roundScores = {};
         p.roundScores[fromRound] = JSON.parse(JSON.stringify(p.scores || {}));
         p.scores = JSON.parse(JSON.stringify(p.roundScores[toRound] || {}));
+        p.promotedFrom = p.promotedFrom || {};
+        p.promotedFrom[fromRound] = toRound;
         p.round=toRound;
         p.stageStatus='waiting';
         p.isReady=false;
