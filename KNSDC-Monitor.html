@@ -3713,6 +3713,24 @@
                <div style="font-weight:800;font-size:13px;color:var(--text);letter-spacing:0.3px;">Custom Round Ranking Formula Builder</div>
                <div style="font-size:10px;color:var(--text-muted);">Combine or subtract rounds to calculate custom total scores (e.g. 1+2-3, 1+2+3+4, 2+3)</div>
              </div>
+              <!-- 🔌 HOST LIVE RANKING TOGGLE SWITCH (JACK ANIMATION) -->
+              <div class="jack-toggle-card" style="display:flex;align-items:center;gap:12px;background:var(--surface2);padding:6px 14px;border-radius:14px;border:1px solid var(--border);" title="Toggle Live Ranking on Host Panel (Global Sync)">
+                 <div>
+                   <div style="font-weight:800;font-size:12px" id="lb-host-score-vis-label">Host Live Ranking: OFF 🔒</div>
+                   <div style="font-size:8px;color:var(--text-muted);margin-top:1px">Toggle to show scores in Host panel</div>
+                 </div>
+                 <div class="jack-toggle-component" style="display:inline-block; padding: 0;">
+                   <label class="jack-toggle-container">
+                     <input type="checkbox" class="jack-toggle-input" id="lb-host-score-vis-toggle" onchange="handleHostScoreVisToggle(this)"/>
+                     <div class="jack-socket-port"></div>
+                     <div class="jack-cable-plug">
+                       <div class="jack-plug-shaft"></div>
+                       <div class="jack-plug-handle"></div>
+                       <div class="jack-wire-tail"></div>
+                     </div>
+                   </label>
+                 </div>
+              </div>
            </div>
            <div style="display:flex;gap:6px;align-items:center;">
              <button type="button" class="btn btn-xs btn-ghost" onclick="resetRankingFormula()" style="border-radius:8px;font-weight:700;">↺ Reset (1+2)</button>
@@ -8515,6 +8533,26 @@ function renderLeaderboard() {
     const renderCategoryBlock = (catName, catColor, catScoredList) => {
       if (!catScoredList || catScoredList.length === 0) return '';
       catScoredList.sort((a, b) => b.totalScore - a.totalScore);
+
+      // Standard Competition (Skip) Ranking Logic:
+      // Identical scores get the SAME rank, and subsequent ranks are skipped (e.g. 1, 1, 3, 4)
+      const manualTieRanks = (window._manualTieRanks && window._manualTieRanks[String(catKey)]) || {};
+      let currentRank = 1;
+      let hasTie = false;
+      const scoreCounts = {};
+      catScoredList.forEach(p => {
+        scoreCounts[p.totalScore] = (scoreCounts[p.totalScore] || 0) + 1;
+        if (scoreCounts[p.totalScore] > 1) hasTie = true;
+      });
+
+      catScoredList.forEach((p, idx) => {
+        if (idx > 0 && p.totalScore < catScoredList[idx - 1].totalScore) {
+          currentRank = idx + 1;
+        }
+        p.computedRank = manualTieRanks[p.id] ? Number(manualTieRanks[p.id]) : currentRank;
+        p.isTied = scoreCounts[p.totalScore] > 1;
+      });
+
       const top3 = catScoredList.slice(0, 3);
       
       let blockHtml = `
@@ -8522,6 +8560,7 @@ function renderLeaderboard() {
         <div style="font-family:var(--fh); font-size:18px; font-weight:800; color:var(--text); margin-bottom:20px; display:flex; align-items:center; gap:8px;">
           <span style="background:${catColor ? catColor + '20' : 'rgba(217,119,6,0.1)'}; color:${catColor || 'var(--amber2)'}; padding:4px 12px; border-radius:12px; font-size:14px; border:1px solid ${catColor ? catColor + '30' : 'rgba(217,119,6,0.2)'}">📂 Category: ${catName}</span>
           <span style="color:var(--text-muted); font-size:12px; font-weight:normal;">(${catScoredList.length} participant${catScoredList.length > 1 ? 's' : ''})</span>
+          ${hasTie ? `<button type="button" class="btn btn-xs" onclick="openTieBreakerModal('${catKey}', '${escapeHtml(catName)}')" style="margin-left:auto; background:rgba(245,158,11,0.15); color:var(--amber2); border:1px solid rgba(245,158,11,0.35); border-radius:8px; font-weight:800; padding:3px 10px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Resolve Tie and Set Custom Positions">⚡ Tie Detected (Set Position)</button>` : ''}
         </div>
       `;
 
@@ -8535,7 +8574,7 @@ function renderLeaderboard() {
                     <div class="podium-name">${top3[1].name}</div>
                     <div class="podium-score"><span class="judge-score-val">${top3[1].totalScore} pts</span></div>
                 </div>
-                <div class="podium-base p-2nd">2</div>
+                <div class="podium-base p-2nd">${top3[1] ? top3[1].computedRank : 2}</div>
             </div>` : ''}
             
             <div class="podium-item">
@@ -8544,7 +8583,7 @@ function renderLeaderboard() {
                     <div class="podium-name" style="font-size:18px">${top3[0].name}</div>
                     <div class="podium-score" style="font-size:14px;color:var(--amber2)"><span class="judge-score-val">${top3[0].totalScore} pts</span></div>
                 </div>
-                <div class="podium-base p-1st">1</div>
+                <div class="podium-base p-1st">${top3[0] ? top3[0].computedRank : 1}</div>
             </div>
 
             ${top3[2] ? `
@@ -8554,7 +8593,7 @@ function renderLeaderboard() {
                     <div class="podium-name">${top3[2].name}</div>
                     <div class="podium-score"><span class="judge-score-val">${top3[2].totalScore} pts</span></div>
                 </div>
-                <div class="podium-base p-3rd">3</div>
+                <div class="podium-base p-3rd">${top3[2] ? top3[2].computedRank : 3}</div>
             </div>` : ''}
         </div>`;
       }
@@ -8592,8 +8631,9 @@ function renderLeaderboard() {
                         return `
                             <tr class="${isTop3 ? 'top-row' : ''}">
                                 <td>
-                                    <div class="upcoming-num" style="background:${isTop3 ? 'rgba(217,119,6,0.15)' : 'var(--surface2)'};color:${isTop3 ? 'var(--amber2)' : 'var(--text-muted)'};font-weight:900">
-                                        ${i + 1}
+                                    <div class="upcoming-num" style="background:${isTop3 ? 'rgba(217,119,6,0.15)' : 'var(--surface2)'};color:${isTop3 ? 'var(--amber2)' : 'var(--text-muted)'};font-weight:900;line-height:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                                        <span>${p.computedRank}</span>
+                                        ${p.isTied ? '<span style="font-size:7px;color:var(--amber2);font-weight:800;letter-spacing:0.5px;">TIE</span>' : ''}
                                     </div>
                                 </td>
                                 <td>
@@ -19064,15 +19104,16 @@ function handleHostScoreVisToggle(cb) {
 syncEngine.subscribe(state => {
   if (!state) return;
   const toggle = document.getElementById('host-score-vis-toggle');
+  const toggleLb = document.getElementById('lb-host-score-vis-toggle');
   const label = document.getElementById('host-score-vis-label');
-  const isVisible = state.hostScoresVisible !== false; // Default true if not set
+  const labelLb = document.getElementById('lb-host-score-vis-label');
+  const isVisible = state.hostScoresVisible !== false;
   
-  if (toggle && toggle.checked !== isVisible) {
-    toggle.checked = isVisible;
-  }
-  if (label) {
-    label.innerHTML = isVisible ? 'Host Live Ranking: ON 🎤' : 'Host Live Ranking: OFF 🔒';
-  }
+  if (toggle && toggle.checked !== isVisible) toggle.checked = isVisible;
+  if (toggleLb && toggleLb.checked !== isVisible) toggleLb.checked = isVisible;
+  const labelText = isVisible ? 'Host Live Ranking: ON 🎤' : 'Host Live Ranking: OFF 🔒';
+  if (label) label.innerHTML = labelText;
+  if (labelLb) labelLb.innerHTML = labelText;
 });
 
 function verifyScorePin() {
@@ -23958,6 +23999,129 @@ window.scrollMainContent = function(amount) {
   });
 })();
 </script>
+
+<!-- ⚡ TIE BREAKER RESOLUTION MODAL -->
+<div class="modal-overlay" id="tie-breaker-modal" style="display:none;" onclick="closeOnBg(event, 'tie-breaker-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:560px; width:92%; background:var(--bg); border:1.5px solid var(--amber2); border-radius:18px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:20px;">⚡</span>
+        <div>
+          <div style="font-weight:800; font-size:16px; color:var(--text);">Resolve Tie & Set Position</div>
+          <div style="font-size:11px; color:var(--text-muted);" id="tie-modal-cat-name">Category</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-xs" onclick="closeM('tie-breaker-modal')">✕</button>
+    </div>
+
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px; line-height:1.4;">
+      The following participants are tied. Default is <b>Skip Ranking</b> (1, 1, 3). You can optionally assign distinct positions:
+    </div>
+
+    <div id="tie-modal-participants-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px; max-height:300px; overflow-y:auto;">
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <button type="button" class="btn btn-ghost btn-xs" onclick="resetTieBreaksForCurrentCat()" style="color:var(--text-muted);">
+        ↺ Reset to Auto (1, 1, 3)
+      </button>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeM('tie-breaker-modal')">Cancel</button>
+        <button type="button" class="btn btn-amber btn-sm" onclick="saveTieBreakerModal()" style="font-weight:800;">✓ Save Positions</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+window._manualTieRanks = window._manualTieRanks || {};
+let _currentTieModalCatKey = null;
+
+function openTieBreakerModal(catKey, catName) {
+  _currentTieModalCatKey = String(catKey);
+  const nameEl = document.getElementById('tie-modal-cat-name');
+  if (nameEl) nameEl.textContent = 'Category: ' + catName;
+
+  const container = document.getElementById('tie-modal-participants-list');
+  if (!container) return;
+
+  // Filter participants in this category
+  const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
+  const catParts = participants.filter(p => {
+    const matchesCat = String(p.catId) === String(catKey) || (p.category && String(p.category).toLowerCase() === String(catName).toLowerCase());
+    return matchesCat;
+  });
+
+  // Calculate scores
+  const isFormulaMode = isCustomFormulaActive || currentLeaderRound === 'custom_formula';
+  let formulaTerms = [];
+  if (isFormulaMode) {
+    const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [];
+    formulaTerms = parseRankingFormula(currentRankingFormula, eventRounds);
+  }
+
+  const scored = catParts.map(p => {
+    const pClone = { ...p };
+    if (isFormulaMode) {
+      pClone.totalScore = evaluateParticipantFormula(pClone, formulaTerms).netScore;
+    } else {
+      pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
+    }
+    return pClone;
+  }).sort((a, b) => b.totalScore - a.totalScore);
+
+  const existing = window._manualTieRanks[_currentTieModalCatKey] || {};
+
+  container.innerHTML = scored.map((p, idx) => `
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px;">
+      <div>
+        <div style="font-weight:700; font-size:13px; color:var(--text);">${p.name} <span style="font-size:11px; color:var(--text-muted); font-family:var(--fm);">(${p.id})</span></div>
+        <div style="font-size:11px; color:var(--amber2); font-weight:700;">Score: ${p.totalScore} pts</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <label style="font-size:11px; color:var(--text-muted); font-weight:700;">Rank:</label>
+        <select class="tie-rank-select" data-pid="${p.id}" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-weight:800;">
+          ${Array.from({ length: scored.length }, (_, r) => r + 1).map(r => `
+            <option value="${r}" ${(existing[p.id] ? Number(existing[p.id]) === r : (idx + 1 === r)) ? 'selected' : ''}>${r}${r === 1 ? 'st' : r === 2 ? 'nd' : r === 3 ? 'rd' : 'th'}</option>
+          `).join('')}
+        </select>
+      </div>
+    </div>
+  `).join('');
+
+  openM('tie-breaker-modal');
+}
+
+function saveTieBreakerModal() {
+  if (!_currentTieModalCatKey) return;
+  const selects = document.querySelectorAll('.tie-rank-select');
+  if (!window._manualTieRanks[_currentTieModalCatKey]) {
+    window._manualTieRanks[_currentTieModalCatKey] = {};
+  }
+  selects.forEach(sel => {
+    const pid = sel.getAttribute('data-pid');
+    window._manualTieRanks[_currentTieModalCatKey][pid] = Number(sel.value);
+  });
+  closeM('tie-breaker-modal');
+  renderLeaderboard();
+  toast('✅ Custom Tie-Breaker rankings saved!');
+}
+
+function resetTieBreaksForCurrentCat() {
+  if (_currentTieModalCatKey && window._manualTieRanks[_currentTieModalCatKey]) {
+    delete window._manualTieRanks[_currentTieModalCatKey];
+  }
+  closeM('tie-breaker-modal');
+  renderLeaderboard();
+  toast('↺ Reset to Automatic Skip Ranking (1, 1, 3)');
+}
+
+window.openTieBreakerModal = openTieBreakerModal;
+window.saveTieBreakerModal = saveTieBreakerModal;
+window.resetTieBreaksForCurrentCat = resetTieBreaksForCurrentCat;
+window.handleHostScoreVisToggle = handleHostScoreVisToggle;
+</script>
+
 </body>
 
 </html>
