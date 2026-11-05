@@ -3875,7 +3875,7 @@
              </div>
            </div>
            <div style="display:flex;gap:6px;align-items:center;">
-             <button type="button" class="btn btn-xs btn-ghost" onclick="resetRankingFormula()" style="border-radius:8px;font-weight:700;">↺ Reset (1+2)</button>
+             <button type="button" class="btn btn-xs btn-ghost" onclick="resetRankingFormula()" style="border-radius:8px;font-weight:700;color:var(--rose);" title="Reset custom formula so 0 custom rules follow">↺ Reset (0 Rules)</button>
              <button type="button" class="btn btn-xs btn-amber" onclick="applyRankingFormula()" style="border-radius:8px;font-weight:800;padding:4px 14px;">✓ Apply Formula</button>
            </div>
          </div>
@@ -8602,7 +8602,43 @@ function insertFormulaOperator(op) {
 }
 
 function resetRankingFormula() {
-  setRankingFormula('1+2');
+  currentRankingFormula = '';
+  isCustomFormulaActive = false;
+  currentLeaderRound = 'audition';
+  localStorage.removeItem('knsdc_ranking_formula');
+  localStorage.removeItem('knsdc_ranking_formula_active');
+  
+  const inp = document.getElementById('leaderboard-formula-input');
+  if (inp) inp.value = '';
+  const previewEl = document.getElementById('formula-preview-text');
+  if (previewEl) previewEl.textContent = 'No custom formula active (0 rules active — standard rounds followed).';
+  const badgeEl = document.getElementById('current-formula-pill-text');
+  if (badgeEl) badgeEl.textContent = 'None';
+
+  if (window.syncEngine && typeof syncEngine.setData === 'function') {
+    syncEngine.setData(st => {
+      st.currentRankingFormula = '';
+      st.isCustomFormulaActive = false;
+      return st;
+    });
+  }
+
+  // Zero-Egress instant broadcast to Judge and Host so they also remove custom formula
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const bc = new BroadcastChannel('knsdc_sync_channel');
+      bc.postMessage({
+        type: 'ranking_formula_update',
+        formula: '',
+        active: false,
+        eventId: (typeof activeEventId !== 'undefined' ? activeEventId : null)
+      });
+      bc.close();
+    } catch(e) {}
+  }
+
+  renderLeaderboard();
+  toast('Reset complete: 0 custom rules active (Standard rounds followed).');
 }
 
 function clearRankingFormula() {
@@ -19436,10 +19472,13 @@ function moveRoundRow(index, delta) {
   updateRoundRulesUI();
 }
 
-function resetRoundRulesToDefault() {
+async function resetRoundRulesToDefault() {
   if (!confirm('Reset round rules to standard 4 rounds (Audition, Qualified, Semifinal, Final)?')) return;
   currentEventRounds = JSON.parse(JSON.stringify(DEFAULT_ROUNDS));
   updateRoundRulesUI();
+  if (typeof saveRoundRules === 'function') {
+    await saveRoundRules();
+  }
 }
 
 let _isSavingRoundRules = false;
