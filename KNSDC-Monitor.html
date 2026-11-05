@@ -14509,7 +14509,7 @@ function _doRenderVenueParticipants(){
   const rndLabel = onStage ? (onStage.round || 'audition').toUpperCase() : '';
   if(document.getElementById('venue-onstage-sub')) {
     document.getElementById('venue-onstage-sub').textContent = onStage
-      ? `${onStage.id} · ${cat?cat.name:'—'} · Age ${onStage.age} · Round: ${rndLabel}`
+      ? `${onStage.id} · ${cat?cat.name:'—'} · Age ${onStage.age} · Round: ${rndLabel}${onStage.snul && !onStage.snulResolved ? ' · ⚖️ [Score Entry Pending]' : ''}`
       : '';
   }
 
@@ -14761,12 +14761,14 @@ function _doRenderVenueParticipants(){
         <td><span class="badge ${group.color}">${group.label}</span></td>
         <td>
           ${p.stageStatus==='on-stage'?'<span class="badge b-amber">On Stage</span>':
+            (p.snul && !p.snulResolved) ? '<span class="badge" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;font-weight:700;padding:2px 8px;border-radius:5px;box-shadow:0 1px 3px rgba(37,99,235,0.3);" title="Dance Complete but Score Not Updated Live">💃 Dance Complete (Score Not Updated)</span>' :
             p.stageStatus==='done'?'<span class="badge b-green">Done</span>':
             p.stageStatus==='queue'?'<span class="badge b-blue">In Queue</span>':
             '<span class="badge b-gray">Waiting</span>'}
         </td>
         <td style="display:flex;gap:4px;align-items:center;">
-          ${p.stageStatus!=='on-stage'&&p.stageStatus!=='done'?`<button class="btn btn-amber btn-xs" onclick="pushToStage('${p.id}')">&#9654; Stage</button>`:''}
+          ${p.stageStatus!=='on-stage' && (p.stageStatus!=='done' || (p.snul && !p.snulResolved)) ? `<button class="btn ${(p.snul && !p.snulResolved) ? 'btn-blue' : 'btn-amber'} btn-xs" onclick="pushToStage('${p.id}')" title="${(p.snul && !p.snulResolved) ? 'Push back to Stage for live score entry' : 'Push to Stage'}">&#9654; ${(p.snul && !p.snulResolved) ? 'Stage (Score)' : 'Stage'}</button>` : ''}
+          ${(p.snul && !p.snulResolved) ? `<button class="btn btn-xs" onclick="openScoreModalFor('${p.id}')" style="background:#0284c7;color:#fff;border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;" title="Enter Scores Manually">⚖️ Score</button>` : ''}
           ${p.stageStatus === 'waiting' ? `<button class="btn ${p.isReady ? 'btn-green' : 'btn-blue'} btn-xs" style="${p.isReady ? 'animation: pulse 1.5s infinite;' : ''}" onclick="addToUpcoming('${p.id}')">&#43; Queue ${p.isReady ? '(READY)' : ''}</button>` : ''}
           <button class="btn btn-xs" onclick="sendWhatsAppStageAlert('${p.id}', '${p.stageStatus === 'on-stage' ? 'on-stage' : 'upcoming'}')" style="${p.waAlertSent ? 'background:#0284c7;color:#fff;' : 'background:#25D366;color:#fff;'}border:none;padding:3px 8px;border-radius:4px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="${p.waAlertSent ? 'WhatsApp Alert Sent (Click to re-send)' : 'Send WhatsApp Alert'}">${p.waAlertSent ? '✓ 📲 Sent' : '📲 WA'}</button>
         </td>
@@ -14863,6 +14865,10 @@ async function markStageDone(){
       p.stageStatus='done'; 
       p.isReady = false;
       p.localMutatedAt = now;
+      if (p.scores && Object.keys(p.scores).length > 0) {
+        p.snul = false;
+        p.snulResolved = true;
+      }
     }
     if(typeof resetOnStageTimers === 'function') resetOnStageTimers();
 
