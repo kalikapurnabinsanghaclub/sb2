@@ -3229,7 +3229,7 @@
     <div id="rt-applied">
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <div class="sbox" style="flex:1;min-width:180px"><span class="sicon">🔍 <span id="reg-count" style="font-size:9px; margin-left:4px; opacity:0.7">0</span></span><input type="text" placeholder="Name, phone, ID…" oninput="filterApplied(this.value)"/></div>
+          <div class="sbox" style="flex:1;min-width:180px"><span class="sicon">🔍 <span id="reg-count" style="font-size:9px; margin-left:4px; opacity:0.7">0</span></span><input type="text" id="reg-search" placeholder="Name, phone, ID…" oninput="filterApplied(this.value)"/></div>
           <select style="width:150px!important" onchange="filterAppliedCat(this.value)" id="cat-filter-sel">
             <option value="">All Categories</option>
           </select>
@@ -7611,7 +7611,6 @@ let nxtId = { reg: 1, cat: 1, venue: 1, subj: 1, agr: 1 };
 let formFields = [];
 let agreements = [];
 let EVENTS = [];
-const todayStr = new Date().toISOString().split('T')[0];
 let promoSelections = new Set();
 let currentRegTab2 = 'applied';
 let currentStatsTab = 'roundwise';
@@ -7633,7 +7632,6 @@ let roundChartInstance = null;
 let judgeChartInstance = null;
 let comparativeChartInstance = null;
 let filteredParticipants = [];
-let currentMonitorId = null; // Identity logic removed
 let monitorEmail = '';
 try { monitorEmail = JSON.parse(localStorage.getItem('kns_user') || '{}').email || ''; } catch(e) {}
 let currentLeaderRound = 'audition';
@@ -7646,12 +7644,6 @@ let chatHistory = [];
 let sosActive = false;
 let sosHistory = [];
 
-const chatContacts = [
-  {name:'Admin · Suresh',role:'admin',color:'#d97706',online:true},
-  {name:'Host · Priya',role:'host',color:'#7c3aed',online:true},
-  {name:'Judge · Dr. Meera',role:'judge',color:'#2563eb',online:true},
-  {name:'Judge · Prof. Rajan',role:'judge',color:'#059669',online:false},
-];
 
 // ══════════════════════════════════════════
 // ROUND-WISE PRESENCE HELPERS
@@ -8123,9 +8115,7 @@ function renderGlobalEventSelector() {
   }
 }
 
-// LOW-EGRESS: syncAll() debounce — multiple rapid calls within 400ms are collapsed into one cloud write.
-// This prevents bursts of Supabase egress when several state mutations happen in quick succession.
-let _syncAllDebounceTimer = null;
+// LOW-EGRESS: syncAll() — cloud write debounced in syncEngine.setData
 function syncAll() {
   // Perform immediate in-memory state update (zero network cost)
   syncEngine.setData(s => {
@@ -8390,32 +8380,6 @@ window.leaderTab = (round, el) => {
 };
 
 
-// Helper function to calculate total combined score for a participant across multiple rounds
-function getParticipantCombinedScore(p, roundList) {
-  let grandTotal = 0;
-  const breakDown = {};
-  roundList.forEach(r => {
-    let rTotal = 0;
-    let scoresObj = null;
-    if (p.round === r && p.scores && Object.keys(p.scores).length > 0) {
-      scoresObj = p.scores;
-    } else if (p.roundScores && p.roundScores[r]) {
-      scoresObj = p.roundScores[r];
-    }
-    if (scoresObj) {
-      Object.values(scoresObj).forEach(jScores => {
-        if (jScores && typeof jScores === 'object') {
-          Object.values(jScores).forEach(val => {
-            rTotal += (Number(val) || 0);
-          });
-        }
-      });
-    }
-    breakDown[r] = rTotal;
-    grandTotal += rTotal;
-  });
-  return { grandTotal, breakDown };
-}
 
 function renderLeaderboard() {
     const container = document.getElementById('leaderboard-content');
@@ -9067,13 +9031,6 @@ async function downloadRankingsJPG() {
   toast('✅ Downloaded JPG!');
 }
 
-function refreshUI() {
-    const activePage = document.querySelector('.pp.active');
-    if (activePage) {
-        const pageId = activePage.id.replace('pp-', '');
-        nav(pageId, null);
-    }
-}
 
 // Synchronization Helper
 function broadcast(type, data) {
@@ -9097,39 +9054,6 @@ function broadcast(type, data) {
 }
 
 
-// ── FULL STATE BROADCAST (for public view sync) ──
-function broadcastFullState() {
-  broadcastStageToPublic();
-  broadcastControlsToPublic();
-  broadcastResultsToPublic();
-}
-
-function broadcastStageToPublic() {
-  const s = syncEngine.getData();
-  const activeEv = (s.events || []).find(e => String(e.id) === String(activeEventId));
-  if (!activeEv) return;
-
-  const onStage = participants.find(p => p.id === currentOnStage);
-  const cat = onStage ? (activeEv.categories || []).find(c => String(c.id) === String(onStage.catId)) : null;
-  const queue = stageQueue.filter(id => id !== currentOnStage).slice(0, 4).map(id => {
-    const p = participants.find(x => x.id === id);
-    return p ? { name: p.name, id: p.id } : null;
-  }).filter(Boolean);
-
-  broadcast('STAGE_UPDATE', {
-    eventId: activeEventId,
-    currentOnStage: currentOnStage,
-    onStage: onStage ? {
-      name: onStage.name,
-      id: onStage.id,
-      round: onStage.round,
-      age: onStage.age,
-      category: cat ? cat.name : '—'
-    } : null,
-    upcoming: queue,
-    timestamp: Date.now()
-  });
-}
 
 function broadcastControlsToPublic() {
   const s = syncEngine.getData();
@@ -9192,70 +9116,8 @@ function broadcastResultsToPublic() {
   });
 }
 
-function handlePublicReg(data) {
-  // Generate ID using random 2-letter, 4-digit unique code
-  const sData = syncEngine.getData();
-  const allParts = sData.participants || [];
-  const newId = syncEngine.generateUniqueParticipantId();
-  nxtId.reg = (nxtId.reg || 1) + 1;
-  
-  participants.push({
-    id: newId,
-    name: data.name,
-    phone: data.phone || '—',
-    age: data.age || 0,
-    eventId: data.eventId || activeEventId,
-    catId: categories.length > 0 ? categories[0].id : 1,
-    venueId: venues.length > 0 ? venues[0].id : 1,
-    date: new Date().toISOString().split('T')[0],
-    present: false, // DO NOT mark as present for public registrations
-    round: 'audition',
-    stageStatus: 'waiting',
-    scores: {},
-    roundPresence: { audition: { present: false, markedAt: null }, qualified: { present: false, markedAt: null }, semifinal: { present: false, markedAt: null }, final: { present: false, markedAt: null } }
-  });
-  
-  syncAll(); // Persist changes
-  hydrate(); // Update local state and UI
-  
-  toast(`📝 New public registration: ${data.name}`);
-  broadcast('REG_CONFIRMED', { name: data.name, eventId: data.eventId, id: newId });
-}
 
-function handleIncomingScore(data) {
-  const { participantId, judgeId, scores, comment } = data;
-  const p = participants.find(x => x.id === participantId);
-  if (p) {
-    if (!p.scores) p.scores = {};
-    if (!p.scores[judgeId]) p.scores[judgeId] = {};
-    Object.assign(p.scores[judgeId], scores);
-    if (comment) p.comment = comment;
-    // Refresh whichever view is active
-    const activePage = document.querySelector('.pp.active');
-    if (activePage) {
-      const pageId = activePage.id.replace('pp-','');
-      if (pageId === 'statistics') {
-        if (currentStatsTab === 'roundwise') renderRoundwiseStats();
-        if (currentStatsTab === 'judges') renderJudgeStats();
-        if (currentStatsTab === 'comparative') renderComparativeStats();
-        if (currentStatsTab === 'feedback') renderFeedbacks();
-        if (currentStatsTab === 'publicvotes') renderPublicVotes();
-      }
-      if (pageId === 'dashboard') { renderDashboard(); }
-      if (pageId === 'venue') renderVenueParticipants();
-    }
-    toast(`⚖️ Score received for ${p.name} from Judge #${judgeId}`);
-    // Auto-sync results to public if results are published
-    if (switchStates.resultPublic) broadcastResultsToPublic();
-  }
-}
 
-function handleIncomingChat(data) {
-  // Use the existing addChatMsg function
-  if (typeof addChatMsg === 'function') {
-    addChatMsg(data.from || 'Unknown', data.text || '', 'in', data.sos || false);
-  }
-}
 
 function handleIncomingSOS(data) {
   toast(`🚨 SOS ALERT: ${data.from} - ${data.msg}`);
@@ -9569,8 +9431,7 @@ function renderStageView(){
 
           let badgeClass = 'b-gray';
           let statusText = 'Pending';
-          let scoreDetailStr = '';
-
+          
           if (scoredCount === subjects.length) {
             badgeClass = 'b-green';
             statusText = `Completed`;
@@ -9617,8 +9478,7 @@ function renderStageView(){
 }
 
 function renderAttendanceBreakdown(){
-  const venues_local = venues;
-  const data = participants.filter(p => String(p.eventId) === String(activeEventId));
+    const data = participants.filter(p => String(p.eventId) === String(activeEventId));
   
   const dates = [...new Set(data.map(p => {
     const d = p.date || p.regDate || '';
@@ -10896,20 +10756,8 @@ function renderApplied(){
         label = `${d} — ⚖️ ${rName}${titleStr}`;
       }
       return `<option value="${d}">${label}</option>`;
-    }).join('') || '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;font-family:var(--fm);">No participants waiting in queue</div>';
+    }).join('');
     dsel.value = regDateFilter || '';
-  }
-  const sel1 = document.getElementById('ar-cat');
-  if(sel1) {
-    const val = sel1.value;
-    sel1.innerHTML = categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
-    if (val && categories.some(c => String(c.id) === String(val))) sel1.value = val;
-  }
-  const sel2 = document.getElementById('ar-venue');
-  if(sel2) {
-    const val = sel2.value;
-    sel2.innerHTML = venues.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
-    if (val && venues.some(v => String(v.id) === String(val))) sel2.value = val;
   }
   const sel3 = document.getElementById('er-cat');
   if(sel3) {
@@ -12935,6 +12783,7 @@ async function downloadRegs(format = 'excel') {
   const s = (document.getElementById('reg-search')?.value || '').toLowerCase();
   const catFilter = document.getElementById('cat-filter-sel')?.value;
   const venueFilter = document.getElementById('venue-filter-sel')?.value;
+  const dateFilter = document.getElementById('date-filter-sel')?.value || (typeof regDateFilter !== 'undefined' ? regDateFilter : '');
   
   if (s) {
     eventParticipants = eventParticipants.filter(p => 
@@ -12949,6 +12798,12 @@ async function downloadRegs(format = 'excel') {
       if (String(p.venueId) === String(venueFilter)) return true;
       const v = resolveParticipantVenue(p, venues);
       return v && String(v.id) === String(venueFilter);
+    });
+  }
+  if(dateFilter) {
+    eventParticipants = eventParticipants.filter(p => {
+      const pd = p.date || p.auditionDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date']));
+      return String(pd) === String(dateFilter);
     });
   }
   
@@ -15686,12 +15541,11 @@ function statsTab(tab, el){
   currentStatsTab = tab;
   document.querySelectorAll('#pp-statistics .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  ['individual','roundwise','judges','comparative','feedback','publicvotes'].forEach(t=>{
+  ['roundwise','judges','comparative','feedback','publicvotes'].forEach(t=>{
     const el2 = document.getElementById('st-'+t);
     if(el2) el2.style.display = t===tab?'block':'none';
   });
-  if(tab==='individual') renderIndividualStats();
-  if(tab==='roundwise') renderRoundwiseStats();
+    if(tab==='roundwise') renderRoundwiseStats();
   if(tab==='judges') renderJudgeStats();
   if(tab==='comparative') renderComparativeStats();
   if(tab==='feedback') renderFeedbacks();
@@ -16568,189 +16422,8 @@ function renderFeedbacks() {
   }).join('');
 }
 
-function searchParticipant(v){
-  const evParts = getStatsEventParticipants();
-  filteredParticipants = evParts.filter(p=>(p.name||'').toLowerCase().includes(v.toLowerCase())||String(p.id||'').includes(v));
-  renderIndividualStats();
-}
 
-function renderIndividualStats(){
-  const eventParticipants = getStatsEventParticipants();
-  filteredParticipants = eventParticipants;
-  const roundFilter = document.getElementById('stats-round-sel')?.value||'all';
-  let data = roundFilter==='all' ? eventParticipants : eventParticipants.filter(p=>p.round===roundFilter);
 
-  // Sort by total score desc
-  data = [...data].sort((a,b)=>{
-    const aScores = (a.scores && Object.keys(a.scores).length > 0) ? a.scores : (a.roundScores && a.roundScores[a.round] ? a.roundScores[a.round] : {});
-    const bScores = (b.scores && Object.keys(b.scores).length > 0) ? b.scores : (b.roundScores && b.roundScores[b.round] ? b.roundScores[b.round] : {});
-    
-    let sa = 0;
-    Object.keys(aScores).forEach(jId => {
-      subjects.forEach(s => sa += Number(aScores?.[jId]?.[s.id]) || 0);
-    });
-    
-    let sb = 0;
-    Object.keys(bScores).forEach(jId => {
-      subjects.forEach(s => sb += Number(bScores?.[jId]?.[s.id]) || 0);
-    });
-    
-    return sb-sa;
-  });
-  
-  const indContent = document.getElementById('individual-stats-content');
-  if (!indContent) return;
-  indContent.innerHTML = data.map((p,rank)=>{
-    const pClone = { ...p };
-    const effectiveScores = (p.scores && Object.keys(p.scores).length > 0) ? p.scores : (p.roundScores && p.roundScores[p.round] ? p.roundScores[p.round] : {});
-    pClone.scores = effectiveScores;
-    
-    const cat = categories.find(c=>String(c.id)===String(pClone.catId));
-    let total = 0;
-    let judgesWhoScored = new Set();
-    if (pClone.scores) {
-      Object.keys(pClone.scores).forEach(jId => {
-        let hasScore = false;
-        subjects.forEach(s => {
-          if (pClone.scores?.[jId]?.[s.id] !== undefined) {
-            total += Number(pClone.scores[jId][s.id]) || 0;
-            hasScore = true;
-          }
-        });
-        if (hasScore) judgesWhoScored.add(jId);
-      });
-    }
-    // Strictly filter ONLY Present Judges (Absent judges are completely excluded)
-    let eventPresentJudges = judges.filter(j => 
-      j.present === true && 
-      (!activeEventId || String(j.eventId) === String(activeEventId) || String(j.eventId) === '0' || !j.eventId)
-    );
-    if (agreements && agreements.length > 0) {
-      const matchedAgreements = eventPresentJudges.filter(j => 
-        agreements.some(a => 
-          (a.email && j.email && String(a.email).toLowerCase().trim() === String(j.email).toLowerCase().trim()) || 
-          (a.name && j.name && String(a.name).toLowerCase().trim() === String(j.name).toLowerCase().trim())
-        )
-      );
-      if (matchedAgreements.length > 0) eventPresentJudges = matchedAgreements;
-    }
-    const baseJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
-    const totalMaxScore = subjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0);
-    const maxPossible = baseJudgesCount * totalMaxScore;
-    const pct = maxPossible>0?Math.round(total/maxPossible*100):0;
-    return `<div class="card" style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
-        <div style="width:32px;height:32px;border-radius:50%;background:${rank<3?'rgba(217,119,6,0.2)':'var(--surface2)'};border:1px solid ${rank<3?'var(--amber2)':'var(--border)'};display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:14px;font-weight:800;color:${rank<3?'var(--amber2)':'var(--text-dim)'}">
-          ${rank===0?'🥇':rank===1?'🥈':rank===2?'🥉':rank+1}
-        </div>
-        <div style="flex:1">
-          <div style="font-weight:700;font-size:15px;font-family:var(--fh);text-transform:uppercase;letter-spacing:0.3px">${pClone.name}</div>
-          <div style="font-size:9px;color:var(--text-muted)">${pClone.id} · ${cat?cat.name:'—'} · Age ${pClone.age} · <span class="badge ${roundBadge(pClone.round)}">${pClone.round}</span></div>
-        </div>
-        <div style="text-align:right">
-          <div class="judge-score-val" style="font-family:var(--fh);font-size:26px;font-weight:800;color:var(--amber2)">${total}</div>
-          <div style="font-size:8px;color:var(--text-muted)">/ ${maxPossible}</div>
-        </div>
-      </div>
-      
-      <div style="display:grid;grid-template-columns:1fr 200px;gap:20px;margin-bottom:14px">
-        <div>
-          <div style="margin-bottom:12px">
-            <div class="score-bar judge-score-val"><div class="score-bar-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--amber),var(--amber3))"></div></div>
-            <div class="judge-score-val" style="font-size:8px;color:var(--text-muted);margin-top:3px;text-align:right">${pct}% Proficiency</div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${subjects.map(s=>{
-              let subTotal = 0;
-              let scoreCount = 0;
-              if (pClone.scores) {
-                Object.keys(pClone.scores).forEach(jId => {
-                  if (pClone.scores[jId] && pClone.scores[jId][s.id] !== undefined) {
-                    subTotal += Number(pClone.scores[jId][s.id]) || 0;
-                    scoreCount++;
-                  }
-                });
-              }
-              const avg = scoreCount > 0 ? Math.round(subTotal / scoreCount * 10) / 10 : 0;
-              const subPct = Math.round(avg/s.maxMarks*100);
-              return `<div style="flex:1;min-width:70px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px;text-align:center">
-                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;font-family:var(--fm)">${s.name}</div>
-                <div class="judge-score-val" style="font-family:var(--fh);font-size:14px;font-weight:700;color:${subPct>=70?'var(--green2)':subPct>=50?'var(--amber2)':'var(--red2)'}">${avg}</div>
-              </div>`;
-            }).join('')}
-          </div>
-          <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn btn-ghost btn-xs judge-score-val" onclick="openScoreModalFor('${pClone.id}')">⚖️ View All Scores</button>
-            <button class="btn btn-ghost btn-xs judge-score-val" onclick="renderIndividualRadar('${pClone.id}')">↺ Refresh Graph</button>
-          </div>
-        </div>
-        <div class="judge-score-val" style="background:var(--bg2);border-radius:10px;padding:8px;height:200px">
-           <canvas id="radar-${pClone.id}"></canvas>
-        </div>
-      </div>
-    </div>`;
-  }).join('') || '<div class="card" style="text-align:center;color:var(--text-muted);padding:40px">No participants</div>';
-
-  // Render all radars after a short delay
-  setTimeout(() => {
-    data.forEach(p => renderIndividualRadar(p.id));
-  }, 100);
-}
-
-const individualRadars = {};
-function renderIndividualRadar(pid) {
-  const p = participants.find(x => x.id === pid);
-  if (!p) return;
-  const ctx = document.getElementById(`radar-${pid}`);
-  if (!ctx) return;
-
-  const data = subjects.map(s => {
-    let subTotal = 0;
-    let scoreCount = 0;
-    if (p.scores) {
-      Object.keys(p.scores).forEach(jId => {
-        if (p.scores[jId] && p.scores[jId][s.id] !== undefined) {
-          subTotal += Number(p.scores[jId][s.id]) || 0;
-          scoreCount++;
-        }
-      });
-    }
-    const avg = scoreCount > 0 ? subTotal / scoreCount : 0;
-    return parseFloat(avg.toFixed(1));
-  });
-
-  if (typeof Chart === 'undefined') return;
-  if (individualRadars[pid]) individualRadars[pid].destroy();
-  individualRadars[pid] = new Chart(ctx, {
-    type: 'radar',
-    data: {
-      labels: subjects.map(s => s.name),
-      datasets: [{
-        label: p.name,
-        data: data,
-        backgroundColor: 'rgba(217, 119, 6, 0.2)',
-        borderColor: '#d97706',
-        borderWidth: 2,
-        pointRadius: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { enabled: true } },
-      scales: {
-        r: {
-          grid: { color: 'rgba(0,0,0,0.05)' },
-          angleLines: { color: 'rgba(0,0,0,0.05)' },
-          pointLabels: { font: { size: 8 } },
-          ticks: { display: false, stepSize: 2 },
-          min: 0,
-          max: subjects.length ? Math.max(...subjects.map(s => Number(s.maxMarks) || 10)) : 10
-        }
-      }
-    }
-  });
-}
 
 function renderComparativeStats() {
   const rounds = ['audition', 'qualified', 'semifinal', 'final'];
@@ -16962,8 +16635,7 @@ function renderParticipantStreamCharts() {
 
   const rounds = ['audition', 'qualified', 'semifinal', 'final'];
   const roundLabels = ['Audition', 'Qualified', 'Semifinal', 'Final'];
-  const subjectColors = ['#3b82f6', '#8b5cf6', '#eab308', '#ec4899', '#14b8a6', '#f43f5e'];
-
+  
   // Calculate Event Averages
   const globalAvgs = {};
   rounds.forEach(r => {
@@ -17847,22 +17519,7 @@ function renderJudgeStats(){
     return allScores;
   };
 
-  const getCurrentJudgeScoreTotal = (p, jId) => {
-    let total = 0;
-    let scoresObj = null;
-    
-    if (p.scores && p.scores[jId]) {
-      scoresObj = p.scores[jId];
-    } else if (p.roundScores && p.roundScores[p.round] && p.roundScores[p.round][jId]) {
-      scoresObj = p.roundScores[p.round][jId];
-    }
-
-    if (scoresObj) {
-      Object.values(scoresObj).forEach(v => total += Number(v));
-    }
-    return total;
-  };
-
+  
   const chartDatasets = presentJudges.map((j, i) => {
     const scoreCounts = new Array(10).fill(0);
     eventParticipants.forEach(p => {
@@ -20364,8 +20021,7 @@ function escapeHTML(str) {
 function buildMsgEl(msg){
   const d=document.createElement('div');
   const type = (msg.role === 'monitor') ? 'out' : 'in';
-  const isMentioned = msg.text && /@(monitor|judge|admin|host)/i.test(msg.text);
-  
+    
   let inlineStyle = '';
   if (msg.sos) inlineStyle = 'color:var(--red)';
   // Highlighted mentions get a vivid green background so monitor can spot them instantly
@@ -22336,8 +21992,7 @@ function matchJudgeAgreement(presetId=null){
   const name=document.getElementById('jf-name').value.trim();
   const phone=document.getElementById('jf-phone').value.trim();
   const el=document.getElementById('jf-agreement-preview');
-  const elDemo=document.getElementById('jf-agreement-preview-demo');
-  const match=presetId?agreements.find(a=>a.id===presetId):agreements.find(a=>a.name.toLowerCase()===name.toLowerCase()&&a.phone.replace(/\s/g,'').includes(phone.replace(/\s/g,'').slice(-6)));
+    const match=presetId?agreements.find(a=>a.id===presetId):agreements.find(a=>a.name.toLowerCase()===name.toLowerCase()&&a.phone.replace(/\s/g,'').includes(phone.replace(/\s/g,'').slice(-6)));
   
   const renderMatch = (match) => {
     const ev=EVENTS.find(e=>e.id===match.eventId);
@@ -22357,12 +22012,10 @@ function matchJudgeAgreement(presetId=null){
   if(match&&(name||presetId)){
     const html = renderMatch(match);
     if(el) { el.innerHTML = html; el.dataset.matchId = match.id; }
-    if(elDemo) { elDemo.innerHTML = html; }
-  } else {
+      } else {
     const err = name.length>2?`<div style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.2);border-radius:8px;padding:10px;font-size:12px;color:var(--red2)">⚠ No agreement found for this Name + Phone combination.</div>`:'';
     if(el) { el.innerHTML = err; el.dataset.matchId = ''; }
-    if(elDemo) { elDemo.innerHTML = err; }
-  }
+      }
 }
 
 function submitJudgeForm(){
@@ -23033,7 +22686,6 @@ window.saveAddToUpcoming = saveAddToUpcoming;
 window.saveScores = saveScores;
 window.submitScore = saveScores;
 window.statsTab = statsTab;
-window.searchParticipant = searchParticipant;
 window.togglePromo = togglePromo;
 window.selectAllPromo = selectAllPromo;
 window.promoteSelected = promoteSelected;
@@ -23079,7 +22731,6 @@ window.saveCat = saveCat;
 window.deleteCat = deleteCat;
 window.openCatModal = openCatModal;
 window.toggleSwitch = toggleSwitch;
-window.renderIndividualRadar = renderIndividualRadar;
 window.renderLeaderboard = renderLeaderboard;
 window.renderMonitorEvents = renderMonitorEvents;
 window.openEditEvent = openEditEvent;
@@ -23332,7 +22983,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // HELPDESK LOGIC (AUTOMATICALLY LOCKED TO MONITOR EVENT)
 // ==========================================
 let activeHelpdeskParticipant = null;
-let lastRenderedHelpdeskState = "";
 
 function renderHelpdesk() {
   if (!window.syncEngine) return;
