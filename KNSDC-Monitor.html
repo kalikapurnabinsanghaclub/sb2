@@ -3883,7 +3883,7 @@
          <!-- Formula Input & Quick Chips -->
          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
            <div style="flex:1;min-width:240px;position:relative;">
-             <input type="text" id="leaderboard-formula-input" value="1+2" placeholder="e.g. 1+2, 3+4, 1+2+3+4, 2+3+4, or 1+4" oninput="onCustomFormulaInput(this.value)" style="width:100%;padding:9px 14px;border-radius:10px;border:1.5px solid var(--amber2);background:var(--surface);color:var(--text);font-family:var(--fm);font-weight:900;font-size:15px;outline:none;letter-spacing:1px;">
+             <input type="text" id="leaderboard-formula-input" value="1+2" placeholder="e.g. 1+2, 3+4, 1+2+3+4, 2+3+4, or 1+4" oninput="onCustomFormulaInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();applyRankingFormula();}" style="width:100%;padding:9px 14px;border-radius:10px;border:1.5px solid var(--amber2);background:var(--surface);color:var(--text);font-family:var(--fm);font-weight:900;font-size:15px;outline:none;letter-spacing:1px;">
            </div>
            
                        <!-- Quick Presets -->
@@ -8501,28 +8501,29 @@ function getParticipantRoundScore(p, roundId) {
 }
 
 function parseRankingFormula(formulaStr, eventRounds) {
-  const raw = String(formulaStr || '1+2').trim();
+  const raw = String(formulaStr || '').trim();
+  if (!raw) return [];
+  const defaultRounds = [
+    { id: 'audition', name: 'Audition' },
+    { id: 'qualified', name: 'Qualified' },
+    { id: 'semifinal', name: 'Semifinal' },
+    { id: 'final', name: 'Final' }
+  ];
+  const rounds = (Array.isArray(eventRounds) && eventRounds.length >= 4) ? eventRounds : defaultRounds;
   const regex = /([+-]?)\s*(?:R|Round)?\s*(\d+)/gi;
   const terms = [];
   let match;
   while ((match = regex.exec(raw)) !== null) {
     const sign = match[1] === '-' ? -1 : 1;
     const roundNum = parseInt(match[2], 10);
-    if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= eventRounds.length) {
-      const roundObj = eventRounds[roundNum - 1];
+    if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= rounds.length) {
+      const roundObj = rounds[roundNum - 1];
       terms.push({
         sign,
         roundNum,
         roundId: roundObj.id,
         roundName: roundObj.name
       });
-    }
-  }
-  if (terms.length === 0 && eventRounds.length >= 1) {
-    // Default fallback
-    terms.push({ sign: 1, roundNum: 1, roundId: eventRounds[0].id, roundName: eventRounds[0].name });
-    if (eventRounds.length >= 2) {
-      terms.push({ sign: 1, roundNum: 2, roundId: eventRounds[1].id, roundName: eventRounds[1].name });
     }
   }
   return terms;
@@ -8604,17 +8605,72 @@ function resetRankingFormula() {
   setRankingFormula('1+2');
 }
 
+function clearRankingFormula() {
+  isCustomFormulaActive = false;
+  currentLeaderRound = 'audition';
+  currentRankingFormula = '';
+  localStorage.removeItem('knsdc_ranking_formula');
+  localStorage.removeItem('knsdc_ranking_formula_active');
+  const inp = document.getElementById('leaderboard-formula-input');
+  if (inp) inp.value = '';
+  const badgeEl = document.getElementById('current-formula-pill-text');
+  if (badgeEl) badgeEl.textContent = 'None';
+  if (window.syncEngine && typeof syncEngine.setData === 'function') {
+    syncEngine.setData(st => {
+      st.currentRankingFormula = '';
+      st.isCustomFormulaActive = false;
+      return st;
+    });
+  }
+  if (typeof syncAll === 'function') syncAll();
+  if (window.syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
+    syncEngine.forceSaveStateToSupabase().catch(() => {});
+  }
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const bc = new BroadcastChannel('knsdc_sync_channel');
+      bc.postMessage({
+        type: 'ranking_formula_update',
+        formula: '',
+        active: false,
+        eventId: (typeof activeEventId !== 'undefined' ? activeEventId : null)
+      });
+      bc.close();
+    } catch(e) {}
+  }
+  renderLeaderboard();
+  toast('Custom Ranking Formula cleared.');
+}
+
 function applyRankingFormula() {
+  const formulaInput = document.getElementById('leaderboard-formula-input');
+  if (formulaInput && formulaInput.value.trim()) {
+    currentRankingFormula = formulaInput.value.trim();
+  }
+  if (!currentRankingFormula) {
+    currentRankingFormula = '1+2';
+  }
   isCustomFormulaActive = true;
   currentLeaderRound = 'custom_formula';
   localStorage.setItem('knsdc_ranking_formula', currentRankingFormula);
   localStorage.setItem('knsdc_ranking_formula_active', '1');
+
   if (window.syncEngine && typeof syncEngine.setData === 'function') {
     syncEngine.setData(st => {
       st.currentRankingFormula = currentRankingFormula;
       st.isCustomFormulaActive = true;
+      return st;
     });
   }
+
+  // Cloud sync to Supabase so other devices pull it immediately
+  if (typeof syncAll === 'function') {
+    syncAll();
+  }
+  if (window.syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
+    syncEngine.forceSaveStateToSupabase().catch(err => console.warn('[Monitor] Error force saving formula state:', err));
+  }
+
   // Zero-Egress instant local broadcast (<10ms, 0 bytes egress) to Host & Judge
   if (typeof BroadcastChannel !== 'undefined') {
     try {
@@ -8638,7 +8694,7 @@ function selectCustomFormulaTab(el) {
   localStorage.setItem('knsdc_ranking_formula_active', '1');
   const card = document.getElementById('leaderboard-formula-card');
   if (card) card.style.display = 'block';
-  renderLeaderboard();
+  applyRankingFormula();
 }
 
 function toggleFormulaCard() {
