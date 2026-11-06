@@ -3043,12 +3043,25 @@
             <span class="uv-st-slider"></span>
           </label>
         </div>
-        <div class="sw-row" id="sw-edit-score" style="min-height: 55px;">
-          <div class="sw-left"><span class="sw-icon">✏️</span><div><div class="sw-label">Edit Judge Score</div><div class="sw-desc">Allow score corrections</div></div></div>
-          <label class="uv-mb-switch">
-            <input type="checkbox" onchange="toggleSwitch('edit-score',this)">
-            <span class="uv-mb-slider"></span>
-          </label>
+        <div class="sw-row" id="sw-edit-score" style="min-height: 55px; flex-direction: column; align-items: stretch;">
+          <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+            <div class="sw-left"><span class="sw-icon">✏️</span><div><div class="sw-label">Edit Judge Score</div><div class="sw-desc">Allow score corrections</div></div></div>
+            <label class="uv-mb-switch">
+              <input type="checkbox" id="tgl-edit-score" onchange="toggleSwitch('edit-score',this)">
+              <span class="uv-mb-slider"></span>
+            </label>
+          </div>
+          <div id="edit-score-subpanel" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(0,0,0,0.18); border-radius:8px; border:1px solid rgba(255,255,255,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:9.5px; font-weight:800; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.5px;">Re-Open Scope:</span>
+              <button type="button" class="btn btn-xs" onclick="openAuditLogsModal()" style="font-size:9px; padding:2px 7px; background:rgba(255,255,255,0.08); border:1px solid var(--border); border-radius:4px; color:var(--text); cursor:pointer;">📋 Audit Log</button>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+              <button type="button" id="btn-edit-mode-current" onclick="setEditScoreMode('current')" class="btn btn-xs" style="font-size:9.5px; font-weight:700; padding:5px 4px; border-radius:6px; border:1px solid rgba(59,130,246,0.4); background:#3b82f6; color:#fff; cursor:pointer; text-align:center;">🎯 Open This Round</button>
+              <button type="button" id="btn-edit-mode-all" onclick="setEditScoreMode('all')" class="btn btn-xs" style="font-size:9.5px; font-weight:700; padding:5px 4px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:transparent; color:var(--text-muted); cursor:pointer; text-align:center;">🌐 All Rounds</button>
+            </div>
+            <div id="edit-score-mode-desc" style="font-size:8.5px; color:var(--text-muted); margin-top:5px; font-style:italic;">Judges can only edit scores in the active round.</div>
+          </div>
         </div>
         <div class="sw-row" id="sw-result-public">
           <div class="sw-left"><span class="sw-icon">🏆</span><div><div class="sw-label">Result Public</div><div class="sw-desc">Publish results to leaderboard</div></div></div>
@@ -5811,6 +5824,48 @@
 </div>
 
 <!-- 🔊 SPEAKER & SOUND SYSTEM SOUND CHECK DIAGNOSTICS MODAL -->
+<!-- SCORE EDIT AUDIT LOG MODAL -->
+<div class="modal-overlay" id="audit-logs-modal" style="display:none; z-index:2600;" onclick="closeOnBg(event,'audit-logs-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:720px; width:95%; max-height:85vh; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--border); border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,0.6); overflow:hidden;">
+    <div class="modal-head" style="padding:14px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.15);">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:18px;">📋</span>
+        <div>
+          <div class="modal-title" style="font-size:15px; font-weight:800; color:var(--text);">Judge Score Corrections — Audit Trail</div>
+          <div style="font-size:9.5px; color:var(--text-muted);">Transparent, tamper-evident log of score updates with reasons</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="btn btn-xs btn-blue" onclick="loadScoreAuditLogs(true)" style="padding:4px 8px; font-size:10px;">🔄 Refresh</button>
+        <button type="button" class="btn btn-icon btn-ghost" onclick="closeM('audit-logs-modal')">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:14px 18px; overflow-y:auto; flex:1;">
+      <div id="audit-logs-loading" style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">Loading audit logs...</div>
+      <div id="audit-logs-empty" style="display:none; text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">No score corrections recorded yet.</div>
+      <div id="audit-logs-table-wrap" style="display:none;">
+        <table class="table" style="width:100%; font-size:11px; border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border); text-align:left; color:var(--text-muted);">
+              <th style="padding:6px 8px;">Time</th>
+              <th style="padding:6px 8px;">Judge</th>
+              <th style="padding:6px 8px;">Participant</th>
+              <th style="padding:6px 8px;">Round</th>
+              <th style="padding:6px 8px;">Old ➔ New Score</th>
+              <th style="padding:6px 8px;">Reason (কারণ)</th>
+            </tr>
+          </thead>
+          <tbody id="audit-logs-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot" style="padding:10px 18px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.1);">
+      <span style="font-size:9px; color:var(--text-muted);">Stored securely in Supabase ecosystem_log with zero background broadcast egress.</span>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeM('audit-logs-modal')" style="padding:4px 14px; font-size:11px;">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="sound-check-modal" style="display:none" onclick="closeOnBg(event,'sound-check-modal')">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:680px; width:95%; background:#090e17; border:1px solid #1e293b; border-top:3px solid #f59e0b; color:#f8fafc; border-radius:14px; box-shadow:0 20px 50px rgba(0,0,0,0.85); overflow:hidden;">
     <div class="modal-head" style="border-bottom:1px solid #1e293b; padding:12px 16px; background:#040711; display:flex; justify-content:space-between; align-items:center;">
@@ -21143,6 +21198,36 @@ function renderSwitches() {
     }
   });
   
+  // Update Edit Judge Score subpanel & modes
+  const isEditScoreOn = Boolean(switchStates.editScore);
+  const editScoreSubpanel = document.getElementById('edit-score-subpanel');
+  if (editScoreSubpanel) {
+    editScoreSubpanel.style.display = isEditScoreOn ? 'block' : 'none';
+    const mode = switchStates.editScoreMode || 'current';
+    const btnCur = document.getElementById('btn-edit-mode-current');
+    const btnAll = document.getElementById('btn-edit-mode-all');
+    const descEl = document.getElementById('edit-score-mode-desc');
+    if (btnCur && btnAll) {
+      if (mode === 'all') {
+        btnCur.style.background = 'transparent';
+        btnCur.style.color = 'var(--text-muted)';
+        btnCur.style.borderColor = 'rgba(255,255,255,0.1)';
+        btnAll.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+        btnAll.style.color = '#fff';
+        btnAll.style.borderColor = 'rgba(245,158,11,0.5)';
+        if (descEl) descEl.textContent = 'Judges can edit any round including promoted & completed participants.';
+      } else {
+        btnCur.style.background = '#3b82f6';
+        btnCur.style.color = '#fff';
+        btnCur.style.borderColor = 'rgba(59,130,246,0.5)';
+        btnAll.style.background = 'transparent';
+        btnAll.style.color = 'var(--text-muted)';
+        btnAll.style.borderColor = 'rgba(255,255,255,0.1)';
+        if (descEl) descEl.textContent = 'Judges can only edit scores in the active round.';
+      }
+    }
+  }
+  
   // Update the toggle in the Judge Assign header
   const assignToggle = document.getElementById('assigned-prev-scores-toggle');
   if (assignToggle) {
@@ -24834,6 +24919,227 @@ function saveHotspotConfig(e) {
   if (typeof toggleFormulaCard !== 'undefined') window.toggleFormulaCard = toggleFormulaCard;
   if (typeof onCustomFormulaInput !== 'undefined') window.onCustomFormulaInput = onCustomFormulaInput;
 })();
+</script>
+
+<!-- ⚡ TIE BREAKER RESOLUTION MODAL -->
+<div class="modal-overlay" id="tie-breaker-modal" style="display:none;" onclick="closeOnBg(event, 'tie-breaker-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:560px; width:92%; background:var(--bg); border:1.5px solid var(--amber2); border-radius:18px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:20px;">⚡</span>
+        <div>
+          <div style="font-weight:800; font-size:16px; color:var(--text);">Resolve Tie & Set Position</div>
+          <div style="font-size:11px; color:var(--text-muted);" id="tie-modal-cat-name">Category</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-xs" onclick="closeM('tie-breaker-modal')">✕</button>
+    </div>
+
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px; line-height:1.4;">
+      The following participants are tied. Default is <b>Skip Ranking</b> (1, 1, 3). You can optionally assign distinct positions:
+    </div>
+
+    <div id="tie-modal-participants-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px; max-height:300px; overflow-y:auto;">
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <button type="button" class="btn btn-ghost btn-xs" onclick="resetTieBreaksForCurrentCat()" style="color:var(--text-muted);">
+        ↺ Reset to Auto (1, 1, 3)
+      </button>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeM('tie-breaker-modal')">Cancel</button>
+        <button type="button" class="btn btn-amber btn-sm" onclick="saveTieBreakerModal()" style="font-weight:800;">✓ Save Positions</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+window._manualTieRanks = window._manualTieRanks || {};
+let _currentTieModalCatKey = null;
+
+function openTieBreakerModal(catKey, catName) {
+  _currentTieModalCatKey = String(catKey);
+  const nameEl = document.getElementById('tie-modal-cat-name');
+  if (nameEl) nameEl.textContent = 'Category: ' + catName;
+
+  const container = document.getElementById('tie-modal-participants-list');
+  if (!container) return;
+
+  // Filter participants in this category
+  const targetRoundClean = String(currentLeaderRound || 'audition').toLowerCase();
+  const catParts = participants.filter(p => {
+    const matchesCat = String(p.catId) === String(catKey) || (p.category && String(p.category).toLowerCase() === String(catName).toLowerCase());
+    return matchesCat;
+  });
+
+  // Calculate scores
+  const isFormulaMode = isCustomFormulaActive || currentLeaderRound === 'custom_formula';
+  let formulaTerms = [];
+  if (isFormulaMode) {
+    const eventRounds = (typeof getEventRounds === 'function') ? getEventRounds() : [];
+    formulaTerms = parseRankingFormula(currentRankingFormula, eventRounds);
+  }
+
+  const scored = catParts.map(p => {
+    const pClone = { ...p };
+    if (isFormulaMode) {
+      pClone.totalScore = evaluateParticipantFormula(pClone, formulaTerms).netScore;
+    } else {
+      pClone.totalScore = getParticipantRoundScore(pClone, targetRoundClean);
+    }
+    return pClone;
+  }).sort((a, b) => b.totalScore - a.totalScore);
+
+  const existing = window._manualTieRanks[_currentTieModalCatKey] || {};
+
+  container.innerHTML = scored.map((p, idx) => `
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px;">
+      <div>
+        <div style="font-weight:700; font-size:13px; color:var(--text);">${p.name} <span style="font-size:11px; color:var(--text-muted); font-family:var(--fm);">(${p.id})</span></div>
+        <div style="font-size:11px; color:var(--amber2); font-weight:700;">Score: ${p.totalScore} pts</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <label style="font-size:11px; color:var(--text-muted); font-weight:700;">Rank:</label>
+        <select class="tie-rank-select" data-pid="${p.id}" style="padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-weight:800;">
+          ${Array.from({ length: scored.length }, (_, r) => r + 1).map(r => `
+            <option value="${r}" ${(existing[p.id] ? Number(existing[p.id]) === r : (idx + 1 === r)) ? 'selected' : ''}>${r}${r === 1 ? 'st' : r === 2 ? 'nd' : r === 3 ? 'rd' : 'th'}</option>
+          `).join('')}
+        </select>
+      </div>
+    </div>
+  `).join('');
+
+  openM('tie-breaker-modal');
+}
+
+function saveTieBreakerModal() {
+  if (!_currentTieModalCatKey) return;
+  const selects = document.querySelectorAll('.tie-rank-select');
+  if (!window._manualTieRanks[_currentTieModalCatKey]) {
+    window._manualTieRanks[_currentTieModalCatKey] = {};
+  }
+  selects.forEach(sel => {
+    const pid = sel.getAttribute('data-pid');
+    window._manualTieRanks[_currentTieModalCatKey][pid] = Number(sel.value);
+  });
+  closeM('tie-breaker-modal');
+  renderLeaderboard();
+  toast('✅ Custom Tie-Breaker rankings saved!');
+}
+
+function resetTieBreaksForCurrentCat() {
+  if (_currentTieModalCatKey && window._manualTieRanks[_currentTieModalCatKey]) {
+    delete window._manualTieRanks[_currentTieModalCatKey];
+  }
+  closeM('tie-breaker-modal');
+  renderLeaderboard();
+  toast('↺ Reset to Automatic Skip Ranking (1, 1, 3)');
+}
+
+window.openTieBreakerModal = openTieBreakerModal;
+window.saveTieBreakerModal = saveTieBreakerModal;
+window.resetTieBreaksForCurrentCat = resetTieBreaksForCurrentCat;
+window.handleHostScoreVisToggle = handleHostScoreVisToggle;
+</script>
+
+<script>
+// ==========================================
+// SCORE RE-OPEN & AUDIT LOG FUNCTIONS
+// ==========================================
+function setEditScoreMode(mode) {
+  if (mode !== 'current' && mode !== 'all') mode = 'current';
+  switchStates.editScoreMode = mode;
+  if (!window._switchRenderLockUntil) window._switchRenderLockUntil = {};
+  window._switchRenderLockUntil['editScoreMode'] = Date.now() + 5000;
+  
+  const _st = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : {};
+  _st.switchStates = { ...(_st.switchStates || {}), editScoreMode: mode };
+  if (activeEventId) {
+    _st.eventSwitches = _st.eventSwitches || {};
+    _st.eventSwitches[activeEventId] = { ...(_st.eventSwitches[activeEventId] || {}), editScoreMode: mode };
+    _st.eventSwitches[String(activeEventId)] = _st.eventSwitches[activeEventId];
+  }
+  
+  try {
+    localStorage.setItem('knsdc_switchStates', JSON.stringify(_st.switchStates));
+    if (activeEventId) localStorage.setItem('knsdc_eventSwitches', JSON.stringify(_st.eventSwitches));
+  } catch(e) {}
+  
+  if (window.syncEngine) {
+    window.syncEngine.setData(_st);
+    if (activeEventId && typeof window.syncEngine.updateEvent === 'function') {
+      window.syncEngine.updateEvent(activeEventId, {
+        switchStates: { ...(switchStates || {}), editScoreMode: mode }
+      }).catch(err => console.warn('[setEditScoreMode] updateEvent error:', err));
+    }
+  }
+  renderSwitches();
+  toast(mode === 'all' ? '🌐 Edit enabled for ALL rounds & promoted participants' : '🎯 Edit limited to CURRENT round only');
+}
+window.setEditScoreMode = setEditScoreMode;
+
+async function openAuditLogsModal() {
+  openM('audit-logs-modal');
+  await loadScoreAuditLogs();
+}
+window.openAuditLogsModal = openAuditLogsModal;
+
+async function loadScoreAuditLogs(isManualRefresh = false) {
+  const loadingEl = document.getElementById('audit-logs-loading');
+  const emptyEl = document.getElementById('audit-logs-empty');
+  const wrapEl = document.getElementById('audit-logs-table-wrap');
+  const tbody = document.getElementById('audit-logs-tbody');
+  if (loadingEl) loadingEl.style.display = 'block';
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (wrapEl) wrapEl.style.display = 'none';
+  if (tbody) tbody.innerHTML = '';
+  
+  try {
+    if (!window.syncEngine || !window.syncEngine.supabase) {
+      if (loadingEl) loadingEl.textContent = 'Supabase connection not initialized.';
+      return;
+    }
+    // Fetch only the latest 40 score edit logs to minimize egress
+    const { data, error } = await window.syncEngine.supabase
+      .from('ecosystem_log')
+      .select('id, payload, created_at')
+      .eq('action', 'score_edited')
+      .order('id', { ascending: false })
+      .limit(40);
+      
+    if (error) throw error;
+    
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (!data || data.length === 0) {
+      if (emptyEl) emptyEl.style.display = 'block';
+      return;
+    }
+    
+    if (wrapEl) wrapEl.style.display = 'block';
+    tbody.innerHTML = data.map(item => {
+      const p = item.payload || {};
+      const timeStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+      const dateStr = item.created_at ? new Date(item.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+      const oldTot = p.oldTotal !== undefined ? p.oldTotal : '-';
+      const newTot = p.newTotal !== undefined ? p.newTotal : '-';
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+        <td style="padding:6px 8px; white-space:nowrap; font-family:monospace; color:var(--text-muted);">${dateStr} ${timeStr}</td>
+        <td style="padding:6px 8px; font-weight:700; color:var(--gold2);">${p.judgeName || p.judgeId || 'Judge'}</td>
+        <td style="padding:6px 8px;"><strong>${p.participantName || ''}</strong> <span style="font-family:monospace; color:var(--text-muted);">#${p.participantId || ''}</span></td>
+        <td style="padding:6px 8px;"><span class="badge b-blue" style="font-size:9px; text-transform:uppercase;">${p.round || '-'}</span></td>
+        <td style="padding:6px 8px; font-family:monospace;"><span style="color:var(--text-muted); text-decoration:line-through;">${oldTot}</span> ➔ <strong style="color:var(--green2);">${newTot}</strong></td>
+        <td style="padding:6px 8px; color:var(--text); font-style:italic; max-width:220px; word-break:break-word;">${p.reason || 'No reason provided'}</td>
+      </tr>`;
+    }).join('');
+    
+    if (isManualRefresh) toast('🔄 Audit logs refreshed');
+  } catch(err) {
+    console.error('[loadScoreAuditLogs] error:', err);
+    if (loadingEl) loadingEl.textContent = 'Failed to load audit logs: ' + (err.message || err);
+  }
+}
+window.loadScoreAuditLogs = loadScoreAuditLogs;
 </script>
 </body>
 

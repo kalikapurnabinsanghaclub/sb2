@@ -2652,6 +2652,10 @@ try {
       <button class="btn btn-icon btn-ghost" onclick="closeEditModal()">✕</button>
     </div>
     <div class="mbody" id="score-modal-body">
+      <div id="modal-round-picker" style="display:none; margin-bottom:12px; padding:6px 10px; background:rgba(0,0,0,0.15); border-radius:8px; border:1px solid rgba(255,255,255,0.08); align-items:center; gap:8px;">
+        <span style="font-size:10px; font-weight:800; text-transform:uppercase; color:var(--tmuted);">Target Round:</span>
+        <div id="modal-round-buttons" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+      </div>
       <div id="modal-score-inputs"></div>
       <!-- COMMENT SECTION WITH 1-TAP QUICK CRITIQUE CHIPS -->
       <div class="comment-box" style="margin-top:12px;">
@@ -2676,6 +2680,16 @@ try {
           </div>
           <div class="critique-chips-grid" id="modal-judge-comment-chips-grid"></div>
         </div>
+      </div>
+      <!-- MANDATORY AUDIT TRAIL REASON -->
+      <div class="audit-reason-box" style="margin-top:12px; padding:10px 12px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.25); border-radius:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+          <div style="font-size:10px; font-weight:800; color:#ef4444; letter-spacing:0.5px; text-transform:uppercase; display:flex; align-items:center; gap:5px;">
+            <span>📝 Reason for Score Update * (Mandatory Audit Trail)</span>
+          </div>
+          <span style="font-size:9px; color:var(--tmuted);">Logged with timestamp &amp; ID</span>
+        </div>
+        <input type="text" id="modal-edit-reason" class="input-text" placeholder="e.g. Typo in marks, Chief Judge review request" style="width:100%; font-size:12px; padding:7px 10px; border-radius:6px; border:1px solid rgba(239,68,68,0.3); background:var(--surface);" required />
       </div>
       <div style="margin-top:14px;display:flex;gap:8px">
         <button class="btn btn-gold" style="flex:1" onclick="saveModalScores()">💾 Save Corrections</button>
@@ -7071,13 +7085,49 @@ window.showGoldenRibbonCelebration = showGoldenRibbonCelebration;
 // ════════════════════════════════════════
 let editingModalParticipantId = null;
 
-function openEditModal(id) {
+window._editingTargetRound = null;
+window._editingOldScores = {};
+
+function openEditModal(id, targetRound) {
   editingModalParticipantId = id;
   const p = participants.find(x => x.id === id);
   if (!p) return;
   
-  const myScores = p.scores[JUDGE.id] || {};
-  document.getElementById('score-modal-title').textContent = `Edit Score: ${p.name}`;
+  if (!p.roundScores) p.roundScores = {};
+  
+  // Available rounds for this participant
+  const availableRounds = Object.keys(p.roundScores).filter(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0);
+  if (!availableRounds.includes(p.round || 'audition')) {
+    availableRounds.push(p.round || 'audition');
+  }
+  
+  // Default target round
+  if (!targetRound || !availableRounds.includes(targetRound)) {
+    targetRound = availableRounds[availableRounds.length - 1] || p.round || 'audition';
+  }
+  window._editingTargetRound = targetRound;
+  
+  // Render round picker if multiple rounds exist or in 'all' mode
+  const pickerEl = document.getElementById('modal-round-picker');
+  const buttonsEl = document.getElementById('modal-round-buttons');
+  const editMode = switchStates['editScoreMode'] || 'current';
+  
+  if (pickerEl && buttonsEl && (availableRounds.length > 1 || editMode === 'all')) {
+    pickerEl.style.display = 'flex';
+    buttonsEl.innerHTML = availableRounds.map(r => {
+      const isActive = r.toLowerCase() === targetRound.toLowerCase();
+      return `<button type="button" class="btn btn-xs" onclick="switchModalEditRound('${p.id}', '${r}')" style="font-size:10px; padding:3px 8px; border-radius:6px; font-weight:700; text-transform:uppercase; border:1px solid ${isActive ? 'var(--gold2)' : 'rgba(255,255,255,0.1)'}; background:${isActive ? 'var(--gold2)' : 'transparent'}; color:${isActive ? '#000' : 'var(--text)'}; cursor:pointer;">${r}</button>`;
+    }).join('');
+  } else if (pickerEl) {
+    pickerEl.style.display = 'none';
+  }
+
+  // Pick scores for the selected target round
+  const roundScoresMap = p.roundScores[targetRound] || {};
+  const myScores = roundScoresMap[JUDGE.id] || (targetRound === p.round && p.scores ? (p.scores[JUDGE.id] || {}) : {});
+  window._editingOldScores = { ...myScores };
+  
+  document.getElementById('score-modal-title').textContent = `Edit Score: ${p.name} (${targetRound.toUpperCase()})`;
   
   const wrap = document.getElementById('modal-score-inputs');
   wrap.innerHTML = SUBJECTS.map(s => {
@@ -7106,14 +7156,24 @@ function openEditModal(id) {
     </div>`;
   }).join('');
   
-  let existingCmt = (p.roundComments && p.roundComments[p.round] && p.roundComments[p.round][JUDGE.id]) || '';
+  let existingCmt = (p.roundComments && p.roundComments[targetRound] && p.roundComments[targetRound][JUDGE.id]) || '';
   document.getElementById('modal-judge-comment').value = existingCmt;
+  
+  // Reset reason field
+  const reasonInp = document.getElementById('modal-edit-reason');
+  if (reasonInp) reasonInp.value = '';
+  
   if (typeof renderCritiqueChips === 'function') {
     renderCritiqueChips('modal-judge-comment');
     updateCritiqueChipsVisuals('modal-judge-comment');
   }
   document.getElementById('score-modal-overlay').style.display = 'flex';
 }
+
+function switchModalEditRound(id, targetRound) {
+  openEditModal(id, targetRound);
+}
+window.switchModalEditRound = switchModalEditRound;
 
 function closeEditModal() {
   document.getElementById('score-modal-overlay').style.display = 'none';
@@ -7187,36 +7247,75 @@ async function saveModalScores() {
   if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
 
   try {
-    if (!p.roundScores) p.roundScores = {};
-    if (!p.round) p.round = 'audition';
-    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-    p.scores = p.roundScores[p.round];
+    // Mandatory Audit Reason Validation
+    const reasonInput = document.getElementById('modal-edit-reason');
+    const reasonVal = (reasonInput ? reasonInput.value : '').trim();
+    if (!reasonVal) {
+      alert('⚠️ Mandatory Audit Log: Please specify the reason for this score change (e.g. typing correction, recalculation request) before saving.');
+      isSavingModalScore = false;
+      if (btn) { btn.disabled = false; btn.innerText = '💾 Save Corrections'; }
+      if (reasonInput) reasonInput.focus();
+      return;
+    }
 
-    if(!p.scores[JUDGE.id]) p.scores[JUDGE.id] = {};
-    if(!p.roundScores) p.roundScores = {};
-    if(!p.roundScores[p.round]) p.roundScores[p.round] = {};
-    if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
+    const targetRound = window._editingTargetRound || p.round || 'audition';
+    if (!p.roundScores) p.roundScores = {};
+    if (!p.roundScores[targetRound]) p.roundScores[targetRound] = {};
+    if (!p.roundScores[targetRound][JUDGE.id]) p.roundScores[targetRound][JUDGE.id] = {};
+
+    const oldScores = { ...(window._editingOldScores || p.roundScores[targetRound][JUDGE.id] || {}) };
+    const oldTotal = Object.values(oldScores).reduce((sum, v) => sum + (Number(v) || 0), 0);
 
     SUBJECTS.forEach(s => {
       const sMax = Number(s.maxMarks) || 10;
       let val = parseFloat(document.getElementById('modal-num-'+s.id)?.value || 0);
       if (isNaN(val) || val < 0) val = 0;
       if (val > sMax) val = sMax;
-      p.scores[JUDGE.id][s.id] = val;
-      p.roundScores[p.round][JUDGE.id][s.id] = val;
+      p.roundScores[targetRound][JUDGE.id][s.id] = val;
     });
-    if(!p.roundComments) p.roundComments = {};
-    if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
-    p.roundComments[p.round][JUDGE.id] = document.getElementById('modal-judge-comment').value;
+
+    if (targetRound === (p.round || 'audition')) {
+      p.scores = p.roundScores[targetRound];
+    }
+
+    if (!p.roundComments) p.roundComments = {};
+    if (!p.roundComments[targetRound]) p.roundComments[targetRound] = {};
+    p.roundComments[targetRound][JUDGE.id] = document.getElementById('modal-judge-comment').value;
 
     p.isEdited = p.isEdited || {};
     p.isEdited[JUDGE.id] = true;
 
-    // Calculate total score for celebration
-    const totalScoreVal = Object.values(p.scores[JUDGE.id] || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    // Calculate total score
+    const totalScoreVal = Object.values(p.roundScores[targetRound][JUDGE.id] || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
 
     // Save to local storage backup & offline queue
-    backupScoreToLocalStorage(p.id, p.scores[JUDGE.id], p.round, p.roundComments[p.round][JUDGE.id]);
+    backupScoreToLocalStorage(p.id, p.roundScores[targetRound][JUDGE.id], targetRound, p.roundComments[targetRound][JUDGE.id]);
+
+    // Insert lightweight audit record into Supabase ecosystem_log (with returning: 'minimal' for zero-egress)
+    try {
+      if (window.syncEngine && window.syncEngine.supabase) {
+        window.syncEngine.supabase.from('ecosystem_log').insert({
+          role: 'judge',
+          action: 'score_edited',
+          target_role: 'monitor',
+          payload: {
+            participantId: p.id,
+            participantName: p.name,
+            judgeId: JUDGE.id,
+            judgeName: JUDGE.name,
+            round: targetRound,
+            oldScores: oldScores,
+            newScores: p.roundScores[targetRound][JUDGE.id],
+            oldTotal: oldTotal,
+            newTotal: totalScoreVal,
+            reason: reasonVal,
+            timestamp: new Date().toISOString()
+          }
+        }, { returning: 'minimal' }).catch(err => console.warn('[Audit Log Insert Deferred]', err));
+      }
+    } catch(auditErr) {
+      console.warn('[Audit Log Insert Exception]', auditErr);
+    }
 
     const isGlobalLocked = switchStates['lock-score'] || switchStates['lockScore'];
     toast('Updating score...');
@@ -7292,21 +7391,25 @@ function renderParticipantsTable() {
     const hasScored = Object.keys(myScores).length > 0;
     const isOnStage = p.id===currentOnStage;
     
-    const isEditAllowed = switchStates['edit-score'] || switchStates['editScore'];
-    const isLocked = hasScored && !isEditAllowed;
-    const isEdited = p.isEdited && p.isEdited[JUDGE.id];
-    
+    const isEditAllowed = Boolean(switchStates['edit-score'] || switchStates['editScore']);
+    const editMode = switchStates['editScoreMode'] || 'current';
     const isCompletedFinal = (p.round || '').toUpperCase() === 'FINAL' && (p.stageStatus || '').toLowerCase() === 'done';
     
+    // In 'all' mode: judge can edit any participant, including promoted or completed final!
+    // In 'current' mode: judge can only edit active round (not completed final unless 'all' mode)
+    const canEdit = isEditAllowed && (editMode === 'all' || !isCompletedFinal);
+    const isLocked = hasScored && !canEdit;
+    const isEdited = p.isEdited && p.isEdited[JUDGE.id];
+    
     let actionBtn;
-    if (isCompletedFinal && !isEditAllowed) {
-      actionBtn = `<span class="badge b-gray" style="background:#e5e7eb;color:#374151">✅ Completed</span>`;
+    if (hasScored && canEdit) {
+      actionBtn = `<button class="btn btn-sm btn-gold" onclick="openEditModal('${p.id}', '${p.round}')" style="background:linear-gradient(135deg,var(--blue2),var(--blue));box-shadow:0 0 10px rgba(59,130,246,0.3)">✏️ Edit</button>`;
+    } else if (isCompletedFinal && !canEdit) {
+      actionBtn = `<span class="badge b-gray" style="background:#e5e7eb;color:#374151">✓ Completed</span>`;
     } else if (isLocked) {
       actionBtn = `<span class="badge b-red">🔒 Locked</span>`;
-    } else if (hasScored && isEditAllowed) {
-      actionBtn = `<button class="btn btn-sm btn-gold" onclick="openEditModal('${p.id}')" style="background:linear-gradient(135deg,var(--blue2),var(--blue));box-shadow:0 0 10px rgba(59,130,246,0.3)">✏️ Edit</button>`;
     } else {
-      actionBtn = `<button class="btn btn-sm btn-ghost" onclick="navToScore('${p.id}')">⚖️ Score</button>`;
+      actionBtn = `<button class="btn btn-sm btn-ghost" onclick="navToScore('${p.id}')">⚡ Score</button>`;
     }
     
     let commentHtml = '';
@@ -7334,11 +7437,12 @@ function renderParticipantsTable() {
 function navToScore(id) {
   const p = participants.find(x => x.id === id);
   if (p) {
-    const isEditAllowed = switchStates['edit-score'] || switchStates['editScore'];
+    const isEditAllowed = Boolean(switchStates['edit-score'] || switchStates['editScore']);
+    const editMode = switchStates['editScoreMode'] || 'current';
     const isCompletedFinal = (p.round || '').toUpperCase() === 'FINAL' && (p.stageStatus || '').toLowerCase() === 'done';
     
-    if (isCompletedFinal && !isEditAllowed) {
-      alert("This participant has completed the final round. Please ask the Monitor to enable score editing.");
+    if (isCompletedFinal && (!isEditAllowed || editMode !== 'all')) {
+      alert("This participant has completed the final round. Please ask the Monitor to enable All-Rounds score editing.");
       return;
     }
   }
