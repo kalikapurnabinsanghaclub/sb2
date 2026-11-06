@@ -5809,6 +5809,62 @@
 
 <!-- 🔊 SPEAKER & SOUND SYSTEM SOUND CHECK DIAGNOSTICS MODAL -->
 <!-- SCORE EDIT AUDIT LOG MODAL -->
+<!-- 🔓 RE-OPEN / UNLOCK JUDGE SCORING QUESTION MODAL -->
+<div class="modal-overlay" id="reopen-round-modal" style="display:none; z-index:2700;" onclick="closeOnBg(event,'reopen-round-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:540px; width:95%; background:var(--bg); border:1.5px solid var(--border); border-radius:16px; box-shadow:0 25px 70px rgba(0,0,0,0.7); overflow:hidden;">
+    <div class="modal-head" style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:linear-gradient(135deg, rgba(59,130,246,0.1), rgba(245,158,11,0.08));">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:22px;">🔓</span>
+        <div>
+          <div class="modal-title" style="font-size:16px; font-weight:800; color:var(--text);">Re-Open / Unlock Judge Scoring</div>
+          <div style="font-size:10.5px; color:var(--text-muted);">Select the scope of scoring to unlock for judges</div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-icon btn-ghost" onclick="cancelReopenScoring()">✕</button>
+    </div>
+    
+    <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+      <!-- SCOPE SELECTION CARDS -->
+      <div>
+        <label style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); margin-bottom:8px; display:block;">Select Re-Open Scope:</label>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <!-- OPTION 1: OPEN THIS ROUND -->
+          <div id="reopen-card-current" onclick="selectReopenScopeOption('current')" style="padding:14px; border:2px solid #3b82f6; background:rgba(59,130,246,0.12); border-radius:12px; cursor:pointer; transition:all 0.2s ease;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+              <span style="font-size:18px;">🎯</span>
+              <span id="reopen-title-current" style="font-weight:800; font-size:13px; color:#3b82f6;">Open This Round</span>
+            </div>
+            <div style="font-size:10.5px; color:var(--text-muted); line-height:1.4;">Unlock only the active round. Past rounds and promoted participants stay locked.</div>
+          </div>
+          
+          <!-- OPTION 2: ALL ROUNDS -->
+          <div id="reopen-card-all" onclick="selectReopenScopeOption('all')" style="padding:14px; border:1px solid var(--border); background:rgba(255,255,255,0.02); border-radius:12px; cursor:pointer; transition:all 0.2s ease;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+              <span style="font-size:18px;">🌐</span>
+              <span id="reopen-title-all" style="font-weight:800; font-size:13px; color:var(--text);">All Rounds</span>
+            </div>
+            <div style="font-size:10.5px; color:var(--text-muted); line-height:1.4;">Re-open all rounds. Judges can edit scores for promoted &amp; completed participants.</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- MANDATORY AUDIT REASON INPUT -->
+      <div style="padding:12px 14px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.25); border-radius:10px;">
+        <div style="font-size:10.5px; font-weight:800; color:#ef4444; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:6px; display:flex; align-items:center; gap:5px;">
+          <span>📝 Reason for Unlocking * (Mandatory Audit Trail)</span>
+        </div>
+        <input type="text" id="reopen-audit-reason" class="input-text" placeholder="e.g. Chief Judge approved score review for Round 1" style="width:100%; font-size:12px; padding:9px 12px; border-radius:8px; border:1px solid rgba(239,68,68,0.3); background:var(--surface);" required />
+        <div style="font-size:9.5px; color:var(--text-muted); margin-top:5px; font-style:italic;">This reason will be logged in Supabase ecosystem_log with timestamp and monitor ID.</div>
+      </div>
+    </div>
+    
+    <div class="modal-foot" style="padding:12px 20px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.1);">
+      <button type="button" class="btn btn-ghost" onclick="cancelReopenScoring()">Cancel (Keep Locked)</button>
+      <button type="button" class="btn btn-gold" id="btn-confirm-reopen" onclick="confirmReopenScoring()" style="background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; font-weight:800; padding:8px 18px; border-radius:8px;">🔓 Confirm &amp; Unlock</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="audit-logs-modal" style="display:none; z-index:2600;" onclick="closeOnBg(event,'audit-logs-modal')">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:720px; width:95%; max-height:85vh; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--border); border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,0.6); overflow:hidden;">
     <div class="modal-head" style="padding:14px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.15);">
@@ -10640,6 +10696,12 @@ function toggleSwitch(sw, cb){
 
   if (sw === 'public-voting') {
     handlePublicRatingPosChange(checkedValue ? 3 : 0);
+    return;
+  }
+
+  // Intercept turning OFF Lock Judge Scoring (Re-Open / Unlock Scoring Scope)
+  if (sw === 'lock-score' && !checkedValue) {
+    openReopenScopeModal(cb, row);
     return;
   }
 
@@ -25162,6 +25224,169 @@ async function loadScoreAuditLogs(isManualRefresh = false) {
   }
 }
 window.loadScoreAuditLogs = loadScoreAuditLogs;
+
+// ==========================================
+// RE-OPEN SCOPE INTERCEPT FUNCTIONS
+// ==========================================
+let _reopenPendingCb = null;
+let _reopenPendingRow = null;
+let _reopenSelectedScope = 'current';
+
+function openReopenScopeModal(cb, row) {
+  _reopenPendingCb = cb;
+  _reopenPendingRow = row;
+  
+  // Snap checkbox back to checked while waiting for user confirmation
+  if (cb) cb.checked = true;
+  if (row) row.classList.add('on');
+  
+  _reopenSelectedScope = 'current';
+  selectReopenScopeOption('current');
+  
+  const reasonInp = document.getElementById('reopen-audit-reason');
+  if (reasonInp) {
+    reasonInp.value = '';
+    reasonInp.style.borderColor = 'rgba(239,68,68,0.3)';
+  }
+  
+  openM('reopen-round-modal');
+  if (reasonInp) setTimeout(() => reasonInp.focus(), 200);
+}
+window.openReopenScopeModal = openReopenScopeModal;
+
+function selectReopenScopeOption(scope) {
+  _reopenSelectedScope = (scope === 'all') ? 'all' : 'current';
+  const cardCur = document.getElementById('reopen-card-current');
+  const cardAll = document.getElementById('reopen-card-all');
+  const titleCur = document.getElementById('reopen-title-current');
+  const titleAll = document.getElementById('reopen-title-all');
+  const btnConfirm = document.getElementById('btn-confirm-reopen');
+  
+  if (cardCur && cardAll) {
+    if (_reopenSelectedScope === 'all') {
+      cardCur.style.borderColor = 'var(--border)';
+      cardCur.style.background = 'rgba(255,255,255,0.02)';
+      if (titleCur) titleCur.style.color = 'var(--text)';
+      
+      cardAll.style.borderColor = '#f59e0b';
+      cardAll.style.background = 'rgba(245,158,11,0.12)';
+      if (titleAll) titleAll.style.color = '#f59e0b';
+      
+      if (btnConfirm) btnConfirm.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+    } else {
+      cardCur.style.borderColor = '#3b82f6';
+      cardCur.style.background = 'rgba(59,130,246,0.12)';
+      if (titleCur) titleCur.style.color = '#3b82f6';
+      
+      cardAll.style.borderColor = 'var(--border)';
+      cardAll.style.background = 'rgba(255,255,255,0.02)';
+      if (titleAll) titleAll.style.color = 'var(--text)';
+      
+      if (btnConfirm) btnConfirm.style.background = 'linear-gradient(135deg,#3b82f6,#2563eb)';
+    }
+  }
+}
+window.selectReopenScopeOption = selectReopenScopeOption;
+
+function cancelReopenScoring() {
+  closeM('reopen-round-modal');
+  if (_reopenPendingCb) _reopenPendingCb.checked = true;
+  if (_reopenPendingRow) _reopenPendingRow.classList.add('on');
+  _reopenPendingCb = null;
+  _reopenPendingRow = null;
+  toast('🔒 Scoring remains locked');
+}
+window.cancelReopenScoring = cancelReopenScoring;
+
+async function confirmReopenScoring() {
+  const reasonInp = document.getElementById('reopen-audit-reason');
+  const reasonVal = (reasonInp ? reasonInp.value : '').trim();
+  if (!reasonVal) {
+    if (reasonInp) {
+      reasonInp.style.borderColor = '#ef4444';
+      reasonInp.focus();
+    }
+    alert('⚠️ Mandatory Audit Log: Please specify the reason for unlocking scoring.');
+    return;
+  }
+  
+  // 1. Update states
+  switchStates.lockScore = false;
+  switchStates.editScore = true;
+  switchStates.editScoreMode = _reopenSelectedScope;
+  
+  if (!window._switchRenderLockUntil) window._switchRenderLockUntil = {};
+  _switchRenderLockUntil['lockScore'] = Date.now() + 5000;
+  _switchRenderLockUntil['editScore'] = Date.now() + 5000;
+  _switchRenderLockUntil['editScoreMode'] = Date.now() + 5000;
+  
+  // 2. Update UI for lock-score switch (now turned OFF)
+  if (_reopenPendingCb) _reopenPendingCb.checked = false;
+  if (_reopenPendingRow) _reopenPendingRow.classList.remove('on');
+  
+  // 3. Update UI for edit-score switch (now turned ON)
+  const editRow = document.getElementById('sw-edit-score');
+  const editCb = document.getElementById('tgl-edit-score');
+  if (editRow) editRow.classList.add('on');
+  if (editCb) editCb.checked = true;
+  
+  const subpanel = document.getElementById('edit-score-subpanel');
+  if (subpanel) {
+    subpanel.style.display = 'block';
+    if (typeof updateEditScoreModeUI === 'function') {
+      updateEditScoreModeUI(_reopenSelectedScope);
+    }
+  }
+  
+  // 4. Log audit event to ecosystem_log (zero egress with returning: 'minimal')
+  try {
+    if (window.syncEngine && window.syncEngine.supabase) {
+      window.syncEngine.supabase.from('ecosystem_log').insert({
+        role: 'monitor',
+        action: 'score_edited',
+        target_role: 'judge',
+        payload: {
+          type: 'unlock_scoring',
+          mode: _reopenSelectedScope,
+          scopeTitle: (_reopenSelectedScope === 'all') ? 'All Rounds' : 'This Round',
+          reason: reasonVal,
+          timestamp: new Date().toISOString()
+        }
+      }, { returning: 'minimal' }).catch(err => console.warn('[Reopen Audit Deferred]', err));
+    }
+  } catch(e) {}
+  
+  // 5. Cloud Persist and Sync
+  const _st = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : {};
+  _st.systemStatus = 'live';
+  _st.switchStates = { ...(_st.switchStates || {}), ...switchStates };
+  if (activeEventId) {
+    _st.eventSwitches = _st.eventSwitches || {};
+    _st.eventSwitches[activeEventId] = { ...(_st.eventSwitches[activeEventId] || {}), ...switchStates };
+    _st.eventSwitches[String(activeEventId)] = _st.eventSwitches[activeEventId];
+  }
+  
+  try {
+    localStorage.setItem('knsdc_switchStates', JSON.stringify(_st.switchStates));
+    if (activeEventId) localStorage.setItem('knsdc_eventSwitches', JSON.stringify(_st.eventSwitches));
+  } catch(e) {}
+  
+  if (window.syncEngine) {
+    window.syncEngine.setData(_st);
+    if (activeEventId && typeof window.syncEngine.updateEvent === 'function') {
+      window.syncEngine.updateEvent(activeEventId, {
+        switchStates: { ...switchStates }
+      }).catch(err => console.error('[confirmReopenScoring] updateEvent error:', err));
+    }
+  }
+  
+  closeM('reopen-round-modal');
+  _reopenPendingCb = null;
+  _reopenPendingRow = null;
+  
+  toast(`🔓 Scoring UNLOCKED for: ${_reopenSelectedScope === 'all' ? 'All Rounds' : 'This Round'}`);
+}
+window.confirmReopenScoring = confirmReopenScoring;
 </script>
 </body>
 
