@@ -2656,6 +2656,7 @@ try {
         <span style="font-size:10px; font-weight:800; text-transform:uppercase; color:var(--tmuted);">Target Round:</span>
         <div id="modal-round-buttons" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
       </div>
+      <div id="modal-cross-judge-warning" style="display:none; margin-bottom:12px; padding:10px 14px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:8px; color:var(--red2); font-size:12px; font-weight:700;"></div>
       <div id="modal-score-inputs"></div>
       <!-- COMMENT SECTION WITH 1-TAP QUICK CRITIQUE CHIPS -->
       <div class="comment-box" style="margin-top:12px;">
@@ -7081,6 +7082,64 @@ function showGoldenRibbonCelebration(participantName, judgeName) {
 window.showGoldenRibbonCelebration = showGoldenRibbonCelebration;
 
 // ════════════════════════════════════════
+// DYNAMIC ROUND RULES & FILTERS
+// ════════════════════════════════════════
+function getEventRounds() {
+  const s = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : (window.syncEngine ? window.syncEngine.state : {});
+  let evId = (typeof JUDGE !== 'undefined' && JUDGE.eventId) || (s && s.activeEventId) || localStorage.getItem('knsdc_activeEventId');
+  const events = window.EVENTS || (s && s.events) || [];
+  const activeEv = events.find(e => String(e.id) === String(evId));
+  if (activeEv) {
+    let r = activeEv.rounds;
+    if (typeof r === 'string') { try { r = JSON.parse(r); } catch(e){} }
+    if (Array.isArray(r) && r.length > 0) {
+      return r.map((x, i) => (typeof x === 'string' ? { id: x.toLowerCase().replace(/[^a-z0-9_]/g, '_'), name: x } : { id: x.id || `round_${i+1}`, name: x.name || `Round ${i+1}` }));
+    }
+    let rr = activeEv.roundRules || activeEv.round_rules;
+    if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch(e){} }
+    if (rr && Array.isArray(rr.rounds) && rr.rounds.length > 0) {
+      return rr.rounds.map((x, i) => (typeof x === 'string' ? { id: x.toLowerCase().replace(/[^a-z0-9_]/g, '_'), name: x } : { id: x.id || `round_${i+1}`, name: x.name || `Round ${i+1}` }));
+    }
+  }
+  if (s && s.eventRounds) {
+    let er = s.eventRounds[evId] || s.eventRounds[String(evId)] || (evId ? s.eventRounds[Number(evId)] : null);
+    if (typeof er === 'string') { try { er = JSON.parse(er); } catch(e){} }
+    if (Array.isArray(er) && er.length > 0) {
+      return er.map((x, i) => (typeof x === 'string' ? { id: x.toLowerCase().replace(/[^a-z0-9_]/g, '_'), name: x } : { id: x.id || `round_${i+1}`, name: x.name || `Round ${i+1}` }));
+    }
+  }
+  return [
+    { id: 'audition', name: 'Audition' },
+    { id: 'qualified', name: 'Qualified' },
+    { id: 'semifinal', name: 'Semifinal' },
+    { id: 'final', name: 'Final' }
+  ];
+}
+window.getEventRounds = getEventRounds;
+
+function populateJudgeRoundFilter() {
+  const filterEl = document.getElementById('round-filter');
+  if (!filterEl) return;
+  const currentVal = (filterEl.value || 'all').toLowerCase();
+  const rounds = getEventRounds();
+  const sig = rounds.map(r => r.id + ':' + r.name).join('|');
+  if (filterEl.dataset.sig !== sig) {
+    let html = `<option value="all">🌐 All Rounds</option>`;
+    rounds.forEach(r => {
+      html += `<option value="${r.id}">${r.name}</option>`;
+    });
+    filterEl.innerHTML = html;
+    filterEl.dataset.sig = sig;
+    if ([...filterEl.options].some(o => o.value.toLowerCase() === currentVal)) {
+      filterEl.value = currentVal;
+    } else {
+      filterEl.value = 'all';
+    }
+  }
+}
+window.populateJudgeRoundFilter = populateJudgeRoundFilter;
+
+// ════════════════════════════════════════
 // MODAL SCORING LOGIC
 // ════════════════════════════════════════
 let editingModalParticipantId = null;
@@ -7096,17 +7155,48 @@ function openEditModal(id, targetRound) {
   if (!p.roundScores) p.roundScores = {};
   
   // Available rounds for this participant
-  const availableRounds = Object.keys(p.roundScores).filter(r => p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0);
-  if (!availableRounds.includes(p.round || 'audition')) {
-    availableRounds.push(p.round || 'audition');
+  const availableRoundsSet = new Set();
+  const curRound = String(p.round || 'audition').toLowerCase();
+  availableRoundsSet.add(curRound);
+
+  if (p.roundScores) {
+    Object.keys(p.roundScores).forEach(r => {
+      if (p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0) {
+        availableRoundsSet.add(r.toLowerCase());
+      }
+    });
   }
+  if (p.roundPresence) {
+    Object.keys(p.roundPresence).forEach(r => {
+      if (p.roundPresence[r]) availableRoundsSet.add(r.toLowerCase());
+    });
+  }
+
+  const eventRounds = getEventRounds();
+  const eventRoundIds = eventRounds.map(r => r.id.toLowerCase());
+  const availableRounds = [...availableRoundsSet].sort((a, b) => {
+    const ia = eventRoundIds.indexOf(a);
+    const ib = eventRoundIds.indexOf(b);
+    return (ia !== -1 ? ia : 99) - (ib !== -1 ? ib : 99);
+  });
   
   // Default target round
-  if (!targetRound || !availableRounds.includes(targetRound)) {
-    targetRound = availableRounds[availableRounds.length - 1] || p.round || 'audition';
+  if (!targetRound || !availableRounds.includes(targetRound.toLowerCase())) {
+    targetRound = curRound || availableRounds[0] || 'audition';
+  } else {
+    targetRound = targetRound.toLowerCase();
   }
   window._editingTargetRound = targetRound;
   
+  // Pick scores for the selected target round
+  const roundScoresMap = p.roundScores[targetRound] || {};
+  const myScores = roundScoresMap[JUDGE.id] || (targetRound === curRound && p.scores ? (p.scores[JUDGE.id] || {}) : {});
+  window._editingOldScores = { ...myScores };
+
+  const hasMyScores = Object.keys(myScores).length > 0;
+  const otherJudgeIds = Object.keys(roundScoresMap).filter(jId => String(jId) !== String(JUDGE.id) && Object.keys(roundScoresMap[jId]||{}).length > 0);
+  const isOtherJudgeRound = (!hasMyScores && otherJudgeIds.length > 0 && targetRound !== curRound);
+
   // Render round picker if multiple rounds exist or in 'all' mode
   const pickerEl = document.getElementById('modal-round-picker');
   const buttonsEl = document.getElementById('modal-round-buttons');
@@ -7116,16 +7206,37 @@ function openEditModal(id, targetRound) {
     pickerEl.style.display = 'flex';
     buttonsEl.innerHTML = availableRounds.map(r => {
       const isActive = r.toLowerCase() === targetRound.toLowerCase();
-      return `<button type="button" class="btn btn-xs" onclick="switchModalEditRound('${p.id}', '${r}')" style="font-size:10px; padding:3px 8px; border-radius:6px; font-weight:700; text-transform:uppercase; border:1px solid ${isActive ? 'var(--gold2)' : 'rgba(255,255,255,0.1)'}; background:${isActive ? 'var(--gold2)' : 'transparent'}; color:${isActive ? '#000' : 'var(--text)'}; cursor:pointer;">${r}</button>`;
+      const rScores = p.roundScores[r] || {};
+      const judgeScoredThisRound = rScores[JUDGE.id] && Object.keys(rScores[JUDGE.id]).length > 0;
+      const otherScored = Object.keys(rScores).filter(jId => String(jId) !== String(JUDGE.id) && Object.keys(rScores[jId]||{}).length > 0);
+      
+      let badgeLabel = '';
+      if (judgeScoredThisRound) badgeLabel = ' (You)';
+      else if (otherScored.length > 0) badgeLabel = ` (J${otherScored.join(',')})`;
+
+      return `<button type="button" class="btn btn-xs" onclick="switchModalEditRound('${p.id}', '${r}')" style="font-size:10px; padding:3px 8px; border-radius:6px; font-weight:700; text-transform:uppercase; border:1px solid ${isActive ? 'var(--gold2)' : 'rgba(255,255,255,0.1)'}; background:${isActive ? 'var(--gold2)' : 'transparent'}; color:${isActive ? '#000' : 'var(--text)'}; cursor:pointer;">${r}${badgeLabel}</button>`;
     }).join('');
   } else if (pickerEl) {
     pickerEl.style.display = 'none';
   }
 
-  // Pick scores for the selected target round
-  const roundScoresMap = p.roundScores[targetRound] || {};
-  const myScores = roundScoresMap[JUDGE.id] || (targetRound === p.round && p.scores ? (p.scores[JUDGE.id] || {}) : {});
-  window._editingOldScores = { ...myScores };
+  // Cross-Judge Protection Notice & Save Button toggle
+  const warningEl = document.getElementById('modal-cross-judge-warning');
+  const saveBtn = document.querySelector('#score-modal-body .btn-gold');
+  const reasonBox = document.querySelector('.audit-reason-box');
+
+  if (isOtherJudgeRound) {
+    if (warningEl) {
+      warningEl.style.display = 'block';
+      warningEl.innerHTML = `🔒 <strong>Cross-Judge Protection:</strong> Round ${targetRound.toUpperCase()} was evaluated by Judge ${otherJudgeIds.join(', ')}. To ensure complete fairness, you cannot view or modify scores entered by another judge.`;
+    }
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (reasonBox) reasonBox.style.display = 'none';
+  } else {
+    if (warningEl) warningEl.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'block';
+    if (reasonBox) reasonBox.style.display = 'block';
+  }
   
   document.getElementById('score-modal-title').textContent = `Edit Score: ${p.name} (${targetRound.toUpperCase()})`;
   
@@ -7135,6 +7246,7 @@ function openEditModal(id, targetRound) {
     const val = myScores[s.id] !== undefined ? Number(myScores[s.id]) : 0;
     const pct = Math.round(val / sMax * 100);
     const color = pct >= 70 ? 'var(--green2)' : pct >= 50 ? 'var(--gold2)' : 'var(--red2)';
+    const disabledAttr = isOtherJudgeRound ? 'disabled' : '';
     return `<div class="subj-score-card" id="modal-subj-card-${s.id}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div>
@@ -7144,11 +7256,11 @@ function openEditModal(id, targetRound) {
           <div style="font-size:10px;color:var(--tmuted);margin-top:2px">${s.desc}</div>
         </div>
         <input type="number" class="score-num-input" id="modal-num-${s.id}" value="${val}" min="0" max="${sMax}" step="0.5"
-          oninput="modalSyncSlider(${s.id},${sMax})" onchange="modalClampScore(${s.id},${sMax})"/>
+          ${disabledAttr} oninput="modalSyncSlider(${s.id},${sMax})" onchange="modalClampScore(${s.id},${sMax})"/>
       </div>
       <div class="slider-wrap">
         <input type="range" class="score-slider" id="modal-slider-${s.id}" min="0" max="${sMax}" step="0.5" value="${val}"
-          oninput="modalSyncNum(${s.id})" style="background:linear-gradient(90deg,${color} ${pct}%,var(--bd2) ${pct}%)!important"/>
+          ${disabledAttr} oninput="modalSyncNum(${s.id})" style="background:linear-gradient(90deg,${color} ${pct}%,var(--bd2) ${pct}%)!important"/>
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--tmuted);font-family:var(--fm);margin-top:3px">
           <span>0</span><span style="color:${color};font-weight:700" id="modal-lbl-${s.id}">${val}</span><span style="font-weight:700;color:var(--text)">${sMax}</span>
         </div>
@@ -7157,7 +7269,11 @@ function openEditModal(id, targetRound) {
   }).join('');
   
   let existingCmt = (p.roundComments && p.roundComments[targetRound] && p.roundComments[targetRound][JUDGE.id]) || '';
-  document.getElementById('modal-judge-comment').value = existingCmt;
+  const cmtInput = document.getElementById('modal-judge-comment');
+  if (cmtInput) {
+    cmtInput.value = existingCmt;
+    cmtInput.disabled = isOtherJudgeRound;
+  }
   
   // Reset reason field
   const reasonInp = document.getElementById('modal-edit-reason');
@@ -7259,6 +7375,18 @@ async function saveModalScores() {
     }
 
     const targetRound = window._editingTargetRound || p.round || 'audition';
+    const checkRoundScoresMap = (p.roundScores && p.roundScores[targetRound]) || {};
+    const myCurrentScores = checkRoundScoresMap[JUDGE.id] || {};
+    const otherJudgeIds = Object.keys(checkRoundScoresMap).filter(jId => String(jId) !== String(JUDGE.id) && Object.keys(checkRoundScoresMap[jId]||{}).length > 0);
+    
+    // Fairness guard: Do not allow judge B to overwrite judge A's score in round evaluated only by judge A
+    if (Object.keys(myCurrentScores).length === 0 && otherJudgeIds.length > 0 && targetRound !== (p.round || 'audition')) {
+      alert(`🔒 Cross-Judge Protection: You cannot edit this score because Round ${targetRound.toUpperCase()} was evaluated by Judge ${otherJudgeIds.join(', ')}.`);
+      isSavingModalScore = false;
+      if (btn) { btn.disabled = false; btn.innerText = '💾 Save Corrections'; }
+      return;
+    }
+
     if (!p.roundScores) p.roundScores = {};
     if (!p.roundScores[targetRound]) p.roundScores[targetRound] = {};
     if (!p.roundScores[targetRound][JUDGE.id]) p.roundScores[targetRound][JUDGE.id] = {};
@@ -7376,62 +7504,143 @@ function renderParticipantsTable() {
   document.getElementById('scoring-absent-lock').style.display = 'none';
   document.getElementById('scoring-content-wrap').style.display = 'block';
 
-  const rf = document.getElementById('round-filter').value;
-  let data = rf==='all' ? participants : participants.filter(p=>p.round===rf);
-  document.getElementById('table-count').textContent = `${data.length}`;
+  // Dynamically populate round dropdown options from monitor configuration
+  populateJudgeRoundFilter();
 
-  document.getElementById('parts-tbody').innerHTML = data.map(p => {
-    if (!p.roundScores) p.roundScores = {};
-    if (!p.roundScores[p.round]) p.roundScores[p.round] = {};
-    p.scores = p.roundScores[p.round];
+  const rf = (document.getElementById('round-filter')?.value || 'all').toLowerCase();
+  const eventRounds = getEventRounds();
+  const eventRoundIds = eventRounds.map(r => r.id.toLowerCase());
+  const maxSubjectScore = SUBJECTS.reduce((a,s)=>a+(Number(s.maxMarks)||10), 0) || 50;
+  
+  const isEditAllowed = Boolean(switchStates['edit-score'] || switchStates['editScore']);
+  const editMode = switchStates['editScoreMode'] || 'current';
 
-    const cat = CATEGORIES.find(c=>String(c.id)===String(p.catId));
-    const myScores = p.scores[JUDGE.id]||{};
-    const total = SUBJECTS.reduce((a,s)=>a+(myScores[s.id]||0),0);
-    const hasScored = Object.keys(myScores).length > 0;
-    const isOnStage = p.id===currentOnStage;
+  let rowItems = [];
+
+  if (rf === 'all') {
+    // Distinct row for each round the participant has reached or been scored in
+    participants.forEach(p => {
+      const curRound = String(p.round || 'audition').toLowerCase();
+      const roundsForP = new Set();
+      roundsForP.add(curRound);
+
+      if (p.roundScores) {
+        Object.keys(p.roundScores).forEach(r => {
+          if (p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0) {
+            roundsForP.add(r.toLowerCase());
+          }
+        });
+      }
+      if (p.roundPresence) {
+        Object.keys(p.roundPresence).forEach(r => {
+          if (p.roundPresence[r]) roundsForP.add(r.toLowerCase());
+        });
+      }
+
+      const sortedRounds = [...roundsForP].sort((a, b) => {
+        const ia = eventRoundIds.indexOf(a);
+        const ib = eventRoundIds.indexOf(b);
+        return (ia !== -1 ? ia : 99) - (ib !== -1 ? ib : 99);
+      });
+
+      sortedRounds.forEach(r => {
+        rowItems.push({ participant: p, round: r, isCurrentRound: (r === curRound) });
+      });
+    });
+  } else {
+    // Specific round filter: include any participant who is currently in this round OR has history/scores in this round!
+    participants.forEach(p => {
+      const curRound = String(p.round || 'audition').toLowerCase();
+      const hasRoundScore = p.roundScores && p.roundScores[rf] && Object.keys(p.roundScores[rf]).length > 0;
+      const hasRoundPresence = p.roundPresence && Boolean(p.roundPresence[rf]);
+      
+      if (curRound === rf || hasRoundScore || hasRoundPresence) {
+        rowItems.push({ participant: p, round: rf, isCurrentRound: (curRound === rf) });
+      }
+    });
+  }
+
+  document.getElementById('table-count').textContent = `${rowItems.length}`;
+
+  document.getElementById('parts-tbody').innerHTML = rowItems.map(item => {
+    const p = item.participant;
+    const r = item.round;
+    const isCurrentRound = item.isCurrentRound;
+    const curRound = String(p.round || 'audition').toLowerCase();
+
+    const cat = CATEGORIES.find(c => String(c.id) === String(p.catId));
+    const roundScoresMap = (p.roundScores && p.roundScores[r]) || {};
+    const myScores = roundScoresMap[JUDGE.id] || (isCurrentRound && p.scores ? (p.scores[JUDGE.id] || {}) : {});
+    const myScoreTotal = SUBJECTS.reduce((a,s) => a + (Number(myScores[s.id]) || 0), 0);
+    const hasMyScore = Object.keys(myScores).length > 0;
     
-    const isEditAllowed = Boolean(switchStates['edit-score'] || switchStates['editScore']);
-    const editMode = switchStates['editScoreMode'] || 'current';
-    const isCompletedFinal = (p.round || '').toUpperCase() === 'FINAL' && (p.stageStatus || '').toLowerCase() === 'done';
-    
-    // In 'all' mode: judge can edit any participant, including promoted or completed final!
-    // In 'current' mode: judge can only edit active round (not completed final unless 'all' mode)
-    const canEdit = isEditAllowed && (editMode === 'all' || !isCompletedFinal);
-    const isLocked = hasScored && !canEdit;
+    // Other judges who evaluated this round
+    const otherJudgeIds = Object.keys(roundScoresMap).filter(jId => String(jId) !== String(JUDGE.id) && Object.keys(roundScoresMap[jId] || {}).length > 0);
+    const isOnStage = (p.id === currentOnStage && isCurrentRound);
+
+    const isCompletedFinal = (curRound === 'final' && (p.stageStatus || '').toLowerCase() === 'done');
+    const canEdit = isEditAllowed && (editMode === 'all' || isCurrentRound) && (!isCompletedFinal || editMode === 'all');
+    const isLocked = hasMyScore && !canEdit;
     const isEdited = p.isEdited && p.isEdited[JUDGE.id];
-    
+
     let actionBtn;
-    if (hasScored && canEdit) {
-      actionBtn = `<button class="btn btn-sm btn-gold" onclick="openEditModal('${p.id}', '${p.round}')" style="background:linear-gradient(135deg,var(--blue2),var(--blue));box-shadow:0 0 10px rgba(59,130,246,0.3)">✏️ Edit</button>`;
-    } else if (isCompletedFinal && !canEdit) {
-      actionBtn = `<span class="badge b-gray" style="background:#e5e7eb;color:#374151">✓ Completed</span>`;
-    } else if (isLocked) {
-      actionBtn = `<span class="badge b-red">🔒 Locked</span>`;
-    } else {
+    if (hasMyScore) {
+      if (canEdit) {
+        actionBtn = `<button class="btn btn-sm btn-gold" onclick="openEditModal('${p.id}', '${r}')" style="background:linear-gradient(135deg,var(--blue2),var(--blue));box-shadow:0 0 10px rgba(59,130,246,0.3)">✏️ Edit (${r.toUpperCase()})</button>`;
+      } else if (isCompletedFinal && !canEdit) {
+        actionBtn = `<span class="badge b-gray" style="background:#e5e7eb;color:#374151">✓ Completed</span>`;
+      } else {
+        actionBtn = `<span class="badge b-red">🔒 Locked</span>`;
+      }
+    } else if (otherJudgeIds.length > 0) {
+      // Scored by other judge(s) in this round - cross-judge edit is blocked to ensure fairness
+      actionBtn = `<span class="badge b-purple" style="font-size:9px" title="Evaluated by Judge ${otherJudgeIds.join(', ')}. Cross-judge editing locked.">🔒 Judge ${otherJudgeIds.join(', ')}</span>`;
+    } else if (isCurrentRound) {
       actionBtn = `<button class="btn btn-sm btn-ghost" onclick="navToScore('${p.id}')">⚡ Score</button>`;
+    } else {
+      actionBtn = `<span class="badge b-gray" style="font-size:9px">Not Evaluated</span>`;
     }
-    
+
     let commentHtml = '';
-    let rc = (p.roundComments && p.roundComments[p.round] && p.roundComments[p.round][JUDGE.id]) || '';
-    if (hasScored && rc) {
+    let rc = (p.roundComments && p.roundComments[r] && p.roundComments[r][JUDGE.id]) || '';
+    if (hasMyScore && rc) {
       commentHtml = `<div style="font-size:10px;color:var(--text);font-style:italic;margin-top:4px;padding-left:2px;border-left:2px solid var(--gold2)">💬 ${rc}</div>`;
     }
-    
+
     const editedBadge = isEdited ? `<span class="badge b-cyan" style="font-size:8px;margin-left:4px;padding:2px 4px">EDITED</span>` : '';
 
-    return `<tr style="${isOnStage?'background:rgba(240,180,41,0.05)':''}">
+    let roundDisplayHtml = `<span class="badge ${roundBadge(r)}">${r.toUpperCase()}</span>`;
+    if (!isCurrentRound) {
+      roundDisplayHtml += `<span style="font-size:9px;color:var(--tmuted);margin-left:4px;">(➔ ${curRound.toUpperCase()})</span>`;
+    }
+
+    let statusDisplayHtml;
+    if (isCurrentRound) {
+      statusDisplayHtml = `<span class="badge ${p.stageStatus==='done'?'b-green':p.stageStatus==='on-stage'?'b-gold':'b-gray'}">${p.stageStatus || 'upcoming'}</span>`;
+    } else {
+      statusDisplayHtml = `<span class="badge b-green">Past Round</span>`;
+    }
+
+    let scoreDisplayHtml;
+    if (hasMyScore) {
+      scoreDisplayHtml = `<strong style="font-family:var(--fm);color:var(--gold2)">${myScoreTotal}</strong><span style="font-size:10px;color:var(--tmuted)"> / ${maxSubjectScore}</span>${editedBadge}${commentHtml}`;
+    } else if (otherJudgeIds.length > 0) {
+      scoreDisplayHtml = `<div style="font-size:11px;font-weight:700;color:var(--purple2)">Judge ${otherJudgeIds.join(', ')} Evaluated</div><div style="font-size:9px;color:var(--tmuted)">Not your evaluation</div>`;
+    } else {
+      scoreDisplayHtml = `<span style="font-family:var(--fm);color:var(--tmuted)">— / ${maxSubjectScore}</span>`;
+    }
+
+    return `<tr style="${isOnStage ? 'background:rgba(240,180,41,0.05)' : ''}">
       <td><span style="font-family:var(--fm);color:var(--gold2);font-size:11px">${p.id}</span></td>
-      <td><strong>${p.name}</strong>${isOnStage?'<span class="badge b-gold" style="margin-left:6px;font-size:8px">ON STAGE</span>':''}</td>
-      <td style="color:var(--tdim)">${p.age}</td>
-      <td>${cat?`<span class="badge ${cat.color}">${cat.name}</span>`:'—'}</td>
-      <td><span class="badge ${roundBadge(p.round)}">${p.round}</span></td>
-      <td><span class="badge ${p.stageStatus==='done'?'b-green':p.stageStatus==='on-stage'?'b-gold':'b-gray'}">${p.stageStatus}</span></td>
-      <td><strong style="font-family:var(--fm);color:${hasScored?'var(--gold2)':'var(--tmuted)'}">${hasScored?total:'—'}</strong>${hasScored?`<span style="font-size:10px;color:var(--tmuted)"> / ${SUBJECTS.reduce((a,s)=>a+s.maxMarks,0)}</span>`:''}${editedBadge}
-      ${commentHtml}</td>
+      <td><strong>${p.name}</strong>${isOnStage ? '<span class="badge b-gold" style="margin-left:6px;font-size:8px">ON STAGE</span>' : ''}</td>
+      <td style="color:var(--tdim)">${p.age || '—'}</td>
+      <td>${cat ? `<span class="badge ${cat.color}">${cat.name}</span>` : '—'}</td>
+      <td>${roundDisplayHtml}</td>
+      <td>${statusDisplayHtml}</td>
+      <td>${scoreDisplayHtml}</td>
       <td>${actionBtn}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" style="text-align:center;color:var(--tmuted);padding:30px">No participants</td></tr>`;
+  }).join('') || `<tr><td colspan="8" style="text-align:center;color:var(--tmuted);padding:30px">No participants found</td></tr>`;
 }
 
 function navToScore(id) {
