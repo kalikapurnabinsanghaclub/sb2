@@ -3046,14 +3046,14 @@
               <span class="uv-mb-slider"></span>
             </label>
           </div>
-          <div id="edit-score-subpanel" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(0,0,0,0.18); border-radius:8px; border:1px solid rgba(255,255,255,0.08);">
+          <div id="edit-score-subpanel" onclick="event.stopPropagation()" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(0,0,0,0.18); border-radius:8px; border:1px solid rgba(255,255,255,0.08);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
               <span style="font-size:9.5px; font-weight:800; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.5px;">Re-Open Scope:</span>
-              <button type="button" class="btn btn-xs" onclick="openAuditLogsModal()" style="font-size:9px; padding:2px 7px; background:rgba(255,255,255,0.08); border:1px solid var(--border); border-radius:4px; color:var(--text); cursor:pointer;">📋 Audit Log</button>
+              <button type="button" class="btn btn-xs" onclick="event.stopPropagation(); openAuditLogsModal();" style="font-size:9px; padding:2px 7px; background:rgba(255,255,255,0.08); border:1px solid var(--border); border-radius:4px; color:var(--text); cursor:pointer;">📋 Audit Log</button>
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
-              <button type="button" id="btn-edit-mode-current" onclick="setEditScoreMode('current')" class="btn btn-xs" style="font-size:9.5px; font-weight:700; padding:5px 4px; border-radius:6px; border:1px solid rgba(59,130,246,0.4); background:#3b82f6; color:#fff; cursor:pointer; text-align:center;">🎯 Open This Round</button>
-              <button type="button" id="btn-edit-mode-all" onclick="setEditScoreMode('all')" class="btn btn-xs" style="font-size:9.5px; font-weight:700; padding:5px 4px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:transparent; color:var(--text-muted); cursor:pointer; text-align:center;">🌐 All Rounds</button>
+              <button type="button" id="btn-edit-mode-current" onclick="event.stopPropagation(); setEditScoreMode('current');" class="btn btn-xs" style="font-size:9.5px; font-weight:700; padding:5px 4px; border-radius:6px; border:1px solid rgba(59,130,246,0.4); background:#3b82f6; color:#fff; cursor:pointer; text-align:center;">🎯 Open This Round</button>
+              <button type="button" id="btn-edit-mode-all" onclick="event.stopPropagation(); setEditScoreMode('all');" class="btn btn-xs" style="font-size:9.5px; font-weight:700; padding:5px 4px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:transparent; color:var(--text-muted); cursor:pointer; text-align:center;">🌐 All Rounds</button>
             </div>
             <div id="edit-score-mode-desc" style="font-size:8.5px; color:var(--text-muted); margin-top:5px; font-style:italic;">Judges can only edit scores in the active round.</div>
           </div>
@@ -10736,6 +10736,16 @@ function toggleSwitch(sw, cb){
   // 3. Apply UI instantly
   if(checkedValue) row.classList.add('on'); else row.classList.remove('on');
   cb.checked = checkedValue;
+
+  if (sw === 'edit-score') {
+    const subpanel = document.getElementById('edit-score-subpanel');
+    if (subpanel) {
+      subpanel.style.display = checkedValue ? 'block' : 'none';
+      if (checkedValue && typeof updateEditScoreModeUI === 'function') {
+        updateEditScoreModeUI(switchStates.editScoreMode || 'current');
+      }
+    }
+  }
 
   // 4. Patch syncEngine internal state directly (no notify/hydrate triggered)
   const _st = syncEngine.getData() || {};
@@ -25031,11 +25041,40 @@ window.handleHostScoreVisToggle = handleHostScoreVisToggle;
 // ==========================================
 // SCORE RE-OPEN & AUDIT LOG FUNCTIONS
 // ==========================================
+function updateEditScoreModeUI(mode) {
+  mode = mode || switchStates.editScoreMode || 'current';
+  const btnCur = document.getElementById('btn-edit-mode-current');
+  const btnAll = document.getElementById('btn-edit-mode-all');
+  const descEl = document.getElementById('edit-score-mode-desc');
+  if (btnCur && btnAll) {
+    if (mode === 'all') {
+      btnCur.style.background = 'transparent';
+      btnCur.style.color = 'var(--text-muted)';
+      btnCur.style.borderColor = 'rgba(255,255,255,0.1)';
+      btnAll.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+      btnAll.style.color = '#fff';
+      btnAll.style.borderColor = 'rgba(245,158,11,0.5)';
+      if (descEl) descEl.textContent = 'Judges can edit any round including promoted & completed participants.';
+    } else {
+      btnCur.style.background = '#3b82f6';
+      btnCur.style.color = '#fff';
+      btnCur.style.borderColor = 'rgba(59,130,246,0.5)';
+      btnAll.style.background = 'transparent';
+      btnAll.style.color = 'var(--text-muted)';
+      btnAll.style.borderColor = 'rgba(255,255,255,0.1)';
+      if (descEl) descEl.textContent = 'Judges can only edit scores in the active round.';
+    }
+  }
+}
+window.updateEditScoreModeUI = updateEditScoreModeUI;
+// ==========================================
 function setEditScoreMode(mode) {
   if (mode !== 'current' && mode !== 'all') mode = 'current';
   switchStates.editScoreMode = mode;
   if (!window._switchRenderLockUntil) window._switchRenderLockUntil = {};
   window._switchRenderLockUntil['editScoreMode'] = Date.now() + 5000;
+  
+  updateEditScoreModeUI(mode);
   
   const _st = (window.syncEngine && typeof window.syncEngine.getData === 'function') ? window.syncEngine.getData() : {};
   _st.switchStates = { ...(_st.switchStates || {}), editScoreMode: mode };
@@ -25058,7 +25097,6 @@ function setEditScoreMode(mode) {
       }).catch(err => console.warn('[setEditScoreMode] updateEvent error:', err));
     }
   }
-  renderSwitches();
   toast(mode === 'all' ? '🌐 Edit enabled for ALL rounds & promoted participants' : '🎯 Edit limited to CURRENT round only');
 }
 window.setEditScoreMode = setEditScoreMode;
