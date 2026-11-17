@@ -3503,6 +3503,9 @@
           <select id="wsp-workshop-selector" onchange="onOrganizerWorkshopSelected(this.value)" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:8px 12px; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer;">
             <!-- populated dynamically -->
           </select>
+          <button type="button" onclick="deleteCurrentOrganizerWorkshop()" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); color:#FCA5A5; padding:8px 12px; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer;" title="Delete this workshop">
+            🗑️ Delete
+          </button>
           <button type="button" onclick="logoutWorkshopOrganizer()" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#EF4444; padding:8px 14px; border-radius:10px; font-size:12px; font-weight:800; cursor:pointer;">
             Logout
           </button>
@@ -13315,6 +13318,11 @@
         }
         localStorage.setItem(this.localWorkshopsKey, JSON.stringify(list));
 
+        // Global Realtime Sync (Minimum Supabase Egress - lightweight metadata only)
+        if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+          window.syncEngine.setData(s => ({ ...s, cb_workshops: list }));
+        }
+
         if (!this.isConfigured()) return true;
 
         try {
@@ -13397,6 +13405,11 @@
         const updatedRegs = regs.filter(r => r.workshop_id !== workshopId);
         localStorage.setItem(this.localRegistrationsKey, JSON.stringify(updatedRegs));
 
+        // Global Realtime Sync
+        if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+          window.syncEngine.setData(s => ({ ...s, cb_workshops: updated, cb_registrations: updatedRegs }));
+        }
+
         if (!this.isConfigured()) return true;
         
         try {
@@ -13477,6 +13490,9 @@
         if (reg) {
           reg.attended = attended;
           localStorage.setItem(this.localRegistrationsKey, JSON.stringify(list));
+          if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+            window.syncEngine.setData(s => ({ ...s, cb_registrations: list }));
+          }
         }
 
         if (!this.isConfigured()) return true;
@@ -13909,10 +13925,11 @@
       const pwd = document.getElementById('wsl-password').value.trim();
 
       const workshops = await couchbaseEngine.getWorkshops();
-      const matching = workshops.filter(w => w.org_phone === phone && (w.org_password === pwd || pwd === 'admin123'));
+      // Strict authentication: organizer phone and creator password must match
+      const matching = workshops.filter(w => w.org_phone === phone && w.org_password === pwd);
 
       if (matching.length === 0) {
-        alert('❌ Invalid phone number or password. Please verify your credentials or create a new workshop.');
+        alert('❌ Invalid phone number or password. You can ONLY access workshops that you created.');
         return;
       }
 
@@ -13929,6 +13946,7 @@
       alert('Logged out of Organizer Portal.');
     };
 
+    // STRICT ISOLATION: An organizer can ONLY view and access workshops that they created
     window.openWorkshopOrganizerPortal = async function(preferredWsId = null) {
       const phone = localStorage.getItem('kns_current_organizer_phone');
       if (!phone) {
@@ -13937,28 +13955,32 @@
       }
 
       const workshops = await couchbaseEngine.getWorkshops();
+      // STRICT FILTER: ONLY access workshops created by this organizer!
       const myWorkshops = workshops.filter(w => w.org_phone === phone);
 
       if (myWorkshops.length === 0) {
-        alert('No workshops found for this phone number. Please create a workshop first!');
+        alert('No workshops found for phone number ' + phone + '. Please create a workshop first!');
         openCreateWorkshopModal();
         return;
       }
 
-      activePortalWorkshopId = preferredWsId || myWorkshops[0].id;
-      if (!myWorkshops.some(w => w.id === activePortalWorkshopId)) {
+      // Security check: ensure activePortalWorkshopId strictly belongs to this organizer
+      if (preferredWsId && myWorkshops.some(w => w.id === preferredWsId)) {
+        activePortalWorkshopId = preferredWsId;
+      } else {
         activePortalWorkshopId = myWorkshops[0].id;
       }
 
-      // Populate workshop selector dropdown
+      // Populate workshop selector dropdown ONLY with this organizer's workshops
       const selector = document.getElementById('wsp-workshop-selector');
       if (selector) {
         selector.innerHTML = myWorkshops.map(w => `
-          <option value="${w.id}" ${w.id === activePortalWorkshopId ? 'selected' : ''}>${w.name}</option>
+          <option value="${w.id}" ${w.id === activePortalWorkshopId ? 'selected' : ''}>${w.name} (${w.status === 'completed' ? '🏆 Completed' : '⏳ Active'})</option>
         `).join('');
       }
 
-      document.getElementById('wsp-org-phone-label').textContent = phone;
+      const phoneLabel = document.getElementById('wsp-org-phone-label');
+      if (phoneLabel) phoneLabel.textContent = phone;
       renderOrganizerPortalData();
       document.getElementById('workshopOrganizerPortalModal').style.display = 'flex';
     };
@@ -13967,15 +13989,29 @@
       document.getElementById('workshopOrganizerPortalModal').style.display = 'none';
     };
 
-    window.onOrganizerWorkshopSelected = function(wsId) {
+    window.onOrganizerWorkshopSelected = async function(wsId) {
+      const phone = localStorage.getItem('kns_current_organizer_phone');
+      const workshops = await couchbaseEngine.getWorkshops();
+      const owned = workshops.find(w => w.id === wsId && w.org_phone === phone);
+      if (!owned) {
+        alert("🔒 Access Denied: You can ONLY access workshops that you created.");
+        return;
+      }
       activePortalWorkshopId = wsId;
       renderOrganizerPortalData();
     };
 
     async function renderOrganizerPortalData() {
+      const phone = localStorage.getItem('kns_current_organizer_phone');
+      if (!phone) return;
+
       const workshops = await couchbaseEngine.getWorkshops();
-      const ws = workshops.find(w => w.id === activePortalWorkshopId);
-      if (!ws) return;
+      // STRICT CHECK: Organizer must be the verified creator of this workshop
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone);
+      if (!ws) {
+        console.warn("Unauthorized attempt to access workshop:", activePortalWorkshopId);
+        return;
+      }
 
       document.getElementById('wsp-active-title').textContent = ws.name;
       const isCompleted = ws.status === 'completed';
@@ -13997,9 +14033,8 @@
       const directUrl = `${window.location.origin}${window.location.pathname}#workshops?ws=${ws.id}`;
       document.getElementById('wsp-share-link-input').value = directUrl;
 
-      // Fetch participants for this workshop
-      const allRegs = JSON.parse(localStorage.getItem('kns_cb_registrations') || '[]');
-      const myRegs = allRegs.filter(r => r.workshop_id === ws.id);
+      // Fetch participants ONLY for this owned workshop
+      const myRegs = await couchbaseEngine.getRegistrations(ws.id);
 
       // Calculate stats
       const total = myRegs.length;
@@ -14075,33 +14110,71 @@
       }).join('');
     }
 
-    // Toggle Payment Status
-    window.toggleParticipantPayment = function(regId) {
+    // Toggle Payment Status (Strict Owner Check & Global Sync)
+    window.toggleParticipantPayment = async function(regId) {
+      const phone = localStorage.getItem('kns_current_organizer_phone');
+      if (!phone) return;
+      
+      const workshops = await couchbaseEngine.getWorkshops();
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone);
+      if (!ws) {
+        alert("🔒 Access Denied: You can only manage workshops you created.");
+        return;
+      }
+
       let regs = JSON.parse(localStorage.getItem('kns_cb_registrations') || '[]');
-      const target = regs.find(r => r.id === regId);
+      if (window.syncEngine && window.syncEngine.state && Array.isArray(window.syncEngine.state.cb_registrations)) {
+        regs = [...window.syncEngine.state.cb_registrations];
+      }
+      const target = regs.find(r => r.id === regId && r.workshop_id === ws.id);
       if (target) {
         target.payment_status = (target.payment_status === 'paid' ? 'pending' : 'paid');
         localStorage.setItem('kns_cb_registrations', JSON.stringify(regs));
+        if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+          window.syncEngine.setData(s => ({ ...s, cb_registrations: regs }));
+        }
         renderOrganizerPortalData();
       }
     };
 
-    // Toggle Attendance Status
-    window.toggleParticipantAttendance = function(regId) {
+    // Toggle Attendance Status (Strict Owner Check & Global Sync)
+    window.toggleParticipantAttendance = async function(regId) {
+      const phone = localStorage.getItem('kns_current_organizer_phone');
+      if (!phone) return;
+      
+      const workshops = await couchbaseEngine.getWorkshops();
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone);
+      if (!ws) {
+        alert("🔒 Access Denied: You can only manage workshops you created.");
+        return;
+      }
+
       let regs = JSON.parse(localStorage.getItem('kns_cb_registrations') || '[]');
-      const target = regs.find(r => r.id === regId);
+      if (window.syncEngine && window.syncEngine.state && Array.isArray(window.syncEngine.state.cb_registrations)) {
+        regs = [...window.syncEngine.state.cb_registrations];
+      }
+      const target = regs.find(r => r.id === regId && r.workshop_id === ws.id);
       if (target) {
         target.attended = !target.attended;
         localStorage.setItem('kns_cb_registrations', JSON.stringify(regs));
+        if (window.syncEngine && typeof window.syncEngine.setData === 'function') {
+          window.syncEngine.setData(s => ({ ...s, cb_registrations: regs }));
+        }
         renderOrganizerPortalData();
       }
     };
 
-    // Toggle Workshop Completion Status
+    // Toggle Workshop Completion Status (Strict Owner Check & Global Sync)
     window.toggleWorkshopCompletionStatus = async function() {
+      const phone = localStorage.getItem('kns_current_organizer_phone');
+      if (!phone) return;
+
       const workshops = await couchbaseEngine.getWorkshops();
-      const ws = workshops.find(w => w.id === activePortalWorkshopId);
-      if (!ws) return;
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone);
+      if (!ws) {
+        alert("🔒 Access Denied: You can only manage workshops you created.");
+        return;
+      }
 
       const isCompleted = ws.status === 'completed';
       const newStatus = isCompleted ? 'upcoming' : 'completed';
@@ -14127,6 +14200,28 @@
       renderAvailableWorkshops();
     };
 
+    // Delete Current Workshop (Strict Owner Check & Global Sync)
+    window.deleteCurrentOrganizerWorkshop = async function() {
+      const phone = localStorage.getItem('kns_current_organizer_phone');
+      if (!phone) return;
+
+      const workshops = await couchbaseEngine.getWorkshops();
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone);
+      if (!ws) {
+        alert("🔒 Access Denied: You can only delete workshops you created.");
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to permanently delete workshop "${ws.name}"?\nAll registered participants for this workshop will also be removed.`)) {
+        return;
+      }
+
+      await couchbaseEngine.deleteWorkshop(ws.id);
+      alert('Workshop deleted successfully.');
+      openWorkshopOrganizerPortal();
+      renderAvailableWorkshops();
+    };
+
     // Copy direct registration link
     window.copyWorkshopRegistrationLink = function() {
       const input = document.getElementById('wsp-share-link-input');
@@ -14139,8 +14234,9 @@
 
     // Share on WhatsApp
     window.shareWorkshopOnWhatsApp = async function() {
+      const phone = localStorage.getItem('kns_current_organizer_phone');
       const workshops = await couchbaseEngine.getWorkshops();
-      const ws = workshops.find(w => w.id === activePortalWorkshopId);
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone);
       if (!ws) return;
 
       const url = `${window.location.origin}${window.location.pathname}#workshops?ws=${ws.id}`;
@@ -14155,8 +14251,9 @@
         btn.classList.add('active');
       }
 
+      const phone = localStorage.getItem('kns_current_organizer_phone');
       const workshops = await couchbaseEngine.getWorkshops();
-      const ws = workshops.find(w => w.id === activePortalWorkshopId) || { name:'Masterclass', guest_name:'Mentor', start_date:'Upcoming', time_slot:'10 AM', address:'Hall', fee:499 };
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone) || { name:'Masterclass', guest_name:'Mentor', start_date:'Upcoming', time_slot:'10 AM', address:'Hall', fee:499 };
       const link = `${window.location.origin}${window.location.pathname}#workshops?ws=${ws.id}`;
 
       let tmpl = '';
@@ -14175,12 +14272,25 @@
     };
 
     window.sendDirectMessageToParticipant = async function(regId) {
-      const allRegs = JSON.parse(localStorage.getItem('kns_cb_registrations') || '[]');
-      const r = allRegs.find(item => item.id === regId);
-      if (!r) return;
+      const phone = localStorage.getItem('kns_current_organizer_phone');
+      if (!phone) return;
 
       const workshops = await couchbaseEngine.getWorkshops();
-      const ws = workshops.find(w => w.id === activePortalWorkshopId) || {};
+      const ws = workshops.find(w => w.id === activePortalWorkshopId && w.org_phone === phone);
+      if (!ws) {
+        alert("🔒 Access Denied: You can only message participants of workshops you created.");
+        return;
+      }
+
+      let allRegs = [];
+      if (window.syncEngine && window.syncEngine.state && Array.isArray(window.syncEngine.state.cb_registrations)) {
+        allRegs = window.syncEngine.state.cb_registrations;
+      } else {
+        allRegs = JSON.parse(localStorage.getItem('kns_cb_registrations') || '[]');
+      }
+      const r = allRegs.find(item => item.id === regId && item.workshop_id === ws.id);
+      if (!r) return;
+
       const link = `${window.location.origin}${window.location.pathname}#workshops?ws=${ws.id}`;
 
       const rawTmpl = document.getElementById('wsp-message-template-text').value;
@@ -14197,6 +14307,7 @@
       const waPhone = cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone;
       window.open(`https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(personalized)}`, '_blank');
     };
+
 
     // ════════════════ CERTIFICATE PREVIEW / PRINT ════════════════
     window.viewParticipantCertificate = async function(regId) {
@@ -14521,11 +14632,23 @@
       }).join('');
     };
 
-    // Auto-update timelines when syncEngine receives state notifications
+    // Auto-update timelines and workshops when syncEngine receives state notifications (Global Realtime Sync)
     if (window.syncEngine) {
-      window.syncEngine.subscribe(() => {
+      window.syncEngine.subscribe((state) => {
+        if (state) {
+          if (state.cb_workshops && Array.isArray(state.cb_workshops)) {
+            localStorage.setItem('kns_cb_workshops', JSON.stringify(state.cb_workshops));
+          }
+          if (state.cb_registrations && Array.isArray(state.cb_registrations)) {
+            localStorage.setItem('kns_cb_registrations', JSON.stringify(state.cb_registrations));
+          }
+        }
         if (typeof renderTournamentLogs === 'function') renderTournamentLogs();
         if (typeof renderAvailableWorkshops === 'function') renderAvailableWorkshops();
+        const portalModal = document.getElementById('workshopOrganizerPortalModal');
+        if (portalModal && portalModal.style.display === 'flex' && typeof renderOrganizerPortalData === 'function') {
+          renderOrganizerPortalData();
+        }
       });
     }
 
