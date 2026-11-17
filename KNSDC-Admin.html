@@ -1203,6 +1203,39 @@
         <tbody id="staff-tbody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Loading...</td></tr></tbody>
       </table>
     </div>
+    <!-- ⭐ PUBLIC JUDGE SUBMISSIONS & APPROVALS ⭐ -->
+    <div class="card" style="margin-top:20px; padding:0; overflow:hidden;">
+      <div style="padding:18px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+            <span>⭐</span> Public Judge Submissions & Approvals
+            <span id="judge-pending-badge" style="background:#ef4444; color:#fff; font-size:11px; font-weight:800; padding:2px 8px; border-radius:12px; display:none;">0 Pending</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">
+            Review and approve public judge profiles submitted from the website before they appear in the live 3D rolling showcase.
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="renderJudgeSubmissionsAdmin()" style="font-size:12px;">🔄 Refresh Submissions</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="tbl" style="width:100%;">
+          <thead>
+            <tr>
+              <th style="width:60px;">Photo</th>
+              <th>Judge Name</th>
+              <th>Category & Season</th>
+              <th>Organization</th>
+              <th>Rating</th>
+              <th>Status</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="judge-submissions-tbody">
+            <tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted)">Loading submissions...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
 
@@ -4195,3 +4228,149 @@ window.refreshPortal = async function(btn) {
 </script>
 </body>
 </html>
+
+<script>
+
+// ====== PUBLIC JUDGE SUBMISSIONS & APPROVALS IN ADMIN ======
+window.renderJudgeSubmissionsAdmin = () => {
+  const tbody = document.getElementById('judge-submissions-tbody');
+  const badge = document.getElementById('judge-pending-badge');
+  if (!tbody) return;
+
+  let submissions = [];
+  try {
+    const raw = localStorage.getItem('knsdc_judge_records');
+    if (raw) submissions = JSON.parse(raw);
+  } catch(e) {}
+
+  // Pure LocalStorage - 0 KB Supabase egress consumed
+
+  const pendingCount = submissions.filter(s => s.status === 'pending').length;
+  if (badge) {
+    if (pendingCount > 0) {
+      badge.textContent = `${pendingCount} Pending`;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  if (submissions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted)">No judge submissions yet. When visitors post judges on the main site, they appear here.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = submissions.map(j => {
+    const isApproved = j.status === 'approved';
+    const statusBadge = isApproved 
+      ? '<span style="background:rgba(16,185,129,0.15); color:#10B981; border:1px solid rgba(16,185,129,0.3); padding:3px 8px; border-radius:12px; font-size:11px; font-weight:800;">LIVE ON SHOWCASE</span>'
+      : '<span style="background:rgba(245,158,11,0.15); color:#F59E0B; border:1px solid rgba(245,158,11,0.3); padding:3px 8px; border-radius:12px; font-size:11px; font-weight:800;">PENDING REVIEW</span>';
+
+    return `
+      <tr>
+        <td>
+          <img src="${decodeURIComponent(j.img)}" alt="${j.name}" style="width:44px; height:54px; border-radius:10px; object-fit:cover; border:1px solid var(--border);" onerror="this.src='previesly%20work%20with/photo_6125286919823365073_y.jpg'">
+        </td>
+        <td>
+          <div style="font-weight:800; color:var(--text); font-size:13px;">${j.name}</div>
+          <div style="font-size:10px; color:var(--text-muted); font-family:var(--fm);">${j.pwdHash ? 'PIN: ' + j.pwdHash : ''}</div>
+        </td>
+        <td>
+          <div style="font-size:12px; font-weight:700; color:var(--blue);">${j.cat}</div>
+          <div style="font-size:11px; color:var(--pink); font-weight:700;">${j.season || 'Fest'}</div>
+        </td>
+        <td style="font-size:12px; color:var(--text-muted);">${j.org}</td>
+        <td>
+          <div style="font-weight:800; color:#F59E0B; font-size:12px;">⭐ ${j.rating} / 5.0</div>
+        </td>
+        <td>${statusBadge}</td>
+        <td style="text-align:right;">
+          <div style="display:inline-flex; gap:6px;">
+            ${!isApproved ? `<button class="btn btn-green btn-xs" onclick="approveJudgeSubmission('${j.id}')">✅ Approve</button>` : `<button class="btn btn-ghost btn-xs" onclick="unapproveJudgeSubmission('${j.id}')">⏸️ Pause</button>`}
+            <button class="btn btn-danger btn-xs" onclick="deleteJudgeSubmissionAdmin('${j.id}')">🗑️ Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
+window.approveJudgeSubmission = (id) => {
+  // Update in localStorage
+  try {
+    let list = JSON.parse(localStorage.getItem('knsdc_judge_records') || '[]');
+    list.forEach(j => {
+      if (String(j.id) === String(id)) j.status = 'approved';
+    });
+    localStorage.setItem('knsdc_judge_records', JSON.stringify(list));
+  } catch(e) {}
+
+  // Zero Supabase egress: notify website tab via native BroadcastChannel
+  try {
+    const bc = new BroadcastChannel('knsdc_judge_channel');
+    bc.postMessage({ type: 'UPDATE_JUDGE', id, status: 'approved' });
+    bc.close();
+  } catch(e) {}
+
+  toast('✅ Judge profile approved and published to website!');
+  renderJudgeSubmissionsAdmin();
+};
+
+window.unapproveJudgeSubmission = (id) => {
+  try {
+    let list = JSON.parse(localStorage.getItem('knsdc_judge_records') || '[]');
+    list.forEach(j => {
+      if (String(j.id) === String(id)) j.status = 'pending';
+    });
+    localStorage.setItem('knsdc_judge_records', JSON.stringify(list));
+  } catch(e) {}
+
+  try {
+    const bc = new BroadcastChannel('knsdc_judge_channel');
+    bc.postMessage({ type: 'UPDATE_JUDGE', id, status: 'pending' });
+    bc.close();
+  } catch(e) {}
+
+  toast('⏸️ Judge status paused.');
+  renderJudgeSubmissionsAdmin();
+};
+
+
+// Zero-Egress local tab sync (NO Supabase Realtime egress)
+try {
+  const bc = new BroadcastChannel('knsdc_judge_channel');
+  bc.onmessage = () => {
+    if (typeof renderJudgeSubmissionsAdmin === 'function') renderJudgeSubmissionsAdmin();
+  };
+} catch(e) {}
+window.addEventListener('storage', (e) => {
+  if (e.key === 'knsdc_judge_records' && typeof renderJudgeSubmissionsAdmin === 'function') {
+    renderJudgeSubmissionsAdmin();
+  }
+});
+
+window.deleteJudgeSubmissionAdmin = (id) => {
+  if (!confirm("Are you sure you want to delete this judge record?")) return;
+
+  try {
+    let list = JSON.parse(localStorage.getItem('knsdc_judge_records') || '[]');
+    list = list.filter(j => String(j.id) !== String(id));
+    localStorage.setItem('knsdc_judge_records', JSON.stringify(list));
+  } catch(e) {}
+
+  try {
+    const bc = new BroadcastChannel('knsdc_judge_channel');
+    bc.postMessage({ type: 'DELETE_JUDGE', id });
+    bc.close();
+  } catch(e) {}
+
+  toast('🗑️ Judge record deleted.');
+  renderJudgeSubmissionsAdmin();
+};
+
+// Auto render on load
+setTimeout(() => {
+  if (typeof renderJudgeSubmissionsAdmin === 'function') renderJudgeSubmissionsAdmin();
+}, 600);
+
+</script>
