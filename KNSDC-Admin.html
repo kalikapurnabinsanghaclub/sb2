@@ -4283,6 +4283,82 @@ window.refreshPortal = async function(btn) {
 <script>
 
 // ====== PUBLIC JUDGE SUBMISSIONS & APPROVALS (ZERO EGRESS) ======
+const ADMIN_DEFAULT_JUDGES = [
+  { id: 101, name: "Bipasha Chakraborty", title: "Grand Celebrity Judge", cat: "Classical & Contemporary", org: "Kalikapur Nabin Sangha", season: "Season 4", rating: "3.8", img: "previesly%20work%20with/photo_6125286919823365073_y.jpg", status: "approved" },
+  { id: 102, name: "Ashik Choudhary", title: "Grand Audition Judge", cat: "Hip-Hop & Western", org: "Kalikapur Nabin Sangha", season: "Season 4", rating: "3.7", img: "previesly%20work%20with/photo_6125286919823365074_y.jpg", status: "approved" },
+  { id: 103, name: "Surjeet Sarkar", title: "Celebrity Mentor & Adjudicator", cat: "Western & Commercial", org: "Kalikapur Nabin Sangha", season: "Season 4 & 5", rating: "4.8", img: "previesly%20work%20with/photo_6125286919823365075_y.jpg", status: "approved" },
+  { id: 104, name: "Tapas Mollick", title: "Celebrity Stage Judge", cat: "Bollywood & Creative", org: "Kalikapur Nabin Sangha", season: "Season 2 & 3", rating: "4.1", img: "previesly%20work%20with/photo_6125286919823365078_y.jpg", status: "approved" },
+  { id: 105, name: "Sutapa Ganguli", title: "Master Kathak Juror", cat: "Classical Kathak", org: "Kalikapur Nabin Sangha", season: "Season 2, 3, 4, 5", rating: "4.0", img: "previesly%20work%20with/photo_6125286919823365079_y.jpg", status: "approved" },
+  { id: 106, name: "Rintu Das", title: "Audition Judge (Street Dance)", cat: "Hip-Hop & Street Locking", org: "Kalikapur Nabin Sangha", season: "Season 3", rating: "3.5", img: "previesly%20work%20with/photo_6125286919823365080_y.jpg", status: "approved" },
+  { id: 107, name: "Soma Ghosh", title: "Honorary Senior Juror", cat: "Bharatnatyam & Natyashastra", org: "Kalikapur Nabin Sangha", season: "Season 3", rating: "3.7", img: "previesly%20work%20with/photo_6125286919823365081_y.jpg", status: "approved" }
+];
+
+function normalizeJudgeKey(name) {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function getDeletedJudgesList() {
+  try {
+    return JSON.parse(localStorage.getItem('knsdc_deleted_judges') || '[]');
+  } catch(e) {
+    return [];
+  }
+}
+
+function getJudgeStatusOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem('knsdc_judge_status_overrides') || '{}');
+  } catch(e) {
+    return {};
+  }
+}
+
+window.getAllJudgesForAdmin = () => {
+  const deleted = getDeletedJudgesList();
+  const overrides = getJudgeStatusOverrides();
+
+  // 1. Start with defaults
+  let all = JSON.parse(JSON.stringify(ADMIN_DEFAULT_JUDGES));
+
+  // 2. Load custom submissions
+  try {
+    const raw = localStorage.getItem('knsdc_judge_records');
+    if (raw) {
+      const custom = JSON.parse(raw);
+      if (Array.isArray(custom)) {
+        custom.forEach(c => {
+          const key = normalizeJudgeKey(c.name);
+          const existingIdx = all.findIndex(a => normalizeJudgeKey(a.name) === key);
+          if (existingIdx !== -1) {
+            all[existingIdx] = Object.assign(all[existingIdx], c);
+          } else {
+            all.push(c);
+          }
+        });
+      }
+    }
+  } catch(e) {}
+
+  // 3. Filter out deleted records permanently
+  all = all.filter(j => {
+    const idMatch = deleted.includes(String(j.id));
+    const nameMatch = deleted.includes(normalizeJudgeKey(j.name));
+    return !idMatch && !nameMatch;
+  });
+
+  // 4. Apply status overrides (e.g. paused / approved)
+  all.forEach(j => {
+    const key = normalizeJudgeKey(j.name);
+    if (overrides[String(j.id)] !== undefined) {
+      j.status = overrides[String(j.id)];
+    } else if (overrides[key] !== undefined) {
+      j.status = overrides[key];
+    }
+  });
+
+  return all;
+};
+
 window.renderJudgeSubmissionsAdmin = () => {
   const tbody = document.getElementById('judge-submissions-tbody');
   const badge = document.getElementById('judge-pending-badge');
@@ -4293,36 +4369,10 @@ window.renderJudgeSubmissionsAdmin = () => {
   const jstatApproved = document.getElementById('jstat-approved');
   if (!tbody) return;
 
-  let submissions = [];
-  try {
-    const raw = localStorage.getItem('knsdc_judge_records');
-    if (raw) submissions = JSON.parse(raw);
-  } catch(e) {}
-
-  // If no submissions in localStorage yet, provide a sample demo application so the admin sees it immediately
-  if (submissions.length === 0) {
-    submissions = [
-      {
-        id: 'demo-901',
-        name: "Tanmoy Sen",
-        title: "Visiting Adjudicator",
-        cat: "Folk Fusion & Chhau",
-        season: "Season 5 / Fest 2026",
-        org: "Bengal Folk Heritage Guild",
-        rating: "4.8",
-        img: "previesly%20work%20with/photo_6125286919823365074_y.jpg",
-        pwdHash: "1234",
-        status: "pending",
-        submittedAt: new Date().toISOString()
-      }
-    ];
-    try {
-      localStorage.setItem('knsdc_judge_records', JSON.stringify(submissions));
-    } catch(e) {}
-  }
+  const submissions = getAllJudgesForAdmin();
 
   const totalCount = submissions.length;
-  const pendingCount = submissions.filter(s => s.status === 'pending').length;
+  const pendingCount = submissions.filter(s => s.status === 'pending' || s.status === 'paused').length;
   const approvedCount = submissions.filter(s => s.status === 'approved').length;
 
   if (jstatTotal) jstatTotal.textContent = totalCount;
@@ -4348,11 +4398,27 @@ window.renderJudgeSubmissionsAdmin = () => {
     }
   }
 
+  if (submissions.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center; padding:36px 20px; color:var(--text-muted); font-size:13px;">
+          <div style="font-size:26px; margin-bottom:8px;">⚖️</div>
+          <div style="font-weight:700; color:var(--text);">No judge records in roster.</div>
+          <div style="font-size:11px; margin-top:4px; opacity:0.8;">New submissions from the website will appear here for approval.</div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
   tbody.innerHTML = submissions.map(j => {
     const isApproved = j.status === 'approved';
     const statusBadge = isApproved 
       ? '<span style="background:rgba(16,185,129,0.15); color:#10B981; border:1px solid rgba(16,185,129,0.3); padding:4px 10px; border-radius:12px; font-size:11px; font-weight:800; display:inline-flex; align-items:center; gap:4px;"><span>●</span> LIVE ON SHOWCASE</span>'
-      : '<span style="background:rgba(245,158,11,0.15); color:#F59E0B; border:1px solid rgba(245,158,11,0.3); padding:4px 10px; border-radius:12px; font-size:11px; font-weight:800; display:inline-flex; align-items:center; gap:4px;"><span>⏳</span> PENDING REVIEW</span>';
+      : '<span style="background:rgba(245,158,11,0.15); color:#F59E0B; border:1px solid rgba(245,158,11,0.3); padding:4px 10px; border-radius:12px; font-size:11px; font-weight:800; display:inline-flex; align-items:center; gap:4px;"><span>⏳</span> PAUSED / PENDING</span>';
+
+    const seasonDisplay = j.season || (j.seasons && j.seasons.join(', ')) || 'Fest';
+    const orgDisplay = j.org || (j.orgs && j.orgs[0]) || 'Official Jury';
 
     return `
       <tr>
@@ -4365,9 +4431,9 @@ window.renderJudgeSubmissionsAdmin = () => {
         </td>
         <td>
           <div style="font-size:12px; font-weight:700; color:var(--blue);">${j.cat}</div>
-          <div style="font-size:11px; color:var(--pink); font-weight:700; margin-top:1px;">${j.season || 'Fest'}</div>
+          <div style="font-size:11px; color:var(--pink); font-weight:700; margin-top:1px;">${seasonDisplay}</div>
         </td>
-        <td style="font-size:12px; color:var(--text); font-weight:600;">${j.org}</td>
+        <td style="font-size:12px; color:var(--text); font-weight:600;">${orgDisplay}</td>
         <td>
           <div style="font-weight:800; color:#F59E0B; font-size:12px; display:inline-flex; align-items:center; gap:4px;">
             <span>⭐</span> ${j.rating} / 5.0
@@ -4391,10 +4457,19 @@ window.renderJudgeSubmissionsAdmin = () => {
 window.approveJudgeSubmission = (id) => {
   try {
     let list = JSON.parse(localStorage.getItem('knsdc_judge_records') || '[]');
+    let found = false;
     list.forEach(j => {
-      if (String(j.id) === String(id)) j.status = 'approved';
+      if (String(j.id) === String(id)) {
+        j.status = 'approved';
+        found = true;
+      }
     });
     localStorage.setItem('knsdc_judge_records', JSON.stringify(list));
+
+    // Also persist status override
+    let overrides = getJudgeStatusOverrides();
+    overrides[String(id)] = 'approved';
+    localStorage.setItem('knsdc_judge_status_overrides', JSON.stringify(overrides));
 
     const bc = new BroadcastChannel('knsdc_judge_channel');
     bc.postMessage({ type: 'UPDATE_JUDGE', id, status: 'approved' });
@@ -4409,12 +4484,17 @@ window.unapproveJudgeSubmission = (id) => {
   try {
     let list = JSON.parse(localStorage.getItem('knsdc_judge_records') || '[]');
     list.forEach(j => {
-      if (String(j.id) === String(id)) j.status = 'pending';
+      if (String(j.id) === String(id)) j.status = 'paused';
     });
     localStorage.setItem('knsdc_judge_records', JSON.stringify(list));
 
+    // Also persist status override
+    let overrides = getJudgeStatusOverrides();
+    overrides[String(id)] = 'paused';
+    localStorage.setItem('knsdc_judge_status_overrides', JSON.stringify(overrides));
+
     const bc = new BroadcastChannel('knsdc_judge_channel');
-    bc.postMessage({ type: 'UPDATE_JUDGE', id, status: 'pending' });
+    bc.postMessage({ type: 'UPDATE_JUDGE', id, status: 'paused' });
     bc.close();
   } catch(e) {}
 
@@ -4423,19 +4503,41 @@ window.unapproveJudgeSubmission = (id) => {
 };
 
 window.deleteJudgeSubmissionAdmin = (id) => {
-  if (!confirm("Are you sure you want to delete this judge record?")) return;
+  if (!confirm("Are you sure you want to permanently delete this judge?")) return;
 
   try {
+    // 1. Find judge name before deleting
+    const all = getAllJudgesForAdmin();
+    const target = all.find(j => String(j.id) === String(id));
+    const judgeName = target ? target.name : '';
+    const normKey = normalizeJudgeKey(judgeName);
+
+    // 2. Remove from custom list in knsdc_judge_records
     let list = JSON.parse(localStorage.getItem('knsdc_judge_records') || '[]');
-    list = list.filter(j => String(j.id) !== String(id));
+    list = list.filter(j => String(j.id) !== String(id) && normalizeJudgeKey(j.name) !== normKey);
     localStorage.setItem('knsdc_judge_records', JSON.stringify(list));
 
-    const bc = new BroadcastChannel('knsdc_judge_channel');
-    bc.postMessage({ type: 'DELETE_JUDGE', id });
-    bc.close();
-  } catch(e) {}
+    // 3. Add to permanent deleted blacklist in knsdc_deleted_judges
+    let deleted = getDeletedJudgesList();
+    if (!deleted.includes(String(id))) deleted.push(String(id));
+    if (normKey && !deleted.includes(normKey)) deleted.push(normKey);
+    localStorage.setItem('knsdc_deleted_judges', JSON.stringify(deleted));
 
-  toast('🗑️ Judge record deleted.');
+    // 4. Remove from overrides
+    let overrides = getJudgeStatusOverrides();
+    delete overrides[String(id)];
+    if (normKey) delete overrides[normKey];
+    localStorage.setItem('knsdc_judge_status_overrides', JSON.stringify(overrides));
+
+    // 5. Broadcast deletion to all open tabs/index.html
+    const bc = new BroadcastChannel('knsdc_judge_channel');
+    bc.postMessage({ type: 'DELETE_JUDGE', id, name: judgeName });
+    bc.close();
+  } catch(e) {
+    console.error('Delete error:', e);
+  }
+
+  toast('🗑️ Judge permanently deleted.');
   renderJudgeSubmissionsAdmin();
 };
 

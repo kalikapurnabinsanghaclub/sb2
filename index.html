@@ -13936,6 +13936,16 @@ function recalculateJudgeAverages(judge) {
 }
 
 function loadAllJudgeRecords() {
+  let deletedList = [];
+  try {
+    deletedList = JSON.parse(localStorage.getItem('knsdc_deleted_judges') || '[]');
+  } catch(e) {}
+
+  let overrides = {};
+  try {
+    overrides = JSON.parse(localStorage.getItem('knsdc_judge_status_overrides') || '{}');
+  } catch(e) {}
+
   let list = JSON.parse(JSON.stringify(DEFAULT_JUDGES));
   list.forEach(j => recalculateJudgeAverages(j));
 
@@ -13975,6 +13985,22 @@ function loadAllJudgeRecords() {
   } catch(err) {
     console.warn('Local storage judge load notice:', err);
   }
+
+  // Permanently filter out any deleted judges
+  list = list.filter(j => {
+    const idMatch = deletedList.includes(String(j.id));
+    const nameMatch = deletedList.includes(normalizeJudgeName(j.name));
+    return !idMatch && !nameMatch;
+  });
+
+  // Apply status overrides & filter out paused/pending judges from public showcase
+  list = list.filter(j => {
+    const key = normalizeJudgeName(j.name);
+    let status = j.status || 'approved';
+    if (overrides[String(j.id)] !== undefined) status = overrides[String(j.id)];
+    else if (overrides[key] !== undefined) status = overrides[key];
+    return status !== 'pending' && status !== 'paused';
+  });
 
   ACTIVE_JUDGES_CACHE = list;
   populateJudgeDatalist();
