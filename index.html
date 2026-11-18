@@ -3713,7 +3713,8 @@
           </div>
         </div>
 
-        <div style="margin:10px 0 6px; font-family:'Playfair Display',serif; font-size:28px; font-weight:900; color:#1E293B;">CERTIFICATE OF COMPLETION</div>
+        <div style="margin:10px 0 2px; font-family:'Playfair Display',serif; font-size:28px; font-weight:900; color:#1E293B;">CERTIFICATE OF COMPLETION</div>
+        <div id="cert-credential-code" style="font-size:9.5px; color:#64748B; font-family:monospace; letter-spacing:1px; margin-bottom:8px;">CREDENTIAL ID: WS-1001-P001</div>
         <div style="font-size:12px; color:#475569; font-style:italic;">This is proudly presented to</div>
         <div id="cert-participant-name" style="font-family:'Playfair Display',serif; font-size:24px; font-weight:900; color:#FF6B35; margin:8px 0; border-bottom:2px solid #E2E8F0; display:inline-block; padding:0 30px;">
           Participant Name
@@ -13793,22 +13794,26 @@
         const isCompleted = ws.status === 'completed';
 
         let mediaHtml = '';
+        const cleanImgUrl = (ws.image_url && ws.image_url !== 'previesly%20work%20with/photo_6125286919823365073_y.jpg') ? ws.image_url.trim() : '';
         if (ws.video_url) {
           mediaHtml = `
             <div style="width:100%; height:180px; overflow:hidden; position:relative; background:#000;">
               <video src="${ws.video_url}" controls muted playsinline style="width:100%; height:100%; object-fit:cover;"></video>
             </div>
           `;
-        } else if (ws.image_url) {
+        } else if (cleanImgUrl) {
           mediaHtml = `
             <div style="width:100%; height:180px; overflow:hidden; position:relative; background:#f8fafc;">
-              <img src="${decodeURIComponent(ws.image_url)}" alt="${ws.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='previesly%20work%20with/photo_6125286919823365073_y.jpg'"/>
+              <img src="${decodeURIComponent(cleanImgUrl)}" alt="${ws.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; background:linear-gradient(135deg, #1e293b, #0f172a); color:#94A3B8; font-size:11px; font-weight:700; gap:4px;\'><span style=\'font-size:24px;\'>🎭</span><span>${catBadge}</span></div>';"/>
             </div>
           `;
         } else {
+          // EMPTY BANNER IF NO POSTER UPLOADED - Clean, Branded, No Photo Mismatches
           mediaHtml = `
-            <div style="width:100%; height:180px; overflow:hidden; position:relative; background:linear-gradient(135deg, #FF6B35, #E91E8C); display:flex; align-items:center; justify-content:center;">
-              <span style="font-size:3.5rem;">🎓</span>
+            <div style="width:100%; height:140px; overflow:hidden; position:relative; background:linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95)); border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;">
+              <span style="font-size:2.4rem;">🎭</span>
+              <span style="font-size:11px; color:#FDE047; font-weight:800; letter-spacing:1px; text-transform:uppercase;">${catBadge} Masterclass</span>
+              <span style="font-size:9.5px; color:#94A3B8; font-family:monospace;">Code: ${ws.ws_code || (ws.id ? ws.id.slice(-6).toUpperCase() : 'WS')}</span>
             </div>
           `;
         }
@@ -13932,7 +13937,7 @@
             const res = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', { method: 'POST', body: fd });
             if (res.ok) {
               const json = await res.json();
-              imageUrl = json.fileUrl || json.imageUrl || '';
+              imageUrl = json.fileUrl || json.imageUrl || json.url || '';
             }
           } catch(err) {
             console.warn('Worker upload note:', err);
@@ -13941,14 +13946,16 @@
             imageUrl = await new Promise((resolve) => {
               const reader = new FileReader();
               reader.onload = () => resolve(reader.result);
-              reader.onerror = () => resolve('previesly%20work%20with/photo_6125286919823365073_y.jpg');
+              reader.onerror = () => resolve('');
               reader.readAsDataURL(file);
             });
           }
         }
 
+        const wsCode = 'WS-' + Math.floor(1000 + Math.random() * 9000);
         const newWs = {
           id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+          ws_code: wsCode,
           name,
           guest_name,
           category,
@@ -13962,7 +13969,14 @@
           org_phone,
           org_password,
           status: 'upcoming', // upcoming -> completed
-          image_url: imageUrl || 'previesly%20work%20with/photo_6125286919823365073_y.jpg',
+          image_url: imageUrl || '', // SHOW EMPTY if not uploaded! Never show mismatched photos!
+          cert_config: {
+            orgLogo: '',
+            wsLogo: '',
+            instructorName: guest_name || '',
+            instructorTitle: 'Mentor & Instructor',
+            enableQr: true
+          },
           type: 'workshop',
           created_at: new Date().toISOString()
         };
@@ -14181,7 +14195,10 @@
         return `
           <tr style="border-bottom:1px solid rgba(255,255,255,0.06); transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.03)'" onmouseleave="this.style.background='transparent'">
             <td style="padding:12px;">
-              <div style="font-weight:800; color:#fff;">${r.participant_name}</div>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span style="font-weight:800; color:#fff;">${r.participant_name}</span>
+                <span style="background:rgba(245,158,11,0.15); color:#FDE047; font-family:monospace; font-size:10px; font-weight:800; padding:1px 6px; border-radius:6px; border:1px solid rgba(245,158,11,0.3);">${r.participant_code || (ws.ws_code || 'WS') + '-P' + String(idx + 1).padStart(3, '0')}</span>
+              </div>
               <div style="font-size:10px; color:#94A3B8;">${r.address || 'Address Not Provided'}</div>
             </td>
             <td style="padding:12px; font-family:monospace; color:#38BDF8; font-weight:700;">${r.phone_number}</td>
@@ -14454,24 +14471,54 @@
       if (modal) modal.style.display = 'none';
     };
 
-    window.handleCertLogoUpload = function(input, type) {
+    window.handleCertLogoUpload = async function(input, type) {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const dataUrl = e.target.result;
-        const urlInput = document.getElementById(`cert-${type}-logo-url`);
-        if (urlInput) urlInput.value = dataUrl;
-        updateCertLogoPreview(type, dataUrl);
-      };
-      reader.readAsDataURL(file);
+      const preview = document.getElementById(`cert-${type}-logo-preview`);
+      const urlInput = document.getElementById(`cert-${type}-logo-url`);
+      if (preview) {
+        preview.innerHTML = `<span style="font-size:9px; color:#F59E0B; font-weight:800; text-align:center; padding:2px;">☁️ Uploading...</span>`;
+      }
+
+      let cloudUrl = '';
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', { method: 'POST', body: fd });
+        if (res.ok) {
+          const json = await res.json();
+          cloudUrl = json.fileUrl || json.imageUrl || json.url || '';
+        }
+      } catch(err) {
+        console.warn('[Cloudflare Upload] Logo upload note:', err);
+      }
+
+      if (cloudUrl) {
+        if (urlInput) urlInput.value = cloudUrl;
+        updateCertLogoPreview(type, cloudUrl);
+      } else {
+        // Fallback to dataUrl so organizer is never blocked
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const dataUrl = e.target.result;
+          if (urlInput) urlInput.value = dataUrl;
+          updateCertLogoPreview(type, dataUrl);
+        };
+        reader.readAsDataURL(file);
+      }
     };
 
     window.updateCertLogoPreview = function(type, url) {
       const preview = document.getElementById(`cert-${type}-logo-preview`);
       if (!preview) return;
       if (url) {
-        preview.innerHTML = `<img src="${url}" alt="Preview" style="width:100%; height:100%; object-fit:contain; border-radius:8px;">`;
+        const isCloud = url.startsWith('http') || url.includes('.workers.dev') || url.includes('.r2.dev');
+        preview.innerHTML = `
+          <div style="position:relative; width:100%; height:100%;">
+            <img src="${url}" alt="Preview" style="width:100%; height:100%; object-fit:contain; border-radius:8px;">
+            ${isCloud ? '<span title="Stored in Cloudflare" style="position:absolute; bottom:1px; right:1px; font-size:9px; background:rgba(16,185,129,0.9); color:#fff; border-radius:4px; padding:1px 3px;">☁️</span>' : ''}
+          </div>
+        `;
       } else {
         preview.innerHTML = `<span style="font-size:20px; opacity:0.6;">${type === 'org' ? '🏢' : '🎭'}</span>`;
       }
@@ -14500,6 +14547,7 @@
         enableQr: document.getElementById('cert-custom-qr-toggle') ? document.getElementById('cert-custom-qr-toggle').checked : true
       };
 
+      // Strict per-workshop mapping: config is saved under this workshop's ID
       localStorage.setItem('kns_ws_cert_' + wsId, JSON.stringify(config));
 
       try {
@@ -14517,10 +14565,10 @@
       }
 
       closeCustomizeCertModal();
-      alert('🎉 Certificate customization saved! Your personalized credentials are ready.');
+      alert('🎉 Certificate customization saved! Logos & instructor details are mapped exclusively to this workshop.');
     };
 
-    window.applyWorkshopCertConfig = function(ws, participantName, overrideConfig) {
+    window.applyWorkshopCertConfig = function(ws, participantName, overrideConfig, participantCode) {
       const wsId = ws.id || activePortalWorkshopId || '';
       let config = overrideConfig;
       if (!config) {
@@ -14541,7 +14589,14 @@
       const dateEl = document.getElementById('cert-date');
       if (dateEl) dateEl.textContent = ws.end_date || ws.start_date || new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
-      // Organization Logo
+      // Auto Code / Credential ID
+      const credEl = document.getElementById('cert-credential-code');
+      const pCode = participantCode || (ws.ws_code || 'WS') + '-P001';
+      if (credEl) {
+        credEl.textContent = 'CREDENTIAL ID: ' + pCode;
+      }
+
+      // Organization Logo (Stored in Cloudflare)
       const orgLogoImg = document.getElementById('cert-org-logo-img');
       if (orgLogoImg) {
         if (config.orgLogo) {
@@ -14553,7 +14608,7 @@
         }
       }
 
-      // Workshop Logo
+      // Workshop Logo (Stored in Cloudflare)
       const wsLogoImg = document.getElementById('cert-ws-logo-img');
       if (wsLogoImg) {
         if (config.wsLogo) {
@@ -14576,7 +14631,7 @@
         mentorTitleEl.textContent = config.instructorTitle || 'Mentor & Instructor';
       }
 
-      // QR Code vs Medal
+      // QR Code with unique code verification
       const qrWrapper = document.getElementById('cert-qr-wrapper');
       const medalWrapper = document.getElementById('cert-medal-wrapper');
       const isQr = config.enableQr !== false; // default true
@@ -14588,7 +14643,7 @@
         if (qrImg) {
           const origin = window.location.origin || 'https://knsdc.in';
           const path = window.location.pathname || '/';
-          const verifyUrl = `${origin}${path}#workshops?ws=${encodeURIComponent(wsId)}&verified=1`;
+          const verifyUrl = `${origin}${path}#workshops?ws=${encodeURIComponent(wsId)}&code=${encodeURIComponent(pCode)}&verified=1`;
           qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(verifyUrl)}`;
         }
       } else {
@@ -14600,7 +14655,7 @@
     window.previewCustomizedCertificate = async function() {
       const wsId = activePortalWorkshopId;
       const workshops = await couchbaseEngine.getWorkshops();
-      const ws = workshops.find(w => w.id === wsId) || { id: wsId, name: 'Dance Masterclass', guest_name: 'Master Instructor' };
+      const ws = workshops.find(w => w.id === wsId) || { id: wsId, name: 'Dance Masterclass', guest_name: 'Master Instructor', ws_code: 'WS-PREVIEW' };
 
       const liveConfig = {
         orgLogo: (document.getElementById('cert-org-logo-url')?.value || '').trim(),
@@ -14610,19 +14665,24 @@
         enableQr: document.getElementById('cert-custom-qr-toggle') ? document.getElementById('cert-custom-qr-toggle').checked : true
       };
 
-      applyWorkshopCertConfig(ws, 'Sample Participant Name', liveConfig);
+      applyWorkshopCertConfig(ws, 'Sample Participant Name', liveConfig, (ws.ws_code || 'WS') + '-P001');
       document.getElementById('workshopCertModal').style.display = 'flex';
     };
 
     window.viewParticipantCertificate = async function(regId) {
-      const allRegs = JSON.parse(localStorage.getItem('kns_cb_registrations') || '[]');
+      let allRegs = [];
+      if (window.syncEngine && window.syncEngine.state && Array.isArray(window.syncEngine.state.cb_registrations)) {
+        allRegs = window.syncEngine.state.cb_registrations;
+      } else {
+        allRegs = JSON.parse(localStorage.getItem('kns_cb_registrations') || '[]');
+      }
       const r = allRegs.find(item => item.id === regId);
       if (!r) return;
 
       const workshops = await couchbaseEngine.getWorkshops();
       const ws = workshops.find(w => w.id === r.workshop_id) || {};
 
-      applyWorkshopCertConfig(ws, r.participant_name);
+      applyWorkshopCertConfig(ws, r.participant_name, null, r.participant_code);
 
       document.getElementById('workshopCertModal').style.display = 'flex';
     };
@@ -14708,20 +14768,32 @@
         return;
       }
 
+      const workshops = await couchbaseEngine.getWorkshops();
+      const targetWs = workshops.find(w => w.id === workshopId) || {};
+      const existingRegs = await couchbaseEngine.getRegistrations(workshopId);
+      const wsCode = targetWs.ws_code || ('WS-' + (targetWs.id || '').slice(-4).toUpperCase());
+      const pSeq = String(existingRegs.length + 1).padStart(3, '0');
+      const participantCode = `${wsCode}-P${pSeq}`;
+
       const registration = {
         id: 'reg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
         workshop_id: workshopId,
+        workshop_code: wsCode,
+        workshop_name: targetWs.name || '',
+        organizer_phone: targetWs.org_phone || '',
+        participant_code: participantCode,
         participant_name: name,
         phone_number: phone,
         dob: dob,
         address: address,
         attended: false,
+        payment_status: targetWs.fee > 0 ? 'pending' : 'paid',
         created_at: new Date().toISOString()
       };
 
       const success = await couchbaseEngine.saveRegistration(registration);
       if (success) {
-        alert('✅ Registration Successful! You can claim your certificate after attending.');
+        alert(`✅ Registration Successful!\nYour Participant Code: ${participantCode}\nYou can claim your verified certificate after attending.`);
         closeRegisterModal();
       } else {
         alert('❌ Error completing registration. Please try again.');
