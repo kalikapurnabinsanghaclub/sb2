@@ -168,6 +168,7 @@ export default {
         const reqBucket = (formData.get("bucket") || "").trim(); // 'workshops'
 
         const isWorkshop = reqBucket === "workshops" || pathPrefix.startsWith("workshops") || uploadType === "poster" || uploadType === "org_logo" || uploadType === "ws_logo" || !!wsId;
+        const isJudge = uploadType === "judge" || reqBucket === "judges" || pathPrefix.startsWith("judges");
 
         // DEDICATED WORKSHOP STORAGE — NEVER MIX WITH PARTICIPANTS
         if (isWorkshop) {
@@ -178,6 +179,8 @@ export default {
               pathPrefix = (uploadType === "org_logo" || uploadType === "ws_logo") ? "workshops/logos" : "workshops/posters";
             }
           }
+        } else if (isJudge) {
+          if (!pathPrefix) pathPrefix = "judges";
         } else {
           if (!pathPrefix) pathPrefix = "participants";
         }
