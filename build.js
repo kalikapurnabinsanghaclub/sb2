@@ -13,7 +13,7 @@ if (!fs.existsSync(dist)) {
 // Copy files and essential asset folders to dist with minimal memory footprint
 const allowedExts = [
   '.html', '.css', '.js', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.txt', '.xml',
-  '.mp4', '.webm', '.ogg', '.mp3', '.wav', '.webp'
+  '.webm', '.ogg', '.mp3', '.wav', '.webp'
 ];
 const allowedDirs = [
   'lib', 'assets', 'parsers', 'sections', 'cluball',
