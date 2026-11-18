@@ -1,12 +1,8 @@
 // ==============================================================================
-// CLOUDFLARE WORKER — DIRECT R2 UPLOAD & MANAGEMENT FOR KNSDC
+// CLOUDFLARE WORKER — DIRECT R2 DUAL-BUCKET UPLOAD & MANAGEMENT FOR KNSDC
 // ==============================================================================
-// Features:
-// - Zero Egress Fees ($0 bandwidth cost)
-// - Direct Upload to Cloudflare R2
-// - Deterministic Key Overwrite (same place replacement for judges/participants)
-// - Instant File Deletion (DELETE method or action=delete)
-// - Fast Global CDN
+// Bucket 1: env.MY_BUCKET ("my-app-uploads") -> General & Participants
+// Bucket 2: env.WORKSHOPS_BUCKET ("knsdc-workshops") -> Dedicated Workshop Bucket
 // ==============================================================================
 
 export default {
@@ -43,13 +39,24 @@ export default {
       return cleaned.replace(/^\/+/, "");
     };
 
-    // 2. Handle DELETE Requests (e.g. DELETE /?key=judges/judge_1.jpg)
+    // Helper to get active bucket based on key or request
+    const getBucket = (key, reqBucketParam) => {
+      const isWorkshop = reqBucketParam === "workshops" || (key && key.startsWith("workshops"));
+      if (isWorkshop && env.WORKSHOPS_BUCKET) {
+        return env.WORKSHOPS_BUCKET;
+      }
+      return env.MY_BUCKET;
+    };
+
+    // 2. Handle DELETE Requests
     if (request.method === "DELETE") {
       try {
         let keyToDelete = extractKey(urlObj.searchParams.get("key") || urlObj.searchParams.get("fileUrl"));
+        let bucketParam = urlObj.searchParams.get("bucket");
         if (!keyToDelete && request.headers.get("content-type")?.includes("application/json")) {
           const body = await request.json().catch(() => ({}));
           keyToDelete = extractKey(body.key || body.fileUrl);
+          bucketParam = bucketParam || body.bucket;
         }
 
         if (!keyToDelete) {
@@ -59,7 +66,8 @@ export default {
           });
         }
 
-        await env.MY_BUCKET.delete(keyToDelete);
+        const bucket = getBucket(keyToDelete, bucketParam);
+        await bucket.delete(keyToDelete);
         return new Response(JSON.stringify({ status: "success", message: "File deleted successfully", deletedKey: keyToDelete }), {
           headers: corsHeaders,
         });
@@ -76,9 +84,20 @@ export default {
       const keyParam = urlObj.searchParams.get("key") || urlObj.searchParams.get("fileUrl") || urlObj.pathname;
       const key = extractKey(keyParam);
 
-      if (key && key !== "/" && key !== "" && env.MY_BUCKET) {
+      if (key && key !== "/" && key !== "") {
         try {
-          const object = await env.MY_BUCKET.get(key);
+          let object = null;
+          // Check Workshops Bucket first if workshop key
+          if (key.startsWith("workshops") && env.WORKSHOPS_BUCKET) {
+            object = await env.WORKSHOPS_BUCKET.get(key);
+          }
+          if (!object && env.MY_BUCKET) {
+            object = await env.MY_BUCKET.get(key);
+          }
+          if (!object && env.WORKSHOPS_BUCKET) {
+            object = await env.WORKSHOPS_BUCKET.get(key);
+          }
+
           if (object) {
             const headers = new Headers();
             object.writeHttpMetadata(headers);
@@ -92,7 +111,14 @@ export default {
         }
       }
 
-      return new Response(JSON.stringify({ status: "ok", message: "KNSDC Cloudflare R2 Storage Worker is live!" }), {
+      return new Response(JSON.stringify({ 
+        status: "ok", 
+        message: "KNSDC Cloudflare R2 Storage Worker is live!",
+        buckets: {
+          primary: "MY_BUCKET (my-app-uploads)",
+          workshops: env.WORKSHOPS_BUCKET ? "WORKSHOPS_BUCKET (knsdc-workshops)" : "Ready"
+        }
+      }), {
         headers: corsHeaders,
       });
     }
@@ -113,7 +139,8 @@ export default {
                 headers: corsHeaders,
               });
             }
-            await env.MY_BUCKET.delete(keyToDelete);
+            const bucket = getBucket(keyToDelete, body.bucket);
+            await bucket.delete(keyToDelete);
             return new Response(JSON.stringify({ status: "success", message: "File deleted successfully", deletedKey: keyToDelete }), {
               headers: corsHeaders,
             });
@@ -126,7 +153,8 @@ export default {
         if (formData.get("action") === "delete" || formData.get("deleteKey")) {
           const keyToDelete = extractKey(formData.get("key") || formData.get("deleteKey") || formData.get("fileUrl"));
           if (keyToDelete) {
-            await env.MY_BUCKET.delete(keyToDelete);
+            const bucket = getBucket(keyToDelete, formData.get("bucket"));
+            await bucket.delete(keyToDelete);
             return new Response(JSON.stringify({ status: "success", message: "File deleted successfully", deletedKey: keyToDelete }), {
               headers: corsHeaders,
             });
@@ -134,7 +162,26 @@ export default {
         }
 
         const file = formData.get("file");
-        const pathPrefix = (formData.get("pathPrefix") || "participants").replace(/^\/+|\/+$/g, "");
+        let pathPrefix = (formData.get("pathPrefix") || "").replace(/^\/+|\/+$/g, "");
+        const wsId = (formData.get("workshopId") || formData.get("wsId") || "").trim();
+        const uploadType = (formData.get("type") || "").trim(); // 'poster', 'org_logo', 'ws_logo'
+        const reqBucket = (formData.get("bucket") || "").trim(); // 'workshops'
+
+        const isWorkshop = reqBucket === "workshops" || pathPrefix.startsWith("workshops") || uploadType === "poster" || uploadType === "org_logo" || uploadType === "ws_logo" || !!wsId;
+
+        // DEDICATED WORKSHOP STORAGE — NEVER MIX WITH PARTICIPANTS
+        if (isWorkshop) {
+          if (!pathPrefix) {
+            if (wsId) {
+              pathPrefix = (uploadType === "org_logo" || uploadType === "ws_logo") ? `workshops/${wsId}/logos` : `workshops/${wsId}/posters`;
+            } else {
+              pathPrefix = (uploadType === "org_logo" || uploadType === "ws_logo") ? "workshops/logos" : "workshops/posters";
+            }
+          }
+        } else {
+          if (!pathPrefix) pathPrefix = "participants";
+        }
+
         const customKey = formData.get("customKey") || formData.get("fileName");
 
         if (!file || typeof file === "string") {
@@ -144,7 +191,6 @@ export default {
           });
         }
 
-        // Determine destination key: customKey overwrites in the same place!
         let key = "";
         if (customKey && typeof customKey === "string" && customKey.trim()) {
           key = extractKey(customKey.trim());
@@ -153,8 +199,11 @@ export default {
           key = `${pathPrefix}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
         }
 
-        // Upload directly into Cloudflare R2 (overwrites existing key if present)
-        await env.MY_BUCKET.put(key, file.stream(), {
+        // TARGET SEPARATE BUCKET FOR WORKSHOPS:
+        // Uses WORKSHOPS_BUCKET ("knsdc-workshops") if bound, else falls back to MY_BUCKET
+        const targetBucket = (isWorkshop && env.WORKSHOPS_BUCKET) ? env.WORKSHOPS_BUCKET : env.MY_BUCKET;
+
+        await targetBucket.put(key, file.stream(), {
           httpMetadata: {
             contentType: file.type || "application/octet-stream",
           },
@@ -166,6 +215,7 @@ export default {
         return new Response(
           JSON.stringify({
             status: "success",
+            bucket: isWorkshop && env.WORKSHOPS_BUCKET ? "WORKSHOPS_BUCKET (knsdc-workshops)" : "MY_BUCKET",
             fileUrl: fileUrl,
             imageUrl: fileUrl,
             key: key,
