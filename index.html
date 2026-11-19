@@ -5588,7 +5588,19 @@
             try { socObj = JSON.parse(socObj); } catch(e) { socObj = {}; }
           }
           const eventBanner = dbEv.banner || dbEv.image || (socObj && socObj.banner) || (rsObj && rsObj.banner) || null;
-          const eventType = dbEv.type || dbEv.category || 'General';
+          let eventType = dbEv.type || dbEv.category || '';
+          if (!eventType || eventType.toLowerCase() === 'general') {
+            const evNameLower = (dbEv.name || dbEv.title || '').toLowerCase();
+            if (evNameLower.includes('dance') || evNameLower.includes('cultural') || evNameLower.includes('puja') || evNameLower.includes('music') || evNameLower.includes('fest')) {
+              eventType = 'Cultural';
+            } else if (evNameLower.includes('sport') || evNameLower.includes('cricket') || evNameLower.includes('football') || evNameLower.includes('tournament')) {
+              eventType = 'Sports';
+            } else {
+              eventType = 'Cultural';
+            }
+          } else {
+            eventType = eventType.charAt(0).toUpperCase() + eventType.slice(1);
+          }
           const eventOrg = dbEv.org || dbEv.organizer || 'KNSDC';
 
           let displayDate = eventDate;
@@ -5616,6 +5628,8 @@
             endTime: dbEv.end_time || '',
             disp: displayDate,
             cat: eventType,
+            type: eventType,
+            category: eventType,
             venue: dbEv.venue || 'Kalikapur Community Hall',
             banner: eventBanner,
             whatsapp: dbEv.whatsapp || dbEv.whatsapp_number || rsObj.whatsapp || '',
@@ -5760,20 +5774,35 @@
           console.log('[DirectFetch] ' + activeEvents.length + ' events loaded from Supabase.');
         }
         if (pastEvents.length > 0) {
-          PREV = pastEvents.map((ev, idx) => ({
-            id: ev.id,
-            name: ev.name || ev.title || "Past Event",
-            year: ev.startDate || ev.date || "2025",
-            cat: ev.type || ev.category || "General",
-            desc: ev.description || "A successful event hosted by KNSDC.",
-            parts: ev.capacity || ev.parts || Math.floor(Math.random() * 500) + 100,
-            winner: "Community",
-            col: (ev.type || ev.category) === 'Cultural' ? '#FF6B35' : '#7B2D8B',
-            banner: ev.banner || ev.image || null,
-            venue: ev.venue || 'KNSDC Main Ground',
-            scores: null,
-            switchStates: ev.switchStates || {}  // preserve Monitor switch states
-          }));
+          PREV = pastEvents.map((ev, idx) => {
+            const rawCat = ev.cat || ev.type || ev.category || '';
+            let resolvedCat = 'Cultural';
+            if (rawCat && rawCat.toLowerCase() !== 'general') {
+              resolvedCat = rawCat.charAt(0).toUpperCase() + rawCat.slice(1);
+            } else if (ev.name && (ev.name.toLowerCase().includes('dance') || ev.name.toLowerCase().includes('cultural') || ev.name.toLowerCase().includes('puja') || ev.name.toLowerCase().includes('fest'))) {
+              resolvedCat = 'Cultural';
+            } else if (ev.name && (ev.name.toLowerCase().includes('cricket') || ev.name.toLowerCase().includes('sport') || ev.name.toLowerCase().includes('football'))) {
+              resolvedCat = 'Sports';
+            }
+            const isCultural = resolvedCat.toLowerCase() === 'cultural';
+
+            return {
+              id: ev.id,
+              name: ev.name || ev.title || "Past Event",
+              year: ev.startDate || ev.date || "2025",
+              cat: resolvedCat,
+              type: resolvedCat,
+              category: resolvedCat,
+              desc: ev.description || "A premier cultural celebration and championship hosted by KNSDC.",
+              parts: ev.capacity || ev.parts || Math.floor(Math.random() * 500) + 100,
+              winner: "Community",
+              col: isCultural ? '#FF6B35' : '#7B2D8B',
+              banner: ev.banner || ev.image || null,
+              venue: ev.venue || 'KNSDC Main Ground',
+              scores: null,
+              switchStates: ev.switchStates || {}  // preserve Monitor switch states
+            };
+          });
           if (typeof renderPrevEvents === 'function') renderPrevEvents();
         }
 
