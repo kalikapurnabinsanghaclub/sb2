@@ -3424,7 +3424,7 @@
       </div>
 
       <div
-        style="display: none; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 22px; margin-bottom: 20px;"
+        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 22px; margin-bottom: 20px;"
         id="prevEventsGrid"></div>
     </div>
   </section>
@@ -5635,6 +5635,8 @@
             publicReg: (dbEv.publicReg === true || dbEv.publicreg === true || dbEv['"publicReg"'] === true || evSwitches.publicReg === true),
             icon: eventType === 'Cultural' ? '💃' : eventType === 'Sports' ? '⚽' : '📅',
             col: eventType === 'Cultural' ? '#E91E8C' : eventType === 'Sports' ? '#0ea5e9' : '#8b5cf6',
+            status: dbEv.status || dbEv.event_status || (rsObj && rsObj.status) || (syncState.eventStatuses && syncState.eventStatuses[dbEv.id]) || (dbEv.is_completed || dbEv.isCompleted ? 'completed' : 'ongoing'),
+            isCompleted: (dbEv.is_completed === true || dbEv.isCompleted === true || dbEv.status === 'completed' || (rsObj && rsObj.status === 'completed')),
             categories: eventCats,
             venues: eventVens,
             judges: eventJudges
@@ -5667,6 +5669,8 @@
                   if (me.publicNotice !== undefined) ev.publicNotice = me.publicNotice;
                   if (me.targetRevenue) ev.targetRevenue = me.targetRevenue;
                   if (me.budgetExpense) ev.budgetExpense = me.budgetExpense;
+                  if (me.status !== undefined) ev.status = me.status;
+                  if (me.isCompleted !== undefined) ev.isCompleted = me.isCompleted;
                 }
               });
 
@@ -5707,6 +5711,8 @@
                     whatsapp: me.whatsapp || (me.roundSchedules && me.roundSchedules.whatsapp) || '',
                     facebook: me.facebook || (me.roundSchedules && me.roundSchedules.facebook) || '',
                     publicNotice: me.publicNotice !== false,
+                    status: me.status || (me.isCompleted ? 'completed' : 'ongoing'),
+                    isCompleted: me.isCompleted === true || me.status === 'completed',
                     targetRevenue: me.targetRevenue || 150000,
                     budgetExpense: me.budgetExpense || 120000,
                     allowDonations: me.allowDonations !== false,
@@ -5726,6 +5732,8 @@
         }
 
         const activeEvents = mapped.filter(ev => {
+          // If explicitly marked completed by Admin, exclude from activeEvents
+          if (ev.status === 'completed' || ev.isCompleted === true) return false;
           // If publicNotice switch is false, globally hide from Notice Board & Banners
           if (ev.publicNotice === false) return false;
           const ed = ev.endDate || ev.startDate || '';
@@ -5735,6 +5743,8 @@
           return evEndObj === null ? true : evEndObj >= today;
         });
         const pastEvents = mapped.filter(ev => {
+          // If explicitly marked completed by Admin, always treat as past event!
+          if (ev.status === 'completed' || ev.isCompleted === true) return true;
           const ed = ev.endDate || ev.startDate || '';
           const et = ev.endTime || '23:59';
           if (!ed) return false;
@@ -10149,6 +10159,11 @@
       const grid = document.getElementById("prevEventsGrid");
       if (!grid) return;
       grid.innerHTML = "";
+      if (!PREV || PREV.length === 0) {
+        grid.style.display = 'none';
+        return;
+      }
+      grid.style.display = 'grid';
       PREV.forEach((ev, i) => {
         const div = document.createElement("div");
         div.className = "ch";

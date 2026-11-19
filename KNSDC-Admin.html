@@ -1815,6 +1815,9 @@
       </div>
       <div class="g2">
         <div class="fg"><label class="fl">Event Type</label><select id="edit-cev-type"><option value="Cultural">Cultural</option><option value="Sports">Sports</option><option value="Social">Social</option><option value="Workshop">Workshop</option></select></div>
+        <div class="fg"><label class="fl">Event Lifecycle Status</label><select id="edit-cev-status" style="background:var(--surface);font-weight:700"><option value="upcoming">Upcoming</option><option value="ongoing">Ongoing / Active</option><option value="completed">Completed (Show in Previous Events)</option></select></div>
+      </div>
+      <div class="g2">
         <div class="fg"><label class="fl">Venue / Location *</label><input type="text" id="edit-cev-venue" placeholder="Main Auditorium, KNSDC Hall"/></div>
         <div class="fg"><label class="fl" style="display:flex; align-items:center; gap:6px;"><span>📍</span> Venue Google Maps Link</label><input type="url" id="edit-cev-venue-map-link" placeholder="https://maps.app.goo.gl/..."/></div>
       </div>
@@ -2150,8 +2153,10 @@ window.renderEventsPage = (state) => {
     if (startDate) startDate.setHours(0,0,0,0);
     if (endDate)   endDate.setHours(0,0,0,0);
 
-    let status = 'upcoming';
-    if (startDate && endDate) {
+    let status = e.status || 'upcoming';
+    if (e.isCompleted === true || e.status === 'completed') {
+      status = 'completed';
+    } else if (startDate && endDate) {
       if (today > endDate)         status = 'completed';
       else if (today >= startDate) status = 'ongoing';
       else                         status = 'upcoming';
@@ -2190,6 +2195,9 @@ window.renderEventsPage = (state) => {
             ? `<button class="btn btn-xs" style="background:#10b981;color:#fff;border:none;font-weight:700;cursor:default" disabled>✓ Active</button>` 
             : `<button class="btn btn-ghost btn-xs" style="color:var(--blue);font-weight:700;border:1px solid rgba(59,130,246,0.3)" onclick="switchEvent('${e.id}')">⭐ Set Active</button>`
           }
+          <button class="btn btn-ghost btn-xs" onclick="toggleEventComplete('${e.id}', ${status !== 'completed'})" style="${status === 'completed' ? 'color:#f59e0b;font-weight:700;border:1px solid rgba(245,158,11,0.3)' : 'color:#10b981;font-weight:700;border:1px solid rgba(16,185,129,0.3)'}" title="${status === 'completed' ? 'Click to reopen event' : 'Click to mark event as Completed and show in Previous Events'}">
+            ${status === 'completed' ? '↩ Reopen' : '✓ Complete'}
+          </button>
           <button class="btn btn-ghost btn-xs" onclick="editEvent('${e.id}')">✏ Edit</button>
           <button class="btn btn-ghost btn-xs" style="color:red" onclick="deleteEvent('${e.id}')">🗑 Delete</button>
         </div>
@@ -2806,6 +2814,38 @@ window.saveEditReg = async () => {
   }
 };
 
+window.toggleEventComplete = async (eventId, markCompleted) => {
+  if (!window.syncEngine || !eventId) return;
+  const s = window.syncEngine.getData() || {};
+  const evs = s.events || [];
+  const ev = evs.find(e => String(e.id) === String(eventId));
+  if (!ev) return;
+
+  const newStatus = markCompleted ? 'completed' : 'ongoing';
+  ev.status = newStatus;
+  ev.isCompleted = !!markCompleted;
+
+  if (typeof window.syncEngine.updateEvent === 'function') {
+    await window.syncEngine.updateEvent(ev.id, {
+      status: newStatus,
+      isCompleted: !!markCompleted
+    }).catch(e => console.warn('[Admin] updateEvent error:', e));
+  }
+
+  window.syncEngine.setData(prev => {
+    const list = (prev.events || []).map(x => String(x.id) === String(eventId) ? { ...x, status: newStatus, isCompleted: !!markCompleted } : x);
+    const eventStatuses = { ...(prev.eventStatuses || {}), [eventId]: newStatus };
+    return { ...prev, events: list, eventStatuses };
+  });
+
+  if (typeof toast === 'function') {
+    toast(markCompleted 
+      ? `✓ "${ev.name}" marked as COMPLETED! Now live in Previous Events.` 
+      : `"${ev.name}" reopened as ONGOING.`);
+  }
+  if (typeof refreshUI === 'function') refreshUI('events');
+};
+
 window.switchEvent = async (eventId) => {
   if (!window.syncEngine || !eventId) return;
   if (typeof window.syncEngine.setActiveEvent === 'function') {
@@ -3036,6 +3076,9 @@ window.editEvent = (id) => {
     document.getElementById('edit-cev-name').value = ev.name;
     document.getElementById('edit-cev-org').value = ev.org;
     document.getElementById('edit-cev-type').value = ev.type || 'Cultural';
+    const statusVal = (ev.status === 'completed' || ev.isCompleted) ? 'completed' : (ev.status || 'ongoing');
+    const statusEl = document.getElementById('edit-cev-status');
+    if (statusEl) statusEl.value = statusVal;
     document.getElementById('edit-cev-venue').value = ev.venue;
     document.getElementById('edit-cev-start').value = ev.startDate;
     document.getElementById('edit-cev-time').value = ev.startTime;
@@ -3098,6 +3141,8 @@ window.saveEditedEvent = async () => {
           endDate: endDate || null,
           endTime: endTime || null,
           type: document.getElementById('edit-cev-type').value,
+          status: document.getElementById('edit-cev-status') ? document.getElementById('edit-cev-status').value : (originalEv?.status || 'ongoing'),
+          isCompleted: document.getElementById('edit-cev-status') ? document.getElementById('edit-cev-status').value === 'completed' : (originalEv?.isCompleted || originalEv?.status === 'completed'),
           capacity: parseInt(document.getElementById('edit-cev-capacity').value),
           banner: document.getElementById('edit-cev-banner').value,
           whatsapp: document.getElementById('edit-cev-whatsapp')?.value.trim() || '',

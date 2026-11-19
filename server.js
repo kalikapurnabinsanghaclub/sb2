@@ -1770,7 +1770,8 @@ const DEFAULT_CLUB_EVENTS = [
     budgetExpense: 120000,
     description: "Premier inter-district dance festival & championship",
     publicNotice: true,
-    status: "active"
+    status: "completed",
+    isCompleted: true
   },
   {
     id: "evt-102",
