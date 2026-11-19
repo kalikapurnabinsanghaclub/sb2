@@ -24183,6 +24183,69 @@ function submitJudgeForm(){
 let lastStopDanceTrigger = null;
 window.stopDanceTimeout = null;
 
+// ⚡ ZERO-DELAY IN-MEMORY BLOB & CACHESTORAGE PRELOADER (0ms Latency Playback)
+(function initStopDancingLocalVideoPreload() {
+  const VIDEO_URL = 'video/stop%20dance1.mp4';
+  const CACHE_NAME = 'knsdc-local-media-v1';
+
+  async function warmUpVideoElement(blobUrl) {
+    const video = document.getElementById('stop-dance-video');
+    if (!video) return;
+    try {
+      video.src = blobUrl;
+      video.preload = 'auto';
+      video.load();
+      video.currentTime = 0;
+      console.log('[StopDance] 0-Delay video pre-cached in RAM/CacheStorage.');
+    } catch(e) {
+      console.warn('[StopDance] Warmup notice:', e);
+    }
+  }
+
+  async function loadAndCacheVideoLocally() {
+    try {
+      // 1. Check persistent CacheStorage first (0 network / 0 egress)
+      if ('caches' in window) {
+        const cache = await caches.open(CACHE_NAME);
+        const match = await cache.match(VIDEO_URL);
+        if (match) {
+          const blob = await match.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          warmUpVideoElement(blobUrl);
+          return;
+        }
+      }
+
+      // 2. Local disk read once -> RAM Blob
+      const res = await fetch(VIDEO_URL);
+      if (res.ok) {
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        warmUpVideoElement(blobUrl);
+
+        // Save into persistent CacheStorage for all future reloads
+        if ('caches' in window) {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            const cloneRes = new Response(blob, {
+              headers: { 'Content-Type': 'video/mp4' }
+            });
+            await cache.put(VIDEO_URL, cloneRes);
+          } catch(e) {}
+        }
+      }
+    } catch(err) {
+      console.warn('[StopDance] Local media pre-cache fallback:', err);
+    }
+  }
+
+  if (document.readyState === 'complete') {
+    loadAndCacheVideoLocally();
+  } else {
+    window.addEventListener('DOMContentLoaded', loadAndCacheVideoLocally);
+  }
+})();
+
 // Synthetic Web Audio API Stage Buzzer (0 Egress, 0 Asset Downloads)
 function playStopDancingBuzzerSound() {
   try {
