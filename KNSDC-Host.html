@@ -2582,14 +2582,35 @@ window.renderLeaderboard = () => {
     const presentJudgesCount = eventPresentJudges.length > 0 ? eventPresentJudges.length : 1;
 
     // Helper to calculate score in-memory with zero supabase egress
+    function isPromotedFromRound(p, roundName) {
+  if (!p) return false;
+  const targetR = String(roundName || '').toLowerCase();
+  if (p.promotedFrom && (p.promotedFrom[targetR] || p.promotedFrom[roundName])) return true;
+  const pR = String(p.round || '').toLowerCase();
+  if (pR !== targetR) {
+    if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) return true;
+    const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+    const fromIdx = rounds.indexOf(targetR);
+    const currIdx = rounds.indexOf(pR);
+    if (fromIdx !== -1 && currIdx !== -1 && currIdx > fromIdx) return true;
+  }
+  return false;
+}
+
     function getHostRoundScore(p, roundId) {
       if (!p) return 0;
       const targetR = String(roundId || '').toLowerCase();
       let scoresObj = null;
-      if (p.roundScores && p.roundScores[targetR]) {
+      if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) {
         scoresObj = p.roundScores[targetR];
-      } else if (String(p.round || '').toLowerCase() === targetR && p.scores) {
+      } else if (String(p.round || '').toLowerCase() === targetR && p.scores && Object.keys(p.scores).length > 0) {
         scoresObj = p.scores;
+      } else if (isPromotedFromRound(p, targetR)) {
+        if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) {
+          scoresObj = p.roundScores[targetR];
+        } else if (p.scores && Object.keys(p.scores).length > 0 && (!p.roundScores || !p.roundScores[p.round] || Object.keys(p.roundScores[p.round]).length === 0)) {
+          scoresObj = p.scores;
+        }
       }
       let total = 0;
       if (scoresObj) {
@@ -2622,8 +2643,12 @@ window.renderLeaderboard = () => {
       if (!isEventMatch) return false;
       if (isCustomFormula) return true;
       const pRound = String(p.round || 'audition').toLowerCase();
-      const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
-      return pRound === targetRoundClean || hasScoreInTarget;
+      const hasScoreInTarget = !!(
+        (p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0) ||
+        (pRound === targetRoundClean && p.scores && Object.keys(p.scores).length > 0)
+      );
+      const wasPromotedFromThisRound = isPromotedFromRound(p, targetRoundClean);
+      return pRound === targetRoundClean || hasScoreInTarget || wasPromotedFromThisRound;
     });
 
     if (hostAssignedVenueId) {
@@ -2724,8 +2749,11 @@ window.renderLeaderboard = () => {
                                 <tr>
                                     <td>${rankBadge}</td>
                                     <td>
-                                        <div style="font-weight:700; color:var(--text)">${p.name}</div>
-                                        <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm)">${p.id}</div>
+                                        <div style="font-weight:700; color:var(--text); display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                                            ${p.name}
+                                            ${isPromotedFromRound(p, targetRoundClean) ? '<span class="badge" style="background:linear-gradient(135deg, #10B981, #059669);color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:4px;box-shadow:0 2px 6px rgba(16,185,129,0.3)">⭐ PROMOTED</span>' : ''}
+                                        </div>
+                                        <div style="font-size:11px; color:var(--text-muted); font-family:var(--fm)">${p.id} · Current Round: ${(p.round || 'Audition').toUpperCase()}</div>
                                     </td>
                                     <td style="font-family:var(--fm); color:var(--text-muted)">${p.phone || '-'}</td>
                                     <td style="text-align: right;">

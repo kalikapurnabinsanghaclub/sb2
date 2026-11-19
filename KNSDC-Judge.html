@@ -3298,14 +3298,35 @@ function updateJudgeLeaderboardAccess(allowed) {
   }
 }
 
+function isPromotedFromRound(p, roundName) {
+  if (!p) return false;
+  const targetR = String(roundName || '').toLowerCase();
+  if (p.promotedFrom && (p.promotedFrom[targetR] || p.promotedFrom[roundName])) return true;
+  const pR = String(p.round || '').toLowerCase();
+  if (pR !== targetR) {
+    if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) return true;
+    const rounds = ['audition', 'qualified', 'semifinal', 'final'];
+    const fromIdx = rounds.indexOf(targetR);
+    const currIdx = rounds.indexOf(pR);
+    if (fromIdx !== -1 && currIdx !== -1 && currIdx > fromIdx) return true;
+  }
+  return false;
+}
+
 function getParticipantRoundScore(p, roundId) {
   if (!p) return 0;
   const targetR = String(roundId || '').toLowerCase();
   let scoresObj = null;
-  if (p.roundScores && p.roundScores[targetR]) {
+  if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) {
     scoresObj = p.roundScores[targetR];
-  } else if (String(p.round || '').toLowerCase() === targetR && p.scores) {
+  } else if (String(p.round || '').toLowerCase() === targetR && p.scores && Object.keys(p.scores).length > 0) {
     scoresObj = p.scores;
+  } else if (isPromotedFromRound(p, targetR)) {
+    if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) {
+      scoresObj = p.roundScores[targetR];
+    } else if (p.scores && Object.keys(p.scores).length > 0 && (!p.roundScores || !p.roundScores[p.round] || Object.keys(p.roundScores[p.round]).length === 0)) {
+      scoresObj = p.scores;
+    }
   }
   let total = 0;
   if (scoresObj) {
@@ -3465,8 +3486,12 @@ function renderJudgeLeaderboard() {
     if (!isEventMatch) return false;
     if (isCustomFormula) return true;
     const pRound = String(p.round || 'audition').toLowerCase();
-    const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
-    return pRound === targetRoundClean || hasScoreInTarget;
+    const hasScoreInTarget = !!(
+      (p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0) ||
+      (pRound === targetRoundClean && p.scores && Object.keys(p.scores).length > 0)
+    );
+    const wasPromotedFromThisRound = isPromotedFromRound(p, targetRoundClean);
+    return pRound === targetRoundClean || hasScoreInTarget || wasPromotedFromThisRound;
   });
 
   // Calculate scores for each participant 100% in browser RAM
@@ -7108,20 +7133,47 @@ document.addEventListener('keydown', (e) => {
 function triggerStopDancing() {
   if (!window.syncEngine) return;
   const now = Date.now();
+  const jId = (typeof JUDGE !== 'undefined' && JUDGE.id) ? JUDGE.id : (localStorage.getItem('kns_user') || 'Judge');
+  const jName = (typeof JUDGE !== 'undefined' && JUDGE.name) ? JUDGE.name : 'VIP Judge';
+  
+  const payload = {
+    active: true,
+    triggeredAt: now,
+    judgeId: jId,
+    judgeName: jName
+  };
+
+  // 1. Update in-memory local state (Zero-Egress)
   syncEngine.setData(state => {
     return {
       ...state,
-      stopDanceActive: {
-        active: true,
-        triggeredAt: now,
-        judgeId: JUDGE.id
-      }
+      stopDanceActive: payload
     };
   });
+
+  // 2. Direct broadcast over Native WebSocket Relay (Zero Supabase Egress)
+  if (syncEngine.broadcastChannel) {
+    syncEngine.broadcastChannel.send({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: {
+        stopDanceActive: payload
+      }
+    }).catch(err => console.error('[StopDance] WS broadcast send error:', err));
+  }
+
+  // 3. Direct local browser BroadcastChannel (Zero Network / Zero Egress, <2ms)
+  try {
+    if (typeof window.BroadcastChannel !== 'undefined') {
+      if (!window._knsdcStopDanceBus) window._knsdcStopDanceBus = new BroadcastChannel('knsdc_stop_dance_channel');
+      window._knsdcStopDanceBus.postMessage(payload);
+    }
+    // 4. LocalStorage event cross-tab fallback
+    localStorage.setItem('knsdc_stop_dance_signal', JSON.stringify(payload));
+  } catch(e) {}
   
-  // Force sync immediately
-  syncEngine.forceSaveStateToSupabase();
-  toast("🚨 STOP DANCING trigger sent!");
+  // ZERO SUPABASE EGRESS GUARANTEE: Never call forceSaveStateToSupabase() for transient stage alert!
+  toast("🛑 STOP DANCING trigger sent (0 Supabase Egress)!");
 }
 window.triggerStopDancing = triggerStopDancing;
 
