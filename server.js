@@ -62,6 +62,15 @@ async function connectDB() {
     db = client.db('knsdc');
     console.log('[MongoDB] Connected successfully to Atlas cluster!');
     await seedStaffToMongoDB();
+
+    // Ensure 24-hour TTL index for helpdesk messages auto-deletion
+    try {
+      const helpdeskCol = db.collection('helpdesk_messages');
+      await helpdeskCol.createIndex({ "createdAt": 1 }, { expireAfterSeconds: 86400 });
+      console.log('[MongoDB] Ensured 24-hour TTL index on helpdesk_messages collection (Auto-deletes after 24 hours)');
+    } catch (idxErr) {
+      console.warn('[MongoDB] TTL index notice:', idxErr.message);
+    }
   } catch (err) {
     console.error('[MongoDB] Connection failed:', err);
   }
@@ -77,6 +86,123 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 const wsClients = new Map(); // orderId → Set<WebSocket>
 const participantWsClients = new Map(); // participantId → Set<WebSocket>
 const generalWsClients = new Set(); // All portal / sync engine clients (Admin, Monitor, Judge, Host, Director, etc.)
+
+
+// ==========================================
+// ZERO-EGRESS HELPDESK CHAT & 24H AUTO-PURGE
+// ==========================================
+const HELPDESK_FILE = path.join(__dirname, 'data', 'helpdesk_messages.json');
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+function loadLocalHelpdeskMessages() {
+  if (fs.existsSync(HELPDESK_FILE)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(HELPDESK_FILE, 'utf8'));
+      const now = Date.now();
+      // Auto-purge messages older than 24 hours
+      return (Array.isArray(raw) ? raw : []).filter(m => (now - (Number(m.timestamp) || 0)) < TWENTY_FOUR_HOURS_MS);
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+}
+
+async function saveHelpdeskMessage(msg) {
+  const now = Date.now();
+  const standardizedMsg = {
+    id: msg.id || ('msg_' + now + '_' + Math.random().toString(36).substr(2, 6)),
+    participantId: String(msg.participantId || '').trim(),
+    eventId: msg.eventId ? String(msg.eventId) : null,
+    senderRole: msg.senderRole || 'participant',
+    text: String(msg.text || '').trim(),
+    timestamp: Number(msg.timestamp) || now,
+    read: Boolean(msg.read),
+    createdAt: new Date(Number(msg.timestamp) || now)
+  };
+
+  // 1. Insert into MongoDB if connected (TTL index will delete automatically after 24h)
+  if (db) {
+    try {
+      await db.collection('helpdesk_messages').insertOne(standardizedMsg);
+    } catch (err) {
+      console.warn('[MongoDB] helpdesk_messages insert fallback:', err.message);
+    }
+  }
+
+  // 2. Local JSON stream fallback (auto-purged to 24h window)
+  try {
+    const list = loadLocalHelpdeskMessages();
+    // Prevent duplicate IDs
+    const filtered = list.filter(m => String(m.id) !== String(standardizedMsg.id));
+    filtered.push(standardizedMsg);
+    const cleaned = filtered.filter(m => (now - Number(m.timestamp)) < TWENTY_FOUR_HOURS_MS);
+    fs.writeFileSync(HELPDESK_FILE, JSON.stringify(cleaned, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[Server] Local message file notice:', err.message);
+  }
+
+  return standardizedMsg;
+}
+
+async function getHelpdeskMessages(participantId = null, sinceTimestamp = 0) {
+  const cutoff = Date.now() - TWENTY_FOUR_HOURS_MS;
+  const effectiveSince = Math.max(cutoff, Number(sinceTimestamp) || 0);
+
+  if (db) {
+    try {
+      const query = { timestamp: { $gt: effectiveSince } };
+      if (participantId) {
+        query.participantId = String(participantId).trim();
+      }
+      const docs = await db.collection('helpdesk_messages').find(query).sort({ timestamp: 1 }).toArray();
+      if (docs && docs.length > 0) return docs;
+    } catch (err) {
+      console.warn('[MongoDB] Query fallback to local helpdesk messages:', err.message);
+    }
+  }
+
+  const local = loadLocalHelpdeskMessages();
+  return local.filter(m => {
+    if (Number(m.timestamp) <= effectiveSince) return false;
+    if (participantId && String(m.participantId).trim().toUpperCase() !== String(participantId).trim().toUpperCase()) return false;
+    return true;
+  });
+}
+
+async function markHelpdeskMessagesRead(participantId, readerRole) {
+  const pId = String(participantId).trim();
+  if (db) {
+    try {
+      const filter = { participantId: pId };
+      if (readerRole === 'monitor') {
+        filter.senderRole = 'participant';
+      } else if (readerRole === 'participant') {
+        filter.senderRole = { $ne: 'participant' };
+      }
+      await db.collection('helpdesk_messages').updateMany(filter, { $set: { read: true } });
+    } catch (e) {}
+  }
+
+  try {
+    const local = loadLocalHelpdeskMessages();
+    let updated = false;
+    local.forEach(m => {
+      if (String(m.participantId).trim().toUpperCase() === pId.toUpperCase()) {
+        if (readerRole === 'monitor' && m.senderRole === 'participant') {
+          m.read = true;
+          updated = true;
+        } else if (readerRole === 'participant' && m.senderRole !== 'participant') {
+          m.read = true;
+          updated = true;
+        }
+      }
+    });
+    if (updated) {
+      fs.writeFileSync(HELPDESK_FILE, JSON.stringify(local, null, 2), 'utf8');
+    }
+  } catch (e) {}
+}
 
 wss.on('connection', (ws, req) => {
   const urlParams = new URL(req.url, `http://${req.headers.host}`);
@@ -112,7 +238,52 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
-      if (msg.type === 'broadcast' || msg.type === 'state_update' || msg.type === 'sql_watch' || msg.type === 'score_update' || msg.type === 'audio_control' || msg.type === 'stage_update') {
+      if (msg.type === 'chat_message') {
+        saveHelpdeskMessage(msg.payload || msg).then(saved => {
+          // Broadcast to staff portals (Monitor, Host)
+          broadcastToAllClients({
+            type: 'broadcast',
+            event: 'state_update',
+            payload: { helpdeskMessagesUpdate: [saved] }
+          }, ws);
+
+          // Direct broadcast to targeted participant's client sockets
+          const pid = String(saved.participantId || '').trim().toUpperCase();
+          const pSet = participantWsClients.get(pid);
+          if (pSet) {
+            const pPayload = JSON.stringify({
+              type: 'broadcast',
+              event: 'state_update',
+              payload: { helpdeskMessagesUpdate: [saved] }
+            });
+            pSet.forEach(targetWs => {
+              if (targetWs !== ws && targetWs.readyState === 1) {
+                try { targetWs.send(pPayload); } catch(e) {}
+              }
+            });
+          }
+
+          // Reply with ACK to sender
+          try {
+            ws.send(JSON.stringify({ type: 'msg_ack', id: saved.id, timestamp: saved.timestamp }));
+          } catch(e) {}
+        });
+      } else if (msg.type === 'chat_read') {
+        const payload = msg.payload || msg;
+        markHelpdeskMessagesRead(payload.participantId, payload.readerRole).then(() => {
+          broadcastToAllClients({
+            type: 'broadcast',
+            event: 'state_update',
+            payload: { helpdeskMessagesUpdate: [{ participantId: payload.participantId, read: true, readerRole: payload.readerRole }] }
+          }, ws);
+        });
+      } else if (msg.type === 'register_client') {
+        if (msg.participantId) {
+          const cPid = String(msg.participantId).trim().toUpperCase();
+          if (!participantWsClients.has(cPid)) participantWsClients.set(cPid, new Set());
+          participantWsClients.get(cPid).add(ws);
+        }
+      } else if (msg.type === 'broadcast' || msg.type === 'state_update' || msg.type === 'sql_watch' || msg.type === 'score_update' || msg.type === 'audio_control' || msg.type === 'stage_update') {
         broadcastToAllClients(msg, ws);
       } else if (msg.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
@@ -2329,6 +2500,65 @@ app.post("/api/finance/payments", async (req, res) => {
   }
 });
 // 8. WebSocket Health Check
+
+// ==========================================
+// ZERO-EGRESS HELPDESK REST API (24H RETENTION)
+// ==========================================
+app.post('/api/chat/send', async (req, res) => {
+  try {
+    const saved = await saveHelpdeskMessage(req.body);
+    broadcastToAllClients({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: { helpdeskMessagesUpdate: [saved] }
+    });
+    const pid = String(saved.participantId || '').trim().toUpperCase();
+    const pSet = participantWsClients.get(pid);
+    if (pSet) {
+      const pPayload = JSON.stringify({
+        type: 'broadcast',
+        event: 'state_update',
+        payload: { helpdeskMessagesUpdate: [saved] }
+      });
+      pSet.forEach(targetWs => {
+        if (targetWs.readyState === 1) {
+          try { targetWs.send(pPayload); } catch(e) {}
+        }
+      });
+    }
+    res.json({ success: true, message: saved });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/chat/history', async (req, res) => {
+  try {
+    const { participantId, since } = req.query;
+    const messages = await getHelpdeskMessages(participantId, since);
+    res.json({ success: true, messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/chat/mark-read', async (req, res) => {
+  try {
+    const { participantId, readerRole } = req.body;
+    await markHelpdeskMessagesRead(participantId, readerRole);
+    broadcastToAllClients({
+      type: 'broadcast',
+      event: 'state_update',
+      payload: {
+        helpdeskMessagesUpdate: [{ participantId, read: true, readerRole }]
+      }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/ws-ping', (req, res) => {
   res.json({ status: 'ok', wsClients: wsClients.size, wsPath: '/ws' });
 });
