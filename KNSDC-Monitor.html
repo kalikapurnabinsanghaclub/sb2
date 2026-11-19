@@ -9573,14 +9573,36 @@ window.switchEvent = (val) => {
 let currentRankingFormula = localStorage.getItem('knsdc_ranking_formula') || '1+2';
 let isCustomFormulaActive = localStorage.getItem('knsdc_ranking_formula_active') === '1';
 
+function isPromotedFromRound(p, roundName) {
+  if (!p) return false;
+  const targetR = String(roundName || '').toLowerCase();
+  if (p.promotedFrom && (p.promotedFrom[targetR] || p.promotedFrom[roundName])) return true;
+  const pR = String(p.round || '').toLowerCase();
+  if (pR !== targetR) {
+    if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) return true;
+    const rounds = (typeof getEventRounds === 'function' ? getEventRounds().map(r => String(r.id).toLowerCase()) : null) || ['audition', 'qualified', 'semifinal', 'final'];
+    const fromIdx = rounds.indexOf(targetR);
+    const currIdx = rounds.indexOf(pR);
+    if (fromIdx !== -1 && currIdx !== -1 && currIdx > fromIdx) return true;
+  }
+  return false;
+}
+if (typeof window !== 'undefined') window.isPromotedFromRound = isPromotedFromRound;
+
 function getParticipantRoundScore(p, roundId) {
   if (!p) return 0;
   const targetR = String(roundId || '').toLowerCase();
   let scoresObj = null;
-  if (p.roundScores && p.roundScores[targetR]) {
+  if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) {
     scoresObj = p.roundScores[targetR];
-  } else if (String(p.round || '').toLowerCase() === targetR && p.scores) {
+  } else if (String(p.round || '').toLowerCase() === targetR && p.scores && Object.keys(p.scores).length > 0) {
     scoresObj = p.scores;
+  } else if (isPromotedFromRound(p, targetR)) {
+    if (p.roundScores && p.roundScores[targetR] && Object.keys(p.roundScores[targetR]).length > 0) {
+      scoresObj = p.roundScores[targetR];
+    } else if (p.scores && Object.keys(p.scores).length > 0 && (!p.roundScores || !p.roundScores[p.round] || Object.keys(p.roundScores[p.round]).length === 0)) {
+      scoresObj = p.scores;
+    }
   }
   let total = 0;
   if (scoresObj) {
@@ -9594,7 +9616,7 @@ function getParticipantRoundScore(p, roundId) {
       }
     });
   }
-  return total;
+  return Math.round(total * 100) / 100;
 }
 
 function parseRankingFormula(formulaStr, eventRounds) {
@@ -9975,8 +9997,12 @@ function renderLeaderboard() {
         return inAnyFormulaRound || hasAnyFormulaScore || !p.round;
       } else {
         const pRound = String(p.round || 'audition').toLowerCase();
-        const hasScoreInTarget = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
-        return pRound === targetRoundClean || hasScoreInTarget;
+        const hasScoreInTarget = !!(
+          (p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0) ||
+          (pRound === targetRoundClean && p.scores && Object.keys(p.scores).length > 0)
+        );
+        const wasPromotedFromThisRound = isPromotedFromRound(p, targetRoundClean);
+        return pRound === targetRoundClean || hasScoreInTarget || wasPromotedFromThisRound;
       }
     });
 
@@ -10016,7 +10042,7 @@ function renderLeaderboard() {
             <div class="podium-item">
                 <div class="podium-player">
                     <div class="podium-avatar" style="border-color:var(--blue2)">${(top3[1].name||'P')[0]}</div>
-                    <div class="podium-name">${top3[1].name}</div>
+                    <div class="podium-name">${top3[1].name} ${isPromotedFromRound(top3[1], targetRoundClean) ? '<span class="badge" style="background:linear-gradient(135deg, #10B981, #059669);color:#fff;font-size:9px;padding:2px 6px;border-radius:4px;vertical-align:middle;box-shadow:0 2px 6px rgba(16,185,129,0.3)">PROMOTED</span>' : ''}</div>
                     <div class="podium-score"><span class="judge-score-val">${top3[1].totalScore} pts</span></div>
                 </div>
                 <div class="podium-base p-2nd">2</div>
@@ -10025,7 +10051,7 @@ function renderLeaderboard() {
             <div class="podium-item">
                 <div class="podium-player">
                     <div class="podium-avatar" style="width:72px;height:72px;font-size:32px;border-color:var(--amber2)">${(top3[0].name||'P')[0]}</div>
-                    <div class="podium-name" style="font-size:18px">${top3[0].name}</div>
+                    <div class="podium-name" style="font-size:18px">${top3[0].name} ${isPromotedFromRound(top3[0], targetRoundClean) ? '<span class="badge" style="background:linear-gradient(135deg, #10B981, #059669);color:#fff;font-size:10px;padding:2px 8px;border-radius:4px;vertical-align:middle;box-shadow:0 2px 6px rgba(16,185,129,0.3)">⭐ PROMOTED</span>' : ''}</div>
                     <div class="podium-score" style="font-size:14px;color:var(--amber2)"><span class="judge-score-val">${top3[0].totalScore} pts</span></div>
                 </div>
                 <div class="podium-base p-1st">1</div>
@@ -10035,7 +10061,7 @@ function renderLeaderboard() {
             <div class="podium-item">
                 <div class="podium-player">
                     <div class="podium-avatar" style="border-color:var(--cyan2)">${(top3[2].name||'P')[0]}</div>
-                    <div class="podium-name">${top3[2].name}</div>
+                    <div class="podium-name">${top3[2].name} ${isPromotedFromRound(top3[2], targetRoundClean) ? '<span class="badge" style="background:linear-gradient(135deg, #10B981, #059669);color:#fff;font-size:9px;padding:2px 6px;border-radius:4px;vertical-align:middle;box-shadow:0 2px 6px rgba(16,185,129,0.3)">PROMOTED</span>' : ''}</div>
                     <div class="podium-score"><span class="judge-score-val">${top3[2].totalScore} pts</span></div>
                 </div>
                 <div class="podium-base p-3rd">3</div>
@@ -10084,8 +10110,12 @@ function renderLeaderboard() {
                                     <div style="display:flex;align-items:center;gap:12px">
                                         <div class="avatar-circle" style="width:36px;height:36px;font-size:14px;background:${isTop3 ? 'var(--amber2)20' : 'var(--surface3)'};color:${isTop3 ? 'var(--amber2)' : 'var(--text-dim)'}">${(p.name||'P')[0]}</div>
                                         <div>
-                                            <div style="font-weight:700;font-size:14px">${p.name || 'Participant'}</div>
-                                            <div style="font-size:9px;color:var(--text-muted)">ID: ${p.id} · Round: ${p.round || 'Audition'}</div>
+                                            ${(() => {
+                                              const isPromoted = isPromotedFromRound(p, targetRoundClean);
+                                              const pBadge = isPromoted ? `<span class="badge" style="background:linear-gradient(135deg, #10B981, #059669);color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:4px;box-shadow:0 2px 6px rgba(16,185,129,0.3);margin-left:6px;display:inline-flex;align-items:center;gap:3px;">⭐ PROMOTED (${(p.round||'NEXT').toUpperCase()})</span>` : '';
+                                              return `<div style="font-weight:700;font-size:14px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${p.name || 'Participant'}${pBadge}</div>
+                                              <div style="font-size:9px;color:var(--text-muted)">ID: ${p.id} · Current Round: ${(p.round || 'Audition').toUpperCase()}</div>`;
+                                            })()}
                                         </div>
                                     </div>
                                 </td>
@@ -10221,8 +10251,12 @@ async function downloadRankingsPDF() {
       return hasAnyScore || !p.round;
     } else {
       const pRound = String(p.round || 'audition').toLowerCase();
-      const hasScore = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
-      return pRound === targetRoundClean || hasScore;
+      const hasScore = !!(
+        (p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0) ||
+        (pRound === targetRoundClean && p.scores && Object.keys(p.scores).length > 0)
+      );
+      const wasPromotedFromThisRound = isPromotedFromRound(p, targetRoundClean);
+      return pRound === targetRoundClean || hasScore || wasPromotedFromThisRound;
     }
   });
 
@@ -10402,8 +10436,12 @@ async function downloadRankingsJPG() {
       return hasAnyScore || !p.round;
     } else {
       const pRound = String(p.round || 'audition').toLowerCase();
-      const hasScore = !!(p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0);
-      return pRound === targetRoundClean || hasScore;
+      const hasScore = !!(
+        (p.roundScores && p.roundScores[targetRoundClean] && Object.keys(p.roundScores[targetRoundClean]).length > 0) ||
+        (pRound === targetRoundClean && p.scores && Object.keys(p.scores).length > 0)
+      );
+      const wasPromotedFromThisRound = isPromotedFromRound(p, targetRoundClean);
+      return pRound === targetRoundClean || hasScore || wasPromotedFromThisRound;
     }
   });
 
