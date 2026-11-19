@@ -5766,9 +5766,11 @@
             year: ev.startDate || ev.date || "2025",
             cat: ev.type || ev.category || "General",
             desc: ev.description || "A successful event hosted by KNSDC.",
-            parts: Math.floor(Math.random() * 500) + 100,
+            parts: ev.capacity || ev.parts || Math.floor(Math.random() * 500) + 100,
             winner: "Community",
             col: (ev.type || ev.category) === 'Cultural' ? '#FF6B35' : '#7B2D8B',
+            banner: ev.banner || ev.image || null,
+            venue: ev.venue || 'KNSDC Main Ground',
             scores: null,
             switchStates: ev.switchStates || {}  // preserve Monitor switch states
           }));
@@ -10155,6 +10157,25 @@
     }
 
     // ════════════ PREV EVENTS ════════════
+    window.togglePrevEventDetails = function(eventId) {
+      const body = document.getElementById('prev-details-body-' + eventId);
+      const arrow = document.getElementById('prev-details-arrow-' + eventId);
+      if (!body) return;
+      if (body.style.display === 'none' || !body.style.display) {
+        body.style.display = 'block';
+        if (arrow) {
+          arrow.innerHTML = 'Hide Details ▴';
+          arrow.style.background = 'rgba(0,0,0,0.08)';
+        }
+      } else {
+        body.style.display = 'none';
+        if (arrow) {
+          arrow.innerHTML = 'Tap to View Details ▾';
+          arrow.style.background = '';
+        }
+      }
+    };
+
     function renderPrevEvents() {
       const grid = document.getElementById("prevEventsGrid");
       if (!grid) return;
@@ -10165,54 +10186,95 @@
       }
       grid.style.display = 'grid';
       PREV.forEach((ev, i) => {
+        const sData = (window.syncEngine && window.syncEngine.getData()) || {};
+        const allP = sData.participants || [];
+        const evParts = allP.filter(p => String(p.eventId) === String(ev.id));
+        const participantCount = evParts.length > 0 ? evParts.length : (ev.parts || 250);
+
         const div = document.createElement("div");
         div.className = "ch";
-        div.style.cssText = `border-radius:24px; overflow:hidden; border-left:6px solid ${ev.col}; animation:fadeUp 0.55s ${i * 0.1}s ease both; background: #ffffff; border-top:1px solid #e2e8f0; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(0,0,0,0.04);`;
-        div.innerHTML = `
-          <div style="padding:24px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-              <div style="display:flex;gap:8px">
-                <span style="background:${ev.col}22;color:${ev.col};border-radius:12px;padding:3px 12px;font-size:0.72rem;font-weight:800">${ev.cat}</span>
-                <span style="background:#f3f4f6;color:#6b7280;border-radius:12px;padding:3px 10px;font-size:0.72rem;font-weight:700">${ev.year}</span>
-              </div>
-            </div>
-            <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;margin-bottom:12px">${ev.name}</h3>
-            
-            <div style="margin-bottom: 14px;">
-              <div style="font-size: 0.65rem; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">📖 About the Event</div>
-              <p style="color:#4b5563;font-size:0.85rem;line-height:1.6;margin:0">${ev.desc}</p>
-            </div>
+        div.style.cssText = `border-radius:24px; overflow:hidden; border-left:6px solid ${ev.col}; animation:fadeUp 0.55s ${i * 0.1}s ease both; background: #ffffff; border-top:1px solid #e2e8f0; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; box-shadow: 0 4px 18px rgba(0,0,0,0.05); display:flex; flex-direction:column; transition:transform 0.3s ease, box-shadow 0.3s ease;`;
 
-            ${(ev.cat === 'Cultural' || ev.cat === 'Sports') ? `
-              <div style="margin-bottom: 18px; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 12px; border: 1px dashed rgba(0,0,0,0.1);">
-                <div style="font-size: 0.65rem; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">📊 Official Scorecard</div>
-                <div style="display: flex; flex-direction: column; gap: 6px;">
-                  ${ev.scores ? ev.scores.map((s, idx) => `
-                    <div style="display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700; color: #1E293B;">
-                      <span>${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${s.n}</span>
-                      <span style="color: ${ev.col}">${s.s}</span>
-                    </div>
-                  `).join('') : ''}
+        div.innerHTML = `
+          <!-- EVENT POSTER BANNER -->
+          ${ev.banner ? `
+            <div style="width:100%; height:190px; position:relative; overflow:hidden; background:#0f172a; flex-shrink:0;">
+              <img src="${ev.banner}" alt="${ev.name}" style="width:100%; height:100%; object-fit:cover; transition:transform 0.5s ease;" onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'" onerror="this.parentElement.style.display='none'">
+              <div style="position:absolute; inset:0; background:linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.7) 100%);"></div>
+              <span style="position:absolute; bottom:10px; right:12px; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); color:#fff; font-size:0.65rem; font-weight:800; padding:3px 9px; border-radius:6px; letter-spacing:0.5px; text-transform:uppercase;">Official Poster</span>
+            </div>
+          ` : `
+            <div style="width:100%; height:130px; position:relative; overflow:hidden; background:linear-gradient(135deg, ${ev.col}18, ${ev.col}35); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <span style="font-size:2.8rem; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.12));">${ev.cat === 'Cultural' ? '💃' : ev.cat === 'Sports' ? '🏆' : '🎭'}</span>
+            </div>
+          `}
+
+          <div style="padding:22px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:6px;">
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <span style="background:${ev.col}22; color:${ev.col}; border-radius:12px; padding:3px 12px; font-size:0.72rem; font-weight:800;">${ev.cat}</span>
+                  <span style="background:#f3f4f6; color:#6b7280; border-radius:12px; padding:3px 10px; font-size:0.72rem; font-weight:700;">${ev.year}</span>
+                </div>
+                <!-- PARTICIPANT NUMBER DISPLAY -->
+                <span style="background:rgba(37,99,235,0.08); color:#2563eb; border:1px solid rgba(37,99,235,0.22); border-radius:12px; padding:3px 10px; font-size:0.72rem; font-weight:800; display:inline-flex; align-items:center; gap:4px;" title="Total registered / participated">
+                  👥 ${participantCount} Participants
+                </span>
+              </div>
+
+              <h3 style="font-family:'Playfair Display',serif; font-size:1.25rem; font-weight:800; margin-bottom:12px; color:#0f172a;">${ev.name}</h3>
+
+              <!-- TAP TO VIEW DETAILS COLLAPSIBLE ACCORDION -->
+              <div style="margin-bottom: 14px; background: rgba(248,250,252,0.9); border: 1px solid #e2e8f0; border-radius: 14px; padding: 12px 14px;">
+                <div onclick="window.togglePrevEventDetails('${ev.id}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 0.95rem;">📖</span>
+                    <span style="font-size: 0.72rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.8px;">About the Event</span>
+                  </div>
+                  <span id="prev-details-arrow-${ev.id}" style="font-size: 0.72rem; font-weight: 800; color: ${ev.col}; background: ${ev.col}15; padding: 3px 10px; border-radius: 20px; transition: all 0.25s ease;">
+                    Tap to View Details ▾
+                  </span>
+                </div>
+                <div id="prev-details-body-${ev.id}" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0;">
+                  <p style="color:#475569; font-size:0.85rem; line-height:1.65; margin:0 0 10px 0;">${ev.desc}</p>
+                  <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:0.75rem; color:#64748b;">
+                    ${ev.venue ? `<span style="background:#fff; border:1px solid #e2e8f0; padding:3px 8px; border-radius:6px;">📍 <strong>Venue:</strong> ${ev.venue}</span>` : ''}
+                    <span style="background:#fff; border:1px solid #e2e8f0; padding:3px 8px; border-radius:6px;">👥 <strong>Total Participated:</strong> ${participantCount}</span>
+                  </div>
                 </div>
               </div>
-            ` : ''}
 
-            ${ev.switchStates?.downloadPublic === true ? `
-            <div style="margin-bottom:16px; padding:16px; background:linear-gradient(135deg,#f5f3ff,#ede9fe); border-radius:16px; border:1px solid rgba(124,58,237,0.15);">
-              <div style="font-size:0.65rem; font-weight:800; color:#7C3AED; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">🔍 Check Your Score</div>
-              <div style="display:flex; flex-direction:column; gap:8px;">
-                <input type="text" id="prevSearch-name-${ev.id}" placeholder="Your full name" style="width:100%;padding:10px 14px;border:2px solid rgba(124,58,237,0.2);border-radius:12px;font-size:0.85rem;color:#1E293B;outline:none;background:#fff;box-sizing:border-box;">
-                <input type="text" id="prevSearch-id-${ev.id}" placeholder="Your Participant ID (e.g. KN1234)" style="width:100%;padding:10px 14px;border:2px solid rgba(124,58,237,0.2);border-radius:12px;font-size:0.85rem;color:#1E293B;outline:none;background:#fff;box-sizing:border-box;">
-                <button onclick="window.searchParticipantPrev('${ev.id}')" style="background:linear-gradient(135deg,#7C3AED,#6366F1);color:#fff;border:none;border-radius:12px;padding:10px;font-size:0.85rem;font-weight:800;cursor:pointer;">🔍 Check Score &amp; Certificate</button>
-              </div>
-              <div id="prevSearchResult-${ev.id}" style="margin-top:12px;"></div>
-            </div>` : ''}
+              ${(ev.cat === 'Cultural' || ev.cat === 'Sports') ? `
+                <div style="margin-bottom: 18px; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 12px; border: 1px dashed rgba(0,0,0,0.1);">
+                  <div style="font-size: 0.65rem; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">📊 Official Scorecard</div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    ${ev.scores && ev.scores.length > 0 ? ev.scores.map((s, idx) => `
+                      <div style="display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700; color: #1E293B;">
+                        <span>${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${s.n}</span>
+                        <span style="color: ${ev.col}">${s.s}</span>
+                      </div>
+                    `).join('') : '<div style="font-size:0.78rem;color:#64748B;">Official results and winners archived</div>'}
+                  </div>
+                </div>
+              ` : ''}
 
-            <div style="display:flex;align-items:center;justify-content:space-between">
-              <div style="display:flex; gap:8px;">
-                <button onclick="navigateTo('previous')" style="background:${ev.col}18;color:${ev.col};border:1px solid ${ev.col}44;border-radius:20px;padding:6px 16px;font-size:0.75rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif">Gallery →</button>
-                <button onclick="openDonationForm()" style="background:rgba(0,0,0,0.05);color:#4b5563;border:1px solid rgba(0,0,0,0.1);border-radius:20px;padding:6px 16px;font-size:0.75rem;font-weight:800;cursor:pointer;">Support goals</button>
-              </div>
+              ${ev.switchStates?.downloadPublic === true ? `
+              <div style="margin-bottom:16px; padding:16px; background:linear-gradient(135deg,#f5f3ff,#ede9fe); border-radius:16px; border:1px solid rgba(124,58,237,0.15);">
+                <div style="font-size:0.65rem; font-weight:800; color:#7C3AED; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">🔍 Check Your Score</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <input type="text" id="prevSearch-name-${ev.id}" placeholder="Your full name" style="width:100%;padding:10px 14px;border:2px solid rgba(124,58,237,0.2);border-radius:12px;font-size:0.85rem;color:#1E293B;outline:none;background:#fff;box-sizing:border-box;">
+                  <input type="text" id="prevSearch-id-${ev.id}" placeholder="Your Participant ID (e.g. KN1234)" style="width:100%;padding:10px 14px;border:2px solid rgba(124,58,237,0.2);border-radius:12px;font-size:0.85rem;color:#1E293B;outline:none;background:#fff;box-sizing:border-box;">
+                  <button onclick="window.searchParticipantPrev('${ev.id}')" style="background:linear-gradient(135deg,#7C3AED,#6366F1);color:#fff;border:none;border-radius:12px;padding:10px;font-size:0.85rem;font-weight:800;cursor:pointer;">🔍 Check Score &amp; Certificate</button>
+                </div>
+                <div id="prevSearchResult-${ev.id}" style="margin-top:12px;"></div>
+              </div>` : ''}
+            </div>
+
+            <!-- ACTION FOOTER: GALLERY CONNECTED TO MAIN PHOTO GALLERY; SUPPORT BUTTON REMOVED -->
+            <div style="display:flex; align-items:center; justify-content:flex-end; margin-top:8px; padding-top:12px; border-top:1px solid #f1f5f9;">
+              <button onclick="navigateTo('photo-gallery'); const pg = document.getElementById('photo-gallery'); if(pg) pg.scrollIntoView({behavior:'smooth'});" style="background:linear-gradient(135deg, #7B2D8B, #E91E8C); color:#fff; border:none; border-radius:20px; padding:8px 20px; font-size:0.8rem; font-weight:800; cursor:pointer; font-family:'Nunito',sans-serif; display:inline-flex; align-items:center; gap:6px; box-shadow:0 3px 12px rgba(123,45,139,0.25); transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                🖼️ View Main Gallery →
+              </button>
             </div>
           </div>
         `;
