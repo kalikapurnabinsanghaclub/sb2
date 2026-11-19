@@ -5598,6 +5598,51 @@
   </div>
 </div>
 
+<!-- JUDGE SUBJECT ASSIGNMENT MODAL (BEAUTIFUL SKILL: NEON NOIR / AURORA) -->
+<div class="modal-overlay" id="judge-subject-modal" style="display:none" onclick="closeOnBg(event,'judge-subject-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:620px; background:radial-gradient(ellipse at top, #1e293b 0%, #0f172a 100%); border:1px solid rgba(99,102,241,0.35); box-shadow:0 25px 60px rgba(0,0,0,0.6), 0 0 35px rgba(99,102,241,0.2); border-radius:22px; overflow:hidden;">
+    <div class="modal-head" style="border-bottom:1px solid rgba(255,255,255,0.08); padding:20px 24px; display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02)">
+      <div>
+        <div class="modal-title" style="font-family:var(--fh); font-size:19px; font-weight:900; color:#fff; display:flex; align-items:center; gap:8px">
+          <span style="background:linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">⚖️ Assign Scoring Subjects</span>
+        </div>
+        <div id="jsm-judge-subtitle" style="font-size:11px; color:#94a3b8; margin-top:3px; font-weight:600">Configuring subjects for Judge</div>
+      </div>
+      <button class="btn btn-icon btn-ghost" onclick="closeM('judge-subject-modal')" style="color:#94a3b8; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-size:14px;">✕</button>
+    </div>
+
+    <div class="modal-body" style="padding:22px 24px; max-height:65vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding:12px 16px; background:rgba(99,102,241,0.09); border-radius:14px; border:1px solid rgba(99,102,241,0.25)">
+        <div style="font-size:12px; font-weight:700; color:#c7d2fe">
+          💡 Select which subjects this judge evaluates:
+        </div>
+        <div style="display:flex; gap:8px">
+          <button type="button" class="btn btn-xs" onclick="selectAllJudgeSubjects(true)" style="background:#4f46e5; color:#fff; font-size:10.5px; font-weight:800; border-radius:8px; padding:4px 10px; border:none; cursor:pointer; box-shadow:0 2px 6px rgba(79,70,229,0.3)">Select All</button>
+          <button type="button" class="btn btn-xs" onclick="selectAllJudgeSubjects(false)" style="background:rgba(255,255,255,0.08); color:#94a3b8; font-size:10.5px; font-weight:800; border-radius:8px; padding:4px 10px; border:none; cursor:pointer;">Clear All</button>
+        </div>
+      </div>
+
+      <div id="jsm-subject-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+      <div id="jsm-summary-bar" style="margin-top:16px; padding:12px 18px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:14px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size:12px; font-weight:800; color:#10b981; display:flex; align-items:center; gap:6px;">
+          <span>🎯</span> <span id="jsm-selected-count">0</span> Subjects Assigned
+        </div>
+        <div style="font-size:12px; font-weight:800; color:#10b981">
+          Max Marks: <span id="jsm-selected-max">0</span> pts
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot" style="border-top:1px solid rgba(255,255,255,0.08); padding:16px 24px; display:flex; justify-content:flex-end; gap:12px; background:rgba(255,255,255,0.02)">
+      <button class="btn btn-ghost" onclick="closeM('judge-subject-modal')" style="border-radius:12px; font-weight:700; font-size:12px; padding:8px 18px;">Cancel</button>
+      <button class="btn btn-amber" id="jsm-save-btn" onclick="saveJudgeSubjectAssignment()" style="background:linear-gradient(135deg, #6366f1, #8b5cf6); color:#fff; border:none; border-radius:12px; font-weight:900; font-size:12px; padding:10px 24px; cursor:pointer; box-shadow:0 4px 18px rgba(99,102,241,0.4); display:inline-flex; align-items:center; gap:6px; transition:transform 0.2s cubic-bezier(.22, 1, .36, 1)" onmousedown="this.style.transform='scale(0.96)'" onmouseup="this.style.transform='scale(1)'">
+        💾 Save &amp; Broadcast Live
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- AGREEMENT SETUP MODAL -->
 <div class="modal-overlay" id="agreement-modal" style="display:none" onclick="closeOnBg(event,'agreement-modal')">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:640px">
@@ -17315,10 +17360,17 @@ function openScoreModalFor(id){
   }
 
   activeJudges.forEach(j=>{
+    const curEvId = String(activeEventId || (p && p.eventId) || '');
+    const jMapping = sState.judgeSubjectMapping && sState.judgeSubjectMapping[curEvId];
+    const jAssigned = jMapping && (jMapping[String(j.id)] || jMapping[String(j.email || '').toLowerCase()] || jMapping[String(j.name || '').toLowerCase()]);
+    const targetSubjects = (Array.isArray(jAssigned) && jAssigned.length > 0)
+      ? subjects.filter(s => jAssigned.map(String).includes(String(s.id)))
+      : subjects;
+
     html += `<div style="margin-top:14px">
-      <div style="font-size:9px;font-family:var(--fm);color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">⚖️ ${j.name}</div>
+      <div style="font-size:9px;font-family:var(--fm);color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">⚖️ ${j.name} <span class="badge" style="font-size:8px;background:rgba(99,102,241,0.2);color:#818cf8">${targetSubjects.length} Subject(s)</span></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">`;
-    subjects.forEach(s=>{
+    targetSubjects.forEach(s=>{
       const val = (p && p.scores && p.scores[j.id]) ? p.scores[j.id][s.id] || 0 : 0;
       html += `<div style="text-align:center">
         <div style="font-size:8px;color:var(--text-muted);margin-bottom:4px;font-family:var(--fm)">${s.name}<br/><span style="color:var(--border2)">/${s.maxMarks}</span></div>
@@ -23457,6 +23509,43 @@ function renderAssignedJudges() {
       '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:var(--fm)">Scores Given</div><div class="judge-score-val" style="font-size:14px;font-weight:900;color:' + (scoresGiven>0?'#059669':'#94a3b8') + '">' + scoresGiven + '</div></div>' +
       '</div>' +
 
+      // Assigned Scoring Subjects (Individual Subjects per Judge)
+      (function() {
+        const curEvId = String(currentEventId || activeEventId || '');
+        const mapping = (sData.judgeSubjectMapping && sData.judgeSubjectMapping[curEvId]) || {};
+        const jId = String(a.id || '');
+        const jEmail = String(a.email || '').toLowerCase().trim();
+        const jName = String(a.name || '').toLowerCase().trim();
+        const assignedIds = mapping[jId] || mapping[jEmail] || mapping[jName] || [];
+        
+        const evSubjects = (subjects || []).filter(s => !s.eventId || String(s.eventId) === curEvId);
+        const assignedSubjs = evSubjects.filter(s => assignedIds.map(String).includes(String(s.id)));
+        const totalMarks = assignedSubjs.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0);
+        
+        let pillsHtml = '';
+        if (assignedSubjs.length > 0) {
+          pillsHtml = assignedSubjs.map(s => 
+            '<span style="background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.3);font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;">✨ ' + s.name + ' <small style="opacity:0.8">(/' + s.maxMarks + ')</small></span>'
+          ).join(' ');
+        } else {
+          pillsHtml = '<span style="font-size:9px;color:#94a3b8;font-style:italic;">All subjects assigned (Default)</span>';
+        }
+
+        const safeJudgeId = encodeURIComponent(String(a.id || a.email || a.name));
+        const safeJudgeName = encodeURIComponent(String(a.name || 'Judge'));
+
+        return '<div style="margin-bottom:14px;padding:12px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:12px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+          '<div style="font-size:9.5px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px">' +
+          '<span>⚖️ SCORING SUBJECTS</span>' +
+          (assignedSubjs.length > 0 ? '<span class="badge" style="background:#4f46e5;color:#fff;font-size:8px;padding:1px 6px">' + assignedSubjs.length + ' (' + totalMarks + ' pts)</span>' : '<span class="badge b-amber" style="font-size:8px">ALL</span>') +
+          '</div>' +
+          '<button class="btn btn-xs" onclick="openJudgeSubjectModal('' + safeJudgeId + '','' + safeJudgeName + '')" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:800;font-size:10px;padding:4px 10px;border-radius:8px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 8px rgba(99,102,241,0.3);transition:transform 0.2s cubic-bezier(.22, 1, .36, 1)" onmousedown="this.style.transform=\'scale(0.96)\'" onmouseup="this.style.transform=\'scale(1)\'">⚙️ Assign Subjects</button>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' + pillsHtml + '</div>' +
+          '</div>';
+      })() +
+
       // Payment bar
       '<div style="margin-bottom:14px">' +
       '<div style="display:flex;justify-content:space-between;font-size:8px;color:#64748b;margin-bottom:6px;font-family:var(--fm)"><span>PAYMENT &middot; &#x20B9;' + ((a.paymentReceived||a.advance||0)).toLocaleString() + ' of &#x20B9;' + (a.amount||0).toLocaleString() + '</span><span style="font-weight:700;color:' + (payPct>=100?'#059669':'#d97706') + '">' + payPct + '%</span></div>' +
@@ -26813,3 +26902,167 @@ window.refreshInfrastructureTelemetry = refreshInfrastructureTelemetry;
 </body>
 
 </html>
+
+
+// ══════════════════════════════════════════════════════════════
+// INDIVIDUAL SUBJECTS PER JUDGE MANAGEMENT (ZERO-EGRESS SYNC)
+// ══════════════════════════════════════════════════════════════
+let _currentSubjectModalJudgeId = null;
+let _currentSubjectModalSelectedIds = new Set();
+
+function openJudgeSubjectModal(safeJudgeId, safeJudgeName) {
+  const judgeId = decodeURIComponent(safeJudgeId);
+  const judgeName = decodeURIComponent(safeJudgeName);
+  _currentSubjectModalJudgeId = judgeId;
+  
+  const curEvId = String(activeEventId || '');
+  const sData = (syncEngine && syncEngine.getData()) || {};
+  const mapping = (sData.judgeSubjectMapping && sData.judgeSubjectMapping[curEvId]) || {};
+  
+  const assigned = mapping[judgeId] || mapping[judgeId.toLowerCase()] || [];
+  _currentSubjectModalSelectedIds = new Set(assigned.map(String));
+  
+  const subTitleEl = document.getElementById('jsm-judge-subtitle');
+  if (subTitleEl) subTitleEl.textContent = `Judge: ${judgeName} · Event ID: ${curEvId || 'Active'}`;
+  
+  renderJudgeSubjectModalList();
+  openM('judge-subject-modal');
+}
+window.openJudgeSubjectModal = openJudgeSubjectModal;
+
+function renderJudgeSubjectModalList() {
+  const curEvId = String(activeEventId || '');
+  const evSubjects = (subjects || []).filter(s => !s.eventId || String(s.eventId) === curEvId);
+  const container = document.getElementById('jsm-subject-list');
+  if (!container) return;
+  
+  if (evSubjects.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:12px">No subjects found for this event. Please configure subjects in Admin settings.</div>';
+    return;
+  }
+  
+  let totalSelectedMarks = 0;
+  let selectedCount = 0;
+  
+  container.innerHTML = evSubjects.map(s => {
+    const isSelected = _currentSubjectModalSelectedIds.has(String(s.id));
+    const sMax = Number(s.maxMarks) || 10;
+    if (isSelected) {
+      totalSelectedMarks += sMax;
+      selectedCount++;
+    }
+    
+    return `
+      <div onclick="toggleSubjectSelection('${s.id}')" 
+           style="cursor:pointer; padding:14px 16px; border-radius:14px; transition:all 0.25s cubic-bezier(.22, 1, .36, 1);
+                  background:${isSelected ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)'};
+                  border:1.5px solid ${isSelected ? '#6366f1' : 'rgba(255,255,255,0.08)'};
+                  box-shadow:${isSelected ? '0 4px 16px rgba(99,102,241,0.22)' : 'none'};
+                  display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:24px; height:24px; border-radius:7px; display:flex; align-items:center; justify-content:center;
+                      background:${isSelected ? '#6366f1' : 'rgba(255,255,255,0.1)'}; color:#fff; font-size:13px; font-weight:900;">
+            ${isSelected ? '✓' : ''}
+          </div>
+          <div>
+            <div style="font-weight:800; font-size:14px; color:${isSelected ? '#fff' : '#cbd5e1'}; letter-spacing:0.3px;">
+              ${escapeHtml(s.name)}
+            </div>
+            ${s.desc ? `<div style="font-size:10px; color:#94a3b8; margin-top:2px;">${escapeHtml(s.desc)}</div>` : ''}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <span class="badge" style="background:${isSelected ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.08)'};
+                                     color:${isSelected ? '#a5b4fc' : '#94a3b8'}; font-weight:800; font-size:11px; padding:3px 8px; border-radius:8px;">
+            ${sMax} pts
+          </span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  const countEl = document.getElementById('jsm-selected-count');
+  if (countEl) countEl.textContent = selectedCount;
+  const maxEl = document.getElementById('jsm-selected-max');
+  if (maxEl) maxEl.textContent = totalSelectedMarks;
+}
+window.renderJudgeSubjectModalList = renderJudgeSubjectModalList;
+
+function toggleSubjectSelection(id) {
+  const strId = String(id);
+  if (_currentSubjectModalSelectedIds.has(strId)) {
+    _currentSubjectModalSelectedIds.delete(strId);
+  } else {
+    _currentSubjectModalSelectedIds.add(strId);
+  }
+  renderJudgeSubjectModalList();
+}
+window.toggleSubjectSelection = toggleSubjectSelection;
+
+function selectAllJudgeSubjects(selectAll) {
+  const curEvId = String(activeEventId || '');
+  const evSubjects = (subjects || []).filter(s => !s.eventId || String(s.eventId) === curEvId);
+  if (selectAll) {
+    evSubjects.forEach(s => _currentSubjectModalSelectedIds.add(String(s.id)));
+  } else {
+    _currentSubjectModalSelectedIds.clear();
+  }
+  renderJudgeSubjectModalList();
+}
+window.selectAllJudgeSubjects = selectAllJudgeSubjects;
+
+async function saveJudgeSubjectAssignment() {
+  if (!_currentSubjectModalJudgeId) return;
+  const curEvId = String(activeEventId || '');
+  const selectedArr = Array.from(_currentSubjectModalSelectedIds);
+  
+  const btn = document.getElementById('jsm-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving & Broadcasting...'; }
+  
+  try {
+    // 1. Update State Locally
+    syncEngine.setData(st => {
+      if (!st.judgeSubjectMapping) st.judgeSubjectMapping = {};
+      if (!st.judgeSubjectMapping[curEvId]) st.judgeSubjectMapping[curEvId] = {};
+      st.judgeSubjectMapping[curEvId][_currentSubjectModalJudgeId] = selectedArr;
+    });
+    
+    // 2. Zero-Egress BroadcastChannel (<10ms)
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const bc = new BroadcastChannel('knsdc_sync_channel');
+        bc.postMessage({
+          type: 'judge_subject_mapping_update',
+          eventId: curEvId,
+          judgeIdentifier: _currentSubjectModalJudgeId,
+          subjectIds: selectedArr
+        });
+        bc.close();
+      } catch(e) {}
+    }
+    
+    // 3. Zero-Egress Native WebSocket Broadcast (<50ms)
+    if (window.syncEngine && window.syncEngine.nativeWs && window.syncEngine.nativeWs.readyState === 1) {
+      try {
+        window.syncEngine.nativeWs.send(JSON.stringify({
+          type: 'judge_subject_mapping_update',
+          payload: {
+            eventId: curEvId,
+            judgeIdentifier: _currentSubjectModalJudgeId,
+            subjectIds: selectedArr
+          }
+        }));
+      } catch(e) {}
+    }
+    
+    toast(`✓ Successfully updated scoring subjects (${selectedArr.length} assigned)`);
+    closeM('judge-subject-modal');
+    renderAssignedJudges();
+  } catch(err) {
+    console.error('[saveJudgeSubjectAssignment] error:', err);
+    toast('Error saving assignment: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '💾 Save &amp; Broadcast Live'; }
+  }
+}
+window.saveJudgeSubjectAssignment = saveJudgeSubjectAssignment;

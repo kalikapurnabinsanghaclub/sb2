@@ -6139,7 +6139,8 @@ function loadScorePanel(id) {
     return;
   }
 
-  wrap.innerHTML = SUBJECTS.map(s => {
+  const activeSubjs = getJudgeActiveSubjects();
+  wrap.innerHTML = activeSubjs.map(s => {
     const sMax = Number(s.maxMarks) || 10;
     const savedVal = myScores[s.id] !== undefined ? Number(myScores[s.id]) : 0;
     const liveVal  = _liveValues.hasOwnProperty(String(s.id)) ? _liveValues[String(s.id)] : null;
@@ -6241,7 +6242,8 @@ function updateSliderColor(id, max, val) {
 function updateLiveTotal() {
   let total = 0;
   let maxTotal = 0;
-  SUBJECTS.forEach(s => {
+  const activeSubjs = getJudgeActiveSubjects();
+  activeSubjs.forEach(s => {
     const sMax = Number(s.maxMarks) || 10;
     maxTotal += sMax;
     total += parseFloat(document.getElementById('num-'+s.id)?.value || 0);
@@ -6305,13 +6307,17 @@ async function saveScores() {
     if(!p.roundScores[p.round]) p.roundScores[p.round] = {};
     if(!p.roundScores[p.round][JUDGE.id]) p.roundScores[p.round][JUDGE.id] = {};
 
-    SUBJECTS.forEach(s => {
+    const activeSubjs = getJudgeActiveSubjects();
+    activeSubjs.forEach(s => {
       const sMax = Number(s.maxMarks) || 10;
-      let val = parseFloat(document.getElementById('num-'+s.id)?.value || 0);
-      if (isNaN(val) || val < 0) val = 0;
-      if (val > sMax) val = sMax;
-      p.scores[JUDGE.id][s.id] = val;
-      p.roundScores[p.round][JUDGE.id][s.id] = val;
+      const numEl = document.getElementById('num-'+s.id);
+      if (numEl) {
+        let val = parseFloat(numEl.value || 0);
+        if (isNaN(val) || val < 0) val = 0;
+        if (val > sMax) val = sMax;
+        p.scores[JUDGE.id][s.id] = val;
+        p.roundScores[p.round][JUDGE.id][s.id] = val;
+      }
     });
     if(!p.roundComments) p.roundComments = {};
     if(!p.roundComments[p.round]) p.roundComments[p.round] = {};
@@ -7504,7 +7510,8 @@ function openEditModal(id, targetRound) {
   document.getElementById('score-modal-title').textContent = `Edit Score: ${p.name} (${targetRound.toUpperCase()})`;
   
   const wrap = document.getElementById('modal-score-inputs');
-  wrap.innerHTML = SUBJECTS.map(s => {
+  const activeSubjs = getJudgeActiveSubjects();
+  wrap.innerHTML = activeSubjs.map(s => {
     const sMax = Number(s.maxMarks) || 10;
     const val = myScores[s.id] !== undefined ? Number(myScores[s.id]) : 0;
     const pct = Math.round(val / sMax * 100);
@@ -9197,3 +9204,52 @@ window.toggleSidebarMenu = toggleSidebarMenu;
 </script>
 </body>
 </html>
+
+
+// ══════════════════════════════════════════════════════════════
+// DYNAMIC SUBJECTS PER JUDGE (ZERO-EGRESS REAL-TIME ADAPTATION)
+// ══════════════════════════════════════════════════════════════
+function getJudgeActiveSubjects() {
+  try {
+    const state = (window.syncEngine && window.syncEngine.getData()) || {};
+    const activeEvId = String(JUDGE.eventId || state.activeEventId || '');
+    const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[activeEvId];
+    if (mapping) {
+      const jId = String(JUDGE.id || '');
+      const jEmail = String(JUDGE.email || '').toLowerCase().trim();
+      const jName = String(JUDGE.name || '').toLowerCase().trim();
+      const jAgr = String(JUDGE.agreement_id || '');
+      
+      const assigned = mapping[jId] || (jEmail && mapping[jEmail]) || (jName && mapping[jName]) || (jAgr && mapping[jAgr]);
+      if (Array.isArray(assigned) && assigned.length > 0) {
+        const matched = SUBJECTS.filter(s => assigned.map(String).includes(String(s.id)));
+        if (matched.length > 0) return matched;
+      }
+    }
+  } catch(e) {
+    console.warn('[getJudgeActiveSubjects] error:', e);
+  }
+  return SUBJECTS;
+}
+window.getJudgeActiveSubjects = getJudgeActiveSubjects;
+
+// Zero-Egress BroadcastChannel Live Sync
+if (typeof BroadcastChannel !== 'undefined') {
+  try {
+    const bc = new BroadcastChannel('knsdc_sync_channel');
+    bc.onmessage = (evt) => {
+      if (evt && evt.data && evt.data.type === 'judge_subject_mapping_update') {
+        const payload = evt.data;
+        const jId = String(JUDGE.id || '');
+        const jEmail = String(JUDGE.email || '').toLowerCase().trim();
+        const jName = String(JUDGE.name || '').toLowerCase().trim();
+        const targetId = String(payload.judgeIdentifier || '').toLowerCase().trim();
+        if (targetId === jId.toLowerCase() || targetId === jEmail || targetId === jName) {
+          toast('⚡ Monitor updated your assigned scoring subjects in real-time!');
+          if (typeof renderParticipantScoring === 'function') renderParticipantScoring();
+          updateLiveTotal();
+        }
+      }
+    };
+  } catch(e) {}
+}

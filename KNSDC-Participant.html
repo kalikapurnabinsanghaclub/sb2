@@ -7066,32 +7066,54 @@ function renderDetailedResults(p) {
             let judgeTotal = 0;
             let judgeMax = 0;
             
+            // Resolve only assigned or actually scored subjects for this judge
+            const pEventId = String(p.eventId || state.activeEventId || '');
+            const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[pEventId];
+            const jId = String(judge.id || '');
+            const jEmail = String(judge.email || '').toLowerCase().trim();
+            const jName = String(judge.name || '').toLowerCase().trim();
+            const assignedIds = mapping && (mapping[jId] || mapping[jEmail] || mapping[jName]);
+            
+            let relevantSubjects = subjects;
+            if (Array.isArray(assignedIds) && assignedIds.length > 0) {
+              relevantSubjects = subjects.filter(s => assignedIds.map(String).includes(String(s.id)));
+            } else if (typeof jScores === 'object' && jScores !== null && Object.keys(jScores).length > 0) {
+              const scoredSubjectIds = Object.keys(jScores);
+              const scoredMatch = subjects.filter(s => scoredSubjectIds.includes(String(s.id)));
+              if (scoredMatch.length > 0) relevantSubjects = scoredMatch;
+            }
+
             subjects.forEach(s => {
-              judgeTotal += (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
-              judgeMax += (Number(s.maxMarks) || 10);
+              if (relevantSubjects.some(rs => String(rs.id) === String(s.id))) {
+                judgeTotal += (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
+                judgeMax += (Number(s.maxMarks) || 10);
+              }
             });
 
+            const judgePct = judgeMax > 0 ? Math.round(judgeTotal / judgeMax * 100) : 0;
             let judgeHtml = `
-              <div style="margin-bottom:12px; padding:12px; background:var(--bg); border-radius:10px; border:1px solid var(--border);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:4px;">
-                  <span style="font-size:0.8rem; font-weight:800; color:var(--text);">🧑‍⚖️ ${judge.name}</span>
-                  <span style="font-size:0.75rem; font-weight:800; color:var(--primary); background:rgba(124,58,237,0.1); padding:2px 8px; border-radius:10px;">${judgeTotal} / ${judgeMax} pts</span>
+              <div style="margin-bottom:14px; padding:14px; background:var(--bg); border-radius:14px; border:1px solid var(--border); box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:6px;">
+                  <span style="font-size:0.85rem; font-weight:800; color:var(--text); display:flex; align-items:center; gap:6px;">
+                    🧑‍⚖️ ${judge.name} <span class="badge" style="font-size:8px; background:rgba(99,102,241,0.15); color:#6366f1">${relevantSubjects.length} Subject(s)</span>
+                  </span>
+                  <span style="font-size:0.75rem; font-weight:800; color:var(--primary); background:rgba(124,58,237,0.1); padding:3px 10px; border-radius:10px;">${judgeTotal} / ${judgeMax} pts (${judgePct}%)</span>
                 </div>`;
             
-            subjects.forEach(s => {
+            relevantSubjects.forEach(s => {
               let subScore = (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
               const subMax = Number(s.maxMarks) || 10;
               const pct = subMax > 0 ? Math.round(subScore / subMax * 100) : 0;
               const barColor = pct >= 70 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
               
               judgeHtml += `
-                <div style="margin-bottom:8px;">
+                <div style="margin-bottom:10px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                    <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted);">${s.name || 'Subject'}</span>
-                    <span style="font-size:0.75rem; font-weight:700; color:${barColor};">${subScore} / ${subMax}</span>
+                    <span style="font-size:0.75rem; font-weight:700; color:var(--text);">${s.name || 'Subject'}</span>
+                    <span style="font-size:0.75rem; font-weight:800; color:${barColor};">${subScore} / ${subMax}</span>
                   </div>
-                  <div style="height:4px; background:var(--border); border-radius:10px; overflow:hidden;">
-                    <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:10px; transition:width 0.6s ease;"></div>
+                  <div style="height:5px; background:var(--border); border-radius:10px; overflow:hidden;">
+                    <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:10px; transition:width 0.6s cubic-bezier(.22, 1, .36, 1);"></div>
                   </div>
                 </div>
               `;
