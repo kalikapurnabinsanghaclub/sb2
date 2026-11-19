@@ -1978,6 +1978,24 @@ window.moveQueueItem = (id, direction) => {
 
   renderStage();
   
+  if (!currentP.formAnswers) currentP.formAnswers = {};
+  if (!targetP.formAnswers) targetP.formAnswers = {};
+  currentP.formAnswers._queueOrder = currentP.queueOrder;
+  targetP.formAnswers._queueOrder = targetP.queueOrder;
+
+  // Instant zero-egress Native WS broadcast to Monitor & Participant portals
+  if (window.syncEngine && window.syncEngine.nativeWs && window.syncEngine.nativeWs.readyState === 1) {
+    try {
+      window.syncEngine.nativeWs.send(JSON.stringify({
+        type: 'stage_update',
+        payload: {
+          venueId: hostAssignedVenueId || s.activeVenueId,
+          updates: queueParts.map(r => ({ id: r.id, stageStatus: 'queue', queueOrder: r.queueOrder, queuedAt: r.queuedAt }))
+        }
+      }));
+    } catch(e) {}
+  }
+
   if (window.syncEngine && window.syncEngine.updateParticipant) {
     Promise.all([
       window.syncEngine.updateParticipant(currentP.id, { queueOrder: currentP.queueOrder, localMutatedAt: now }),
@@ -2132,6 +2150,26 @@ window.hostAddParticipantToQueue = () => {
     const parts = (s.participants || []).map(x => String(x.id) === String(p.id) ? { ...p } : x);
     return { ...s, participants: parts };
   });
+
+  if (!p.formAnswers) p.formAnswers = {};
+  p.formAnswers._queueOrder = newOrder;
+  p.formAnswers._queuedAt = now;
+
+  if (window.syncEngine && window.syncEngine.nativeWs && window.syncEngine.nativeWs.readyState === 1) {
+    try {
+      window.syncEngine.nativeWs.send(JSON.stringify({
+        type: 'stage_update',
+        payload: {
+          venueId: hostAssignedVenueId || activeEvId,
+          participantId: p.id,
+          stageStatus: 'queue',
+          queueOrder: newOrder,
+          queuedAt: now,
+          updates: [{ id: p.id, stageStatus: 'queue', queueOrder: newOrder, queuedAt: now }]
+        }
+      }));
+    } catch(e) {}
+  }
 
   input.value = '';
   renderDashboard();

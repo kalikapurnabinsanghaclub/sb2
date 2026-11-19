@@ -5492,9 +5492,16 @@ function renderParticipantUpcomingQueue(p, state) {
   const appState = state || (window.syncEngine ? window.syncEngine.getData() : {}) || {};
   let allParts = appState.participants || [];
 
-  // Venue-scoped & event-scoped filtering matching Monitor Portal
+  // Venue-scoped & event-scoped filtering matching Monitor & Host Portals
   const isSameEvent = part => String(part.eventId) === String(p.eventId) || !part.eventId || !p.eventId;
-  const isSameVenue = part => (p.venueId && part.venueId) ? String(part.venueId) === String(p.venueId) : true;
+  const myVenObj = resolveParticipantVenue(p, appState.venues || (typeof venues !== 'undefined' ? venues : []), appState);
+  const myVenId = myVenObj ? String(myVenObj.id) : (p.venueId ? String(p.venueId) : null);
+  const isSameVenue = part => {
+    if (!myVenId) return true;
+    if (part.venueId && String(part.venueId) === myVenId) return true;
+    const partVenObj = resolveParticipantVenue(part, appState.venues || (typeof venues !== 'undefined' ? venues : []), appState);
+    return partVenObj && String(partVenObj.id) === myVenId;
+  };
 
   // On stage performer matching event & venue (checked via currentOnStage ID or stageStatus)
   const onStagePart = allParts.find(part => 
@@ -9147,6 +9154,42 @@ function connectParticipantWebSocket() {
         if (msg.type === 'score_updated') {
           applyLiveScoreUpdate(msg);
         } else if (msg.type === 'stage_update' || msg.type === 'state_update') {
+          if (window.syncEngine && msg.payload) {
+            window.syncEngine.setData(st => {
+              const currentParts = [...(st.participants || [])];
+              if (msg.payload.updates && Array.isArray(msg.payload.updates)) {
+                msg.payload.updates.forEach(upd => {
+                  const idx = currentParts.findIndex(x => String(x.id) === String(upd.id));
+                  if (idx !== -1) {
+                    const fAns = { ...(currentParts[idx].formAnswers || {}) };
+                    if (upd.queueOrder !== undefined) fAns._queueOrder = upd.queueOrder;
+                    if (upd.queuedAt !== undefined) fAns._queuedAt = upd.queuedAt;
+                    currentParts[idx] = { ...currentParts[idx], ...upd, formAnswers: fAns };
+                  }
+                });
+              }
+              if (msg.payload.participantId) {
+                const idx = currentParts.findIndex(x => String(x.id) === String(msg.payload.participantId));
+                if (idx !== -1) {
+                  const fAns = { ...(currentParts[idx].formAnswers || {}) };
+                  if (msg.payload.stageStatus !== undefined) currentParts[idx].stageStatus = msg.payload.stageStatus;
+                  if (msg.payload.queueOrder !== undefined) {
+                    currentParts[idx].queueOrder = msg.payload.queueOrder;
+                    fAns._queueOrder = msg.payload.queueOrder;
+                  }
+                  if (msg.payload.queuedAt !== undefined) {
+                    currentParts[idx].queuedAt = msg.payload.queuedAt;
+                    fAns._queuedAt = msg.payload.queuedAt;
+                  }
+                  currentParts[idx] = { ...currentParts[idx], formAnswers: fAns };
+                }
+              }
+              if (msg.payload.currentOnStage !== undefined) {
+                st.currentOnStage = msg.payload.currentOnStage;
+              }
+              return { ...st, participants: currentParts };
+            });
+          }
           if (CURRENT_USER && document.getElementById('dashboard-view') && document.getElementById('dashboard-view').style.display === 'block') {
             const state = window.syncEngine ? window.syncEngine.getData() : {};
             const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));

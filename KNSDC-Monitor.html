@@ -10633,7 +10633,13 @@ function renderStageView(){
   const venId = currentVenueMonitor;
 
   let data = participants.filter(p => (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if (venId) data = data.filter(p => String(p.venueId) === String(venId));
+  if (venId) {
+    data = data.filter(p => {
+      if (String(p.venueId) === String(venId)) return true;
+      const r = resolveParticipantVenue(p, venues);
+      return r && String(r.id) === String(venId);
+    });
+  }
 
   const onStage = data.find(p => p.stageStatus === 'on-stage') || data.find(p => String(p.id) === String(currentOnStage));
   if(onStage){
@@ -15204,6 +15210,26 @@ function addToUpcoming(id) {
     // DASH-BUG-FIX 4b: Direct Supabase write so queue addition persists immediately
     // Previously only syncAll() was called (debounced 1s), which could be lost if another
     // rapid action fires and overwrites the state before it flushes.
+    if (!p.formAnswers) p.formAnswers = {};
+    p.formAnswers._queueOrder = p.queueOrder;
+    p.formAnswers._queuedAt = now;
+
+    if (window.syncEngine && window.syncEngine.nativeWs && window.syncEngine.nativeWs.readyState === 1) {
+      try {
+        window.syncEngine.nativeWs.send(JSON.stringify({
+          type: 'stage_update',
+          payload: {
+            venueId: currentVenueMonitor,
+            participantId: p.id,
+            stageStatus: 'queue',
+            queueOrder: p.queueOrder,
+            queuedAt: now,
+            updates: [{ id: p.id, stageStatus: 'queue', queueOrder: p.queueOrder, queuedAt: now }]
+          }
+        }));
+      } catch(e) {}
+    }
+
     if (window.syncEngine && window.syncEngine.updateParticipant) {
       window.syncEngine.updateParticipant(p.id, {
         stageStatus: 'queue', queuedAt: now, queueOrder: p.queueOrder,
@@ -15228,14 +15254,40 @@ function dropFromQueue(id) {
   p.queueOrder = null;
   p.localMutatedAt = Date.now();
 
-  // Re-index remaining queue participants
+  // Re-index remaining queue participants with unified venue resolution
   const venId = currentVenueMonitor;
   let remaining = participants.filter(x => x.stageStatus === 'queue' && (String(x.eventId) === String(activeEventId) || !x.eventId));
-  if (venId) remaining = remaining.filter(x => String(x.venueId) === String(venId));
+  if (venId) {
+    remaining = remaining.filter(x => {
+      if (String(x.venueId) === String(venId)) return true;
+      const r = resolveParticipantVenue(x, venues);
+      return r && String(r.id) === String(venId);
+    });
+  }
   remaining = sortQueue(remaining);
   remaining.forEach((item, idx) => {
     item.queueOrder = idx;
+    if (!item.formAnswers) item.formAnswers = {};
+    item.formAnswers._queueOrder = idx;
   });
+
+  if (window.syncEngine && window.syncEngine.nativeWs && window.syncEngine.nativeWs.readyState === 1) {
+    try {
+      window.syncEngine.nativeWs.send(JSON.stringify({
+        type: 'stage_update',
+        payload: {
+          venueId: currentVenueMonitor,
+          participantId: p.id,
+          stageStatus: 'waiting',
+          queueOrder: null,
+          updates: [
+            { id: p.id, stageStatus: 'waiting', queueOrder: null },
+            ...remaining.map(r => ({ id: r.id, stageStatus: 'queue', queueOrder: r.queueOrder, queuedAt: r.queuedAt }))
+          ]
+        }
+      }));
+    } catch(e) {}
+  }
 
   syncAll();
   renderVenueParticipants();
@@ -15288,7 +15340,13 @@ function moveQueueItem(id, direction) {
   const venId = currentVenueMonitor;
   
   let queueParts = participants.filter(p => p.stageStatus === 'queue' && (String(p.eventId) === String(activeEventId) || !p.eventId));
-  if (venId) queueParts = queueParts.filter(p => String(p.venueId) === String(venId));
+  if (venId) {
+    queueParts = queueParts.filter(p => {
+      if (String(p.venueId) === String(venId)) return true;
+      const r = resolveParticipantVenue(p, venues);
+      return r && String(r.id) === String(venId);
+    });
+  }
   queueParts = sortQueue(queueParts);
   
   const idx = queueParts.findIndex(p => String(p.id) === String(id));
@@ -15300,13 +15358,30 @@ function moveQueueItem(id, direction) {
   // Assign explicit queueOrder to preserve manual rearrangement
   queueParts.forEach((p, index) => {
     p.queueOrder = index;
+    if (!p.formAnswers) p.formAnswers = {};
+    p.formAnswers._queueOrder = index;
   });
   
   // Swap queueOrder values
   const temp = queueParts[idx].queueOrder;
   queueParts[idx].queueOrder = queueParts[targetIdx].queueOrder;
   queueParts[targetIdx].queueOrder = temp;
+  queueParts[idx].formAnswers._queueOrder = queueParts[idx].queueOrder;
+  queueParts[targetIdx].formAnswers._queueOrder = queueParts[targetIdx].queueOrder;
   
+  // Instant zero-egress Native WS broadcast to Host & Participant portals
+  if (window.syncEngine && window.syncEngine.nativeWs && window.syncEngine.nativeWs.readyState === 1) {
+    try {
+      window.syncEngine.nativeWs.send(JSON.stringify({
+        type: 'stage_update',
+        payload: {
+          venueId: currentVenueMonitor,
+          updates: queueParts.map(r => ({ id: r.id, stageStatus: 'queue', queueOrder: r.queueOrder, queuedAt: r.queuedAt }))
+        }
+      }));
+    } catch(e) {}
+  }
+
   // 1. Immediately render UI synchronously (0ms delay)
   renderVenueParticipants();
   renderStageView();
