@@ -2177,7 +2177,7 @@ window.pushToQueueFromList = (id) => {
 
   renderDashboard();
   renderStage();
-  toast(`➕ Added ${p.name} to the Queue! (Position #${newOrder + 1})`);
+  toast(`➕ Added ${p.name} to the Queue! (Position ${newOrder + 1})`);
   setTimeout(() => { _isHostQueueOpInProgress = false; }, 400);
 };
 
@@ -2274,7 +2274,7 @@ window.hostAddParticipantToQueue = () => {
   input.value = '';
   renderDashboard();
   renderStage();
-  toast(`➕ Added ${p.name} to the Queue! (Position #${newOrder + 1})`);
+  toast(`➕ Added ${p.name} to the Queue! (Position ${newOrder + 1})`);
   setTimeout(() => { _isHostQueueOpInProgress = false; }, 400);
 };
 
@@ -2473,7 +2473,7 @@ window.dropToQueue = async (id) => {
       });
     }
     const performer = (participants || []).find(p => String(p.id) === pidStr);
-    toast(`↩️ Dropped ${performer ? performer.name : id} back to queue (Position #${newOrder + 1})`);
+    toast(`↩️ Dropped ${performer ? performer.name : id} back to queue (Position ${newOrder + 1})`);
     renderStage();
     renderDashboard();
   } catch(e) {
@@ -2491,6 +2491,37 @@ window.switchLeaderRound = (round) => {
     if (sel) sel.value = round;
     renderLeaderboard();
 };
+
+const hostEvRounds = [
+  { id: 'audition', name: 'Audition', num: 1 },
+  { id: 'qualified', name: 'Quarter / Qualified', num: 2 },
+  { id: 'semifinal', name: 'Semi-Final', num: 3 },
+  { id: 'final', name: 'Final', num: 4 }
+];
+
+function parseHostFormula(formulaStr) {
+  if (!formulaStr || typeof formulaStr !== 'string') return [];
+  const regex = /([+-]?)\s*(?:R|Round)?\s*(\d+)/gi;
+  const terms = [];
+  let match;
+  while ((match = regex.exec(formulaStr)) !== null) {
+    const sign = match[1] === '-' ? -1 : 1;
+    const roundNum = parseInt(match[2], 10);
+    if (!isNaN(roundNum) && roundNum >= 1 && roundNum <= hostEvRounds.length) {
+      terms.push({
+        sign,
+        roundNum,
+        roundId: hostEvRounds[roundNum - 1].id,
+        roundName: hostEvRounds[roundNum - 1].name
+      });
+    }
+  }
+  if (terms.length === 0) {
+    terms.push({ sign: 1, roundNum: 1, roundId: 'audition', roundName: 'Audition' });
+    terms.push({ sign: 1, roundNum: 4, roundId: 'final', roundName: 'Final' });
+  }
+  return terms;
+}
 
 function getActiveHostFormula() {
   const state = (window.syncEngine && typeof syncEngine.getData === 'function') ? syncEngine.getData() : {};
@@ -2684,7 +2715,7 @@ window.renderLeaderboard = () => {
                     <tbody>
                         ${catScored.map((p) => {
                             const rank = p.competitionRank;
-                            let rankBadge = `<span style="font-family:var(--fm); font-size:14px; font-weight:800; color:var(--text-muted)">#${rank}</span>`;
+                            let rankBadge = `<span style="font-family:var(--fm); font-size:14px; font-weight:800; color:var(--text-muted)">${rank}</span>`;
                             if(rank === 1) rankBadge = `<span class="round-badge gold">1st</span>`;
                             if(rank === 2) rankBadge = `<span class="round-badge silver">2nd</span>`;
                             if(rank === 3) rankBadge = `<span class="round-badge bronze">3rd</span>`;
