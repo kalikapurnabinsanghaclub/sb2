@@ -53,7 +53,8 @@ if (fs.existsSync(prevSrc)) {
 const staticAliases = [
   { src: 'KNSDC-Monitor.html', dir: 'monitor' },
   { src: 'KNSDC-Judge.html', dir: 'judge' },
-  { src: 'KNSDC-Participant.html', dir: 'participant' }
+  { src: 'KNSDC-Participant.html', dir: 'participant' },
+  { src: 'KNSDC-Host.html', dir: 'host' }
 ];
 
 staticAliases.forEach(({ src, dir }) => {
