@@ -6265,7 +6265,7 @@
 <!-- 🔊 SPEAKER & SOUND SYSTEM SOUND CHECK DIAGNOSTICS MODAL -->
 <!-- SCORE EDIT AUDIT LOG MODAL -->
 <!-- ══════════════════════════════════════════════════════════ -->
-<!-- 🛡️ SUPER MONITOR AUTHENTICATION MODAL (PASSWORD: 244466666) -->
+<!-- 🛡️ SUPER MONITOR AUTHENTICATION MODAL (RBAC SECURED) -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="super-monitor-auth-modal" style="display:none; z-index:2800;" onclick="closeOnBg(event,'super-monitor-auth-modal')">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:440px; width:95%; background:var(--bg); border:1.5px solid rgba(147, 51, 234, 0.4); border-radius:18px; box-shadow:0 25px 70px rgba(0,0,0,0.8); overflow:hidden;">
@@ -21593,9 +21593,22 @@ function renderCertificateSettings() {
 }
 
 // ══════════════════════════════════════════
-// SECRET SCORE VISIBILITY CONTROL
+// SECRET SCORE VISIBILITY CONTROL (SHA-256 SECURED)
 // ══════════════════════════════════════════
-const SCORE_PIN = '244466666';
+const SCORE_PIN_HASH = "a8c3548db137bdb83985f87e7ca3bcb756a63bfc3572c8b5c5f046dbd1381639";
+
+async function _verifyScorePinHash(val) {
+  try {
+    const enc = new TextEncoder();
+    const data = enc.encode("knsdc_monitor_salt_2026_" + val);
+    const hashBuf = await crypto.subtle.digest("SHA-256", data);
+    const hashArr = Array.from(new Uint8Array(hashBuf));
+    const hex = hashArr.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hex === SCORE_PIN_HASH;
+  } catch(e) {
+    return false;
+  }
+}
 
 function applyScoreVisibility() {
   const hidden = localStorage.getItem('kns_scores_hidden') !== '0';
@@ -21670,9 +21683,10 @@ syncEngine.subscribe(state => {
   }
 });
 
-function verifyScorePin() {
+async function verifyScorePin() {
   const input = document.getElementById('score-pin-input').value.trim();
-  if (input === SCORE_PIN) {
+  const isMatch = await _verifyScorePinHash(input);
+  if (isMatch) {
     localStorage.setItem('kns_scores_hidden', '0');
     applyScoreVisibility();
     syncScoreVisUI();
@@ -27129,9 +27143,22 @@ window.confirmReopenScoring = confirmReopenScoring;
 
 // ══════════════════════════════════════════════════════════════════
 // 🛡️ SUPER MONITOR INFRASTRUCTURE & QUOTA CONTROLLER
-// Security Password: 244466666 (Protected RBAC)
+// Salted SHA-256 RBAC Auth Guard (Zero plaintext credentials in source)
 // ══════════════════════════════════════════════════════════════════
-const SUPER_MONITOR_SECRET_PIN = "244466666";
+const SUPER_MONITOR_PIN_HASH = "a8c3548db137bdb83985f87e7ca3bcb756a63bfc3572c8b5c5f046dbd1381639";
+
+async function _verifySuperMonitorPin(val) {
+  try {
+    const enc = new TextEncoder();
+    const data = enc.encode("knsdc_monitor_salt_2026_" + val);
+    const hashBuf = await crypto.subtle.digest("SHA-256", data);
+    const hashArr = Array.from(new Uint8Array(hashBuf));
+    const hex = hashArr.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hex === SUPER_MONITOR_PIN_HASH;
+  } catch (e) {
+    return false;
+  }
+}
 
 function isSuperMonitorUnlocked() {
   return sessionStorage.getItem('kns_super_monitor_unlocked') === 'true';
@@ -27158,12 +27185,13 @@ function toggleSuperMonitorPwdVisibility() {
 }
 window.toggleSuperMonitorPwdVisibility = toggleSuperMonitorPwdVisibility;
 
-function checkSuperMonitorPassword() {
+async function checkSuperMonitorPassword() {
   const inp = document.getElementById('super-monitor-pwd-input');
   const errEl = document.getElementById('super-monitor-auth-err');
   const val = (inp ? inp.value : '').trim();
 
-  if (val === SUPER_MONITOR_SECRET_PIN) {
+  const isMatch = await _verifySuperMonitorPin(val);
+  if (isMatch) {
     sessionStorage.setItem('kns_super_monitor_unlocked', 'true');
     closeM('super-monitor-auth-modal');
     openM('super-monitor-hub-modal');

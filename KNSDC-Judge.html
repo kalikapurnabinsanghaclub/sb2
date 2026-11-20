@@ -4620,9 +4620,9 @@ window.saveJudgeProfileDetails = async function() {
     return { ...st, judges: jList, judgeAgreements: agList };
   });
 
-  // Force persist to Supabase so Host Portal updates in real time
-  if (syncEngine && typeof syncEngine.forceSaveStateToSupabase === 'function') {
-    await syncEngine.forceSaveStateToSupabase().catch(e => console.error('forceSaveStateToSupabase error:', e));
+  // Zero-Egress debounced persist to Supabase & MongoDB
+  if (syncEngine && typeof syncEngine.saveStateToSupabase === 'function') {
+    syncEngine.saveStateToSupabase(syncEngine.getData());
   }
 
   // Update header/sidebar labels
@@ -4686,7 +4686,9 @@ async function uploadJudgeAvatar(event) {
         }
         return { ...state, judges: jList };
       });
-      await syncEngine.forceSaveStateToSupabase();
+      if (syncEngine && typeof syncEngine.saveStateToSupabase === 'function') {
+        syncEngine.saveStateToSupabase(syncEngine.getData());
+      }
       
       // Update UI
       showJudgeProfileModal();
@@ -5554,8 +5556,8 @@ function setupHoldButton() {
           });
         }
         window.syncEngine.setData(s => ({ ...s, judges: judgesList, lastUpdated: Date.now() }));
-        if (window.syncEngine.forceSaveStateToSupabase) {
-          await window.syncEngine.forceSaveStateToSupabase().catch(e => console.warn(e));
+        if (window.syncEngine && typeof window.syncEngine.saveStateToSupabase === 'function') {
+          window.syncEngine.saveStateToSupabase(window.syncEngine.getData());
         }
       }
     } catch (err) {
@@ -7075,7 +7077,9 @@ async function executeFinalSubmitWithPassword() {
           }
           return { ...s, judges: jList };
         });
-        await syncEngine.forceSaveStateToSupabase();
+        if (syncEngine && typeof syncEngine.saveStateToSupabase === 'function') {
+          syncEngine.saveStateToSupabase(syncEngine.getData());
+        }
       }
 
       toast("🔒 Scores finalized! Portal locked & marked Absent. Reports unlocked.");
@@ -7248,7 +7252,9 @@ function triggerGoldenRibbon() {
       goldenRibbonAt: now
     }).catch(e => console.error(e));
   }
-  syncEngine.forceSaveStateToSupabase();
+  if (syncEngine && typeof syncEngine.saveStateToSupabase === 'function') {
+    syncEngine.saveStateToSupabase(syncEngine.getData());
+  }
 
   // 5. Trigger 4s Celebration Animation locally on Judge Screen
   showGoldenRibbonCelebration(p.name, judgeName);

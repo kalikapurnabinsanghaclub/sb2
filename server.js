@@ -57,7 +57,12 @@ async function connectDB() {
     return;
   }
   try {
-    client = new MongoClient(mongoUri);
+    client = new MongoClient(mongoUri, {
+      maxPoolSize: 20,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 5000,
+      maxIdleTimeMS: 30000
+    });
     await client.connect();
     db = client.db('knsdc');
     console.log('[MongoDB] Connected successfully to Atlas cluster!');
@@ -690,9 +695,72 @@ app.get('/api/bookings', (req, res) => {
   res.json(state.rideBookings || []);
 });
 
+app.post('/api/bookings', (req, res) => {
+  const newBooking = req.body;
+  if (!newBooking || !newBooking.id) {
+    return res.status(400).json({ error: 'Invalid booking payload' });
+  }
+  const state = loadState();
+  if (!state.rideBookings) state.rideBookings = [];
+  const existingIdx = state.rideBookings.findIndex(b => b.id === newBooking.id);
+  if (existingIdx !== -1) {
+    state.rideBookings[existingIdx] = { ...state.rideBookings[existingIdx], ...newBooking };
+  } else {
+    state.rideBookings.push(newBooking);
+  }
+  saveState(state);
+  broadcastToAllClients({
+    type: 'broadcast',
+    event: 'state_update',
+    payload: { rideBookingsUpdate: [newBooking] }
+  });
+  res.json({ status: 'success', bookingId: newBooking.id });
+});
+
+app.post('/api/bookings/cancel', (req, res) => {
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ error: 'Missing booking ID' });
+  const state = loadState();
+  if (state.rideBookings) {
+    const idx = state.rideBookings.findIndex(b => b.id === id);
+    if (idx !== -1) {
+      state.rideBookings[idx].status = 'cancelled';
+      saveState(state);
+      broadcastToAllClients({
+        type: 'broadcast',
+        event: 'state_update',
+        payload: { rideBookingsUpdate: [state.rideBookings[idx]] }
+      });
+    }
+  }
+  res.json({ status: 'success', cancelled: id });
+});
+
 app.get('/api/orders', (req, res) => {
   const state = loadState();
   res.json(state.foodOrders || []);
+});
+
+app.post('/api/orders', (req, res) => {
+  const newOrder = req.body;
+  if (!newOrder || !newOrder.id) {
+    return res.status(400).json({ error: 'Invalid order payload' });
+  }
+  const state = loadState();
+  if (!state.foodOrders) state.foodOrders = [];
+  const existingIdx = state.foodOrders.findIndex(o => o.id === newOrder.id);
+  if (existingIdx !== -1) {
+    state.foodOrders[existingIdx] = { ...state.foodOrders[existingIdx], ...newOrder };
+  } else {
+    state.foodOrders.push(newOrder);
+  }
+  saveState(state);
+  broadcastToAllClients({
+    type: 'broadcast',
+    event: 'state_update',
+    payload: { foodOrdersUpdate: [newOrder] }
+  });
+  res.json({ status: 'success', orderId: newOrder.id });
 });
 
 // ══════════════════════════════════════════════════════════════════

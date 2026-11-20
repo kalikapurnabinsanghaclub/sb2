@@ -2210,7 +2210,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="lib/supabase.js"></script>
-<script src="lib/localSync-v4.js?v=240"></script>
+<script src="lib/localSync-v4.js?v=241"></script>
 <script>
 window.IS_PARTICIPANT_PORTAL = true;
 window.syncEngine = new (window.LocalSync || LocalSync)({ role: 'participant' });
@@ -7939,7 +7939,18 @@ window.submitFoodOrder = async function() {
     return { ...s, foodOrders: orders };
   });
 
-  await window.syncEngine.forceSaveStateToSupabase();
+  // Atomic order dispatch to backend API (Zero Supabase Master Overwrite)
+  try {
+    fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newOrder)
+    }).catch(e => console.warn('[Food Order Sync Notice]', e));
+  } catch(e) {}
+
+  if (window.syncEngine && typeof window.syncEngine.saveStateToSupabase === 'function') {
+    window.syncEngine.saveStateToSupabase(window.syncEngine.getData());
+  }
   toast('🍔 Food order placed successfully!');
   closeFoodModal();
 };
@@ -8282,7 +8293,18 @@ window.submitRideBooking = async function() {
     return { ...s, rideBookings: bookings };
   });
 
-  await window.syncEngine.forceSaveStateToSupabase();
+  // Atomic ride dispatch to backend API (Zero Supabase Master Overwrite)
+  try {
+    fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newBooking)
+    }).catch(e => console.warn('[Ride Booking Sync Notice]', e));
+  } catch(e) {}
+
+  if (window.syncEngine && typeof window.syncEngine.saveStateToSupabase === 'function') {
+    window.syncEngine.saveStateToSupabase(window.syncEngine.getData());
+  }
   toast('🏍️ Ride booked successfully! Finding partner...');
   closeRideModal();
 };
@@ -8652,8 +8674,15 @@ window.cancelRide = async function(id) {
     if (idx !== -1) bookings[idx].status = 'cancelled';
     return { ...s, rideBookings: bookings };
   });
-  if (window.syncEngine.forceSaveStateToSupabase) {
-    await window.syncEngine.forceSaveStateToSupabase();
+  try {
+    fetch('/api/bookings/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    }).catch(e => console.warn('[Cancel Ride Sync Notice]', e));
+  } catch(e) {}
+  if (window.syncEngine && typeof window.syncEngine.saveStateToSupabase === 'function') {
+    window.syncEngine.saveStateToSupabase(window.syncEngine.getData());
   }
   toast('Ride cancelled.');
   
