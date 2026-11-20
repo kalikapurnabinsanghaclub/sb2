@@ -5990,6 +5990,74 @@
   </div>
 </div>
 
+<!-- ASSIGN WINNER MODAL -->
+<div class="modal-overlay" id="winner-modal" style="display:none" onclick="closeOnBg(event,'winner-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:500px;">
+    <div class="modal-head">
+      <div class="modal-title" id="winner-modal-title">🏆 Add Winner Name</div>
+      <button class="btn btn-icon btn-ghost" onclick="closeM('winner-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label class="fl">Category</label>
+        <input id="wm-category-display" readonly style="background:var(--surface2); font-weight:700; color:var(--text); cursor:default;" />
+      </div>
+
+      <div class="fg">
+        <label class="fl">Award Position / Title</label>
+        <select id="wm-position" onchange="onWinnerPositionChange()">
+          <option value="🥇 1st Place (Champion)">🥇 1st Place (Champion)</option>
+          <option value="🥈 2nd Place (1st Runner Up)">🥈 2nd Place (1st Runner Up)</option>
+          <option value="🥉 3rd Place (2nd Runner Up)">🥉 3rd Place (2nd Runner Up)</option>
+          <option value="🎖️ 4th Place">🎖️ 4th Place</option>
+          <option value="🎖️ 5th Place">🎖️ 5th Place</option>
+          <option value="⭐ Judges' Choice Award">⭐ Judges' Choice Award</option>
+          <option value="🌟 Best Choreography / Performer">🌟 Best Choreography / Performer</option>
+          <option value="🏅 Special Consolation Award">🏅 Special Consolation Award</option>
+          <option value="custom">✍️ Custom Position...</option>
+        </select>
+        <input id="wm-position-custom" placeholder="Type custom position (e.g. Rising Star Award)" style="display:none; margin-top:6px;" />
+      </div>
+
+      <div class="fg">
+        <label class="fl">Select Participant from this Event</label>
+        <select id="wm-participant-select" onchange="onWinnerParticipantSelect(this.value)">
+          <option value="">— Select Registered Participant —</option>
+          <option value="__manual__">✍️ Enter Name Manually (Offline / Guest)</option>
+        </select>
+      </div>
+
+      <div id="wm-manual-fields" style="display:none; background:rgba(0,0,0,0.02); padding:10px 12px; border-radius:10px; border:1px dashed var(--border2); margin-bottom:12px;">
+        <div class="fg" style="margin-bottom:8px;">
+          <label class="fl">Winner Full Name</label>
+          <input id="wm-name" placeholder="Full name of the winner" />
+        </div>
+        <div class="fg" style="margin-bottom:0;">
+          <label class="fl">Participant ID / Chest No (optional)</label>
+          <input id="wm-pid" placeholder="e.g. KN1024 or Chest 12" />
+        </div>
+      </div>
+
+      <div class="fg">
+        <label class="fl">Prize Title (optional)</label>
+        <select id="wm-prize-select" onchange="onWinnerPrizeSelect(this.value)" style="margin-bottom:6px;">
+          <option value="">— Link to a Prize (or type below) —</option>
+        </select>
+        <input id="wm-prize-title" placeholder="e.g. Champion Trophy + ₹5,000 Cash Prize" />
+      </div>
+
+      <div class="fg">
+        <label class="fl">Final Score / Remarks (optional)</label>
+        <input id="wm-score" placeholder="e.g. 98.5 / 100 or Special Jury Recognition" />
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeM('winner-modal')">Cancel</button>
+      <button class="btn btn-amber" id="winner-modal-save-btn" onclick="saveWinner()">Save Winner</button>
+    </div>
+  </div>
+</div>
+
 <!-- VENUE DATE MODAL -->
 <div class="modal-overlay" id="venue-modal" style="display:none" onclick="closeOnBg(event,'venue-modal')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -14976,7 +15044,9 @@ function renderCategories(){
   document.getElementById('cat-list').innerHTML = filteredCats.map(c=>{
     const wireColor = PRIZE_WIRE_COLORS[c.color] || '#F59E0B';
     const prizes = c.prizes || [];
+    const winners = c.winners || [];
     const regCount = participants.filter(p=>(String(p.catId) === String(c.id) && (String(p.eventId) === String(activeEventId) || !p.eventId))).length;
+    
     const prizeHtml = prizes.map((pr, idx) => `
       <div class="prize-chip" style="--prize-wire-col:${wireColor}">
         <div class="prize-pos-badge">${PRIZE_POS_ICON(pr.position)}</div>
@@ -14987,6 +15057,27 @@ function renderCategories(){
         <button class="btn btn-ghost btn-xs" title="Edit prize" onclick="event.stopPropagation();openPrizeModal(${c.id},${idx})">✏️</button>
         <button class="btn btn-danger btn-xs" title="Delete prize" onclick="event.stopPropagation();deletePrize(${c.id},${idx})">🗑</button>
       </div>`).join('');
+
+    const winnerHtml = winners.map((w, wIdx) => {
+      let icon = '🎖️';
+      const posLow = (w.position || '').toLowerCase();
+      if (posLow.includes('1st') || posLow.includes('first') || posLow.includes('champion') || w.rank === 1) icon = '🥇';
+      else if (posLow.includes('2nd') || posLow.includes('second') || posLow.includes('runner') || w.rank === 2) icon = '🥈';
+      else if (posLow.includes('3rd') || posLow.includes('third') || w.rank === 3) icon = '🥉';
+
+      return `
+        <div class="prize-chip" style="--prize-wire-col:#10b981; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.3); margin-top:6px;">
+          <div class="prize-pos-badge" style="background:rgba(16,185,129,0.15); font-size:18px;">${icon}</div>
+          <div class="prize-info">
+            <div style="font-weight:800; color:#059669; font-size:11.5px; text-transform:uppercase; letter-spacing:0.5px;">${w.position || 'Winner'}</div>
+            <div style="font-weight:800; color:var(--text); font-size:13px; margin:1px 0;">${w.name} ${w.participantId ? '<span style="font-size:10px; color:var(--text-muted); font-family:var(--fm); font-weight:600;">(ID: ' + w.participantId + ')</span>' : ''}</div>
+            <div style="font-size:10.5px; color:var(--text-dim);">${w.prizeTitle ? w.prizeTitle : ''}${w.score ? ' · Score: <strong style="color:#059669;">' + w.score + '</strong>' : ''}</div>
+          </div>
+          <button class="btn btn-ghost btn-xs" title="Edit winner" onclick="event.stopPropagation();openAssignWinnerModal(${c.id},${wIdx})">✏️</button>
+          <button class="btn btn-danger btn-xs" title="Delete winner" onclick="event.stopPropagation();deleteWinner(${c.id},${wIdx})">🗑</button>
+        </div>`;
+    }).join('');
+
     return `
     <div style="margin-bottom:14px">
       <!-- Category Header -->
@@ -14995,15 +15086,29 @@ function renderCategories(){
         <div style="flex:1;font-size:12px;color:var(--text-muted)">Age ${c.ageMin}–${c.ageMax}</div>
         <div style="font-size:12px;color:var(--text-dim);margin-right:4px">${regCount} reg</div>
         <span style="font-size:9px;color:${wireColor};font-weight:700;margin-right:4px">🏆 ${prizes.length} prize${prizes.length!==1?'s':''}</span>
+        ${winners.length > 0 ? `<span style="font-size:9.5px;color:#10b981;font-weight:800;margin-right:6px;background:rgba(16,185,129,0.12);padding:2px 7px;border-radius:6px;">🏆 ${winners.length} winner${winners.length!==1?'s':''}</span>` : ''}
         <button class="btn btn-ghost btn-xs" title="Edit category" onclick="event.stopPropagation();openCatModal(${c.id})">✏️</button>
         <button class="btn btn-danger btn-xs" title="Delete category" onclick="event.stopPropagation();deleteCat(${c.id})">🗑</button>
         <span class="toggle-arrow" style="font-size:12px;color:var(--text-muted);margin-left:4px;transition:transform .3s">▼</span>
       </div>
-      <!-- Prize Sub-panel (collapsible with wire/stitch design) -->
+      <!-- Prize & Winner Sub-panel (collapsible with wire/stitch design) -->
       <div class="prize-collapse-body" id="cat-prizes-${c.id}" style="max-height:0;opacity:0">
         <div class="prize-wire-wrap" style="--prize-wire-col:${wireColor};padding-top:8px">
-          ${prizeHtml || '<div style="font-size:9px;color:var(--text-muted);padding:8px 0">No prizes added yet.</div>'}
-          <button class="btn btn-ghost btn-xs" style="margin-top:4px;font-size:11px" onclick="openPrizeModal(${c.id},null)">＋ Add Prize</button>
+          <!-- Prizes List -->
+          <div style="font-size:8.5px;font-family:var(--fm);letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin-bottom:6px;">🎁 CATEGORY PRIZES</div>
+          ${prizeHtml || '<div style="font-size:9px;color:var(--text-muted);padding:4px 0 8px 0">No prizes added yet.</div>'}
+
+          <!-- Winners List -->
+          ${winners.length > 0 ? `
+            <div style="font-size:8.5px;font-family:var(--fm);letter-spacing:1px;text-transform:uppercase;color:#059669;font-weight:800;margin-top:10px;margin-bottom:4px;">🏆 ASSIGNED WINNERS (${winners.length})</div>
+            ${winnerHtml}
+          ` : ''}
+
+          <!-- Action Buttons: Add Prize AND Add Winner Name -->
+          <div style="display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-xs" style="font-size:11px; font-weight:700;" onclick="openPrizeModal(${c.id},null)">＋ Add Prize</button>
+            <button class="btn btn-amber btn-xs" style="font-size:11px; font-weight:800; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(245,158,11,0.25);" onclick="openAssignWinnerModal(${c.id},null)">🏆 Add Winner Name</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -15336,6 +15441,241 @@ async function deleteOtherPrize(idx) {
     _isDeletingOtherPrize = false;
   }
 }
+
+// ── ASSIGN WINNER (MANUAL MONITOR PARTICIPANT SELECTION) ─────────────────
+let editingWinnerCatId = null;
+let editingWinnerIdx = null;
+
+function openAssignWinnerModal(catId, winnerIdx = null) {
+  editingWinnerCatId = catId;
+  editingWinnerIdx = winnerIdx;
+  const isEdit = winnerIdx !== null && winnerIdx !== undefined;
+
+  const cat = categories.find(c => String(c.id) === String(catId));
+  if (!cat) { toast('❌ Category not found'); return; }
+
+  const titleEl = document.getElementById('winner-modal-title');
+  if (titleEl) titleEl.textContent = isEdit ? '✏️ Edit Winner Name' : '🏆 Add Winner Name';
+
+  const catDisp = document.getElementById('wm-category-display');
+  if (catDisp) catDisp.value = `${cat.name} (Age ${cat.ageMin}-${cat.ageMax})`;
+
+  // Filter participants of current active event and this category
+  const parts = participants.filter(p => 
+    (String(p.eventId) === String(activeEventId) || !p.eventId) && 
+    String(p.catId) === String(catId)
+  );
+
+  const sel = document.getElementById('wm-participant-select');
+  if (sel) {
+    let opts = '<option value="">— Select Registered Participant —</option>';
+    parts.forEach(p => {
+      opts += `<option value="${p.id}">${p.name} (ID: ${p.id}${p.age ? ' · Age: ' + p.age : ''})</option>`;
+    });
+    opts += '<option value="__manual__">✍️ Enter Name Manually (Offline / Guest)</option>';
+    sel.innerHTML = opts;
+  }
+
+  // Populate prizes dropdown from category prizes
+  const pzSel = document.getElementById('wm-prize-select');
+  if (pzSel) {
+    let pzOpts = '<option value="">— Link to a Prize (or type below) —</option>';
+    (cat.prizes || []).forEach(pz => {
+      pzOpts += `<option value="${pz.title}${pz.amount ? ' (' + pz.amount + ')' : ''}">${pz.position}: ${pz.title}${pz.amount ? ' · ' + pz.amount : ''}</option>`;
+    });
+    pzSel.innerHTML = pzOpts;
+  }
+
+  const manualWrap = document.getElementById('wm-manual-fields');
+  const posSelect = document.getElementById('wm-position');
+  const posCustom = document.getElementById('wm-position-custom');
+  const nameInput = document.getElementById('wm-name');
+  const pidInput = document.getElementById('wm-pid');
+  const pzTitleInput = document.getElementById('wm-prize-title');
+  const scoreInput = document.getElementById('wm-score');
+
+  if (isEdit && cat.winners && cat.winners[winnerIdx]) {
+    const w = cat.winners[winnerIdx];
+    const isStdPos = Array.from(posSelect.options).some(o => o.value === w.position);
+    if (isStdPos) {
+      posSelect.value = w.position;
+      if (posCustom) { posCustom.style.display = 'none'; posCustom.value = ''; }
+    } else {
+      posSelect.value = 'custom';
+      if (posCustom) { posCustom.style.display = 'block'; posCustom.value = w.position || ''; }
+    }
+
+    if (w.participantId && parts.some(p => String(p.id) === String(w.participantId))) {
+      sel.value = w.participantId;
+      if (manualWrap) manualWrap.style.display = 'none';
+    } else {
+      sel.value = '__manual__';
+      if (manualWrap) manualWrap.style.display = 'block';
+    }
+    if (nameInput) nameInput.value = w.name || '';
+    if (pidInput) pidInput.value = w.participantId || '';
+    if (pzTitleInput) pzTitleInput.value = w.prizeTitle || '';
+    if (scoreInput) scoreInput.value = w.score || '';
+  } else {
+    if (posSelect) posSelect.value = '🥇 1st Place (Champion)';
+    if (posCustom) { posCustom.style.display = 'none'; posCustom.value = ''; }
+    if (sel) sel.value = '';
+    if (manualWrap) manualWrap.style.display = 'none';
+    if (nameInput) nameInput.value = '';
+    if (pidInput) pidInput.value = '';
+    if (pzTitleInput) pzTitleInput.value = '';
+    if (scoreInput) scoreInput.value = '';
+  }
+
+  openM('winner-modal');
+}
+window.openAssignWinnerModal = openAssignWinnerModal;
+
+function onWinnerPositionChange() {
+  const sel = document.getElementById('wm-position');
+  const custom = document.getElementById('wm-position-custom');
+  if (sel && custom) {
+    custom.style.display = sel.value === 'custom' ? 'block' : 'none';
+    if (sel.value === 'custom') custom.focus();
+  }
+}
+window.onWinnerPositionChange = onWinnerPositionChange;
+
+function onWinnerParticipantSelect(val) {
+  const manualWrap = document.getElementById('wm-manual-fields');
+  const nameInput = document.getElementById('wm-name');
+  const pidInput = document.getElementById('wm-pid');
+  if (val === '__manual__') {
+    if (manualWrap) manualWrap.style.display = 'block';
+    if (nameInput) nameInput.value = '';
+    if (pidInput) pidInput.value = '';
+  } else if (val) {
+    if (manualWrap) manualWrap.style.display = 'none';
+    const p = participants.find(x => String(x.id) === String(val));
+    if (p) {
+      if (nameInput) nameInput.value = p.name || '';
+      if (pidInput) pidInput.value = p.id || '';
+    }
+  } else {
+    if (manualWrap) manualWrap.style.display = 'none';
+  }
+}
+window.onWinnerParticipantSelect = onWinnerParticipantSelect;
+
+function onWinnerPrizeSelect(val) {
+  const pzTitleInput = document.getElementById('wm-prize-title');
+  if (pzTitleInput && val) {
+    pzTitleInput.value = val;
+  }
+}
+window.onWinnerPrizeSelect = onWinnerPrizeSelect;
+
+async function saveWinner() {
+  const cat = categories.find(c => String(c.id) === String(editingWinnerCatId));
+  if (!cat) { toast('❌ Category not found'); return; }
+
+  const sel = document.getElementById('wm-participant-select');
+  const posSelect = document.getElementById('wm-position');
+  const posCustom = document.getElementById('wm-position-custom');
+  const nameInput = document.getElementById('wm-name');
+  const pidInput = document.getElementById('wm-pid');
+  const pzTitleInput = document.getElementById('wm-prize-title');
+  const scoreInput = document.getElementById('wm-score');
+
+  let winnerName = '';
+  let winnerId = '';
+
+  if (sel && sel.value && sel.value !== '__manual__') {
+    const p = participants.find(x => String(x.id) === String(sel.value));
+    if (p) {
+      winnerName = p.name;
+      winnerId = p.id;
+    }
+  } else {
+    winnerName = (nameInput ? nameInput.value.trim() : '');
+    winnerId = (pidInput ? pidInput.value.trim() : '');
+  }
+
+  if (!winnerName) {
+    toast('⚠️ Please select a participant or enter winner name!');
+    return;
+  }
+
+  const positionVal = (posSelect && posSelect.value === 'custom' && posCustom && posCustom.value.trim()) 
+    ? posCustom.value.trim() 
+    : (posSelect ? posSelect.value : 'Winner');
+
+  let rankNum = 1;
+  const pLow = positionVal.toLowerCase();
+  if (pLow.includes('2nd') || pLow.includes('second') || pLow.includes('runner')) rankNum = 2;
+  else if (pLow.includes('3rd') || pLow.includes('third')) rankNum = 3;
+  else if (pLow.includes('4th')) rankNum = 4;
+  else if (pLow.includes('5th')) rankNum = 5;
+
+  const winnerObj = {
+    position: positionVal,
+    rank: rankNum,
+    name: winnerName,
+    participantId: winnerId,
+    prizeTitle: pzTitleInput ? pzTitleInput.value.trim() : '',
+    score: scoreInput ? scoreInput.value.trim() : '',
+    addedAt: new Date().toISOString()
+  };
+
+  if (!cat.winners) cat.winners = [];
+  const isEdit = editingWinnerIdx !== null && editingWinnerIdx !== undefined;
+  if (isEdit) {
+    cat.winners[editingWinnerIdx] = winnerObj;
+  } else {
+    cat.winners.push(winnerObj);
+  }
+
+  // Sort winners by rank
+  cat.winners.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
+
+  const saveBtn = document.getElementById('winner-modal-save-btn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = 'Saving...'; }
+
+  try {
+    const success = await syncEngine.updateCategory(cat.id, cat);
+    if (!success) { toast('❌ Error saving winner'); return; }
+    syncAll();
+    renderCategories();
+    closeM('winner-modal');
+    toast(isEdit ? '✅ Winner updated successfully!' : '🏆 Winner assigned successfully!');
+    if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
+
+    setTimeout(() => {
+      const panel = document.getElementById(`cat-prizes-${cat.id}`);
+      const header = panel && panel.previousElementSibling;
+      if (panel && header && (panel.style.maxHeight === '0px' || !panel.style.maxHeight || panel.style.maxHeight === '0')) {
+        togglePrizePanel(`cat-prizes-${cat.id}`, header);
+      }
+    }, 100);
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = 'Save Winner'; }
+  }
+}
+window.saveWinner = saveWinner;
+
+async function deleteWinner(catId, winnerIdx) {
+  if (!confirm('Are you sure you want to remove this winner?')) return;
+  const cat = categories.find(c => String(c.id) === String(catId));
+  if (!cat || !cat.winners) return;
+  cat.winners.splice(winnerIdx, 1);
+  const success = await syncEngine.updateCategory(cat.id, cat);
+  if (!success) { toast('❌ Error removing winner'); return; }
+  syncAll();
+  renderCategories();
+  toast('Winner removed');
+  if (typeof broadcast === 'function') broadcast('DATA_SYNC', { categories, subjects });
+  setTimeout(() => {
+    const panel = document.getElementById(`cat-prizes-${cat.id}`);
+    const header = panel && panel.previousElementSibling;
+    if (panel && header) togglePrizePanel(`cat-prizes-${cat.id}`, header);
+  }, 120);
+}
+window.deleteWinner = deleteWinner;
 
 // ── VENUES & DATES ────────────────────────
 function renderVenueDates(){
