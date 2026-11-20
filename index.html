@@ -3948,28 +3948,23 @@
         </div>
       </div>
 
-      <!-- PUBLIC PARTICIPANT CERTIFICATE DOWNLOAD TOGGLE (BEAUTIFUL-SKILL) -->
-      <div style="background:radial-gradient(ellipse at 15% 50%, rgba(16,185,129,0.14) 0%, rgba(15,23,42,0.85) 100%); border:1.5px solid rgba(16,185,129,0.35); border-radius:16px; padding:16px 20px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+      <!-- AUTOMATIC WORKSHOP COMPLETION & PUBLIC CERTIFICATE SYSTEM (BEAUTIFUL-SKILL) -->
+      <div id="wsp-auto-cert-status-card" style="background:radial-gradient(ellipse at 15% 50%, rgba(16,185,129,0.14) 0%, rgba(15,23,42,0.85) 100%); border:1.5px solid rgba(16,185,129,0.35); border-radius:16px; padding:16px 20px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
         <div style="flex:1; min-width:260px;">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
             <span style="font-size:18px;">📜</span>
-            <span style="font-size:13px; font-weight:900; color:#34D399; text-transform:uppercase; letter-spacing:0.5px;">Public Certificate Download</span>
-            <span id="wsp-cert-toggle-badge" style="font-size:10px; font-weight:900; padding:2px 8px; border-radius:12px; background:rgba(239,68,68,0.2); color:#FCA5A5; border:1px solid rgba(239,68,68,0.4); letter-spacing:0.5px;">OFF</span>
+            <span style="font-size:13px; font-weight:900; color:#34D399; text-transform:uppercase; letter-spacing:0.5px;">Public Certificate System</span>
+            <span id="wsp-cert-auto-badge" style="font-size:10px; font-weight:900; padding:2px 8px; border-radius:12px; background:rgba(56,189,248,0.2); color:#38BDF8; border:1px solid rgba(56,189,248,0.4); letter-spacing:0.5px;">IN PROGRESS</span>
           </div>
-          <div style="font-size:11.5px; color:#CBD5E1; line-height:1.5;">
-            When turned <strong style="color:#34D399;">ON</strong>, only your workshop will display a <strong style="color:#FDE047;">"📜 Download Your Certificate"</strong> button on the public page. Registered participants can simply enter their Participant ID or Phone to verify and download their certificate.
+          <div id="wsp-cert-auto-desc" style="font-size:11.5px; color:#CBD5E1; line-height:1.5;">
+            When you mark this workshop as <strong style="color:#10B981;">Completed</strong>, public registration will automatically close and the <strong style="color:#FDE047;">"📜 Download Your Certificate"</strong> button will automatically activate on the public page!
           </div>
         </div>
 
-        <div style="display:flex; align-items:center; gap:14px; flex-shrink:0;">
-          <div style="text-align:right;">
-            <div id="wsp-cert-toggle-status-text" style="font-size:11.5px; font-weight:800; color:#94A3B8;">Public Download OFF</div>
-            <div style="font-size:9.5px; color:#64748B;">Click toggle to activate</div>
+        <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+          <div id="wsp-cert-auto-indicator" style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:12px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); font-size:12px; font-weight:800; color:#34D399;">
+            <span>⚡</span> Auto-Sync Ready
           </div>
-          <label class="wsp-glow-switch" title="Toggle Public Certificate Download for this event">
-            <input type="checkbox" id="wsp-cert-download-toggle" onchange="toggleWorkshopPublicCertDownload(this.checked)" />
-            <span class="wsp-glow-slider"></span>
-          </label>
         </div>
       </div>
 
@@ -14416,7 +14411,11 @@
         const found = ALL_LOADED_WORKSHOPS.find(w => w.id === wsParam);
         if (found) {
           setTimeout(() => {
-            openRegisterModal(found.id, found.name);
+            if (found.status === 'completed' || found.cert_download_enabled) {
+              openPublicCertDownloadModal(found.id, found.name, found.guest_name, found.end_date || found.start_date || '');
+            } else {
+              openRegisterModal(found.id, found.name);
+            }
           }, 400);
         }
       }
@@ -14525,7 +14524,10 @@
             ${mediaHtml}
             <div style="padding:22px; flex:1; display:flex; flex-direction:column; gap:12px;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="background:rgba(255,107,53,0.12); color:#FF6B35; font-weight:800; font-size:0.75rem; padding:4px 10px; border-radius:20px; text-transform:uppercase;">${catBadge}</span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="background:rgba(255,107,53,0.12); color:#FF6B35; font-weight:800; font-size:0.75rem; padding:4px 10px; border-radius:20px; text-transform:uppercase;">${catBadge}</span>
+                  ${(isCompleted || ws.cert_download_enabled) ? `<span style="background:rgba(16,185,129,0.12); color:#059669; font-weight:800; font-size:0.75rem; padding:4px 10px; border-radius:20px; text-transform:uppercase; display:inline-flex; align-items:center; gap:3px;"><span>🏆</span> Completed</span>` : ''}
+                </div>
                 <span style="font-weight:900; font-size:0.95rem; color:#059669; background:rgba(5,150,105,0.1); padding:3px 10px; border-radius:12px;">${feeText}</span>
               </div>
               <h3 style="font-family:'Playfair Display',serif; font-size:1.2rem; font-weight:800; color:#1e293b; line-height:1.4; margin:0;">${ws.name}</h3>
@@ -14537,20 +14539,19 @@
               </div>
             </div>
             <div style="padding:16px 22px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; gap:8px;">
-              <button class="btn" style="flex:1; background:linear-gradient(135deg,#FF6B35,#E91E8C); color:#fff; font-weight:800; padding:10px; border-radius:12px; border:none; cursor:pointer;" onclick="openRegisterModal('${ws.id}', '${(ws.name || '').replace(/'/g, "\'")}')">
-                ${isCompleted ? 'View Details' : 'Register Now'}
-              </button>
+              ${(isCompleted || ws.cert_download_enabled) ? `
+                <button type="button" class="btn cert-public-dl-btn" onclick="openPublicCertDownloadModal('${ws.id}', '${(ws.name || '').replace(/'/g, "\\'")}', '${(ws.guest_name || '').replace(/'/g, "\\'")}', '${ws.end_date || ws.start_date || ''}')" style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg, #059669 0%, #10B981 50%, #047857 100%); color:#fff; font-weight:900; font-size:0.88rem; padding:12px 16px; border-radius:12px; border:1px solid rgba(16,185,129,0.4); cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3); text-transform:uppercase; letter-spacing:0.5px;">
+                  <span>📜</span> Download Certificate
+                </button>
+              ` : `
+                <button class="btn" style="flex:1; background:linear-gradient(135deg,#FF6B35,#E91E8C); color:#fff; font-weight:800; padding:10px; border-radius:12px; border:none; cursor:pointer;" onclick="openRegisterModal('${ws.id}', '${(ws.name || '').replace(/'/g, "\'")}')">
+                  Register Now
+                </button>
+              `}
               <button title="Share workshop link" style="background:#fff; border:1px solid #cbd5e1; color:#475569; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:14px;" onclick="quickShareWorkshop('${ws.id}', '${(ws.name || '').replace(/'/g, "\'")}')">
                 🔗
               </button>
             </div>
-            ${ws.cert_download_enabled ? `
-              <div style="padding: 0 22px 16px; background:#f8fafc; border-bottom-left-radius:20px; border-bottom-right-radius:20px;">
-                <button type="button" class="btn cert-public-dl-btn" onclick="openPublicCertDownloadModal('${ws.id}', '${(ws.name || '').replace(/'/g, "\\'")}', '${(ws.guest_name || '').replace(/'/g, "\\'")}', '${ws.end_date || ws.start_date || ''}')" style="width:100%; display:flex; align-items:center; justify-content:center; gap:8px; background:linear-gradient(135deg, #059669 0%, #10B981 50%, #047857 100%); color:#fff; font-weight:900; font-size:0.86rem; padding:11px 16px; border-radius:14px; border:1px solid rgba(16,185,129,0.4); cursor:pointer; box-shadow:0 6px 20px rgba(16,185,129,0.3); text-transform:uppercase; letter-spacing:0.5px;">
-                  <span>📜</span> Download Your Certificate
-                </button>
-              </div>
-            ` : ''}
           </div>
         `;
       }).join('');
@@ -14853,21 +14854,27 @@
         completeBtn.style.background = isCompleted ? 'rgba(255,255,255,0.15)' : 'linear-gradient(135deg, #10B981, #059669)';
       }
 
-      // Update Public Certificate Download Toggle Switch
-      const certToggle = document.getElementById('wsp-cert-download-toggle');
-      const certBadge = document.getElementById('wsp-cert-toggle-badge');
-      const certStatusText = document.getElementById('wsp-cert-toggle-status-text');
-      const isCertEnabled = ws.cert_download_enabled === true;
-      if (certToggle) certToggle.checked = isCertEnabled;
-      if (certBadge) {
-        certBadge.textContent = isCertEnabled ? 'ON' : 'OFF';
-        certBadge.style.background = isCertEnabled ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)';
-        certBadge.style.color = isCertEnabled ? '#34D399' : '#FCA5A5';
-        certBadge.style.borderColor = isCertEnabled ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)';
+      // Update Automatic Certificate Status Banner (No Manual Switch)
+      const autoBadge = document.getElementById('wsp-cert-auto-badge');
+      const autoDesc = document.getElementById('wsp-cert-auto-desc');
+      const autoIndicator = document.getElementById('wsp-cert-auto-indicator');
+      const isAutoActive = isCompleted || ws.cert_download_enabled === true;
+      if (autoBadge) {
+        autoBadge.textContent = isAutoActive ? 'LIVE & ACTIVE' : 'AUTO: IN PROGRESS';
+        autoBadge.style.background = isAutoActive ? 'rgba(16,185,129,0.2)' : 'rgba(56,189,248,0.2)';
+        autoBadge.style.color = isAutoActive ? '#34D399' : '#38BDF8';
+        autoBadge.style.borderColor = isAutoActive ? 'rgba(16,185,129,0.4)' : 'rgba(56,189,248,0.4)';
       }
-      if (certStatusText) {
-        certStatusText.textContent = isCertEnabled ? 'Public Download ENABLED' : 'Public Download DISABLED';
-        certStatusText.style.color = isCertEnabled ? '#34D399' : '#94A3B8';
+      if (autoDesc) {
+        autoDesc.innerHTML = isAutoActive
+          ? '✅ <strong style="color:#10B981;">Workshop Completed!</strong> Public registration is closed, and the <strong style="color:#FDE047;">"📜 Download Your Certificate"</strong> button is now LIVE on the public page for attendees.'
+          : '⏳ <strong style="color:#38BDF8;">Registration is open.</strong> Once finished, click <strong style="color:#10B981;">"🏆 Mark Workshop as Completed"</strong> above to automatically close registration and activate certificate downloads.';
+      }
+      if (autoIndicator) {
+        autoIndicator.innerHTML = isAutoActive ? '<span>🏆</span> Downloads Live' : '<span>⏳</span> Auto-Sync Ready';
+        autoIndicator.style.color = isAutoActive ? '#34D399' : '#38BDF8';
+        autoIndicator.style.background = isAutoActive ? 'rgba(16,185,129,0.15)' : 'rgba(56,189,248,0.12)';
+        autoIndicator.style.borderColor = isAutoActive ? 'rgba(16,185,129,0.35)' : 'rgba(56,189,248,0.3)';
       }
 
       // Direct registration link
@@ -15024,22 +15031,27 @@
       const newStatus = isCompleted ? 'upcoming' : 'completed';
 
       if (!isCompleted) {
-        if (!confirm("Are you sure you want to mark this workshop as COMPLETED?\n\nThis will officially issue and unlock verified Certificates of Completion for all participants marked as PRESENT (Attended).")) {
+        if (!confirm("Are you sure you want to mark this workshop as COMPLETED?\n\nThis will:\n1. Automatically CLOSE public registration for this workshop.\n2. Automatically SHOW the '📜 Download Certificate' button on the public page.\n3. Unlock verified Certificates for all attendees marked as Present.")) {
           return;
         }
       }
 
       ws.status = newStatus;
+      ws.cert_download_enabled = (newStatus === 'completed');
       await couchbaseEngine.saveWorkshop(ws);
 
-      // Broadcast update
+      // Broadcast update across devices
       try {
         const bc = new BroadcastChannel('knsdc_workshops_channel');
-        bc.postMessage({ type: 'STATUS_UPDATE', workshopId: ws.id, status: newStatus });
+        bc.postMessage({ type: 'STATUS_UPDATE', workshopId: ws.id, status: newStatus, cert_download_enabled: ws.cert_download_enabled });
         bc.close();
       } catch(e) {}
 
-      alert(newStatus === 'completed' ? '🏆 Workshop marked as Completed! Certificates are now issued to present participants.' : 'Workshop reopened.');
+      if (typeof toast === 'function') {
+        toast(newStatus === 'completed' ? '🏆 Workshop Completed! Certificate download is now active on the public page.' : 'Workshop reopened. Registration is now open.');
+      } else {
+        alert(newStatus === 'completed' ? '🏆 Workshop marked as Completed!\n\nPublic registration is now closed and the Certificate Download button is live on the public page.' : 'Workshop reopened! Registration is open again.');
+      }
       renderOrganizerPortalData();
       renderAvailableWorkshops();
     };
@@ -15450,6 +15462,15 @@
 
     // --- Registration Modal ---
     window.openRegisterModal = function(workshopId, workshopName) {
+      const foundWs = (ALL_LOADED_WORKSHOPS || []).find(w => w.id === workshopId);
+      if (foundWs && (foundWs.status === 'completed' || foundWs.cert_download_enabled)) {
+        if (typeof toast === 'function') {
+          toast("Registration is closed for this completed workshop. You can download your certificate.");
+        }
+        openPublicCertDownloadModal(foundWs.id, foundWs.name, foundWs.guest_name, foundWs.end_date || foundWs.start_date || '');
+        return;
+      }
+
       let modal = document.getElementById('workshopRegisterModal');
       if (!modal) {
         modal = document.createElement('div');
