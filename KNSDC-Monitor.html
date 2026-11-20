@@ -6039,11 +6039,12 @@
       </div>
 
       <div class="fg">
-        <label class="fl">Prize Title (optional)</label>
-        <select id="wm-prize-select" onchange="onWinnerPrizeSelect(this.value)" style="margin-bottom:6px;">
-          <option value="">— Link to a Prize (or type below) —</option>
+        <label class="fl">🎁 Mapped Prize from this Event (Auto-fills on Position)</label>
+        <select id="wm-prize-select" onchange="onWinnerPrizeSelect(this.value)" style="margin-bottom:6px; font-weight:700;">
+          <option value="">— Mapped Event Prize (Auto-Matched) —</option>
         </select>
-        <input id="wm-prize-title" placeholder="e.g. Champion Trophy + ₹5,000 Cash Prize" />
+        <input id="wm-prize-title" placeholder="e.g. Gold Trophy + ₹5,000 Cash Prize" style="font-weight:700; color:var(--text);" />
+        <span style="font-size:10px; color:var(--text-muted); margin-top:2px; display:block;">Automatically maps from Category Prizes &amp; Event Other Prizes, or customize as needed.</span>
       </div>
 
       <div class="fg">
@@ -15446,6 +15447,62 @@ async function deleteOtherPrize(idx) {
 let editingWinnerCatId = null;
 let editingWinnerIdx = null;
 
+function getMappedPrizesForEvent(cat) {
+  const allEventPrizes = [];
+  // 1. Category-specific prizes
+  if (cat && Array.isArray(cat.prizes)) {
+    cat.prizes.forEach(p => {
+      const fullTitle = `${p.title || ''}${p.amount ? ' (' + p.amount + ')' : ''}`.trim();
+      allEventPrizes.push({
+        source: 'category',
+        position: p.position || '',
+        title: p.title || '',
+        amount: p.amount || '',
+        fullTitle: fullTitle,
+        label: `[Category] ${p.position}: ${p.title}${p.amount ? ' · ' + p.amount : ''}`
+      });
+    });
+  }
+  // 2. Event-level other prizes (same active event)
+  const curEv = EVENTS.find(e => String(e.id) === String(activeEventId)) || (typeof currentEvent !== 'undefined' ? currentEvent : null);
+  if (curEv && Array.isArray(curEv.otherPrizes)) {
+    curEv.otherPrizes.forEach(p => {
+      const fullTitle = `${p.title || ''}${p.amount ? ' (' + p.amount + ')' : ''}`.trim();
+      allEventPrizes.push({
+        source: 'event',
+        position: p.title || 'Other Prize',
+        title: p.title || '',
+        amount: p.amount || '',
+        fullTitle: fullTitle,
+        label: `[Event Prize] ${p.title}${p.amount ? ' · ' + p.amount : ''}`
+      });
+    });
+  }
+  return allEventPrizes;
+}
+
+function autoMatchPrize(cat, posVal) {
+  const pzList = getMappedPrizesForEvent(cat);
+  if (!pzList.length) return '';
+  const pLow = (posVal || '').toLowerCase();
+
+  // Try matching position
+  let match = pzList.find(p => {
+    const pos = (p.position || '').toLowerCase();
+    if (pLow.includes('1st') && pos.includes('1st')) return true;
+    if (pLow.includes('2nd') && pos.includes('2nd')) return true;
+    if (pLow.includes('3rd') && pos.includes('3rd')) return true;
+    if (pLow.includes('4th') && pos.includes('4th')) return true;
+    if (pLow.includes('5th') && pos.includes('5th')) return true;
+    if (pLow.includes('choice') && (pos.includes('choice') || p.title.toLowerCase().includes('choice'))) return true;
+    if (pLow.includes('consolation') && pos.includes('consolation')) return true;
+    if (pLow.includes('choreography') && p.title.toLowerCase().includes('choreography')) return true;
+    return false;
+  });
+
+  return match ? match.fullTitle : '';
+}
+
 function openAssignWinnerModal(catId, winnerIdx = null) {
   editingWinnerCatId = catId;
   editingWinnerIdx = winnerIdx;
@@ -15476,12 +15533,13 @@ function openAssignWinnerModal(catId, winnerIdx = null) {
     sel.innerHTML = opts;
   }
 
-  // Populate prizes dropdown from category prizes
+  // Populate prizes dropdown mapping all prizes from this same event (Category + Event-wide)
   const pzSel = document.getElementById('wm-prize-select');
+  const allEventPrizes = getMappedPrizesForEvent(cat);
   if (pzSel) {
-    let pzOpts = '<option value="">— Link to a Prize (or type below) —</option>';
-    (cat.prizes || []).forEach(pz => {
-      pzOpts += `<option value="${pz.title}${pz.amount ? ' (' + pz.amount + ')' : ''}">${pz.position}: ${pz.title}${pz.amount ? ' · ' + pz.amount : ''}</option>`;
+    let pzOpts = '<option value="">— Mapped Event Prize (Auto-Matched) —</option>';
+    allEventPrizes.forEach(pz => {
+      pzOpts += `<option value="${pz.fullTitle}">${pz.label}</option>`;
     });
     pzSel.innerHTML = pzOpts;
   }
@@ -15516,15 +15574,25 @@ function openAssignWinnerModal(catId, winnerIdx = null) {
     if (pidInput) pidInput.value = w.participantId || '';
     if (pzTitleInput) pzTitleInput.value = w.prizeTitle || '';
     if (scoreInput) scoreInput.value = w.score || '';
+
+    // Match select dropdown
+    if (pzSel && w.prizeTitle) {
+      pzSel.value = w.prizeTitle;
+    }
   } else {
-    if (posSelect) posSelect.value = '🥇 1st Place (Champion)';
+    const defaultPos = '🥇 1st Place (Champion)';
+    if (posSelect) posSelect.value = defaultPos;
     if (posCustom) { posCustom.style.display = 'none'; posCustom.value = ''; }
     if (sel) sel.value = '';
     if (manualWrap) manualWrap.style.display = 'none';
     if (nameInput) nameInput.value = '';
     if (pidInput) pidInput.value = '';
-    if (pzTitleInput) pzTitleInput.value = '';
     if (scoreInput) scoreInput.value = '';
+
+    // Smart Auto-Mapping: automatically map prize for default 1st place!
+    const autoPrize = autoMatchPrize(cat, defaultPos);
+    if (pzTitleInput) pzTitleInput.value = autoPrize;
+    if (pzSel && autoPrize) pzSel.value = autoPrize;
   }
 
   openM('winner-modal');
@@ -15534,9 +15602,22 @@ window.openAssignWinnerModal = openAssignWinnerModal;
 function onWinnerPositionChange() {
   const sel = document.getElementById('wm-position');
   const custom = document.getElementById('wm-position-custom');
-  if (sel && custom) {
-    custom.style.display = sel.value === 'custom' ? 'block' : 'none';
-    if (sel.value === 'custom') custom.focus();
+  const pzTitleInput = document.getElementById('wm-prize-title');
+  const pzSel = document.getElementById('wm-prize-select');
+  const cat = categories.find(c => String(c.id) === String(editingWinnerCatId));
+
+  if (sel) {
+    if (custom) {
+      custom.style.display = sel.value === 'custom' ? 'block' : 'none';
+      if (sel.value === 'custom') custom.focus();
+    }
+    // Auto-map prize when position changes (unless user already customized prize)
+    const posVal = sel.value === 'custom' && custom ? custom.value : sel.value;
+    const autoPrize = autoMatchPrize(cat, posVal);
+    if (autoPrize) {
+      if (pzTitleInput) pzTitleInput.value = autoPrize;
+      if (pzSel) pzSel.value = autoPrize;
+    }
   }
 }
 window.onWinnerPositionChange = onWinnerPositionChange;
