@@ -1807,9 +1807,14 @@
         display: none;
       }
 
-      .certificate {
+      .certificate, .cert-container {
         box-shadow: none;
         border: 1px solid #ccc;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        max-height: 280mm !important;
       }
     }
 
@@ -7644,15 +7649,21 @@
                 }
                 html, body {
                   width: 297mm !important;
-                  height: 210mm !important;
+                  height: 205mm !important;
                   max-width: 297mm !important;
-                  max-height: 210mm !important;
+                  max-height: 205mm !important;
                   min-width: 297mm !important;
-                  min-height: 210mm !important;
+                  min-height: 205mm !important;
                   margin: 0 !important;
                   padding: 0 !important;
                   overflow: hidden !important;
                   background: #ffffff !important;
+                  page-break-before: avoid !important;
+                  page-break-after: avoid !important;
+                  page-break-inside: avoid !important;
+                  break-before: avoid !important;
+                  break-after: avoid !important;
+                  break-inside: avoid !important;
                 }
                 #controls { display: none !important; }
                 #cert-stage {
@@ -7660,19 +7671,19 @@
                   padding: 0 !important;
                   margin: 0 !important;
                   width: 297mm !important;
-                  height: 210mm !important;
+                  height: 205mm !important;
                   max-width: 297mm !important;
-                  max-height: 210mm !important;
+                  max-height: 205mm !important;
                   overflow: hidden !important;
                 }
                 #cert-wrapper {
                   transform: none !important;
                   width: 297mm !important;
-                  height: 210mm !important;
+                  height: 205mm !important;
                   max-width: 297mm !important;
-                  max-height: 210mm !important;
+                  max-height: 205mm !important;
                   min-width: 297mm !important;
-                  min-height: 210mm !important;
+                  min-height: 205mm !important;
                   padding: 6mm !important;
                   margin: 0 !important;
                   border: none !important;
@@ -15573,17 +15584,182 @@
       document.getElementById('workshopCertModal').style.display = 'none';
     };
 
+    // ═══ STRICT SINGLE-PAGE A4 CERTIFICATE PRINT ENGINE ═══
     window.printCertificateView = function() {
-      const printContents = document.getElementById('cert-printable-container').innerHTML;
-      const win = window.open('', '', 'height=700,width=900');
-      win.document.write('<html><head><title>Certificate of Completion</title>');
-      win.document.write('<style>body{font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;} @media print{body{zoom:100%;}}</style>');
-      win.document.write('</head><body>');
-      win.document.write('<div style="width:680px; padding:30px; border:8px double #D97706; text-align:center;">' + printContents + '</div>');
-      win.document.write('</body></html>');
+      const container = document.getElementById('cert-printable-container');
+      if (!container) return;
+      const printContents = container.innerHTML;
+
+      const win = window.open('', '', 'height=850,width=1200');
+      if (!win) {
+        alert("Please allow popups to view and print your certificate.");
+        return;
+      }
+
+      win.document.write(`
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Certificate of Completion — Kalikapur Nabin Sangha</title>
+            <style>
+              @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400;1,700&family=Nunito:wght@400;600;700;800;900&display=swap");
+              
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              
+              /* ═══ STRICT SINGLE A4 PAGE LANDSCAPE BOUNDARY ═══ */
+              @page {
+                size: 297mm 210mm;
+                margin: 0mm;
+              }
+              
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #090d16;
+                color: #0f172a;
+                font-family: 'Nunito', sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+              }
+
+              #print-toolbar {
+                display: flex;
+                gap: 12px;
+                margin-bottom: 20px;
+                z-index: 100;
+              }
+
+              .t-btn {
+                padding: 10px 22px;
+                border: none;
+                border-radius: 12px;
+                font-weight: 800;
+                font-size: 13.5px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                transition: transform 0.15s ease;
+              }
+              .t-btn:hover { transform: translateY(-1px); }
+              .t-btn-print {
+                background: linear-gradient(135deg, #10B981, #059669);
+                color: #fff;
+              }
+              .t-btn-close {
+                background: rgba(255,255,255,0.12);
+                border: 1px solid rgba(255,255,255,0.25);
+                color: #e2e8f0;
+              }
+
+              /* Screen Stage */
+              #cert-page-wrapper {
+                width: 285mm;
+                height: 198mm;
+                max-width: 98vw;
+                background: #ffffff;
+                border: 6px double #D97706;
+                border-radius: 6px;
+                padding: 12mm 18mm 10mm;
+                text-align: center;
+                position: relative;
+                box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                overflow: hidden;
+                box-sizing: border-box;
+              }
+
+              /* ═══ PRINT RULES: FIT 100% IN SINGLE A4 LANDSCAPE PAGE ═══ */
+              @media print {
+                @page {
+                  size: 297mm 210mm;
+                  margin: 0mm;
+                }
+                *, *::before, *::after {
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+                html, body {
+                  width: 297mm !important;
+                  height: 205mm !important;
+                  max-width: 297mm !important;
+                  max-height: 205mm !important;
+                  min-width: 297mm !important;
+                  min-height: 205mm !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  overflow: hidden !important;
+                  background: #ffffff !important;
+                  page-break-before: avoid !important;
+                  page-break-after: avoid !important;
+                  page-break-inside: avoid !important;
+                  break-before: avoid !important;
+                  break-after: avoid !important;
+                  break-inside: avoid !important;
+                }
+                #print-toolbar {
+                  display: none !important;
+                }
+                #cert-page-wrapper {
+                  width: 297mm !important;
+                  height: 205mm !important;
+                  max-width: 297mm !important;
+                  max-height: 205mm !important;
+                  min-width: 297mm !important;
+                  min-height: 205mm !important;
+                  margin: 0 !important;
+                  padding: 11mm 16mm 9mm !important;
+                  border: 6px double #D97706 !important;
+                  border-radius: 0 !important;
+                  box-shadow: none !important;
+                  page-break-before: avoid !important;
+                  page-break-after: avoid !important;
+                  page-break-inside: avoid !important;
+                  break-before: avoid !important;
+                  break-after: avoid !important;
+                  break-inside: avoid !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  justify-content: space-between !important;
+                  overflow: hidden !important;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <div id="print-toolbar">
+              <button class="t-btn t-btn-print" onclick="window.print()">
+                <span>🖨️</span> Print Single A4 Page (Landscape)
+              </button>
+              <button class="t-btn t-btn-close" onclick="window.close()">✕ Close</button>
+            </div>
+
+            <div id="cert-page-wrapper">
+              ${printContents}
+            </div>
+
+            <script>
+              setTimeout(() => {
+                window.print();
+              }, 450);
+            <\/script>
+          </body>
+        </html>
+      `);
       win.document.close();
       win.focus();
-      setTimeout(() => { win.print(); win.close(); }, 500);
     };
 
     // Zero-Egress listener for workshop sync
