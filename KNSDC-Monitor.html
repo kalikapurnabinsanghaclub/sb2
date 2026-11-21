@@ -17128,9 +17128,18 @@ function _doRenderVenueParticipants(){
                 <span class="stage-sync-badge"><span class="stage-sync-dot"></span> Remote Live Sync</span>
               </div>
               
-              <!-- Ambient Sound Wave Visualizer -->
-              <div id="monitor-sound-wave-${idx}" class="stage-sound-wave-wrap">
-                ${Array.from({length: 32}).map((_, i) => `<div class="stage-wave-bar" style="animation-delay:-${(i * 0.07).toFixed(2)}s;"></div>`).join('')}
+              <!-- Real-Time Frequency Spectrum & Oscilloscope Wavelength HUD -->
+              <div class="stage-visualizer-box" style="position:relative; width:100%; height:46px; background:radial-gradient(ellipse at 50% 50%, #0c1424 0%, #050811 100%); border:1px solid rgba(56,189,248,0.25); border-radius:10px; overflow:hidden; box-shadow:inset 0 2px 10px rgba(0,0,0,0.8), 0 0 16px rgba(56,189,248,0.12);">
+                <!-- Top Frequency Calibration Labels -->
+                <div style="position:absolute; top:2px; left:0; right:0; pointer-events:none; display:flex; justify-content:space-between; padding:0 8px; font-size:7px; font-family:var(--fm, monospace); color:rgba(56,189,248,0.5); font-weight:800; z-index:3; text-shadow:0 0 4px rgba(0,0,0,0.9); letter-spacing:0.5px;">
+                  <span>32Hz SUB</span>
+                  <span>120Hz BASS</span>
+                  <span>1kHz MID</span>
+                  <span>4kHz PRESENCE</span>
+                  <span>16kHz AIR</span>
+                </div>
+                <!-- Dual-Layer Audio Canvas: Frequency Spectrum (Bars + Peak Decay) & Oscilloscope Wavelength Ribbon -->
+                <canvas id="monitor-wave-canvas-${idx}" width="480" height="46" style="width:100%; height:100%; display:block;"></canvas>
               </div>
 
               <!-- Transport Controls Row -->
@@ -17158,6 +17167,7 @@ function _doRenderVenueParticipants(){
           </div>`
         ).join('')}</div>`;
         audioContainer.dataset.audioState = audioStateHash;
+        setTimeout(() => { if (typeof window.ensureMonitorAudioVisualizers === 'function') window.ensureMonitorAudioVisualizers(); }, 50);
       }
     } else {
       if (audioContainer.dataset.audioState !== 'empty') {
@@ -26485,9 +26495,248 @@ if (window.syncEngine && typeof window.syncEngine.subscribe === 'function') {
 }
 
 // --- CUSTOM AUDIO PLAYER UI FUNCTIONS ---
+// ══════════════════════════════════════════════════════════════════════════════
+// REAL-TIME AUDIO FREQUENCY SPECTRUM & OSCILLOSCOPE WAVELENGTH VISUALIZER
+// ══════════════════════════════════════════════════════════════════════════════
+window.monitorVisualizers = window.monitorVisualizers || {};
+
+window.initMonitorAudioVisualizer = function(idx) {
+  const canvas = document.getElementById(`monitor-wave-canvas-${idx}`);
+  const audioEl = document.getElementById(`monitor-audio-${idx}`);
+  if (!canvas || !audioEl) return;
+  if (window.monitorVisualizers[idx] && window.monitorVisualizers[idx].active) return;
+
+  const ctx = canvas.getContext('2d');
+  const numBars = 36;
+  const peaks = new Array(numBars).fill(0);
+  let animationFrameId = null;
+  let wavePhase = 0;
+
+  let analyser = null;
+  let dataArray = null;
+  let timeDomainArray = null;
+
+  function tryConnectWebAudio() {
+    try {
+      if (!window.monitorAudioCtx) {
+        window.monitorAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (window.monitorAudioCtx.state === 'suspended' && !audioEl.paused) {
+        window.monitorAudioCtx.resume();
+      }
+      if (!audioEl._analyserConnected) {
+        analyser = window.monitorAudioCtx.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.smoothingTimeConstant = 0.8;
+        const source = window.monitorAudioCtx.createMediaElementSource(audioEl);
+        source.connect(analyser);
+        analyser.connect(window.monitorAudioCtx.destination);
+        audioEl._analyserConnected = true;
+        audioEl._analyser = analyser;
+      } else {
+        analyser = audioEl._analyser;
+      }
+      if (analyser) {
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        timeDomainArray = new Uint8Array(analyser.fftSize);
+      }
+    } catch(err) {
+      analyser = null;
+    }
+  }
+
+  function render() {
+    if (!document.body.contains(canvas)) {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      delete window.monitorVisualizers[idx];
+      return;
+    }
+
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // 1. Subtle horizontal decibel grid
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.25); ctx.lineTo(W, H * 0.25);
+    ctx.moveTo(0, H * 0.5);  ctx.lineTo(W, H * 0.5);
+    ctx.moveTo(0, H * 0.75); ctx.lineTo(W, H * 0.75);
+    ctx.stroke();
+
+    const isPlaying = !audioEl.paused && !audioEl.ended;
+    const curTime = audioEl.currentTime || 0;
+    const vol = audioEl.volume !== undefined ? audioEl.volume : 1;
+
+    let hasRealData = false;
+    if (analyser && isPlaying) {
+      analyser.getByteFrequencyData(dataArray);
+      analyser.getByteTimeDomainData(timeDomainArray);
+      for (let i = 0; i < dataArray.length; i++) {
+        if (dataArray[i] > 0) { hasRealData = true; break; }
+      }
+    }
+
+    // 2. Frequency Spectrum Bars (Sub-Bass, Bass, Mids, Treble)
+    const barSpacing = 2.5;
+    const totalSpacing = barSpacing * (numBars - 1);
+    const barWidth = Math.max(3, (W - totalSpacing - 16) / numBars);
+    const startX = 8;
+
+    for (let i = 0; i < numBars; i++) {
+      let targetHeight = 0;
+      if (isPlaying) {
+        if (hasRealData && dataArray) {
+          const binIdx = Math.floor((i / numBars) * dataArray.length);
+          const rawVal = dataArray[binIdx] / 255;
+          targetHeight = rawVal * (H - 14) * vol;
+        } else {
+          // Physics-based DSP Frequency Simulator:
+          const t = curTime * 7;
+          let freqWeight = 1;
+          if (i < 10) {
+            // Bass Kick / Sub
+            const kick = Math.pow(Math.sin(t * 1.5 + (i * 0.2)), 4);
+            freqWeight = 0.5 + 0.5 * kick + 0.3 * Math.sin(t * 3.1 + i);
+          } else if (i < 24) {
+            // Mid vocals & instruments
+            freqWeight = 0.35 + 0.45 * Math.sin(t * 2.2 + (i * 0.4)) + 0.2 * Math.cos(t * 4.3);
+          } else {
+            // Treble & high frequencies
+            freqWeight = 0.25 + 0.5 * Math.sin(t * 5.1 + (i * 0.6)) * Math.sin(t * 2.7);
+          }
+          const rollOff = Math.exp(-i / 32) * 1.1;
+          targetHeight = Math.max(3, freqWeight * rollOff * (H - 16) * vol);
+        }
+      } else {
+        // Paused state: resting soft pulse
+        targetHeight = 3 + Math.sin(wavePhase * 0.05 + i * 0.2) * 1.5;
+      }
+
+      // Smooth peak hold decay
+      if (targetHeight >= peaks[i]) {
+        peaks[i] = targetHeight;
+      } else {
+        peaks[i] = Math.max(0, peaks[i] - 0.45);
+      }
+
+      const x = startX + i * (barWidth + barSpacing);
+      const y = H - targetHeight - 2;
+
+      // Spectrum gradient: Cyan -> Indigo -> Purple
+      const grad = ctx.createLinearGradient(0, H, 0, y);
+      grad.addColorStop(0, 'rgba(56, 189, 248, 0.7)');
+      grad.addColorStop(0.5, 'rgba(129, 140, 248, 0.85)');
+      grad.addColorStop(1, 'rgba(192, 132, 252, 0.95)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(x, y, barWidth, targetHeight, [2, 2, 0, 0]);
+      } else {
+        ctx.rect(x, y, barWidth, targetHeight);
+      }
+      ctx.fill();
+
+      // Peak Hold Cap
+      if (peaks[i] > 3) {
+        const peakY = H - peaks[i] - 3;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 4;
+        ctx.fillRect(x, peakY, barWidth, 1.8);
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // 3. Real Wavelength Oscilloscope Laser Curve (λ)
+    ctx.save();
+    ctx.beginPath();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = isPlaying ? '#34d399' : 'rgba(56, 189, 248, 0.4)';
+    ctx.shadowColor = isPlaying ? '#10b981' : '#38bdf8';
+    ctx.shadowBlur = isPlaying ? 8 : 3;
+
+    const centerY = H * 0.52;
+    wavePhase += isPlaying ? 0.08 : 0.02;
+
+    const points = 80;
+    for (let p = 0; p <= points; p++) {
+      const px = (p / points) * W;
+      let py = centerY;
+
+      if (isPlaying) {
+        if (hasRealData && timeDomainArray) {
+          const sampleIdx = Math.floor((p / points) * timeDomainArray.length);
+          const rawWave = (timeDomainArray[sampleIdx] - 128) / 128;
+          py = centerY + rawWave * (H * 0.38) * vol;
+        } else {
+          // Physical Wavelength Equation: λ sinusoidal interference
+          const k1 = 0.045;
+          const k2 = 0.09;
+          const amp = (H * 0.32) * vol;
+          const w1 = Math.sin(px * k1 - wavePhase * 4);
+          const w2 = Math.sin(px * k2 - wavePhase * 7.5 + 1.2);
+          const w3 = Math.cos(px * 0.02 - wavePhase * 2.1);
+          py = centerY + (w1 * 0.6 + w2 * 0.3 + w3 * 0.1) * amp;
+        }
+      } else {
+        py = centerY + Math.sin(px * 0.03 + wavePhase) * 1.5;
+      }
+
+      if (p === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // 4. Live Beat Beacon
+    if (isPlaying) {
+      const beatPulse = Math.sin(curTime * 10);
+      if (beatPulse > 0.7) {
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.7)';
+        ctx.beginPath();
+        ctx.arc(W - 14, 8, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    animationFrameId = requestAnimationFrame(render);
+  }
+
+  audioEl.addEventListener('play', () => {
+    tryConnectWebAudio();
+  });
+
+  animationFrameId = requestAnimationFrame(render);
+
+  window.monitorVisualizers[idx] = {
+    active: true,
+    stop: () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      delete window.monitorVisualizers[idx];
+    }
+  };
+};
+
+window.ensureMonitorAudioVisualizers = function() {
+  const canvases = document.querySelectorAll('canvas[id^="monitor-wave-canvas-"]');
+  canvases.forEach(canv => {
+    const m = canv.id.match(/monitor-wave-canvas-(\d+)/);
+    if (m) {
+      const idx = m[1];
+      window.initMonitorAudioVisualizer(idx);
+    }
+  });
+};
+
 window.toggleCustomAudio = function(source, participantId, url, idx) {
   const audioEl = document.getElementById(`${source}-audio-${idx}`);
   if (!audioEl) return;
+  if (source === 'monitor' && typeof window.ensureMonitorAudioVisualizers === 'function') {
+    window.ensureMonitorAudioVisualizers();
+  }
   if (audioEl.paused) {
     audioEl.play().catch(e => console.error("Playback prevented", e));
     dispatchRemoteAudioCommand(participantId, url, 'play', audioEl.currentTime, source);
