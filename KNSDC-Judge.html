@@ -2123,10 +2123,19 @@ try {
 
   <!-- PARTICIPANTS TABLE -->
   <div class="card" style="margin-top: 14px;">
-    <div class="card-hd">
-      <div class="card-title">All Participants</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select style="width:140px!important" id="round-filter" onchange="renderParticipantsTable()">
+    <div class="card-hd" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div class="card-title" style="margin:0;">All Participants</div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <div style="position:relative; width:220px;">
+          <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:13px; color:var(--text-muted); pointer-events:none;">🔍</span>
+          <input type="text" id="parts-table-search" placeholder="Search by name, ID, phone..." 
+                 style="padding-left:32px; padding-right:26px; font-size:12px; height:36px; border-radius:10px; width:100%; box-sizing:border-box; background:var(--bg); color:var(--text); border:1px solid var(--border);" 
+                 oninput="renderParticipantsTable()" />
+          <button type="button" onclick="const el=document.getElementById('parts-table-search'); if(el){el.value=''; renderParticipantsTable();}" 
+                  title="Clear search" 
+                  style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; padding:0; display:flex; align-items:center;">✕</button>
+        </div>
+        <select style="width:140px!important; height:36px; border-radius:10px;" id="round-filter" onchange="renderParticipantsTable()">
           <option value="all">All Rounds</option>
           <option value="audition">Audition</option>
           <option value="qualified">Qualified</option>
@@ -7812,7 +7821,34 @@ function renderParticipantsTable() {
     });
   }
 
+  const searchQuery = (document.getElementById('parts-table-search')?.value || '').toLowerCase().trim();
+  if (searchQuery) {
+    rowItems = rowItems.filter(item => {
+      const p = item.participant;
+      const idMatch = String(p.id || '').toLowerCase().includes(searchQuery);
+      const nameMatch = String(p.name || '').toLowerCase().includes(searchQuery);
+      const phoneMatch = String(p.phone || '').toLowerCase().includes(searchQuery);
+      const cat = CATEGORIES.find(c => String(c.id) === String(p.catId));
+      const catMatch = String((cat && cat.name) || p.catId || '').toLowerCase().includes(searchQuery);
+      const roundMatch = String(item.round || '').toLowerCase().includes(searchQuery);
+      return idMatch || nameMatch || phoneMatch || catMatch || roundMatch;
+    });
+  }
+
   document.getElementById('table-count').textContent = `${rowItems.length}`;
+
+  if (rowItems.length === 0) {
+    const safeQ = searchQuery.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    document.getElementById('parts-tbody').innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align:center; padding:32px 14px; color:var(--text-muted);">
+          <div style="font-size:24px; margin-bottom:6px;">🔍</div>
+          No participants found${searchQuery ? ` matching "<strong>${safeQ}</strong>"` : ''}
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
   document.getElementById('parts-tbody').innerHTML = rowItems.map(item => {
     const p = item.participant;
