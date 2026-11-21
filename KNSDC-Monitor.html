@@ -26512,39 +26512,6 @@ window.initMonitorAudioVisualizer = function(idx) {
   let animationFrameId = null;
   let wavePhase = 0;
 
-  let analyser = null;
-  let dataArray = null;
-  let timeDomainArray = null;
-
-  function tryConnectWebAudio() {
-    try {
-      if (!window.monitorAudioCtx) {
-        window.monitorAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (window.monitorAudioCtx.state === 'suspended' && !audioEl.paused) {
-        window.monitorAudioCtx.resume();
-      }
-      if (!audioEl._analyserConnected) {
-        analyser = window.monitorAudioCtx.createAnalyser();
-        analyser.fftSize = 128;
-        analyser.smoothingTimeConstant = 0.8;
-        const source = window.monitorAudioCtx.createMediaElementSource(audioEl);
-        source.connect(analyser);
-        analyser.connect(window.monitorAudioCtx.destination);
-        audioEl._analyserConnected = true;
-        audioEl._analyser = analyser;
-      } else {
-        analyser = audioEl._analyser;
-      }
-      if (analyser) {
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-        timeDomainArray = new Uint8Array(analyser.fftSize);
-      }
-    } catch(err) {
-      analyser = null;
-    }
-  }
-
   function render() {
     if (!document.body.contains(canvas)) {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -26569,14 +26536,7 @@ window.initMonitorAudioVisualizer = function(idx) {
     const curTime = audioEl.currentTime || 0;
     const vol = audioEl.volume !== undefined ? audioEl.volume : 1;
 
-    let hasRealData = false;
-    if (analyser && isPlaying) {
-      analyser.getByteFrequencyData(dataArray);
-      analyser.getByteTimeDomainData(timeDomainArray);
-      for (let i = 0; i < dataArray.length; i++) {
-        if (dataArray[i] > 0) { hasRealData = true; break; }
-      }
-    }
+    // Sound plays natively through device speakers with zero CORS blocking
 
     // 2. Frequency Spectrum Bars (Sub-Bass, Bass, Mids, Treble)
     const barSpacing = 2.5;
@@ -26587,11 +26547,7 @@ window.initMonitorAudioVisualizer = function(idx) {
     for (let i = 0; i < numBars; i++) {
       let targetHeight = 0;
       if (isPlaying) {
-        if (hasRealData && dataArray) {
-          const binIdx = Math.floor((i / numBars) * dataArray.length);
-          const rawVal = dataArray[binIdx] / 255;
-          targetHeight = rawVal * (H - 14) * vol;
-        } else {
+        {
           // Physics-based DSP Frequency Simulator:
           const t = curTime * 7;
           let freqWeight = 1;
@@ -26667,11 +26623,7 @@ window.initMonitorAudioVisualizer = function(idx) {
       let py = centerY;
 
       if (isPlaying) {
-        if (hasRealData && timeDomainArray) {
-          const sampleIdx = Math.floor((p / points) * timeDomainArray.length);
-          const rawWave = (timeDomainArray[sampleIdx] - 128) / 128;
-          py = centerY + rawWave * (H * 0.38) * vol;
-        } else {
+        {
           // Physical Wavelength Equation: λ sinusoidal interference
           const k1 = 0.045;
           const k2 = 0.09;
@@ -26705,9 +26657,7 @@ window.initMonitorAudioVisualizer = function(idx) {
     animationFrameId = requestAnimationFrame(render);
   }
 
-  audioEl.addEventListener('play', () => {
-    tryConnectWebAudio();
-  });
+  // Native audio pipeline preserved for 100% sound fidelity without CORS blocking
 
   animationFrameId = requestAnimationFrame(render);
 
