@@ -7067,27 +7067,6 @@ function renderDetailedResults(p) {
       }, 0);
     }
 
-    const scoredJudgeCount = hasScores ? Object.keys(scoresForRound).length : (judges.length || 1);
-    const maxTotalScore = scoredJudgeCount * subjects.reduce((a, s) => a + (Number(s.maxMarks) || 10), 0);
-
-    // Compute category average for this round
-    const allParticipants = state.participants || [];
-    const sameCatParticipants = allParticipants.filter(pp => String(pp.eventId) === String(p.eventId) && pp.catId === p.catId);
-    let catTotalScores = 0;
-    let catScoredCount = 0;
-    sameCatParticipants.forEach(pp => {
-      let ppTotal = 0;
-      const ppR = (pp.roundScores && pp.roundScores[roundKey]) || (pp.round === roundKey ? pp.scores : null);
-      if (ppR) {
-        Object.values(ppR).forEach(jScores => {
-          if (typeof jScores === 'object' && jScores !== null) Object.values(jScores).forEach(v => ppTotal += (Number(v) || 0));
-          else ppTotal += (Number(jScores) || 0);
-        });
-      }
-      if (ppTotal > 0) { catTotalScores += ppTotal; catScoredCount++; }
-    });
-    const catAvg = catScoredCount > 0 ? (catTotalScores / catScoredCount).toFixed(1) : '0.0';
-
     // Helper for judge scores
     const getJudgeScoresForRound = (j) => {
       const agr = judgeAgreements.find(a => 
@@ -7101,6 +7080,86 @@ function renderDetailedResults(p) {
     if (scoredJudges.length === 0 && hasScores) {
       scoredJudges = Object.keys(scoresForRound).map(jid => ({ id: jid, name: 'Judge ' + jid.substring(0, 4) }));
     }
+
+    // Judge Subject Assignment Mapping Resolver
+    const pEventId = String(p.eventId || state.activeEventId || '');
+    const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[pEventId];
+
+    const getJudgeAssignedSubjects = (judge, jScores) => {
+      const jId = String(judge.id || '');
+      const jEmail = String(judge.email || '').toLowerCase().trim();
+      const jName = String(judge.name || '').toLowerCase().trim();
+      const assignedIds = mapping && (mapping[jId] || mapping[jEmail] || mapping[jName]);
+
+      let relevantSubjects = subjects;
+      if (assignedIds && Array.isArray(assignedIds) && assignedIds.length > 0) {
+        relevantSubjects = subjects.filter(s => assignedIds.includes(s.id) || (jScores && jScores[s.id] !== undefined));
+      } else if (typeof jScores === 'object' && jScores !== null) {
+        const scoredSubjIds = Object.keys(jScores);
+        if (scoredSubjIds.length > 0) {
+          const matched = subjects.filter(s => scoredSubjIds.includes(s.id));
+          if (matched.length > 0) relevantSubjects = matched;
+        }
+      }
+      return relevantSubjects;
+    };
+
+    // Calculate actual Max Total Score: Sum of max marks for each assigned judge's assigned subjects (Option A)
+    let maxTotalScore = 0;
+    if (scoredJudges.length > 0) {
+      scoredJudges.forEach(judge => {
+        const jScores = getJudgeScoresForRound(judge) || scoresForRound[judge.id] || {};
+        const relSubjs = getJudgeAssignedSubjects(judge, jScores);
+        const jMax = relSubjs.reduce((acc, s) => acc + (Number(s.maxMarks) || 10), 0);
+        maxTotalScore += jMax;
+      });
+    }
+    if (maxTotalScore === 0) {
+      const activeJudgesList = (judges.length > 0) ? judges : [{}];
+      activeJudgesList.forEach(judge => {
+        const relSubjs = getJudgeAssignedSubjects(judge, null);
+        const jMax = relSubjs.reduce((acc, s) => acc + (Number(s.maxMarks) || 10), 0);
+        maxTotalScore += jMax;
+      });
+    }
+
+    // Compute category average for this round (ONLY completed evaluations)
+    const allParticipants = state.participants || [];
+    const sameCatParticipants = allParticipants.filter(pp => 
+      String(pp.eventId) === String(p.eventId) && 
+      String(pp.catId) === String(p.catId)
+    );
+
+    let catTotalScores = 0;
+    let catScoredCount = 0;
+
+    sameCatParticipants.forEach(pp => {
+      const ppStageStatus = String(pp.stageStatus || pp.status || '').toLowerCase().trim();
+      const isDone = ['done', 'completed', 'finished'].includes(ppStageStatus);
+      const ppR = (pp.roundScores && pp.roundScores[roundKey]) || (pp.round === roundKey ? pp.scores : null);
+      
+      if (ppR && typeof ppR === 'object' && Object.keys(ppR).length > 0) {
+        const isPastRound = roundKey !== curRoundName;
+        // Count in average only if evaluation is complete (done status, past round, or scored by all judges)
+        if (isDone || isPastRound || (scoredJudges.length > 0 && Object.keys(ppR).length >= scoredJudges.length)) {
+          let ppTotal = 0;
+          Object.values(ppR).forEach(jScores => {
+            if (typeof jScores === 'object' && jScores !== null) {
+              ppTotal += (Number(jScores.total) || Object.values(jScores).reduce((x, y) => x + (Number(y) || 0), 0));
+            } else {
+              ppTotal += (Number(jScores) || 0);
+            }
+          });
+          if (ppTotal > 0) {
+            catTotalScores += ppTotal;
+            catScoredCount++;
+          }
+        }
+      }
+    });
+
+    const catAvgVal = catScoredCount > 0 ? (catTotalScores / catScoredCount) : 0;
+    const catAvgDisplay = catScoredCount > 0 ? catAvgVal.toFixed(1) : '—';
 
     // Build Judge-wise Breakdown rows
     let judgesHTML = '';
@@ -7120,26 +7179,10 @@ function renderDetailedResults(p) {
           </div>
           ${scoredJudges.map(judge => {
             const jScores = getJudgeScoresForRound(judge) || scoresForRound[judge.id] || {};
+            const relevantSubjects = getJudgeAssignedSubjects(judge, jScores);
+
             let judgeTotal = 0;
             let judgeMax = 0;
-
-            const pEventId = String(p.eventId || state.activeEventId || '');
-            const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[pEventId];
-            const jId = String(judge.id || '');
-            const jEmail = String(judge.email || '').toLowerCase().trim();
-            const jName = String(judge.name || '').toLowerCase().trim();
-            const assignedIds = mapping && (mapping[jId] || mapping[jEmail] || mapping[jName]);
-
-            let relevantSubjects = subjects;
-            if (assignedIds && Array.isArray(assignedIds) && assignedIds.length > 0) {
-              relevantSubjects = subjects.filter(s => assignedIds.includes(s.id) || (jScores && jScores[s.id] !== undefined));
-            } else if (typeof jScores === 'object' && jScores !== null) {
-              const scoredSubjIds = Object.keys(jScores);
-              if (scoredSubjIds.length > 0) {
-                const matched = subjects.filter(s => scoredSubjIds.includes(s.id));
-                if (matched.length > 0) relevantSubjects = matched;
-              }
-            }
 
             relevantSubjects.forEach(s => {
               const subScore = (typeof jScores === 'object') ? (Number(jScores[s.id]) || 0) : 0;
@@ -7249,7 +7292,9 @@ function renderDetailedResults(p) {
           </div>
           <div style="background:var(--bg2); padding:10px 12px; border-radius:12px; text-align:center; border:1px solid var(--border);">
             <div style="font-size:0.62rem; color:#D97706; font-weight:800; text-transform:uppercase;">Category Avg</div>
-            <div style="font-size:1.25rem; color:var(--text); font-weight:900; margin-top:2px;">${catAvg}</div>
+            <div style="font-size:1.25rem; color:var(--text); font-weight:900; margin-top:2px;">
+              ${catScoredCount > 0 && maxTotalScore > 0 ? `${catAvgDisplay} / ${maxTotalScore}` : catAvgDisplay}
+            </div>
           </div>
         </div>
 
