@@ -6986,6 +6986,20 @@ function renderDetailedResults(p) {
     return;
   }
 
+  // Helper to resolve actual human-readable round name
+  function getRoundDisplayName(rKey) {
+    if (!rKey) return 'Audition Round';
+    const evRounds = (ev && ev.rounds) || (state && state.rounds) || [];
+    const matched = evRounds.find(r => 
+      String(r.id || '').toLowerCase() === String(rKey).toLowerCase() ||
+      String(r.name || '').toLowerCase() === String(rKey).toLowerCase()
+    );
+    if (matched && matched.name) return matched.name;
+    return String(rKey)
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
   // Multi-Round Persistence Engine
   const roundScoresMap = { ...(p.roundScores || {}) };
   const curRoundName = String(p.round || 'audition').toLowerCase().trim();
@@ -7001,8 +7015,21 @@ function renderDetailedResults(p) {
     return sObj && typeof sObj === 'object' && Object.keys(sObj).length > 0;
   });
 
-  // If no scores anywhere, hide container
-  if (scoredRounds.length === 0 && (!p.scores || Object.keys(p.scores).length === 0)) {
+  const curScores = roundScoresMap[curRoundName] || (p.scores || {});
+  const hasCurScores = Boolean(curScores && typeof curScores === 'object' && Object.keys(curScores).length > 0);
+
+  // Presence check for current round
+  const rp = p.roundPresence || {};
+  const isPresentForCurrentRound = Boolean(
+    (rp[curRoundName] && rp[curRoundName].present === true) ||
+    (rp[p.round] && rp[p.round].present === true) ||
+    p.present === true ||
+    ['on-stage', 'queue', 'live', 'ready', 'calling', 'done'].includes(String(p.stageStatus || '').toLowerCase()) ||
+    p.isReady
+  );
+
+  // If no scores anywhere AND participant is not present/evaluating in current round, hide container
+  if (scoredRounds.length === 0 && !hasCurScores && !isPresentForCurrentRound) {
     container.style.display = 'none';
     return;
   }
@@ -7020,17 +7047,16 @@ function renderDetailedResults(p) {
     const scoresForRound = roundScoresMap[roundKey] || (roundKey === curRoundName ? (p.scores || {}) : {}) || {};
     const hasScores = scoresForRound && Object.keys(scoresForRound).length > 0;
 
-    // Card visibility & style: Current round = 100% visible (opacity: 1), Previous round = 90% visible (opacity: 0.90)
+    // Card visibility & light theme styling:
+    // Current round = 100% visible (opacity: 1), Previous round = 90% visible (opacity: 0.90) in light theme with reduced glow
     const cardOpacity = isCurrentRound ? '1' : '0.90';
     const cardBorder = isCurrentRound 
       ? '2px solid rgba(124,58,237,0.35)' 
-      : '1.5px solid rgba(255,255,255,0.12)';
+      : '1px solid var(--border)';
     const cardShadow = isCurrentRound 
-      ? '0 10px 30px rgba(124,58,237,0.14)' 
-      : '0 4px 16px rgba(0,0,0,0.06)';
-    const cardBg = isCurrentRound 
-      ? 'var(--bg)' 
-      : 'rgba(25, 25, 35, 0.9)';
+      ? '0 8px 24px rgba(124,58,237,0.10)' 
+      : '0 2px 8px rgba(0,0,0,0.04)';
+    const cardBg = 'var(--bg)';
 
     // Compute round total score
     let totalScore = 0;
@@ -7090,7 +7116,7 @@ function renderDetailedResults(p) {
       judgesHTML = `
         <div style="margin-top:14px; background:var(--bg2); border-radius:14px; padding:14px; border:1px solid var(--border);">
           <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">
-            📊 Judge-wise Scorecard Breakdown (${roundKey.toUpperCase()})
+            📊 Judge-wise Scorecard Breakdown (${getRoundDisplayName(roundKey).toUpperCase()})
           </div>
           ${scoredJudges.map(judge => {
             const jScores = getJudgeScoresForRound(judge) || scoresForRound[judge.id] || {};
@@ -7167,6 +7193,8 @@ function renderDetailedResults(p) {
       `;
     }
 
+    const displayRoundName = getRoundDisplayName(roundKey);
+
     return `
       <div class="scorecard-container-panel" style="
         opacity: ${cardOpacity};
@@ -7181,22 +7209,20 @@ function renderDetailedResults(p) {
       ">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
           <div>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="
-                font-size:0.72rem; 
-                font-weight:900; 
-                text-transform:uppercase; 
-                letter-spacing:1px; 
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="badge" style="
+                font-size:0.75rem; 
+                font-weight:800; 
                 padding:4px 10px; 
                 border-radius:8px; 
                 ${isCurrentRound 
-                  ? 'background:linear-gradient(135deg, #7C3AED, #4F46E5); color:#fff; box-shadow:0 3px 10px rgba(124,58,237,0.3);' 
-                  : 'background:rgba(255,255,255,0.08); color:var(--text-muted); border:1px solid var(--border);'}
+                  ? 'background:rgba(124,58,237,0.12); color:var(--primary); border:1px solid rgba(124,58,237,0.25);' 
+                  : 'background:rgba(16,185,129,0.1); color:#10B981; border:1px solid rgba(16,185,129,0.25);'}
               ">
-                ${isCurrentRound ? '🔥 CURRENT ROUND (100% LIVE)' : '📜 PREVIOUS ROUND SCORECARD (90% VISIBLE)'}
+                ${isCurrentRound ? 'ACTIVE ROUND' : 'COMPLETED ROUND'}
               </span>
-              <span style="font-weight:800; font-size:1.05rem; color:var(--text); text-transform:uppercase;">
-                ${roundKey}
+              <span style="font-weight:900; font-size:1.15rem; color:var(--text); text-transform:uppercase; letter-spacing:0.5px;">
+                ROUND: ${displayRoundName.toUpperCase()}
               </span>
             </div>
             <div style="font-size:0.78rem; color:var(--text-muted); margin-top:4px;">${catName}</div>
@@ -7232,7 +7258,7 @@ function renderDetailedResults(p) {
     `;
   }
 
-  // Identify Current Round & Previous Rounds
+  // Identify Previous Rounds (all scored rounds except current round)
   const previousRounds = scoredRounds.filter(r => r !== curRoundName);
 
   let combinedScorecardsHTML = `
@@ -7241,20 +7267,80 @@ function renderDetailedResults(p) {
         0% { opacity: 0; transform: translateY(14px) scale(0.98); }
         100% { opacity: 1; transform: translateY(0) scale(1); }
       }
+      @keyframes evalPulse {
+        0% { transform: scale(0.94); opacity: 0.75; box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4); }
+        70% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 0 14px rgba(124, 58, 237, 0); }
+        100% { transform: scale(0.94); opacity: 0.75; box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
+      }
+      .eval-buffering-pulse {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(79,70,229,0.22));
+        border: 2px solid rgba(124, 58, 237, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        animation: evalPulse 1.8s infinite ease-in-out;
+      }
     </style>
   `;
 
-  // 1. Current Round Scorecard (100% Visible)
-  combinedScorecardsHTML += generateScorecardHTML(curRoundName, true);
+  // 1. Current Round Card
+  if (hasCurScores) {
+    // Current round scoring complete -> show 100% visible scorecard immediately
+    combinedScorecardsHTML += generateScorecardHTML(curRoundName, true);
+  } else if (isPresentForCurrentRound) {
+    // Participant is present / on-stage / evaluating -> show buffering animation card
+    const curRoundDisplay = getRoundDisplayName(curRoundName);
+    combinedScorecardsHTML += `
+      <div class="scorecard-container-panel" style="
+        opacity: 1;
+        border: 2px dashed rgba(124,58,237,0.35);
+        box-shadow: 0 4px 18px rgba(124,58,237,0.08);
+        background: var(--bg);
+        padding: 22px;
+        border-radius: 18px;
+        margin-bottom: 18px;
+        animation: scorecardAppear 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+      ">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span class="badge" style="font-size:0.75rem; font-weight:800; padding:4px 10px; border-radius:8px; background:rgba(124,58,237,0.12); color:var(--primary); border:1px solid rgba(124,58,237,0.25);">
+              ACTIVE ROUND
+            </span>
+            <span style="font-weight:900; font-size:1.15rem; color:var(--text); text-transform:uppercase; letter-spacing:0.5px;">
+              ROUND: ${curRoundDisplay.toUpperCase()}
+            </span>
+          </div>
+          <span class="badge" style="font-size:0.72rem; background:rgba(245,158,11,0.12); color:#d97706; border:1px solid rgba(245,158,11,0.25); padding:3px 8px; border-radius:6px; font-weight:800;">
+            EVALUATION IN PROGRESS
+          </span>
+        </div>
 
-  // 2. Previous Round Scorecard(s) (90% Visible)
+        <div style="padding: 24px 16px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+          <div class="eval-buffering-pulse">
+            <span>⚡</span>
+          </div>
+          <div style="font-weight:800; font-size:0.95rem; color:var(--text); margin-top:12px;">
+            Judges Scoring In Progress
+          </div>
+          <div style="font-size:0.8rem; color:var(--text-muted); max-width:380px; margin-top:4px; line-height:1.4;">
+            Stage presence verified. Your official round scorecard will appear here instantly as soon as judges submit their evaluations.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 2. Previous Round Scorecard(s) (90% Visible, light theme, actual round name)
   previousRounds.reverse().forEach(pastRound => {
     combinedScorecardsHTML += generateScorecardHTML(pastRound, false);
   });
 
   container.innerHTML = combinedScorecardsHTML;
 }
-
 
 function renderPerformanceJourney(p) {
   const container = document.getElementById('participant-stream-charts-container');
