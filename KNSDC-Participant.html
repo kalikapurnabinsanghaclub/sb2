@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="theme-color" content="#2563eb"/>
+<link rel="manifest" href="./manifest.json"/>
 <title>KNSDC — Participant Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;800;900&family=Cinzel+Decorative:wght@700;900&family=Inter:wght@400;600;700;800;900&family=Montserrat:wght@600;700;800;900&family=Oswald:wght@600;700&family=Outfit:wght@400;600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,400;1,700&family=Poppins:wght@600;700;800;900&family=Righteous&family=Space+Grotesk:wght@600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
@@ -4801,8 +4803,8 @@ function logout() {
   document.getElementById('login-form').reset();
 }
 
-window.uploadParticipantFileToCloud = async function(input, targetId) {
-  const file = input.files[0];
+window.uploadParticipantFileToCloud = async function(input, targetId, directFile = null) {
+  const file = directFile || (input && input.files ? input.files[0] : null);
   if (!file) return;
   if (file.size > 50 * 1024 * 1024) {
       toast("⚠️ File too large. Please select a file smaller than 50MB.");
@@ -5024,6 +5026,52 @@ window.uploadParticipantFileToCloud = async function(input, targetId) {
   }
 };
 
+
+// PWA Web Share Target Listener for WhatsApp Audio
+async function checkAndApplySharedAudio() {
+  if (!('caches' in window)) return;
+  try {
+    const cache = await caches.open('knsdc-shared-media-v1');
+    const response = await cache.match('/knsdc-shared-audio-temp');
+    if (!response) return;
+
+    const blob = await response.blob();
+    const filename = decodeURIComponent(response.headers.get('x-shared-filename') || 'whatsapp_audio.mp3');
+    await cache.delete('/knsdc-shared-audio-temp');
+
+    if (blob && blob.size > 0) {
+      const audioFile = new File([blob], filename, { type: blob.type || 'audio/mpeg' });
+      console.log('[PWA Share Target] Received shared audio:', audioFile.name, audioFile.size);
+
+      if (!CURRENT_USER) {
+        toast('🎵 WhatsApp থেকে অডিও পাওয়া গেছে! অনুগ্রহ করে লগইন করুন।');
+        return;
+      }
+
+      const state = window.syncEngine ? (window.syncEngine.getData() || {}) : {};
+      const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+
+      if (p && p.formLocked) {
+        toast('🔒 ফরম লক আছে! মনিটর আনলক করলে হোয়াটসঅ্যাপের অডিওটি আপলোড করা যাবে।');
+        return;
+      }
+
+      // Find the audio input
+      const audioInput = document.querySelector('input[type="file"][accept*="audio"]') || document.querySelector('input[type="file"]');
+      if (audioInput) {
+        const onchangeAttr = audioInput.getAttribute('onchange') || '';
+        const match = onchangeAttr.match(/uploadParticipantFileToCloud\s*\(\s*this\s*,\s*['"]([^'"]+)['"]\)/);
+        const targetId = match ? match[1] : 'dyn-field-audio';
+
+        toast('🚀 WhatsApp অডিও ক্লাউডে আপলোড হচ্ছে...');
+        await uploadParticipantFileToCloud(audioInput, targetId, audioFile);
+      }
+    }
+  } catch (err) {
+    console.warn('[PWA Share Target Notice]', err);
+  }
+}
+
 window.removeParticipantMediaTrack = async function(targetId) {
   const state = window.syncEngine ? (window.syncEngine.getData() || {}) : {};
   const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
@@ -5097,6 +5145,7 @@ window.removeParticipantMediaTrack = async function(targetId) {
 
 // 3. Render Dashboard & Lock Logic
 function renderDashboard() {
+  setTimeout(checkAndApplySharedAudio, 300);
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('dashboard-view').style.display = 'block';
   
@@ -5303,6 +5352,10 @@ function renderDashboard() {
       const isVideo = f.type === 'video_link_or_file';
       html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
         <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
+        ${!isVideo ? `
+        <div style="margin-top:2px; display:flex; align-items:center; gap:6px; font-size:11px; color:#15803d; background:#f0fdf4; padding:6px 10px; border-radius:6px; border:1px solid #bbf7d0;">
+          <span>📲 <strong>WhatsApp টিপস:</strong> ফোন থেকে গান সিলেক্ট করতে "Choose File" চেপে Audio &gt; "WhatsApp Audio" বেছে নিন, অথবা WhatsApp-এ গানের ওপর "Share" চেপে <strong>KNSDC Portal</strong> নির্বাচন করুন।</span>
+        </div>` : ''}
         <input type="hidden" id="${fieldId}" value="${val}" data-label="${f.label}">
         <div id="${fieldId}-loader-container" style="display:none;"></div>
         <div id="${fieldId}-preview-wrap" style="margin-top:6px; display:${val ? 'block' : 'none'};">
@@ -5316,11 +5369,10 @@ function renderDashboard() {
             <button type="button" 
                     id="${fieldId}-delete-btn"
                     onclick="removeParticipantMediaTrack('${fieldId}')" 
-                    title="${p.formLocked ? '🔒 Form is locked by Monitor' : '✕ Remove track from Cloudflare storage'}"
-                    ${p.formLocked ? 'disabled' : ''}
-                    style="flex-shrink:0; width:34px; height:34px; border-radius:50%; border:1px solid #fca5a5; background:#fee2e2; color:#ef4444; font-weight:900; font-size:16px; display:inline-flex; align-items:center; justify-content:center; cursor:${p.formLocked ? 'not-allowed' : 'pointer'}; opacity:${p.formLocked ? '0.45' : '1'}; transition:all 0.2s;"
-                    onmouseover="if(!this.disabled){this.style.background='#ef4444';this.style.color='#fff';}"
-                    onmouseout="if(!this.disabled){this.style.background='#fee2e2';this.style.color='#ef4444';}">
+                    title="✕ Remove track from Cloudflare storage"
+                    style="flex-shrink:0; width:34px; height:34px; border-radius:50%; border:1px solid #fca5a5; background:#fee2e2; color:#ef4444; font-weight:900; font-size:16px; display:${p.formLocked ? 'none' : 'inline-flex'}; align-items:center; justify-content:center; cursor:pointer; transition:all 0.2s;"
+                    onmouseover="this.style.background='#ef4444';this.style.color='#fff';"
+                    onmouseout="this.style.background='#fee2e2';this.style.color='#ef4444';">
               ✕
             </button>
           </div>
@@ -5397,9 +5449,8 @@ function renderDashboard() {
   if (formLocked === true) {
     inputs.forEach(inp => inp.disabled = true);
     deleteBtns.forEach(b => {
+      b.style.display = 'none'; // completely hidden when form is locked
       b.disabled = true;
-      b.style.opacity = '0.45';
-      b.style.cursor = 'not-allowed';
       b.title = '🔒 Form is locked by Monitor';
     });
     btn.disabled = true;
@@ -5410,6 +5461,7 @@ function renderDashboard() {
   } else {
     inputs.forEach(inp => inp.disabled = false);
     deleteBtns.forEach(b => {
+      b.style.display = 'inline-flex'; // shown when form is unlocked
       b.disabled = false;
       b.style.opacity = '1';
       b.style.cursor = 'pointer';
