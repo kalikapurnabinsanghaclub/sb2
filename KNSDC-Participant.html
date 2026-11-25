@@ -4810,14 +4810,30 @@ function logout() {
 window.uploadParticipantFileToCloud = async function(input, targetId, directFile = null) {
   const file = directFile || (input && input.files ? input.files[0] : null);
   if (!file) return;
+
+  // 1. Guard: Check if form is locked by Monitor
+  if (window.syncEngine) {
+    const state = window.syncEngine.getData() || {};
+    const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+    if (p && p.formLocked) {
+      toast("🔒 আপনার ফর্মটি মনিটর দ্বারা লক করা আছে! গান পরিবর্তন করতে মনিটরকে ফর্ম আনলক করতে বলুন।");
+      if (input) input.value = "";
+      return;
+    }
+  }
+
   if (file.size > 50 * 1024 * 1024) {
       toast("⚠️ File too large. Please select a file smaller than 50MB.");
-      input.value = "";
+      if (input) input.value = "";
       return;
   }
   
-  const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)$/i.test(file.name);
-  const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name);
+  // Robust Audio Detection (checks field label, targetId, file.type, and all extensions including opus)
+  const targetInputEl = document.getElementById(targetId);
+  const fieldLabel = targetInputEl ? (targetInputEl.getAttribute('data-label') || targetId).toLowerCase() : targetId.toLowerCase();
+  const isAudioField = /audio|music|song|track|sound/i.test(fieldLabel) || /audio/i.test(targetId);
+  const isAudio = isAudioField || (file.type && file.type.startsWith('audio/')) || /\.(mp3|wav|ogg|m4a|aac|opus|weba|wma|flac)$/i.test(file.name || '');
+  const isVideo = !isAudio && ((file.type && file.type.startsWith('video/')) || /\.(mp4|webm|mov)$/i.test(file.name || ''));
   const typeLabel = isAudio ? 'music track' : (isVideo ? 'video' : 'photo');
 
   if (input) input.disabled = true;
@@ -4832,7 +4848,7 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
             <span>${isAudio ? '🎵' : (isVideo ? '🎬' : '🖼️')}</span>
             Uploading ${typeLabel}...
           </span>
-          <span class="c-walk-uploader__percentage"></span>
+          <span class="c-walk-uploader__percentage" id="${targetId}-percentage">0%</span>
         </div>
         <div class="c-walk-uploader__scene">
           <div class="c-walk-uploader__destination">
@@ -4844,7 +4860,7 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
               <rect x="9" y="21" width="5" height="5" class="c-walk-uploader__window"></rect>
             </svg>
           </div>
-          <div class="c-walk-uploader__traveler">
+          <div class="c-walk-uploader__traveler" id="${targetId}-traveler">
             <svg class="c-walk-uploader__characters-svg" viewBox="0 0 75 50">
               <path d="M42,27 Q30,30 24,34" class="c-walk-uploader__leash"></path>
               <g class="c-walk-uploader__dog">
@@ -4869,13 +4885,22 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
             </svg>
           </div>
           <div class="c-walk-uploader__path-track">
-            <div class="c-walk-uploader__path-fill"></div>
+            <div class="c-walk-uploader__path-fill" id="${targetId}-path-fill"></div>
           </div>
         </div>
       </div>
     `;
     loaderContainer.style.display = 'block';
   }
+
+  const updateProgress = (pct) => {
+    const pSpan = document.getElementById(`${targetId}-percentage`);
+    const pFill = document.getElementById(`${targetId}-path-fill`);
+    const pTrav = document.getElementById(`${targetId}-traveler`);
+    if (pSpan) pSpan.textContent = `${pct}%`;
+    if (pFill) pFill.style.width = `${pct}%`;
+    if (pTrav) pTrav.style.left = `calc(${pct}% - 35px)`;
+  };
 
   // Hide old preview while uploading
   const previewWrap = document.getElementById(targetId + '-preview-wrap');
@@ -4890,49 +4915,46 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
     ? `participants/p_${partId}_audio.${ext}` 
     : (isVideo ? `participants/p_${partId}_video.${ext}` : `participants/p_${partId}_photo.${ext}`);
 
-  // Retrieve current participant to delete old file if replacing
-  let oldMediaUrl = null;
-  if (window.syncEngine) {
-    const state = window.syncEngine.getData() || {};
-    const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-    if (p) {
-      if (isAudio && p.musicUrl) oldMediaUrl = p.musicUrl;
-      else if (!isAudio && !isVideo && p.photo) oldMediaUrl = p.photo;
-      else if (p.formAnswers) {
-        const targetInput = document.getElementById(targetId);
-        const fieldLabel = targetInput ? (targetInput.getAttribute('data-label') || targetId) : targetId;
-        if (p.formAnswers[fieldLabel]) oldMediaUrl = p.formAnswers[fieldLabel];
-      }
-    }
-  }
-
   try {
-    // Delete previous media from cloud if it exists
-    if (oldMediaUrl && window.syncEngine && typeof window.syncEngine.deleteFile === 'function') {
-      try {
-        await window.syncEngine.deleteFile(oldMediaUrl);
-      } catch (delErr) {
-        console.warn('Notice: Previous media deletion check:', delErr);
-      }
-    }
-
     let cloudUrl = null;
-    if (window.syncEngine && typeof window.syncEngine.uploadFile === 'function') {
-      cloudUrl = await window.syncEngine.uploadFile(file, 'participants/', customKey);
-    } else {
+
+    // Upload with real-time XMLHttpRequest progress (supports large audio on mobile 4G)
+    cloudUrl = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const r2WorkerUrl = window.CLOUDFLARE_UPLOAD_URL || 'https://sb2.kalikapurnabinsanghaclub.workers.dev';
+      xhr.open('POST', r2WorkerUrl, true);
+      xhr.timeout = 180000; // 3 minute timeout for mobile 4G audio
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.min(99, Math.round((e.loaded / e.total) * 100));
+          updateProgress(pct);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const json = JSON.parse(xhr.responseText);
+            if (json && (json.fileUrl || json.imageUrl)) {
+              updateProgress(100);
+              resolve(json.fileUrl || json.imageUrl);
+              return;
+            }
+          } catch(e) {}
+        }
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.ontimeout = () => reject(new Error('Upload timed out. Please check network.'));
+
       const fd = new FormData();
-      fd.append('pathPrefix', 'participants');
       fd.append('file', file);
+      fd.append('pathPrefix', 'participants');
       if (customKey) fd.append('customKey', customKey);
-      const r2Res = await fetch('https://sb2.kalikapurnabinsanghaclub.workers.dev', {
-        method: 'POST',
-        body: fd
-      });
-      if (r2Res.ok) {
-        const r2Json = await r2Res.json();
-        cloudUrl = r2Json.fileUrl || r2Json.imageUrl;
-      }
-    }
+      xhr.send(fd);
+    });
 
     if (cloudUrl) {
       // Append cache-buster so browser immediately reloads overwritten file
@@ -4955,6 +4977,7 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
         const mediaPreview = document.getElementById(targetId + '-preview');
         if (mediaPreview) {
           mediaPreview.src = freshUrl;
+          if (typeof mediaPreview.pause === 'function') mediaPreview.pause();
           if (typeof mediaPreview.load === 'function') mediaPreview.load();
         }
       }
@@ -5004,10 +5027,10 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
     }
   } catch (err) {
     console.error('[Participant Upload Error]', err);
-    toast('⚠️ নেটওয়ার্ক সমস্যার কারণে অডিও আপলোড হয়নি, পুনরায় চেষ্টা করুন (Retry)');
+    toast('⚠️ অডিও আপলোড হতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন (Retry)');
 
     // Smart Auto-Retry UX Box with instant one-click Retry button
-    const previewContainer = document.getElementById(`${targetId}-loader-container`) || input.parentNode;
+    const previewContainer = document.getElementById(`${targetId}-loader-container`) || (input ? input.parentNode : null);
     if (previewContainer) {
       let retryBox = document.getElementById(targetId + '-retry-box');
       if (!retryBox) {
@@ -5017,8 +5040,8 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
       }
       retryBox.style.cssText = 'margin-top:8px; padding:10px 14px; background:#fef2f2; border:1px solid #f87171; border-radius:10px; color:#991b1b; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 8px rgba(239,68,68,0.15);';
       retryBox.innerHTML = `
-        <div style="font-size:12px; font-weight:700;">⚠️ নেটওয়ার্ক সমস্যার কারণে অডিও আপলোড হয়নি, পুনরায় চেষ্টা করুন।</div>
-        <button type="button" onclick="document.getElementById('${input.id}').click()" style="background:#dc2626; color:#fff; border:none; padding:6px 12px; border-radius:8px; font-weight:800; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(220,38,38,0.3); transition:transform 0.15s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">🔄 Retry</button>
+        <div style="font-size:12px; font-weight:700;">⚠️ আপলোড সম্পন্ন হয়নি। পুনরায় চেষ্টা করুন।</div>
+        <button type="button" onclick="const fInp=document.getElementById('${input ? input.id : ''}'); if(fInp) fInp.click();" style="background:#dc2626; color:#fff; border:none; padding:6px 12px; border-radius:8px; font-weight:800; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(220,38,38,0.3); transition:transform 0.15s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">🔄 Retry</button>
       `;
     }
   } finally {
@@ -5029,7 +5052,6 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
     }
   }
 };
-
 
 // PWA Web Share Target Listener for WhatsApp Audio
 window._pendingSharedAudioFile = null;
