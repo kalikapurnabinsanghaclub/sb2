@@ -3222,6 +3222,43 @@ let CATEGORIES = [];
 const ROUNDS = ["audition","qualified","semifinal","final"];
 let participants = [];
 
+// ══════════════════════════════════════════════════════════════
+// DYNAMIC SUBJECTS PER JUDGE (ZERO-EGRESS REAL-TIME ADAPTATION)
+// ══════════════════════════════════════════════════════════════
+function getJudgeActiveSubjects() {
+  try {
+    const state = (window.syncEngine && window.syncEngine.getData()) || {};
+    const allMappings = state.judgeSubjectMapping || {};
+    const primaryEvId = (window.JUDGE && window.JUDGE.eventId && String(window.JUDGE.eventId) !== '0') ? String(window.JUDGE.eventId) : String(state.activeEventId || '');
+    const mapping = allMappings[primaryEvId] || allMappings[String(state.activeEventId || '')] || (window.JUDGE ? allMappings[String(window.JUDGE.eventId || '')] : null) || Object.values(allMappings)[0];
+
+    if (mapping && typeof mapping === 'object' && window.JUDGE) {
+      const jId = String(window.JUDGE.id || '');
+      const jEmail = String(window.JUDGE.email || '').toLowerCase().trim();
+      const jName = String(window.JUDGE.name || '').toLowerCase().trim();
+      const jAgr = String(window.JUDGE.agreementId || window.JUDGE.agreement_id || '');
+      const matchedAgr = (state.judgeAgreements || []).find(a =>
+        (jEmail && a.email && String(a.email).toLowerCase().trim() === jEmail) ||
+        (jName && a.name && String(a.name).toLowerCase().trim() === jName) ||
+        (jId && String(a.id) === jId)
+      );
+      const agrId = matchedAgr ? String(matchedAgr.id) : '';
+
+      const assigned = mapping[jId] || (jAgr && mapping[jAgr]) || (agrId && mapping[agrId]) || (jEmail && mapping[jEmail]) || (jName && mapping[jName]);
+      if (Array.isArray(assigned) && assigned.length > 0) {
+        const strAssigned = assigned.map(String);
+        const matched = (SUBJECTS || []).filter(s => strAssigned.includes(String(s.id)));
+        if (matched.length > 0) return matched;
+      }
+    }
+  } catch(e) {
+    console.warn('[getJudgeActiveSubjects] error:', e);
+  }
+  return SUBJECTS || [];
+}
+window.getJudgeActiveSubjects = getJudgeActiveSubjects;
+
+
 // State variables
 let currentOnStage = "KN005";
 let scoringParticipantId = null;
@@ -9188,9 +9225,6 @@ function staffLogout() {
 }
 window.staffLogout = staffLogout;
 
-</script>
-<script>
-
 window.refreshPortal = async function(btn) {
   const icon = btn.querySelector('.refresh-icon');
   if (icon) icon.classList.add('spinning');
@@ -9448,38 +9482,7 @@ window.toggleSidebarMenu = toggleSidebarMenu;
 // ══════════════════════════════════════════════════════════════
 // DYNAMIC SUBJECTS PER JUDGE (ZERO-EGRESS REAL-TIME ADAPTATION)
 // ══════════════════════════════════════════════════════════════
-function getJudgeActiveSubjects() {
-  try {
-    const state = (window.syncEngine && window.syncEngine.getData()) || {};
-    const allMappings = state.judgeSubjectMapping || {};
-    const primaryEvId = (JUDGE.eventId && String(JUDGE.eventId) !== '0') ? String(JUDGE.eventId) : String(state.activeEventId || '');
-    const mapping = allMappings[primaryEvId] || allMappings[String(state.activeEventId || '')] || allMappings[String(JUDGE.eventId || '')] || Object.values(allMappings)[0];
-
-    if (mapping && typeof mapping === 'object') {
-      const jId = String(JUDGE.id || '');
-      const jEmail = String(JUDGE.email || '').toLowerCase().trim();
-      const jName = String(JUDGE.name || '').toLowerCase().trim();
-      const jAgr = String(JUDGE.agreementId || JUDGE.agreement_id || '');
-      const matchedAgr = (state.judgeAgreements || []).find(a =>
-        (jEmail && a.email && String(a.email).toLowerCase().trim() === jEmail) ||
-        (jName && a.name && String(a.name).toLowerCase().trim() === jName) ||
-        (jId && String(a.id) === jId)
-      );
-      const agrId = matchedAgr ? String(matchedAgr.id) : '';
-
-      const assigned = mapping[jId] || (jAgr && mapping[jAgr]) || (agrId && mapping[agrId]) || (jEmail && mapping[jEmail]) || (jName && mapping[jName]);
-      if (Array.isArray(assigned) && assigned.length > 0) {
-        const strAssigned = assigned.map(String);
-        const matched = SUBJECTS.filter(s => strAssigned.includes(String(s.id)));
-        if (matched.length > 0) return matched;
-      }
-    }
-  } catch(e) {
-    console.warn('[getJudgeActiveSubjects] error:', e);
-  }
-  return SUBJECTS;
-}
-window.getJudgeActiveSubjects = getJudgeActiveSubjects;
+// (getJudgeActiveSubjects defined earlier near top for immediate availability)
 
 // Zero-Egress BroadcastChannel Live Sync
 if (typeof BroadcastChannel !== 'undefined') {
