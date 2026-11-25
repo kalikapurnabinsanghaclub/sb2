@@ -6977,14 +6977,27 @@ function renderDetailedResults(p) {
   const container = document.getElementById('detailed-results-card');
   if (!container) return;
 
-  const state = window.syncEngine ? window.syncEngine.getData() : {};
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  const eventSwitches = (state.eventSwitches ? state.eventSwitches[ev ? ev.id : null] : state.switchStates) || {};
+  const safeHtml = (str) => String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
-  if (!eventSwitches['resultPublic'] && !eventSwitches['result-public']) {
-    container.style.display = 'none';
-    return;
-  }
+  const state = window.syncEngine ? window.syncEngine.getData() : {};
+  const pEventId = p.eventId || p.event_id || (p.formAnswers && (p.formAnswers.eventId || p.formAnswers.event_id)) || state.activeEventId;
+  const ev = (state.events || []).find(e => String(e.id) === String(pEventId)) || (state.events && state.events[0]);
+  const eventSwitches = (state.eventSwitches && ev ? state.eventSwitches[ev.id] : null)
+    || (ev ? ev.switchStates : null)
+    || (state.activeEventId && state.eventSwitches ? state.eventSwitches[state.activeEventId] : null)
+    || state.switchStates
+    || {};
+
+  const isResultPublic = Boolean(
+    eventSwitches['resultPublic'] === true ||
+    eventSwitches['result-public'] === true ||
+    (ev && ev.resultPublic === true)
+  );
 
   // Helper to resolve actual human-readable round name
   function getRoundDisplayName(rKey) {
@@ -7044,6 +7057,28 @@ function renderDetailedResults(p) {
   const judges = state.judges || [];
   const judgeAgreements = state.judgeAgreements || [];
 
+  // Judge Subject Assignment Mapping Resolver (shared by Scorecard & Skeleton)
+  const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[String(pEventId || '')];
+
+  function getJudgeAssignedSubjects(judge, jScores) {
+    const jId = String((judge && judge.id) || '');
+    const jEmail = String((judge && judge.email) || '').toLowerCase().trim();
+    const jName = String((judge && judge.name) || '').toLowerCase().trim();
+    const assignedIds = mapping && (mapping[jId] || mapping[jEmail] || mapping[jName]);
+
+    let relevantSubjects = subjects;
+    if (assignedIds && Array.isArray(assignedIds) && assignedIds.length > 0) {
+      relevantSubjects = subjects.filter(s => assignedIds.includes(s.id) || (jScores && jScores[s.id] !== undefined));
+    } else if (typeof jScores === 'object' && jScores !== null) {
+      const scoredSubjIds = Object.keys(jScores);
+      if (scoredSubjIds.length > 0) {
+        const matched = subjects.filter(s => scoredSubjIds.includes(s.id));
+        if (matched.length > 0) relevantSubjects = matched;
+      }
+    }
+    return relevantSubjects;
+  }
+
   // Helper to construct a dedicated, clean scorecard for a given round
   function generateScorecardHTML(roundKey, isCurrentRound) {
     const scoresForRound = roundScoresMap[roundKey] || (roundKey === curRoundName ? (p.scores || {}) : {}) || {};
@@ -7083,28 +7118,7 @@ function renderDetailedResults(p) {
       scoredJudges = Object.keys(scoresForRound).map(jid => ({ id: jid, name: 'Judge ' + jid.substring(0, 4) }));
     }
 
-    // Judge Subject Assignment Mapping Resolver
-    const pEventId = String(p.eventId || state.activeEventId || '');
-    const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[pEventId];
 
-    const getJudgeAssignedSubjects = (judge, jScores) => {
-      const jId = String(judge.id || '');
-      const jEmail = String(judge.email || '').toLowerCase().trim();
-      const jName = String(judge.name || '').toLowerCase().trim();
-      const assignedIds = mapping && (mapping[jId] || mapping[jEmail] || mapping[jName]);
-
-      let relevantSubjects = subjects;
-      if (assignedIds && Array.isArray(assignedIds) && assignedIds.length > 0) {
-        relevantSubjects = subjects.filter(s => assignedIds.includes(s.id) || (jScores && jScores[s.id] !== undefined));
-      } else if (typeof jScores === 'object' && jScores !== null) {
-        const scoredSubjIds = Object.keys(jScores);
-        if (scoredSubjIds.length > 0) {
-          const matched = subjects.filter(s => scoredSubjIds.includes(s.id));
-          if (matched.length > 0) relevantSubjects = matched;
-        }
-      }
-      return relevantSubjects;
-    };
 
     // Calculate actual Max Total Score: Sum of max marks for each assigned judge's assigned subjects (Option A)
     let maxTotalScore = 0;
@@ -7308,7 +7322,7 @@ function renderDetailedResults(p) {
   // Identify Previous Rounds (all scored rounds except current round)
   const previousRounds = scoredRounds.filter(r => r !== curRoundName);
 
-  function generateScorecardSkeletonHTML(roundKey) {
+  function generateScorecardSkeletonHTML(roundKey, isLockedByMonitor) {
     const curRoundDisplay = getRoundDisplayName(roundKey);
 
     // Compute expected Max Total Score
@@ -7402,7 +7416,7 @@ function renderDetailedResults(p) {
 
           <div style="display:flex; align-items:center; gap:10px;">
             <span class="badge" style="font-size:0.72rem; background:linear-gradient(135deg, rgba(245,158,11,0.15), rgba(217,119,6,0.15)); color:#d97706; border:1px solid rgba(245,158,11,0.35); padding:4px 10px; border-radius:8px; font-weight:800; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 8px rgba(245,158,11,0.1);">
-              <span class="eval-live-spin">⏳</span> SCORING PENDING
+              ${isLockedByMonitor ? "🔒 AWAITING PUBLICATION" : "<span class=\"eval-live-spin\">⏳</span> SCORING PENDING"}
             </span>
             <div style="display:flex; align-items:baseline; gap:4px;">
               <div class="score-skel" style="width:48px; height:26px; border-radius:8px;"></div>
@@ -7446,11 +7460,11 @@ function renderDetailedResults(p) {
           <div class="skel-eval-pulse-mini">⚡</div>
           <div style="flex:1;">
             <div style="font-size:0.8rem; font-weight:800; color:var(--text); display:flex; align-items:center; gap:6px;">
-              <span>Live Evaluation Stream Active</span>
+              <span>${isLockedByMonitor ? "Evaluation Complete — Results Pending Release" : "Live Evaluation Stream Active"}</span>
               <span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; font-size:8.5px;">Instant Reveal</span>
             </div>
             <div style="font-size:0.74rem; color:var(--text-muted); margin-top:2px; line-height:1.35;">
-              Judges are evaluating your performance in real-time. The moment scores are submitted, this card will automatically calculate and reveal your official marks with zero page refresh.
+              ${isLockedByMonitor ? "Your performance scores are recorded. Official marks will automatically appear here the moment results are published by the Monitor." : "Judges are evaluating your performance in real-time. The moment scores are submitted, this card will automatically calculate and reveal your official marks with zero page refresh."}
             </div>
           </div>
         </div>
@@ -7571,25 +7585,28 @@ function renderDetailedResults(p) {
     </style>
   `;
 
-  // 1. Current Round Card (Scorecard if complete, Animated Skeleton if scoring in progress)
-  if (hasCurScores) {
-    // Current round scoring complete -> show 100% visible scorecard immediately
+  // 1. Current Round Card (Scorecard if public & complete, Animated Skeleton otherwise)
+  if (isResultPublic && hasCurScores) {
+    // Current round scoring complete & public -> show 100% visible scorecard immediately
     combinedScorecardsHTML += generateScorecardHTML(curRoundName, true);
     if (window._prevCurScoreStatus === 'pending') {
       window._prevCurScoreStatus = 'complete';
       try {
-        toast(`🎉 Official scores locked for ${getRoundDisplayName(curRoundName)}!`);
+        toast(`🎉 Official scores revealed for ${safeHtml(getRoundDisplayName(curRoundName))}!`);
       } catch(e) {}
     }
   } else {
-    // Active round evaluation in-progress -> show stunning animated skeleton card
+    // Active round evaluation in-progress OR results not yet released -> show animated skeleton card
     window._prevCurScoreStatus = 'pending';
-    combinedScorecardsHTML += generateScorecardSkeletonHTML(curRoundName);
+    const isLockedByMonitor = Boolean(hasCurScores && !isResultPublic);
+    combinedScorecardsHTML += generateScorecardSkeletonHTML(curRoundName, isLockedByMonitor);
   }
 
-  previousRounds.reverse().forEach(pastRound => {
-    combinedScorecardsHTML += generateScorecardHTML(pastRound, false);
-  });
+  if (isResultPublic) {
+    previousRounds.reverse().forEach(pastRound => {
+      combinedScorecardsHTML += generateScorecardHTML(pastRound, false);
+    });
+  }
 
   container.innerHTML = combinedScorecardsHTML;
 }
