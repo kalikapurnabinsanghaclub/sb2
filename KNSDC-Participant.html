@@ -7058,21 +7058,30 @@ function renderDetailedResults(p) {
   const judgeAgreements = state.judgeAgreements || [];
 
   // Judge Subject Assignment Mapping Resolver (shared by Scorecard & Skeleton)
-  const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[String(pEventId || '')];
+  const allMappings = state.judgeSubjectMapping || {};
+  const mapping = allMappings[String(pEventId || '')] || allMappings[String(state.activeEventId || '')] || Object.values(allMappings)[0];
 
   function getJudgeAssignedSubjects(judge, jScores) {
     const jId = String((judge && judge.id) || '');
     const jEmail = String((judge && judge.email) || '').toLowerCase().trim();
     const jName = String((judge && judge.name) || '').toLowerCase().trim();
-    const assignedIds = mapping && (mapping[jId] || mapping[jEmail] || mapping[jName]);
+    const jAgrId = String((judge && (judge.agreementId || judge.agreement_id)) || '');
+    const matchedAgr = (judgeAgreements || []).find(a =>
+      (jEmail && a.email && String(a.email).toLowerCase().trim() === jEmail) ||
+      (jName && a.name && String(a.name).toLowerCase().trim() === jName) ||
+      (jId && String(a.id) === jId)
+    );
+    const agrId = matchedAgr ? String(matchedAgr.id) : '';
+    const assignedIds = mapping && (mapping[jId] || (jAgrId && mapping[jAgrId]) || (agrId && mapping[agrId]) || (jEmail && mapping[jEmail]) || (jName && mapping[jName]));
 
     let relevantSubjects = subjects;
     if (assignedIds && Array.isArray(assignedIds) && assignedIds.length > 0) {
-      relevantSubjects = subjects.filter(s => assignedIds.includes(s.id) || (jScores && jScores[s.id] !== undefined));
+      const strAssigned = assignedIds.map(String);
+      relevantSubjects = subjects.filter(s => strAssigned.includes(String(s.id)) || (jScores && jScores[s.id] !== undefined));
     } else if (typeof jScores === 'object' && jScores !== null) {
-      const scoredSubjIds = Object.keys(jScores);
+      const scoredSubjIds = Object.keys(jScores).map(String);
       if (scoredSubjIds.length > 0) {
-        const matched = subjects.filter(s => scoredSubjIds.includes(s.id));
+        const matched = subjects.filter(s => scoredSubjIds.includes(String(s.id)));
         if (matched.length > 0) relevantSubjects = matched;
       }
     }

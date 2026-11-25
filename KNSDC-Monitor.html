@@ -18060,7 +18060,18 @@ function openScoreModalFor(id){
   activeJudges.forEach(j=>{
     const curEvId = String(activeEventId || (p && p.eventId) || '');
     const jMapping = sState.judgeSubjectMapping && sState.judgeSubjectMapping[curEvId];
-    const jAssigned = jMapping && (jMapping[String(j.id)] || jMapping[String(j.email || '').toLowerCase()] || jMapping[String(j.name || '').toLowerCase()]);
+    const matchedAgr = (sState.judgeAgreements || []).find(a =>
+      (a.email && j.email && String(a.email).toLowerCase().trim() === String(j.email).toLowerCase().trim()) ||
+      (a.name && j.name && String(a.name).toLowerCase().trim() === String(j.name).toLowerCase().trim()) ||
+      String(a.id) === String(j.agreementId || j.agreement_id || '')
+    );
+    const jAssigned = jMapping && (
+      jMapping[String(j.id)] ||
+      (matchedAgr && jMapping[String(matchedAgr.id)]) ||
+      jMapping[String(j.agreementId || j.agreement_id || '')] ||
+      jMapping[String(j.email || '').toLowerCase().trim()] ||
+      jMapping[String(j.name || '').toLowerCase().trim()]
+    );
     const targetSubjects = (Array.isArray(jAssigned) && jAssigned.length > 0)
       ? subjects.filter(s => jAssigned.map(String).includes(String(s.id)))
       : subjects;
@@ -27948,16 +27959,51 @@ async function saveJudgeSubjectAssignment() {
     const evSubjects = (subjects || []).filter(s => !s.eventId || String(s.eventId) === curEvId);
     const isDefaultAll = (selectedArr.length === 0 || selectedArr.length === evSubjects.length);
 
-    // 1. Update State Locally
+    // 1. Resolve all canonical identifiers for this judge (Agreement ID, Judge ID, Email, Name)
+    const sCur = syncEngine.getData() || {};
+    const allAgrs = sCur.judgeAgreements || [];
+    const allJudges = sCur.judges || judges || [];
+    const modalKeyLower = String(_currentSubjectModalJudgeId).toLowerCase().trim();
+    const matchedAgr = allAgrs.find(a =>
+      String(a.id) === String(_currentSubjectModalJudgeId) ||
+      String(a.email || '').toLowerCase().trim() === modalKeyLower ||
+      String(a.name || '').toLowerCase().trim() === modalKeyLower
+    );
+    const matchedJudge = allJudges.find(j =>
+      String(j.id) === String(_currentSubjectModalJudgeId) ||
+      String(j.agreementId || j.agreement_id || '') === String(_currentSubjectModalJudgeId) ||
+      (matchedAgr && matchedAgr.email && j.email && String(j.email).toLowerCase().trim() === String(matchedAgr.email).toLowerCase().trim()) ||
+      (matchedAgr && matchedAgr.name && j.name && String(j.name).toLowerCase().trim() === String(matchedAgr.name).toLowerCase().trim()) ||
+      String(j.email || '').toLowerCase().trim() === modalKeyLower ||
+      String(j.name || '').toLowerCase().trim() === modalKeyLower
+    );
+
+    const allKeysToSync = Array.from(new Set([
+      String(_currentSubjectModalJudgeId),
+      matchedAgr ? String(matchedAgr.id) : '',
+      matchedAgr && matchedAgr.email ? String(matchedAgr.email).toLowerCase().trim() : '',
+      matchedAgr && matchedAgr.name ? String(matchedAgr.name).toLowerCase().trim() : '',
+      matchedJudge ? String(matchedJudge.id) : '',
+      matchedJudge && matchedJudge.email ? String(matchedJudge.email).toLowerCase().trim() : '',
+      matchedJudge && matchedJudge.name ? String(matchedJudge.name).toLowerCase().trim() : ''
+    ].filter(Boolean)));
+
+    // 2. Update State Locally under all canonical keys
     syncEngine.setData(st => {
       if (!st.judgeSubjectMapping) st.judgeSubjectMapping = {};
       if (!st.judgeSubjectMapping[curEvId]) st.judgeSubjectMapping[curEvId] = {};
-      if (isDefaultAll) {
-        delete st.judgeSubjectMapping[curEvId][_currentSubjectModalJudgeId];
-      } else {
-        st.judgeSubjectMapping[curEvId][_currentSubjectModalJudgeId] = selectedArr;
-      }
+      allKeysToSync.forEach(k => {
+        if (isDefaultAll) {
+          delete st.judgeSubjectMapping[curEvId][k];
+        } else {
+          st.judgeSubjectMapping[curEvId][k] = selectedArr;
+        }
+      });
     });
+
+    if (typeof syncEngine.forceSaveStateToSupabase === 'function') {
+      syncEngine.forceSaveStateToSupabase().catch(e => console.warn('[saveJudgeSubjectAssignment] save error:', e));
+    }
     
     // 2. Zero-Egress BroadcastChannel (<10ms)
     if (typeof BroadcastChannel !== 'undefined') {

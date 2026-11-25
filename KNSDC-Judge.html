@@ -5260,20 +5260,21 @@ function renderDashboard() {
   // Calc totals — always read from roundScores[round] for accuracy
   const judgeId = JUDGE.id;
   let totalMarks = 0, scoredCount = 0, pendingCount = 0;
-  const maxPerParticipant = SUBJECTS.reduce((a,s)=>a+(s.maxMarks||0),0);
+  const activeSubjs = getJudgeActiveSubjects();
+  const maxPerParticipant = activeSubjs.reduce((a,s)=>a+(s.maxMarks||0),0);
 
   participants.forEach(p => {
     const currentRoundScores = (p.roundScores && p.roundScores[p.round]) || {};
     const myScores = currentRoundScores[judgeId] || {};
-    const hasScored = SUBJECTS.some(s => myScores[s.id] > 0);
-    if(hasScored) { scoredCount++; SUBJECTS.forEach(s => { totalMarks += myScores[s.id]||0; }); }
+    const hasScored = activeSubjs.some(s => myScores[s.id] > 0);
+    if(hasScored) { scoredCount++; activeSubjs.forEach(s => { totalMarks += myScores[s.id]||0; }); }
     else if(p.stageStatus==='done') pendingCount++;
   });
 
   document.getElementById('ds-total-marks').textContent = totalMarks;
   document.getElementById('ds-scored').textContent = scoredCount;
   document.getElementById('ds-scored-sub').textContent = `/ ${participants.length} total`;
-  document.getElementById('ds-subjects').textContent = SUBJECTS.length;
+  document.getElementById('ds-subjects').textContent = activeSubjs.length;
   document.getElementById('ds-max-sub').textContent = `Max: ${maxPerParticipant} per participant`;
   document.getElementById('ds-cats').textContent = CATEGORIES.length;
   document.getElementById('ds-pending').textContent = pendingCount;
@@ -5299,7 +5300,7 @@ function renderDashboard() {
     const ms = rsc[judgeId] || {};
     return Object.keys(ms).length > 0;
   });
-  subjectStats.innerHTML = SUBJECTS.map(s => {
+  subjectStats.innerHTML = activeSubjs.map(s => {
     const vals = scoredParts.map(p => {
       const rsc = (p.roundScores && p.roundScores[p.round]) || {};
       return ((rsc[judgeId])||{})[s.id]||0;
@@ -7738,7 +7739,8 @@ async function saveModalScores() {
     const oldScores = { ...(window._editingOldScores || p.roundScores[targetRound][JUDGE.id] || {}) };
     const oldTotal = Object.values(oldScores).reduce((sum, v) => sum + (Number(v) || 0), 0);
 
-    SUBJECTS.forEach(s => {
+    const activeSubjs = getJudgeActiveSubjects();
+    activeSubjs.forEach(s => {
       const sMax = Number(s.maxMarks) || 10;
       let val = parseFloat(document.getElementById('modal-num-'+s.id)?.value || 0);
       if (isNaN(val) || val < 0) val = 0;
@@ -7865,7 +7867,8 @@ function renderParticipantsTable() {
   const rf = (document.getElementById('round-filter')?.value || 'all').toLowerCase();
   const eventRounds = getEventRounds();
   const eventRoundIds = eventRounds.map(r => r.id.toLowerCase());
-  const maxSubjectScore = SUBJECTS.reduce((a,s)=>a+(Number(s.maxMarks)||10), 0) || 50;
+  const activeSubjsForMax = getJudgeActiveSubjects();
+  const maxSubjectScore = activeSubjsForMax.reduce((a,s)=>a+(Number(s.maxMarks)||10), 0) || 50;
   
   const isEditAllowed = Boolean(switchStates['edit-score'] || switchStates['editScore']);
   const editMode = switchStates['editScoreMode'] || 'current';
@@ -7987,7 +7990,7 @@ function renderParticipantsTable() {
     const cat = CATEGORIES.find(c => String(c.id) === String(p.catId));
     const roundScoresMap = (p.roundScores && p.roundScores[r]) || {};
     const myScores = roundScoresMap[JUDGE.id] || (isCurrentRound && p.scores ? (p.scores[JUDGE.id] || {}) : {});
-    const myScoreTotal = SUBJECTS.reduce((a,s) => a + (Number(myScores[s.id]) || 0), 0);
+    const myScoreTotal = activeSubjsForMax.reduce((a,s) => a + (Number(myScores[s.id]) || 0), 0);
     const hasMyScore = Object.keys(myScores).length > 0;
     
     // Other judges who evaluated this round
@@ -8147,7 +8150,7 @@ function searchParticipant(query) {
 
     const cat = CATEGORIES.find(c=>String(c.id)===String(p.catId));
     const myScores = p.scores[JUDGE.id]||{};
-    const total = SUBJECTS.reduce((a,s)=>a+(myScores[s.id]||0),0);
+    const total = getJudgeActiveSubjects().reduce((a,s)=>a+(myScores[s.id]||0),0);
     const hasScored = Object.keys(myScores).length > 0;
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:var(--s2);border:1px solid var(--bd);margin-bottom:6px;cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor='rgba(240,180,41,0.3)'" onmouseout="this.style.borderColor='var(--bd)'" onclick="loadScorePanel('${p.id}')">
       <div style="width:34px;height:34px;border-radius:50%;background:rgba(240,180,41,0.12);border:1px solid rgba(240,180,41,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:15px;font-weight:700;color:var(--gold2)">${p.name[0]}</div>
@@ -9409,17 +9412,26 @@ window.toggleSidebarMenu = toggleSidebarMenu;
 function getJudgeActiveSubjects() {
   try {
     const state = (window.syncEngine && window.syncEngine.getData()) || {};
-    const activeEvId = String(JUDGE.eventId || state.activeEventId || '');
-    const mapping = state.judgeSubjectMapping && state.judgeSubjectMapping[activeEvId];
-    if (mapping) {
+    const allMappings = state.judgeSubjectMapping || {};
+    const primaryEvId = (JUDGE.eventId && String(JUDGE.eventId) !== '0') ? String(JUDGE.eventId) : String(state.activeEventId || '');
+    const mapping = allMappings[primaryEvId] || allMappings[String(state.activeEventId || '')] || allMappings[String(JUDGE.eventId || '')] || Object.values(allMappings)[0];
+
+    if (mapping && typeof mapping === 'object') {
       const jId = String(JUDGE.id || '');
       const jEmail = String(JUDGE.email || '').toLowerCase().trim();
       const jName = String(JUDGE.name || '').toLowerCase().trim();
-      const jAgr = String(JUDGE.agreement_id || '');
-      
-      const assigned = mapping[jId] || (jEmail && mapping[jEmail]) || (jName && mapping[jName]) || (jAgr && mapping[jAgr]);
+      const jAgr = String(JUDGE.agreementId || JUDGE.agreement_id || '');
+      const matchedAgr = (state.judgeAgreements || []).find(a =>
+        (jEmail && a.email && String(a.email).toLowerCase().trim() === jEmail) ||
+        (jName && a.name && String(a.name).toLowerCase().trim() === jName) ||
+        (jId && String(a.id) === jId)
+      );
+      const agrId = matchedAgr ? String(matchedAgr.id) : '';
+
+      const assigned = mapping[jId] || (jAgr && mapping[jAgr]) || (agrId && mapping[agrId]) || (jEmail && mapping[jEmail]) || (jName && mapping[jName]);
       if (Array.isArray(assigned) && assigned.length > 0) {
-        const matched = SUBJECTS.filter(s => assigned.map(String).includes(String(s.id)));
+        const strAssigned = assigned.map(String);
+        const matched = SUBJECTS.filter(s => strAssigned.includes(String(s.id)));
         if (matched.length > 0) return matched;
       }
     }
@@ -9437,14 +9449,16 @@ if (typeof BroadcastChannel !== 'undefined') {
     bc.onmessage = (evt) => {
       if (evt && evt.data && evt.data.type === 'judge_subject_mapping_update') {
         const payload = evt.data;
-        const jId = String(JUDGE.id || '');
+        const jId = String(JUDGE.id || '').toLowerCase().trim();
+        const jAgr = String(JUDGE.agreementId || JUDGE.agreement_id || '').toLowerCase().trim();
         const jEmail = String(JUDGE.email || '').toLowerCase().trim();
         const jName = String(JUDGE.name || '').toLowerCase().trim();
         const targetId = String(payload.judgeIdentifier || '').toLowerCase().trim();
-        if (targetId === jId.toLowerCase() || targetId === jEmail || targetId === jName) {
+        if (targetId && (targetId === jId || targetId === jAgr || targetId === jEmail || targetId === jName)) {
           toast('⚡ Monitor updated your assigned scoring subjects in real-time!');
+          if (typeof renderDashboard === 'function') renderDashboard();
           if (typeof renderParticipantScoring === 'function') renderParticipantScoring();
-          updateLiveTotal();
+          if (typeof updateLiveTotal === 'function') updateLiveTotal();
         }
       }
     };
