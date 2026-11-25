@@ -5024,6 +5024,77 @@ window.uploadParticipantFileToCloud = async function(input, targetId) {
   }
 };
 
+window.removeParticipantMediaTrack = async function(targetId) {
+  const state = window.syncEngine ? (window.syncEngine.getData() || {}) : {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (p && p.formLocked) {
+    toast('🔒 Form is locked by Monitor. Please ask Monitor to unlock your form.');
+    return;
+  }
+
+  if (!confirm('Are you sure you want to delete?')) {
+    return;
+  }
+
+  const targetInput = document.getElementById(targetId);
+  const fileUrl = targetInput ? targetInput.value : '';
+
+  const btn = document.getElementById(`${targetId}-delete-btn`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳';
+  }
+
+  try {
+    if (fileUrl && window.syncEngine && typeof window.syncEngine.deleteFile === 'function') {
+      try {
+        await window.syncEngine.deleteFile(fileUrl);
+      } catch (delErr) {
+        console.warn('[Participant Audio] Cloudflare delete notice:', delErr);
+      }
+    }
+
+    if (targetInput) targetInput.value = '';
+
+    const preview = document.getElementById(`${targetId}-preview`);
+    if (preview) {
+      if (typeof preview.pause === 'function') preview.pause();
+      preview.removeAttribute('src');
+      if (typeof preview.load === 'function') preview.load();
+    }
+
+    const previewWrap = document.getElementById(`${targetId}-preview-wrap`);
+    if (previewWrap) previewWrap.style.display = 'none';
+
+    const fileInput = document.querySelector(`input[type="file"][onchange*="'${targetId}'"]`);
+    if (fileInput) fileInput.value = '';
+
+    if (window.syncEngine && CURRENT_USER) {
+      const fieldLabel = targetInput ? (targetInput.getAttribute('data-label') || targetId) : targetId;
+      const updatedFormAnswers = p && p.formAnswers ? { ...p.formAnswers } : {};
+      delete updatedFormAnswers[fieldLabel];
+      delete updatedFormAnswers[targetId];
+      delete updatedFormAnswers._audioCompletedAt;
+      delete updatedFormAnswers._musicUrl;
+
+      await window.syncEngine.updateParticipant(CURRENT_USER, {
+        musicUrl: '',
+        formAnswers: updatedFormAnswers
+      });
+    }
+
+    toast('🗑️ Audio track removed from Cloudflare storage!');
+  } catch (err) {
+    console.error('[Participant Audio Delete Error]', err);
+    toast('⚠️ Could not remove track. Please try again.');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '✕';
+    }
+  }
+};
+
 // 3. Render Dashboard & Lock Logic
 function renderDashboard() {
   document.getElementById('login-view').style.display = 'none';
@@ -5235,10 +5306,24 @@ function renderDashboard() {
         <input type="hidden" id="${fieldId}" value="${val}" data-label="${f.label}">
         <div id="${fieldId}-loader-container" style="display:none;"></div>
         <div id="${fieldId}-preview-wrap" style="margin-top:6px; display:${val ? 'block' : 'none'};">
-          ${isVideo 
-            ? `<video id="${fieldId}-preview" src="${val}" controls style="max-width:100%; max-height:200px; border-radius:8px;"></video>` 
-            : `<audio id="${fieldId}-preview" src="${val}" controls style="width:100%;"></audio>`
-          }
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="flex:1;">
+              ${isVideo 
+                ? `<video id="${fieldId}-preview" src="${val}" controls style="max-width:100%; max-height:200px; border-radius:8px;"></video>` 
+                : `<audio id="${fieldId}-preview" src="${val}" controls style="width:100%;"></audio>`
+              }
+            </div>
+            <button type="button" 
+                    id="${fieldId}-delete-btn"
+                    onclick="removeParticipantMediaTrack('${fieldId}')" 
+                    title="${p.formLocked ? '🔒 Form is locked by Monitor' : '✕ Remove track from Cloudflare storage'}"
+                    ${p.formLocked ? 'disabled' : ''}
+                    style="flex-shrink:0; width:34px; height:34px; border-radius:50%; border:1px solid #fca5a5; background:#fee2e2; color:#ef4444; font-weight:900; font-size:16px; display:inline-flex; align-items:center; justify-content:center; cursor:${p.formLocked ? 'not-allowed' : 'pointer'}; opacity:${p.formLocked ? '0.45' : '1'}; transition:all 0.2s;"
+                    onmouseover="if(!this.disabled){this.style.background='#ef4444';this.style.color='#fff';}"
+                    onmouseout="if(!this.disabled){this.style.background='#fee2e2';this.style.color='#ef4444';}">
+              ✕
+            </button>
+          </div>
         </div>
       </div>`;
     } else if (f.type === 'file' || f.type === 'photo') {
@@ -5304,12 +5389,19 @@ function renderDashboard() {
   
   // Lock Logic
   const inputs = document.querySelectorAll('#participant-form input, #participant-form select, #participant-form textarea');
+  const deleteBtns = document.querySelectorAll('#participant-form button[id$="-delete-btn"]');
   const btn = document.getElementById('save-btn');
   const banner = document.getElementById('lock-banner');
   
   const formLocked = p.formLocked === true;
   if (formLocked === true) {
     inputs.forEach(inp => inp.disabled = true);
+    deleteBtns.forEach(b => {
+      b.disabled = true;
+      b.style.opacity = '0.45';
+      b.style.cursor = 'not-allowed';
+      b.title = '🔒 Form is locked by Monitor';
+    });
     btn.disabled = true;
     btn.style.background = 'var(--text-muted)';
     btn.style.cursor = 'not-allowed';
@@ -5317,6 +5409,12 @@ function renderDashboard() {
     banner.style.display = 'flex';
   } else {
     inputs.forEach(inp => inp.disabled = false);
+    deleteBtns.forEach(b => {
+      b.disabled = false;
+      b.style.opacity = '1';
+      b.style.cursor = 'pointer';
+      b.title = '✕ Remove track from Cloudflare storage';
+    });
     btn.disabled = false;
     btn.style.background = 'linear-gradient(135deg, #2563eb, #1d4ed8)';
     btn.style.cursor = 'pointer';

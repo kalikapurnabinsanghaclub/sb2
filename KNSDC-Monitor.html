@@ -17471,6 +17471,9 @@ async function markStageDone(){
       p.stageStatus='done'; 
       p.isReady = false;
       p.localMutatedAt = now;
+      if (typeof window.markAudioCompleted === 'function') {
+        window.markAudioCompleted(p.id);
+      }
       if (p.scores && Object.keys(p.scores).length > 0) {
         p.snul = false;
         p.snulResolved = true;
@@ -17511,6 +17514,9 @@ async function markStageDoneSNUL() {
       p.isReady = false;
       p.snul = true; // S.N.U.L flag: Score Not Updated Live (Paper score pending)
       p.snulResolved = false;
+      if (typeof window.markAudioCompleted === 'function') {
+        window.markAudioCompleted(p.id);
+      }
       if (!p.snulRounds) p.snulRounds = {};
       p.snulRounds[p.round || 'audition'] = true;
       p.localMutatedAt = now;
@@ -26840,10 +26846,14 @@ window.seekCustomAudioDrag = function(source, idx) {
 window.markAudioCompleted = function(participantId) {
   if (window.syncEngine && window.syncEngine.state && window.syncEngine.state.participants) {
     const p = window.syncEngine.state.participants.find(x => String(x.id) === String(participantId));
-    if (p && p.formAnswers) {
-      const updatedForm = { ...p.formAnswers, _audioCompletedAt: Date.now() };
-      window.syncEngine.updateParticipant(p.id, { formAnswers: updatedForm });
-      console.log('[Audio] Marked participant audio as completed for auto-deletion:', participantId);
+    if (p) {
+      const now = Date.now();
+      const updatedForm = { ...(p.formAnswers || {}), _audioCompletedAt: now };
+      window.syncEngine.updateParticipant(p.id, { 
+        formAnswers: updatedForm,
+        _audioCompletedAt: now
+      });
+      console.log('[Audio] Marked participant audio as completed for auto-deletion in 30 mins:', participantId);
     }
   }
 };
