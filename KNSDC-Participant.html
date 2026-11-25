@@ -7029,7 +7029,9 @@ function renderDetailedResults(p) {
   );
 
   // If no scores anywhere AND participant is not present/evaluating in current round, hide container
-  if (scoredRounds.length === 0 && !hasCurScores && !isPresentForCurrentRound) {
+  // Show scorecard (or skeleton) if participant has scores, is marked present, or is enrolled in active event/round
+  const hasEventOrRound = Boolean(p.eventId || p.round || isPresentForCurrentRound);
+  if (scoredRounds.length === 0 && !hasCurScores && !hasEventOrRound) {
     container.style.display = 'none';
     return;
   }
@@ -7306,15 +7308,182 @@ function renderDetailedResults(p) {
   // Identify Previous Rounds (all scored rounds except current round)
   const previousRounds = scoredRounds.filter(r => r !== curRoundName);
 
+  function generateScorecardSkeletonHTML(roundKey) {
+    const curRoundDisplay = getRoundDisplayName(roundKey);
+
+    // Compute expected Max Total Score
+    let maxTotalScore = 0;
+    const activeJudgesList = (judges.length > 0) ? judges : [
+      { id: 'j1', name: 'Judge 1' },
+      { id: 'j2', name: 'Judge 2' }
+    ];
+
+    activeJudgesList.forEach(judge => {
+      const relSubjs = getJudgeAssignedSubjects(judge, null);
+      const jMax = relSubjs.reduce((acc, s) => acc + (Number(s.maxMarks) || 10), 0);
+      maxTotalScore += jMax;
+    });
+
+    if (maxTotalScore === 0) maxTotalScore = 100;
+
+    // Generate Judge Skeleton Rows
+    let judgeSkeletonRowsHtml = '';
+    activeJudgesList.forEach((judge, idx) => {
+      const relSubjs = getJudgeAssignedSubjects(judge, null);
+      const jMax = relSubjs.reduce((acc, s) => acc + (Number(s.maxMarks) || 10), 0);
+      const subjsList = (relSubjs && relSubjs.length > 0) ? relSubjs : [
+        { name: 'Subject 1', maxMarks: 10 },
+        { name: 'Subject 2', maxMarks: 10 },
+        { name: 'Subject 3', maxMarks: 10 }
+      ];
+
+      judgeSkeletonRowsHtml += `
+        <div style="margin-bottom:12px; padding:13px; background:var(--bg); border-radius:12px; border:1px solid var(--border); position:relative; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:8px;">
+            <span style="font-size:0.85rem; font-weight:800; color:var(--text); display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">🧑‍⚖️</span>
+              <span>${judge.name || ('Judge ' + (idx + 1))}</span>
+              <span class="badge" style="font-size:8px; background:rgba(99,102,241,0.12); color:#6366f1; border:1px solid rgba(99,102,241,0.25);">
+                ${subjsList.length} Subject(s) Assigned
+              </span>
+            </span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <div class="score-skel" style="width:38px; height:18px; border-radius:6px;"></div>
+              <span style="font-size:0.75rem; font-weight:800; color:var(--text-muted);">/ ${jMax}</span>
+            </div>
+          </div>
+
+          ${subjsList.map(s => `
+            <div style="margin-bottom:9px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--text); display:flex; align-items:center; gap:5px;">
+                  <span style="display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--primary); opacity:0.6;"></span>
+                  ${s.name || 'Subject Evaluation'}
+                </span>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <div class="score-skel" style="width:26px; height:14px; border-radius:4px;"></div>
+                  <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted);">/ ${s.maxMarks || 10}</span>
+                </div>
+              </div>
+              <div class="skel-track">
+                <div class="skel-track-shimmer" style="animation-delay: -${Math.random() * 1.5}s;"></div>
+              </div>
+            </div>
+          `).join('')}
+
+          <div style="margin-top:8px; padding:6px 10px; background:var(--bg2); border-radius:8px; display:flex; align-items:center; gap:8px; font-size:0.72rem; color:var(--text-muted); font-style:italic;">
+            <span>💬</span>
+            <div class="score-skel" style="flex:1; height:12px; border-radius:4px;"></div>
+          </div>
+        </div>
+      `;
+    });
+
+    return `
+      <div class="scorecard-container-panel scorecard-skeleton-round">
+        <div class="skeleton-shimmer-bar"></div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="badge" style="font-size:0.75rem; font-weight:800; padding:4px 10px; border-radius:8px; background:rgba(124,58,237,0.14); color:var(--primary); border:1px solid rgba(124,58,237,0.3); display:inline-flex; align-items:center; gap:6px;">
+                <span class="skel-live-beacon"></span> ACTIVE ROUND
+              </span>
+              <span style="font-weight:900; font-size:1.15rem; color:var(--text); text-transform:uppercase; letter-spacing:0.5px;">
+                ROUND: ${curRoundDisplay.toUpperCase()}
+              </span>
+            </div>
+            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:4px; display:flex; align-items:center; gap:6px;">
+              <span>🏷️ ${catName}</span>
+              <span style="opacity:0.4;">•</span>
+              <span style="color:#d97706; font-weight:700;">Live Evaluation In Progress</span>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="badge" style="font-size:0.72rem; background:linear-gradient(135deg, rgba(245,158,11,0.15), rgba(217,119,6,0.15)); color:#d97706; border:1px solid rgba(245,158,11,0.35); padding:4px 10px; border-radius:8px; font-weight:800; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 8px rgba(245,158,11,0.1);">
+              <span class="eval-live-spin">⏳</span> SCORING PENDING
+            </span>
+            <div style="display:flex; align-items:baseline; gap:4px;">
+              <div class="score-skel" style="width:48px; height:26px; border-radius:8px;"></div>
+              <span style="font-size:0.85rem; color:var(--text-muted); font-weight:700;">
+                / ${maxTotalScore}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(100px, 1fr)); gap:10px; margin-bottom:14px;">
+          <div style="background:var(--bg2); padding:10px 12px; border-radius:12px; text-align:center; border:1px solid var(--border); position:relative; overflow:hidden;">
+            <div style="font-size:0.62rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Round Score</div>
+            <div style="margin:5px auto 1px; width:52px; height:22px; border-radius:6px;" class="score-skel"></div>
+          </div>
+          <div style="background:var(--bg2); padding:10px 12px; border-radius:12px; text-align:center; border:1px solid var(--border); position:relative; overflow:hidden;">
+            <div style="font-size:0.62rem; color:#EA580C; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Max Total</div>
+            <div style="font-size:1.25rem; color:var(--text); font-weight:900; margin-top:2px;">${maxTotalScore}</div>
+          </div>
+          <div style="background:var(--bg2); padding:10px 12px; border-radius:12px; text-align:center; border:1px solid var(--border); position:relative; overflow:hidden;">
+            <div style="font-size:0.62rem; color:#D97706; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">Category Avg</div>
+            <div style="margin:5px auto 1px; width:48px; height:22px; border-radius:6px;" class="score-skel"></div>
+          </div>
+        </div>
+
+        <div style="background:var(--bg2); border-radius:14px; padding:14px; border:1px solid var(--border); position:relative; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
+            <div style="font-size:0.7rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:1px; display:flex; align-items:center; gap:6px;">
+              <span>📊 Judge-wise Scorecard Breakdown</span>
+              <span class="badge" style="font-size:8px; background:rgba(124,58,237,0.12); color:var(--primary);">Awaiting Live Submission</span>
+            </div>
+            <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; display:flex; align-items:center; gap:4px;">
+              <span class="skel-live-beacon" style="background:#10b981;"></span> Real-Time Auto-Sync Active
+            </div>
+          </div>
+
+          ${judgeSkeletonRowsHtml}
+        </div>
+
+        <div style="margin-top:14px; padding:12px 14px; background:linear-gradient(135deg, rgba(124,58,237,0.06), rgba(59,130,246,0.06)); border:1px dashed rgba(124,58,237,0.3); border-radius:12px; display:flex; align-items:center; gap:12px;">
+          <div class="skel-eval-pulse-mini">⚡</div>
+          <div style="flex:1;">
+            <div style="font-size:0.8rem; font-weight:800; color:var(--text); display:flex; align-items:center; gap:6px;">
+              <span>Live Evaluation Stream Active</span>
+              <span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; font-size:8.5px;">Instant Reveal</span>
+            </div>
+            <div style="font-size:0.74rem; color:var(--text-muted); margin-top:2px; line-height:1.35;">
+              Judges are evaluating your performance in real-time. The moment scores are submitted, this card will automatically calculate and reveal your official marks with zero page refresh.
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   let combinedScorecardsHTML = `
     <style>
       @keyframes scorecardAppearLive {
-        0% { opacity: 0; transform: translateY(12px) scale(0.98); }
-        100% { opacity: 1; transform: translateY(0) scale(1); }
+        0% { opacity: 0; transform: translateY(14px) scale(0.97); filter: blur(3px); }
+        100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
       }
       @keyframes scorecardAppearCarbon {
         0% { opacity: 0; transform: translateY(12px) scale(0.98); }
         100% { opacity: 0.50; transform: translateY(0) scale(1); }
+      }
+      @keyframes skeletonShimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+      @keyframes skelBeaconPulse {
+        0% { transform: scale(0.92); opacity: 0.7; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); }
+        70% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+        100% { transform: scale(0.92); opacity: 0.7; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+      }
+      @keyframes topShimmerBar {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+      @keyframes skelWaveSweep {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(200%); }
       }
       .scorecard-carbon-copy {
         opacity: 0.50 !important;
@@ -7326,74 +7495,98 @@ function renderDetailedResults(p) {
       .scorecard-carbon-copy:hover {
         opacity: 0.85 !important;
       }
-      @keyframes evalPulse {
-        0% { transform: scale(0.94); opacity: 0.75; box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4); }
-        70% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 0 14px rgba(124, 58, 237, 0); }
-        100% { transform: scale(0.94); opacity: 0.75; box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
+      .scorecard-live-round {
+        animation: scorecardAppearLive 0.45s cubic-bezier(0.16, 1, 0.3, 1) both !important;
       }
-      .eval-buffering-pulse {
-        width: 52px;
-        height: 52px;
+      .scorecard-skeleton-round {
+        position: relative;
+        overflow: hidden;
+        border: 2px solid rgba(124, 58, 237, 0.35) !important;
+        box-shadow: 0 10px 32px rgba(124, 58, 237, 0.12) !important;
+        background: var(--bg) !important;
+        border-radius: 18px !important;
+        padding: 22px !important;
+        margin-bottom: 18px !important;
+        animation: scorecardAppearLive 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      .skeleton-shimmer-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, #8b5cf6, #ec4899, #3b82f6, transparent);
+        animation: topShimmerBar 2.5s infinite linear;
+        z-index: 2;
+      }
+      .score-skel {
+        background: linear-gradient(90deg, rgba(203, 213, 225, 0.35) 25%, rgba(124, 58, 237, 0.18) 50%, rgba(203, 213, 225, 0.35) 75%);
+        background-size: 200% 100%;
+        animation: skeletonShimmer 1.8s infinite linear;
+        border-radius: 6px;
+      }
+      [data-theme="dark"] .score-skel {
+        background: linear-gradient(90deg, rgba(30, 41, 59, 0.7) 25%, rgba(124, 58, 237, 0.28) 50%, rgba(30, 41, 59, 0.7) 75%);
+        background-size: 200% 100%;
+        animation: skeletonShimmer 1.8s infinite linear;
+      }
+      .skel-live-beacon {
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
-        background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(79,70,229,0.22));
-        border: 2px solid rgba(124, 58, 237, 0.45);
+        background: #f59e0b;
+        display: inline-block;
+        animation: skelBeaconPulse 1.8s infinite ease-in-out;
+      }
+      .skel-eval-pulse-mini {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(79,70,229,0.28));
+        border: 1.5px solid rgba(124, 58, 237, 0.45);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 20px;
-        animation: evalPulse 1.8s infinite ease-in-out;
+        font-size: 16px;
+        animation: skelBeaconPulse 2s infinite ease-in-out;
+        flex-shrink: 0;
+      }
+      .skel-track {
+        height: 7px;
+        background: var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+      }
+      .skel-track-shimmer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 60%;
+        background: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.45), rgba(59, 130, 246, 0.4), transparent);
+        animation: skelWaveSweep 2s infinite ease-in-out;
+        border-radius: 8px;
       }
     </style>
   `;
 
-  // 1. Current Round Card
+  // 1. Current Round Card (Scorecard if complete, Animated Skeleton if scoring in progress)
   if (hasCurScores) {
     // Current round scoring complete -> show 100% visible scorecard immediately
     combinedScorecardsHTML += generateScorecardHTML(curRoundName, true);
-  } else if (isPresentForCurrentRound) {
-    // Participant is present / on-stage / evaluating -> show buffering animation card
-    const curRoundDisplay = getRoundDisplayName(curRoundName);
-    combinedScorecardsHTML += `
-      <div class="scorecard-container-panel" style="
-        opacity: 1;
-        border: 2px dashed rgba(124,58,237,0.35);
-        box-shadow: 0 4px 18px rgba(124,58,237,0.08);
-        background: var(--bg);
-        padding: 22px;
-        border-radius: 18px;
-        margin-bottom: 18px;
-        animation: scorecardAppear 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-      ">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <span class="badge" style="font-size:0.75rem; font-weight:800; padding:4px 10px; border-radius:8px; background:rgba(124,58,237,0.12); color:var(--primary); border:1px solid rgba(124,58,237,0.25);">
-              ACTIVE ROUND
-            </span>
-            <span style="font-weight:900; font-size:1.15rem; color:var(--text); text-transform:uppercase; letter-spacing:0.5px;">
-              ROUND: ${curRoundDisplay.toUpperCase()}
-            </span>
-          </div>
-          <span class="badge" style="font-size:0.72rem; background:rgba(245,158,11,0.12); color:#d97706; border:1px solid rgba(245,158,11,0.25); padding:3px 8px; border-radius:6px; font-weight:800;">
-            EVALUATION IN PROGRESS
-          </span>
-        </div>
-
-        <div style="padding: 24px 16px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
-          <div class="eval-buffering-pulse">
-            <span>⚡</span>
-          </div>
-          <div style="font-weight:800; font-size:0.95rem; color:var(--text); margin-top:12px;">
-            Judges Scoring In Progress
-          </div>
-          <div style="font-size:0.8rem; color:var(--text-muted); max-width:380px; margin-top:4px; line-height:1.4;">
-            Stage presence verified. Your official round scorecard will appear here instantly as soon as judges submit their evaluations.
-          </div>
-        </div>
-      </div>
-    `;
+    if (window._prevCurScoreStatus === 'pending') {
+      window._prevCurScoreStatus = 'complete';
+      try {
+        toast(`🎉 Official scores locked for ${getRoundDisplayName(curRoundName)}!`);
+      } catch(e) {}
+    }
+  } else {
+    // Active round evaluation in-progress -> show stunning animated skeleton card
+    window._prevCurScoreStatus = 'pending';
+    combinedScorecardsHTML += generateScorecardSkeletonHTML(curRoundName);
   }
 
-  // 2. Previous Round Scorecard(s) (90% Visible, light theme, actual round name)
   previousRounds.reverse().forEach(pastRound => {
     combinedScorecardsHTML += generateScorecardHTML(pastRound, false);
   });
