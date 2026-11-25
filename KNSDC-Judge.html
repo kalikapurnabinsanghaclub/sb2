@@ -6152,6 +6152,7 @@ function loadScorePanel(id) {
   // Before we wipe the DOM, read any values the judge has already dragged/typed
   // so we can restore them if it's the same participant panel being refreshed.
   const _liveValues = {};
+  let _liveComment = null; // FIX: Preserve unsaved comment text across background re-renders
   const _existingWrap = document.getElementById('score-inputs-wrap');
   if (_existingWrap && previousId === id) {
     _existingWrap.querySelectorAll('input[type="range"].score-slider').forEach(sl => {
@@ -6162,6 +6163,9 @@ function loadScorePanel(id) {
       const niId = ni.id.replace('num-', '');
       _liveValues[niId] = parseFloat(ni.value) || 0;
     });
+    // Capture unsaved comment so a background realtime refresh cannot wipe it
+    const _cmtEl = document.getElementById('judge-comment');
+    if (_cmtEl && _cmtEl.value !== '') { _liveComment = _cmtEl.value; }
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -6243,7 +6247,8 @@ function loadScorePanel(id) {
 
   document.getElementById('comment-wrap').style.display = 'block';
   let existingComment = (p.roundComments && p.roundComments[p.round] && p.roundComments[p.round][JUDGE.id]) || '';
-  document.getElementById('judge-comment').value = existingComment;
+  // FIX: Restore live unsaved comment if the judge was mid-typing when the panel refreshed
+  document.getElementById('judge-comment').value = (_liveComment !== null) ? _liveComment : existingComment;
   document.getElementById('judge-comment').disabled = !canEdit;
   if (typeof renderCritiqueChips === 'function') {
     renderCritiqueChips('judge-comment');
@@ -7795,7 +7800,41 @@ async function saveModalScores() {
     toast('Updating score...');
     let success = false;
     try {
-      success = await syncEngine.updateParticipant(p.id, p);
+      // FIX: Send only this judge's delta via updateParticipantScores (atomic RPC path)
+      // instead of the whole participant object via updateParticipant — prevents clobbering
+      // other judges' scores, comments, stageStatus, and round when saving concurrently.
+      const modalScoreData = {
+        eventId: (typeof activeEventId !== 'undefined' ? activeEventId : null) || p.eventId || JUDGE.eventId,
+        judgeId: JUDGE.id,
+        round: targetRound,
+        scores: { [JUDGE.id]: p.roundScores[targetRound][JUDGE.id] },
+        roundScores: { [targetRound]: { [JUDGE.id]: p.roundScores[targetRound][JUDGE.id] } },
+        roundComments: { [targetRound]: { [JUDGE.id]: p.roundComments[targetRound][JUDGE.id] } },
+        total: totalScoreVal,
+        comment: p.roundComments[targetRound][JUDGE.id]
+      };
+      if (typeof syncEngine.updateParticipantScores === 'function') {
+        success = await syncEngine.updateParticipantScores(p.id, modalScoreData);
+      } else {
+        success = await syncEngine.updateParticipant(p.id, p); // legacy fallback
+      }
+      // Also push to MongoDB backend if available (uses safe per-judge )
+      try {
+        fetch('/api/scores/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            participantId: p.id,
+            eventId: modalScoreData.eventId,
+            judgeId: JUDGE.id,
+            round: targetRound,
+            scores: p.roundScores[targetRound][JUDGE.id],
+            total: totalScoreVal,
+            comments: p.roundComments[targetRound][JUDGE.id],
+            timestamp: Date.now()
+          })
+        }).catch(e => console.warn('[MongoDB Edit Save Deferred]', e.message));
+      } catch(e) {}
     } catch(netErr) {
       console.warn('[saveModalScores] Network error, score saved to local storage:', netErr);
       success = false;
