@@ -4211,6 +4211,7 @@ function toast(msg) {
 // 1. App Init
 function initApp() {
   initServiceWorkerAndWakeLock();
+  checkAndApplySharedAudio();
 
   // ── Auto-Verification when QR code is scanned (?verify=... or ?id=...) ──
   try {
@@ -4783,6 +4784,9 @@ document.getElementById('login-form').addEventListener('submit', (e) => {
     CURRENT_USER = p.id;
     toast('✅ Candidate Verified!');
     renderDashboard();
+    if (typeof applyPendingSharedAudio === 'function') {
+      setTimeout(applyPendingSharedAudio, 500);
+    }
   } else {
     toast('Invalid Username or ID Number');
   }
@@ -4816,7 +4820,7 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
   const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name);
   const typeLabel = isAudio ? 'music track' : (isVideo ? 'video' : 'photo');
 
-  input.disabled = true;
+  if (input) input.disabled = true;
 
   // Show Walking Girl & Dog Uploader Animation
   const loaderContainer = document.getElementById(`${targetId}-loader-container`);
@@ -5018,7 +5022,7 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
       `;
     }
   } finally {
-    input.disabled = false;
+    if (input) input.disabled = false;
     if (loaderContainer) {
       loaderContainer.style.display = 'none';
       loaderContainer.innerHTML = '';
@@ -5028,49 +5032,108 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
 
 
 // PWA Web Share Target Listener for WhatsApp Audio
+window._pendingSharedAudioFile = null;
+let _isSharedAudioProcessing = false;
+
 async function checkAndApplySharedAudio() {
   if (!('caches' in window)) return;
   try {
     const cache = await caches.open('knsdc-shared-media-v1');
     const response = await cache.match('/knsdc-shared-audio-temp');
-    if (!response) return;
-
-    const blob = await response.blob();
-    const filename = decodeURIComponent(response.headers.get('x-shared-filename') || 'whatsapp_audio.mp3');
-    await cache.delete('/knsdc-shared-audio-temp');
-
-    if (blob && blob.size > 0) {
-      const audioFile = new File([blob], filename, { type: blob.type || 'audio/mpeg' });
-      console.log('[PWA Share Target] Received shared audio:', audioFile.name, audioFile.size);
-
-      if (!CURRENT_USER) {
-        toast('🎵 WhatsApp থেকে অডিও পাওয়া গেছে! অনুগ্রহ করে লগইন করুন।');
-        return;
-      }
-
-      const state = window.syncEngine ? (window.syncEngine.getData() || {}) : {};
-      const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-
-      if (p && p.formLocked) {
-        toast('🔒 ফরম লক আছে! মনিটর আনলক করলে হোয়াটসঅ্যাপের অডিওটি আপলোড করা যাবে।');
-        return;
-      }
-
-      // Find the audio input
-      const audioInput = document.querySelector('input[type="file"][accept*="audio"]') || document.querySelector('input[type="file"]');
-      if (audioInput) {
-        const onchangeAttr = audioInput.getAttribute('onchange') || '';
-        const match = onchangeAttr.match(/uploadParticipantFileToCloud\s*\(\s*this\s*,\s*['"]([^'"]+)['"]\)/);
-        const targetId = match ? match[1] : 'dyn-field-audio';
-
-        toast('🚀 WhatsApp অডিও ক্লাউডে আপলোড হচ্ছে...');
-        await uploadParticipantFileToCloud(audioInput, targetId, audioFile);
+    if (response) {
+      const blob = await response.blob();
+      const filename = decodeURIComponent(response.headers.get('x-shared-filename') || 'whatsapp_audio.mp3');
+      if (blob && blob.size > 0) {
+        window._pendingSharedAudioFile = new File([blob], filename, { type: blob.type || 'audio/mpeg' });
+        console.log('[PWA Share Target] Found pending shared audio file:', window._pendingSharedAudioFile.name, window._pendingSharedAudioFile.size);
       }
     }
   } catch (err) {
     console.warn('[PWA Share Target Notice]', err);
   }
+
+  // Attempt to apply if pending file exists
+  if (window._pendingSharedAudioFile) {
+    applyPendingSharedAudio();
+  }
 }
+
+async function applyPendingSharedAudio(retryCount = 0) {
+  if (!window._pendingSharedAudioFile || _isSharedAudioProcessing) return;
+
+  const audioFile = window._pendingSharedAudioFile;
+
+  // 1. Ensure user is logged in
+  if (!CURRENT_USER) {
+    const storedId = localStorage.getItem('knsdc_participant_id');
+    if (storedId) {
+      console.log('[PWA Share Target] Auto-logging in saved participant ID:', storedId);
+      CURRENT_USER = storedId;
+      if (typeof autoLogin === 'function') autoLogin(storedId);
+    } else {
+      toast(`🎵 WhatsApp অডিও (${audioFile.name}) পাওয়া গেছে! আপনার ফর্মের সাথে যুক্ত করতে দয়া করে লগইন করুন।`);
+      return;
+    }
+  }
+
+  // 2. Wait until participant data is loaded in syncEngine
+  const state = window.syncEngine ? (window.syncEngine.getData() || {}) : {};
+  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
+  if (!p) {
+    if (retryCount < 20) {
+      setTimeout(() => applyPendingSharedAudio(retryCount + 1), 400);
+    }
+    return;
+  }
+
+  // 3. Check if form is locked
+  if (p.formLocked) {
+    toast('🔒 ফরমটি মনিটর দ্বারা লক করা আছে! মনিটর আনলক করলে হোয়াটসঅ্যাপ অডিও আপলোড হবে।');
+    return;
+  }
+
+  // 4. Find audio input & targetId in the DOM
+  const audioInput = document.querySelector('input[type="file"][accept*="audio"]') || 
+                     document.querySelector('#participant-form input[type="file"]');
+  if (!audioInput) {
+    if (retryCount < 20) {
+      setTimeout(() => applyPendingSharedAudio(retryCount + 1), 400);
+    }
+    return;
+  }
+
+  let targetId = null;
+  const onchangeAttr = audioInput.getAttribute('onchange') || '';
+  const match = onchangeAttr.match(/uploadParticipantFileToCloud\s*\(\s*this\s*,\s*['"]([^'"]+)['"]\)/);
+  if (match) {
+    targetId = match[1];
+  } else {
+    const hiddenInp = audioInput.parentElement ? audioInput.parentElement.querySelector('input[type="hidden"]') : null;
+    targetId = hiddenInp ? hiddenInp.id : 'dyn-field-0';
+  }
+
+  _isSharedAudioProcessing = true;
+  toast(`🚀 WhatsApp অডিও (${audioFile.name}) ক্লাউডফ্লেয়ারে আপলোড হচ্ছে...`);
+
+  try {
+    await window.uploadParticipantFileToCloud(audioInput, targetId, audioFile);
+    // Success: clear pending file and cache
+    window._pendingSharedAudioFile = null;
+    if ('caches' in window) {
+      const cache = await caches.open('knsdc-shared-media-v1');
+      await cache.delete('/knsdc-shared-audio-temp');
+    }
+    toast('✅ WhatsApp অডিও সফলভাবে আপনার ফর্মে আপলোড ও সেভ হয়েছে!');
+  } catch (err) {
+    console.error('[PWA Share Target Upload Error]', err);
+    toast('⚠️ WhatsApp অডিও আপলোড করতে সমস্যা হয়েছে, পুনরায় চেষ্টা করুন।');
+  } finally {
+    _isSharedAudioProcessing = false;
+  }
+}
+
+window.checkAndApplySharedAudio = checkAndApplySharedAudio;
+window.applyPendingSharedAudio = applyPendingSharedAudio;
 
 window.removeParticipantMediaTrack = async function(targetId) {
   const state = window.syncEngine ? (window.syncEngine.getData() || {}) : {};
@@ -5722,6 +5785,11 @@ function renderParticipantUpcomingQueue(p, state) {
     upcomingCard.style.display = 'block';
   } else {
     upcomingCard.style.display = 'none';
+  }
+
+  // Automatically check and upload any pending audio shared from WhatsApp
+  if (typeof applyPendingSharedAudio === 'function') {
+    setTimeout(applyPendingSharedAudio, 250);
   }
 }
 

@@ -76,11 +76,18 @@ self.addEventListener('message', (event) => {
 // Handle PWA Web Share Target (e.g. sharing audio directly from WhatsApp or phone share sheet)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method === 'POST' && (url.pathname.includes('KNSDC-Participant.html') || url.searchParams.get('shared') === '1')) {
+  // Match POST request from share target
+  if (event.request.method === 'POST' && (url.pathname.includes('Participant') || url.pathname.endsWith('/') || url.searchParams.get('shared') === '1')) {
     event.respondWith((async () => {
       try {
         const formData = await event.request.formData();
-        const audioFile = formData.get('audio') || formData.get('file') || formData.get('media');
+        let audioFile = null;
+        for (const [key, val] of formData.entries()) {
+          if (val && typeof val === 'object' && typeof val.size === 'number' && val.size > 0) {
+            audioFile = val;
+            break;
+          }
+        }
         
         if (audioFile && audioFile.size > 0) {
           const cache = await caches.open('knsdc-shared-media-v1');
@@ -92,13 +99,15 @@ self.addEventListener('fetch', (event) => {
             }
           });
           await cache.put('/knsdc-shared-audio-temp', fileBlobResponse);
+          console.log('[SW Share Target] Successfully cached shared media:', audioFile.name, audioFile.size);
         }
       } catch (err) {
-        console.warn('[SW Share Target Error]', err);
+        console.error('[SW Share Target Error]', err);
       }
-      return Response.redirect('./KNSDC-Participant.html?shared=1', 303);
+      // CRITICAL: Response.redirect requires an absolute URL!
+      const redirectTarget = new URL('./KNSDC-Participant.html?shared=1', event.request.url).href;
+      return Response.redirect(redirectTarget, 303);
     })());
     return;
   }
 });
-
