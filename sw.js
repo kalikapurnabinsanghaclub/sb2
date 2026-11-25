@@ -76,8 +76,13 @@ self.addEventListener('message', (event) => {
 // Handle PWA Web Share Target (e.g. sharing audio directly from WhatsApp or phone share sheet)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // Match POST request from share target
-  if (event.request.method === 'POST' && (url.pathname.includes('Participant') || url.pathname.endsWith('/') || url.searchParams.get('shared') === '1')) {
+  // STRICT: Only intercept same-origin Share Target POST requests (?shared=1).
+  // NEVER intercept external uploads (Cloudflare R2 workers.dev, Supabase, etc.)!
+  if (
+    event.request.method === 'POST' &&
+    url.origin === self.location.origin &&
+    url.searchParams.get('shared') === '1'
+  ) {
     event.respondWith((async () => {
       try {
         const formData = await event.request.formData();

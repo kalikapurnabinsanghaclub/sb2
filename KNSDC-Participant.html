@@ -4836,6 +4836,7 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
   const isVideo = !isAudio && ((file.type && file.type.startsWith('video/')) || /\.(mp4|webm|mov)$/i.test(file.name || ''));
   const typeLabel = isAudio ? 'music track' : (isVideo ? 'video' : 'photo');
 
+  window._isParticipantUploadingFile = true;
   if (input) input.disabled = true;
 
   // Show Walking Girl & Dog Uploader Animation
@@ -4909,7 +4910,8 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
   if (imgPreview) imgPreview.style.display = 'none';
 
   // Deterministic Key & Old File Deletion
-  const ext = file.name ? file.name.split('.').pop().toLowerCase() : (isAudio ? 'mp3' : 'bin');
+  const rawExt = (file.name && file.name.includes('.')) ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+  const ext = (rawExt && rawExt.length <= 5) ? rawExt : (isAudio ? 'mp3' : (isVideo ? 'mp4' : 'jpg'));
   const partId = CURRENT_USER || 'candidate';
   const customKey = isAudio 
     ? `participants/p_${partId}_audio.${ext}` 
@@ -5045,6 +5047,7 @@ window.uploadParticipantFileToCloud = async function(input, targetId, directFile
       `;
     }
   } finally {
+    window._isParticipantUploadingFile = false;
     if (input) input.disabled = false;
     if (loaderContainer) {
       loaderContainer.style.display = 'none';
@@ -5431,7 +5434,7 @@ function renderDashboard() {
     } else if (f.type === 'file_link') {
       html += `<input type="text" id="${fieldId}" placeholder="Paste link (e.g. Google Drive, YouTube)" value="${val}" data-label="${f.label}" ${f.required ? 'required' : ''}>`;
     } else if (f.type === 'video_link_or_file' || f.type === 'audio_link_or_file') {
-      const accept = f.type === 'video_link_or_file' ? 'video/*' : 'audio/*';
+      const accept = f.type === 'video_link_or_file' ? 'video/*' : 'audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus';
       const isVideo = f.type === 'video_link_or_file';
       html += `<div style="display:flex;flex-direction:column;gap:10px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
         <input type="file" accept="${accept}" onchange="uploadParticipantFileToCloud(this, '${fieldId}')" style="margin-bottom:0;">
@@ -6703,9 +6706,10 @@ document.getElementById('participant-form').addEventListener('submit', async (e)
 // Reactively re-render if Monitor unlocks them while they are logged in!
 let renderTimer = null;
 const debouncedRenderDashboard = () => {
+  if (window._isParticipantUploadingFile) return;
   if (renderTimer) clearTimeout(renderTimer);
   renderTimer = setTimeout(() => {
-    renderDashboard();
+    if (!window._isParticipantUploadingFile) renderDashboard();
   }, 250);
 };
 
