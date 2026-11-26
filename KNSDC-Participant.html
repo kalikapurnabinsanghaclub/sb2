@@ -3401,20 +3401,22 @@ async function openCamera() {
     stopCamera();
   }
 
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const camInp = document.getElementById('poster-camera-input');
+    if (camInp) { camInp.value = ''; camInp.click(); return; }
+  }
+
   const constraintsList = [
-    { video: { facingMode: 'user', width: { ideal: 1920, min: 1080 }, height: { ideal: 1920, min: 1080 } }, audio: false },
     { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
     { video: { facingMode: 'user' }, audio: false }
   ];
 
   let stream = null;
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    for (const c of constraintsList) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(c);
-        if (stream) break;
-      } catch (e) {}
-    }
+  for (const c of constraintsList) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(c);
+      if (stream) break;
+    } catch (e) {}
   }
 
   if (!stream) {
@@ -4397,8 +4399,10 @@ function drawPosterOnCanvas(frame, pData) {
   const isStory = currentPosterAspectRatio === '9:16';
   const W = isStory ? 1080 : 1200;
   const H = isStory ? 1920 : 1500;
-  canvas.width = W;
-  canvas.height = H;
+  if (canvas.width !== W || canvas.height !== H) {
+    canvas.width = W;
+    canvas.height = H;
+  }
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
@@ -4448,24 +4452,9 @@ function drawPosterOnCanvas(frame, pData) {
       ctx.clearRect(0, 0, W, H);
     }
 
-    // 2. Photo as full background
+    // 2. Photo as full background (supports both Image and live <video>)
     if (photoImg) {
-      ctx.save();
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.globalAlpha = 1;
-      const ir = photoImg.naturalWidth / photoImg.naturalHeight;
-      const cr = W / H;
-      let sx = 0, sy = 0, sw = photoImg.naturalWidth, sh = photoImg.naturalHeight;
-      if (ir > cr) {
-        sw = photoImg.naturalHeight * cr;
-        sx = (photoImg.naturalWidth - sw) / 2;
-      } else {
-        sh = photoImg.naturalWidth / cr;
-        sy = (photoImg.naturalHeight - sh) / 2;
-      }
-      ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, W, H);
-      ctx.restore();
+      drawPosterCoverPhoto(ctx, photoImg, 0, 0, W, H, false);
     }
 
     // 3. Cinematic Dual Gradient Overlays (Text Protection Shields)
