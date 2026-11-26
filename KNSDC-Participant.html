@@ -3401,6 +3401,7 @@ async function openCamera() {
     stopCamera();
   }
 
+  // If secure context / mediaDevices is missing, open native mobile camera directly
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     const camInp = document.getElementById('poster-camera-input');
     if (camInp) { camInp.value = ''; camInp.click(); return; }
@@ -3408,7 +3409,9 @@ async function openCamera() {
 
   const constraintsList = [
     { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-    { video: { facingMode: 'user' }, audio: false }
+    { video: { facingMode: 'user' }, audio: false },
+    { video: { facingMode: { ideal: 'user' } }, audio: false },
+    { video: true, audio: false }
   ];
 
   let stream = null;
@@ -3433,11 +3436,25 @@ async function openCamera() {
 
   cameraStream = stream;
   video.srcObject = stream;
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.muted = true;
+  video.defaultMuted = true;
   video.style.display = 'block';
   canvas.style.display = 'block';
-  overlay.style.display = 'flex';
+  if (overlay) overlay.style.display = 'flex';
   window._isCameraLive = true;
-  if (video.play) { try { await video.play(); } catch (e) {} }
+
+  try {
+    await video.play();
+  } catch (err) {
+    console.warn('Video play error:', err);
+  }
+
+  video.onloadedmetadata = () => {
+    selectFrame(currentShareColor);
+  };
+
   startLiveCameraPosterLoop();
 }
 
@@ -3447,7 +3464,7 @@ function startLiveCameraPosterLoop() {
   stopLiveCameraPosterLoop();
   const tick = (ts) => {
     if (!window._isCameraLive) return;
-    if (ts - _lastCameraFrameTs >= 40) {
+    if (ts - _lastCameraFrameTs >= 33) {
       _lastCameraFrameTs = ts;
       selectFrame(currentShareColor);
     }
@@ -3482,12 +3499,21 @@ function captureFromCamera() {
   tCtx.scale(-1, 1);
   tCtx.drawImage(video, 0, 0, vW, vH);
 
-  tempCanvas.toBlob(blob => {
-    if (temporarySelfieUrl) URL.revokeObjectURL(temporarySelfieUrl);
-    temporarySelfieUrl = URL.createObjectURL(blob);
+  try {
+    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.95);
+    temporarySelfieUrl = dataUrl;
     stopCamera();
     selectFrame(currentShareColor);
-  }, 'image/jpeg', 0.98);
+    if (typeof toast === 'function') toast('✅ Selfie captured directly into poster!');
+  } catch (e) {
+    tempCanvas.toBlob(blob => {
+      if (temporarySelfieUrl && temporarySelfieUrl.startsWith('blob:')) URL.revokeObjectURL(temporarySelfieUrl);
+      temporarySelfieUrl = URL.createObjectURL(blob);
+      stopCamera();
+      selectFrame(currentShareColor);
+      if (typeof toast === 'function') toast('✅ Selfie captured directly into poster!');
+    }, 'image/jpeg', 0.95);
+  }
 }
 
 function stopCamera() {
@@ -3511,12 +3537,15 @@ function stopCamera() {
 function handlePosterPhotoFile(e) {
   const file = e && e.target && e.target.files && e.target.files[0];
   if (!file) return;
-  if (temporarySelfieUrl) URL.revokeObjectURL(temporarySelfieUrl);
-  temporarySelfieUrl = URL.createObjectURL(file);
-  stopCamera();
-  selectFrame(currentShareColor);
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    temporarySelfieUrl = evt.target.result;
+    stopCamera();
+    selectFrame(currentShareColor);
+    if (typeof toast === 'function') toast('✅ Photo applied directly into poster!');
+  };
+  reader.readAsDataURL(file);
   if (e.target) e.target.value = '';
-  if (typeof toast === 'function') toast('✅ Image uploaded to Poster Studio!');
 }
 window.handlePosterPhotoFile = handlePosterPhotoFile;
 
@@ -3541,10 +3570,20 @@ function selectFrame(colorHex) {
   }
  
   const state = (window.syncEngine && window.syncEngine.getData()) || {};
-  const p = (state.participants || []).find(part => String(part.id) === String(CURRENT_USER));
-  if (!p) return;
-  const ev = (state.events || []).find(e => String(e.id) === String(p.eventId));
-  if (!ev) return;
+  let p = (state.participants || []).find(part => 
+    String(part.id).trim().toUpperCase() === String(CURRENT_USER || '').trim().toUpperCase()
+  );
+  if (!p) {
+    p = (state.participants && state.participants[0]) || {
+      id: CURRENT_USER || 'KN101',
+      name: 'Participant',
+      eventId: '1',
+      catId: '1'
+    };
+  }
+  let ev = (state.events || []).find(e => String(e.id) === String(p.eventId)) || 
+           (state.events && state.events[0]) || 
+           { name: 'KNSDC DANCE IGNITION', org: 'KALIKAPUR NABIN SANGHA' };
  
   const c = (ev.categories || []).find(x => String(x.id) === String(p.catId));
   const catName = c ? c.name.toUpperCase() : 'OPEN CATEGORY';
@@ -3832,30 +3871,42 @@ function drawMinimalLineBorder(ctx, W, H, pad, color, shadowColor) {
 // ---- Signature Poster Layout Helpers ----
 function drawPosterCoverPhoto(ctx, img, dx, dy, dw, dh, grayscale) {
   if (!img) return;
-  const iw = img.naturalWidth || img.videoWidth || 0;
-  const ih = img.naturalHeight || img.videoHeight || 0;
+  const isVid = (img.tagName === 'VIDEO' || (typeof HTMLVideoElement !== 'undefined' && img instanceof HTMLVideoElement));
+  const iw = isVid ? (img.videoWidth || 0) : (img.naturalWidth || img.width || 0);
+  const ih = isVid ? (img.videoHeight || 0) : (img.naturalHeight || img.height || 0);
   if (!iw || !ih) return;
+
+  const ir = iw / ih;
+  const cr = dw / dh;
+  let sx = 0, sy = 0, sw = iw, sh = ih;
+  if (ir > cr) {
+    sw = Math.floor(ih * cr);
+    sx = Math.floor((iw - sw) / 2);
+  } else {
+    sh = Math.floor(iw / cr);
+    sy = Math.floor((ih - sh) * 0.20);
+  }
+  sx = Math.max(0, Math.min(sx, iw - 1));
+  sy = Math.max(0, Math.min(sy, ih - 1));
+  sw = Math.max(1, Math.min(sw, iw - sx));
+  sh = Math.max(1, Math.min(sh, ih - sy));
+
   ctx.save();
   ctx.beginPath();
   ctx.rect(dx, dy, dw, dh);
   ctx.clip();
   if (grayscale && 'filter' in ctx) ctx.filter = 'grayscale(100%) contrast(1.18)';
-  const ir = iw / ih;
-  const cr = dw / dh;
-  let sx = 0, sy = 0, sw = iw, sh = ih;
-  if (ir > cr) {
-    sw = ih * cr;
-    sx = (iw - sw) / 2;
-  } else {
-    sh = iw / cr;
-    sy = (ih - sh) * 0.20;
-  }
-  if (img.tagName === 'VIDEO') {
-    ctx.translate(dx + dw, dy);
-    ctx.scale(-1, 1);
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
-  } else {
-    ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+
+  try {
+    if (isVid) {
+      ctx.translate(dx + dw, dy);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+    } else {
+      ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
+  } catch (err) {
+    console.warn('Cover photo draw error:', err);
   }
   ctx.restore();
 }
