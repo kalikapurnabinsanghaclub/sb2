@@ -11351,76 +11351,231 @@ function renderStageView(){
   }).join('') || '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:16px">Queue is empty</div>';
 }
 
+// ══════════════════════════════════════════
+// ATTENDANCE CALENDAR STATE & CONTROLS
+// ══════════════════════════════════════════
+window._attendCalYear = window._attendCalYear || null;
+window._attendCalMonth = (window._attendCalMonth !== undefined && window._attendCalMonth !== null) ? window._attendCalMonth : null;
+window._attendCalSelectedDate = window._attendCalSelectedDate || null;
+
+function changeAttendanceCalMonth(delta) {
+  if (window._attendCalYear === null || window._attendCalMonth === null) {
+    const now = new Date();
+    window._attendCalYear = now.getFullYear();
+    window._attendCalMonth = now.getMonth();
+  }
+  window._attendCalMonth += delta;
+  if (window._attendCalMonth < 0) {
+    window._attendCalMonth = 11;
+    window._attendCalYear--;
+  } else if (window._attendCalMonth > 11) {
+    window._attendCalMonth = 0;
+    window._attendCalYear++;
+  }
+  renderAttendanceBreakdown();
+}
+
+function selectAttendanceCalDate(dateStr) {
+  window._attendCalSelectedDate = (window._attendCalSelectedDate === dateStr) ? null : dateStr;
+  renderAttendanceBreakdown();
+}
+
 function renderAttendanceBreakdown(){
   const breakdownEl = document.getElementById('attendance-breakdown');
   if (!breakdownEl) return;
 
   const data = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
-  
-  const dates = [...new Set(data.map(p => {
-    const d = p.date || p.auditionDate || p.regDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date'])) || '';
-    return (typeof d === 'string' && d.includes('T')) ? d.split('T')[0] : d;
-  }))].filter(d => d && typeof d === 'string' && d !== 'null' && d !== 'undefined' && d.trim() !== '').sort();
-  
-  let html = '';
-  if (dates.length === 0) {
-    html = `<div style="text-align:center;padding:22px 10px;color:var(--text-muted);font-family:var(--fm);font-size:12px;">
-      <div style="font-size:28px;margin-bottom:6px">📅</div>
-      <div>No dated attendance entries yet for this event</div>
-    </div>`;
-  } else {
-    html = '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">';
-    dates.forEach(d => {
-      const dp = data.filter(p => {
-        const pd = p.date || p.auditionDate || p.regDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date'])) || '';
-        const pDateOnly = (typeof pd === 'string' && pd.includes('T')) ? pd.split('T')[0] : pd;
-        return pDateOnly === d;
-      });
-      const present = dp.filter(p => getRoundPresent(p, p.round)).length;
-      const pct = dp.length > 0 ? Math.round(present / dp.length * 100) : 0;
-      
-      let dayNum = '—';
-      let monthStr = 'DATE';
-      let weekdayStr = '';
-      let fullLabel = d;
-      try {
-        const dt = new Date(d);
-        if (!isNaN(dt.getTime())) {
-          dayNum = String(dt.getDate()).padStart(2, '0');
-          monthStr = dt.toLocaleDateString('en-IN', { month: 'short' }).toUpperCase();
-          weekdayStr = dt.toLocaleDateString('en-IN', { weekday: 'short' }).toUpperCase();
-          fullLabel = dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-        }
-      } catch(e) {}
 
-      html += `
-      <div style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;box-shadow:0 1px 4px rgba(0,0,0,0.02);transition:all 0.2s ease;">
-        <!-- CALENDAR DATE TILE -->
-        <div style="flex-shrink:0;width:44px;height:48px;background:var(--surface2, #1e293b);border:1px solid rgba(239,68,68,0.35);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;box-shadow:0 2px 5px rgba(0,0,0,0.05);">
-          <div style="width:100%;background:linear-gradient(135deg, #ef4444, #dc2626);color:#fff;font-size:8.5px;font-weight:900;letter-spacing:0.8px;padding:1.5px 0;text-transform:uppercase;">${monthStr}</div>
-          <div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:var(--text);line-height:1;font-family:var(--fm);">${dayNum}</div>
-          <div style="font-size:7px;font-weight:800;color:var(--text-dim);margin-bottom:1.5px;text-transform:uppercase;">${weekdayStr}</div>
-        </div>
-        
-        <!-- PROGRESS & STATS -->
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:6px;">
-            <div style="font-size:12.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fullLabel}</div>
-            <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-              <span style="font-size:11.5px;font-weight:800;color:var(--text);font-family:var(--fm);">${present}/${dp.length}</span>
-              <span class="badge ${pct === 100 ? 'b-green' : pct >= 50 ? 'b-amber' : 'b-red'}" style="font-size:9.5px;padding:2px 5px;border-radius:5px;font-weight:800;">${pct}%</span>
-            </div>
-          </div>
-          <div class="score-bar" style="height:6px;background:rgba(255,255,255,0.06);border-radius:6px;overflow:hidden;">
-            <div class="score-bar-fill" style="width:${pct}%;height:100%;border-radius:6px;background:${pct === 100 ? 'linear-gradient(90deg, #10b981, #22c55e)' : pct >= 50 ? 'linear-gradient(90deg, #f59e0b, #eab308)' : 'linear-gradient(90deg, #ef4444, #f87171)'};transition:width 0.4s ease;"></div>
-          </div>
-        </div>
-      </div>`;
-    });
-    html += '</div>';
+  // Collect all unique participant dates
+  const dateEntries = [];
+  data.forEach(p => {
+    const raw = p.date || p.auditionDate || p.regDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date'])) || '';
+    if (raw && typeof raw === 'string') {
+      const dStr = raw.includes('T') ? raw.split('T')[0] : raw.trim();
+      if (dStr && dStr !== 'null' && dStr !== 'undefined' && dStr !== '[]') {
+        dateEntries.push({ date: dStr, participant: p });
+      }
+    }
+  });
+
+  const uniqueDates = [...new Set(dateEntries.map(e => e.date))].sort();
+
+  // If calendar month not initialized, auto-focus on the event dates month or current month
+  if (window._attendCalYear === null || window._attendCalMonth === null) {
+    if (uniqueDates.length > 0) {
+      // Find latest or first valid date
+      for (const d of uniqueDates) {
+        const parsed = new Date(d);
+        if (!isNaN(parsed.getTime())) {
+          window._attendCalYear = parsed.getFullYear();
+          window._attendCalMonth = parsed.getMonth();
+          break;
+        }
+      }
+    }
+    if (window._attendCalYear === null) {
+      const now = new Date();
+      window._attendCalYear = now.getFullYear();
+      window._attendCalMonth = now.getMonth();
+    }
   }
 
-  // Dynamic Category present breakdown
+  const curYear = window._attendCalYear;
+  const curMonth = window._attendCalMonth;
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthName = monthNames[curMonth];
+
+  // Map dates to attendance stats
+  const datesMap = {};
+  uniqueDates.forEach(d => {
+    const list = dateEntries.filter(e => e.date === d).map(e => e.participant);
+    const presentCount = list.filter(p => getRoundPresent(p, p.round)).length;
+    const pct = list.length > 0 ? Math.round((presentCount / list.length) * 100) : 0;
+    datesMap[d] = {
+      total: list.length,
+      present: presentCount,
+      pct: pct,
+      participants: list
+    };
+  });
+
+  // Calculate days in current calendar month
+  const firstDayOfWeek = new Date(curYear, curMonth, 1).getDay(); // 0 = Sun
+  const totalDaysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+  const prevMonthTotalDays = new Date(curYear, curMonth, 0).getDate();
+
+  // Total event dates in this active month
+  const monthPrefix = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+  const thisMonthDates = uniqueDates.filter(d => d.startsWith(monthPrefix));
+  let monthTotalParts = 0;
+  let monthTotalPresent = 0;
+  thisMonthDates.forEach(d => {
+    if (datesMap[d]) {
+      monthTotalParts += datesMap[d].total;
+      monthTotalPresent += datesMap[d].present;
+    }
+  });
+  const monthPct = monthTotalParts > 0 ? Math.round((monthTotalPresent / monthTotalParts) * 100) : 0;
+
+  // Build Calendar Header
+  let html = `
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.02);">
+    <!-- MONTH NAVIGATION -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:4px 6px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:16px;">🗓️</span>
+        <span style="font-size:14px;font-weight:900;color:var(--text);letter-spacing:0.5px;font-family:var(--fm);">${monthName} ${curYear}</span>
+        ${thisMonthDates.length > 0 ? `<span class="badge b-green" style="font-size:10px;padding:2px 7px;font-weight:800;">${thisMonthDates.length} Event Date${thisMonthDates.length > 1 ? 's' : ''}</span>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(-1)" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" title="Previous Month">◀</button>
+        <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(1)" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" title="Next Month">▶</button>
+      </div>
+    </div>
+
+    <!-- WEEKDAYS HEADER -->
+    <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;text-align:center;margin-bottom:6px;font-family:var(--fm);">
+      <div style="font-size:9.5px;font-weight:900;color:#ef4444;padding:4px 0;">SUN</div>
+      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">MON</div>
+      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">TUE</div>
+      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">WED</div>
+      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">THU</div>
+      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">FRI</div>
+      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">SAT</div>
+    </div>
+
+    <!-- CALENDAR GRID -->
+    <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;">`;
+
+  // Previous month trailing days
+  for (let i = 0; i < firstDayOfWeek; i++) {
+    const prevDay = prevMonthTotalDays - firstDayOfWeek + i + 1;
+    html += `<div style="min-height:50px;border-radius:8px;background:rgba(255,255,255,0.01);opacity:0.25;display:flex;align-items:flex-start;justify-content:flex-end;padding:4px;font-size:10px;font-family:var(--fm);color:var(--text-muted);">${prevDay}</div>`;
+  }
+
+  // Current month days
+  for (let day = 1; day <= totalDaysInMonth; day++) {
+    const dayStr = String(day).padStart(2, '0');
+    const dateKey = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${dayStr}`;
+    const info = datesMap[dateKey];
+    const isSelected = (window._attendCalSelectedDate === dateKey);
+
+    if (info) {
+      const isFull = info.pct === 100;
+      const borderCol = isSelected ? 'var(--blue, #3b82f6)' : isFull ? 'rgba(34, 197, 94, 0.6)' : 'rgba(234, 179, 8, 0.6)';
+      const bgCol = isSelected ? 'rgba(59, 130, 246, 0.15)' : isFull ? 'rgba(34, 197, 94, 0.1)' : 'rgba(234, 179, 8, 0.1)';
+      const badgeBg = isFull ? '#22c55e' : '#eab308';
+
+      html += `
+      <div onclick="selectAttendanceCalDate('${dateKey}')" style="min-height:50px;border-radius:8px;border:1.5px solid ${borderCol};background:${bgCol};padding:3px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;box-shadow:${isSelected ? '0 0 10px rgba(59,130,246,0.3)' : '0 2px 5px rgba(0,0,0,0.03)'};position:relative;" title="Date: ${dateKey} | ${info.present}/${info.total} Present (${info.pct}%)">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11px;font-weight:900;color:var(--text);font-family:var(--fm);">${day}</span>
+          <span style="width:5px;height:5px;border-radius:50%;background:${badgeBg};display:inline-block;"></span>
+        </div>
+        <div style="text-align:center;margin-top:auto;">
+          <div style="font-size:8.5px;font-weight:900;background:${badgeBg};color:#fff;border-radius:3px;padding:1px 2px;line-height:1;display:inline-block;">${info.present}/${info.total}</div>
+          <div style="font-size:7.5px;font-weight:800;color:${isFull ? '#22c55e' : '#eab308'};margin-top:1px;">${info.pct}%</div>
+        </div>
+      </div>`;
+    } else {
+      // Regular non-event day
+      html += `
+      <div style="min-height:50px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:rgba(255,255,255,0.01);padding:4px;display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-end;">
+        <span style="font-size:10px;font-weight:600;color:var(--text-muted);font-family:var(--fm);">${day}</span>
+      </div>`;
+    }
+  }
+
+  html += `
+    </div>
+  </div>`;
+
+  // Selected Date Inspector Popup or Month Summary Banner
+  if (window._attendCalSelectedDate && datesMap[window._attendCalSelectedDate]) {
+    const sel = datesMap[window._attendCalSelectedDate];
+    let selFormatted = window._attendCalSelectedDate;
+    try {
+      const dt = new Date(window._attendCalSelectedDate);
+      if (!isNaN(dt.getTime())) {
+        selFormatted = dt.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+      }
+    } catch(e) {}
+
+    html += `
+    <div style="background:var(--surface);border:1.5px solid var(--blue,#3b82f6);border-radius:12px;padding:10px 14px;margin-bottom:12px;box-shadow:0 4px 14px rgba(59,130,246,0.1);animation:fadeUp 0.3s ease;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:14px;">📌</span>
+          <span style="font-size:12.5px;font-weight:800;color:var(--text);">${selFormatted}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="badge ${sel.pct === 100 ? 'b-green' : 'b-amber'}" style="font-weight:800;font-size:10px;">${sel.present}/${sel.total} Present (${sel.pct}%)</span>
+          <button class="btn btn-ghost btn-xs" onclick="selectAttendanceCalDate('${window._attendCalSelectedDate}')" style="font-size:10px;padding:2px 5px;color:var(--text-dim);" title="Close detail">✕</button>
+        </div>
+      </div>
+      
+      <!-- Attendees chips -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:100px;overflow-y:auto;">
+        ${sel.participants.map(p => {
+          const isPres = getRoundPresent(p, p.round);
+          return `<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:6px;background:${isPres ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)'};color:${isPres ? '#22c55e' : '#ef4444'};border:1px solid ${isPres ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'};">
+            ${isPres ? '✓' : '✗'} ${p.name || p.id}
+          </span>`;
+        }).join('')}
+      </div>
+    </div>`;
+  } else if (thisMonthDates.length > 0) {
+    // Month overall summary bar
+    html += `
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-dim);">
+        ${monthName} Overall: <b style="color:var(--text);">${monthTotalPresent} / ${monthTotalParts}</b> Attendees Present
+      </div>
+      <span class="badge ${monthPct === 100 ? 'b-green' : monthPct >= 50 ? 'b-amber' : 'b-red'}" style="font-weight:800;font-size:10.5px;">${monthPct}% Month Avg</span>
+    </div>`;
+  }
+
+  // Dynamic Category present breakdown below
   const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
   let categoryBreakdown = '';
   
@@ -11442,7 +11597,6 @@ function renderAttendanceBreakdown(){
   html += categoryBreakdown;
   breakdownEl.innerHTML = html;
 }
-
 function renderJudgeStatus(){
   const data = participants.filter(p => String(p.eventId) === String(activeEventId));
   const sState = syncEngine.getData() || {};
