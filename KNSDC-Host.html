@@ -880,14 +880,19 @@ try {
 
     <div id="host-active-content">
     <div id="sec-dashboard" class="section active">
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
-        <label style="font-size:12px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Round:</label>
-        <select id="host-round-sel" onchange="hostChangeRound(this.value)" style="padding:8px 14px; border-radius:10px; border:1.5px solid var(--border); font-size:13px; font-weight:700; background:var(--surface); color:var(--text); outline:none; cursor:pointer;">
-          <option value="audition">Audition</option>
-          <option value="qualified">Qualified</option>
-          <option value="semifinal">Semifinal</option>
-          <option value="final">Final</option>
-        </select>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="font-size:12px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">Round:</label>
+          <select id="host-round-sel" onchange="hostChangeRound(this.value)" style="padding:8px 14px; border-radius:10px; border:1.5px solid var(--border); font-size:13px; font-weight:700; background:var(--surface); color:var(--text); outline:none; cursor:pointer;">
+            <option value="audition">Audition</option>
+            <option value="qualified">Qualified</option>
+            <option value="semifinal">Semifinal</option>
+            <option value="final">Final</option>
+          </select>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex:1; max-width:300px; min-width:200px;">
+          <input type="text" id="host-dash-search" placeholder="🔍 Search present performer or ID..." oninput="window._hostDashSearch = this.value; renderDashboard();" style="width:100%; padding:8px 14px; border-radius:10px; border:1.5px solid var(--border); font-size:13px; background:var(--surface); color:var(--text); outline:none;">
+        </div>
       </div>
       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px">
         <div class="stat-card">
@@ -1584,11 +1589,13 @@ syncEngine.subscribe((state) => {
   // on a later round (e.g. 'semifinal') while the default is 'audition'.
   // Only auto-switch if the host has not manually changed the round.
   if (!window._hostRoundManuallySet && participants.length > 0) {
-    const presentParts = participants.filter(p => {
-      const r = p.round || 'audition';
+    const scopedForDetect = typeof getHostScopedParticipants === 'function' ? getHostScopedParticipants() : participants;
+    const detectPoolBase = scopedForDetect.length > 0 ? scopedForDetect : participants;
+    const presentParts = detectPoolBase.filter(p => {
+      const r = String(p.round || 'audition').toLowerCase();
       return getRoundPresent(p, r);
     });
-    const pool = presentParts.length > 0 ? presentParts : participants;
+    const pool = presentParts.length > 0 ? presentParts : detectPoolBase;
     const roundCounts = {};
     pool.forEach(p => {
       const r = p.round || 'audition';
@@ -1770,19 +1777,50 @@ function getHostScopedParticipants() {
 function renderDashboard() {
   const data = syncEngine.getData() || {};
   const activeEvId = hostAssignedEventId || data.activeEventId;
-  const round = hostSelectedRound || 'audition';
+  const round = String(hostSelectedRound || 'audition').toLowerCase();
   const scoped = getHostScopedParticipants();
+
+  const events = data?.events || [];
+  const activeEv = events.find(e => String(e.id) === String(activeEvId)) || events[0];
+  const allCats = (activeEv && activeEv.categories) || data.categories || [];
+  const resolveCatName = (p) => {
+    if (p.catName) return p.catName;
+    const cId = p.catId || p.category_id || p.category;
+    const found = allCats.find(c => String(c.id) === String(cId) || (c.name && String(c.name).toLowerCase() === String(cId || '').toLowerCase()));
+    if (found && found.name) return found.name;
+    if (p.category && isNaN(Number(p.category))) return p.category;
+    return p.gender || 'Participant';
+  };
+  const hasParticipantAudio = (p) => {
+    if (p.musicUrl && String(p.musicUrl).trim()) return true;
+    if (p.formAnswers) {
+      if (p.formAnswers._musicUrl && String(p.formAnswers._musicUrl).trim()) return true;
+      return Object.entries(p.formAnswers).some(([k, v]) =>
+        typeof v === 'string' && v.trim() !== '' && !k.startsWith('_') &&
+        (/audio|music|song|track|sound/i.test(k) || /\.(mp3|wav|ogg|m4a|aac|opus)($|\?)/i.test(v))
+      );
+    }
+    return false;
+  };
+  const isWaitingStatus = (p) => {
+    const st = String(p.stageStatus || '').toLowerCase().trim();
+    return !st || st === 'waiting' || st === 'pending';
+  };
+  const isDoneStatus = (p) => {
+    const st = String(p.stageStatus || '').toLowerCase().trim();
+    return st === 'done' || st === 'completed' || st === 'finished';
+  };
   
-  // Total registered in this round
-  const roundRegistered = scoped.filter(p => p.round === round);
+  // Total registered in this round (case-insensitive, defaults to audition)
+  const roundRegistered = scoped.filter(p => String(p.round || 'audition').toLowerCase() === round);
   // Present participants only — verified by Monitor attendance / roundPresence stamp
   const filtered = roundRegistered.filter(p => getRoundPresent(p, round));
   
   const totalPresent = filtered.length;
   const totalRegistered = roundRegistered.length;
-  const done = filtered.filter(p => p.stageStatus === 'done').length;
-  const wait = filtered.filter(p => p.stageStatus === 'waiting').length;
-  const queue = scoped.filter(p => p.stageStatus === 'queue').length;
+  const done = filtered.filter(isDoneStatus).length;
+  const wait = filtered.filter(isWaitingStatus).length;
+  const queue = scoped.filter(p => String(p.stageStatus || '').toLowerCase() === 'queue').length;
 
   const statTotalEl = document.getElementById('stat-total');
   if (statTotalEl) {
@@ -1796,40 +1834,59 @@ function renderDashboard() {
   const container = document.getElementById('dashboard-content');
   if(!container) return;
   
-  const waitingPerformers = filtered.filter(p => p.stageStatus === 'waiting');
+  const searchQuery = String(window._hostDashSearch || '').trim().toLowerCase();
+  let waitingPerformers = filtered.filter(isWaitingStatus);
+  if (searchQuery) {
+    waitingPerformers = waitingPerformers.filter(p =>
+      String(p.name || '').toLowerCase().includes(searchQuery) ||
+      String(p.id || '').toLowerCase().includes(searchQuery) ||
+      resolveCatName(p).toLowerCase().includes(searchQuery)
+    );
+  }
+  // Sort Ready performers to the top so Host sees them immediately
+  waitingPerformers.sort((a, b) => {
+    if (a.isReady && !b.isReady) return -1;
+    if (!a.isReady && b.isReady) return 1;
+    return (Number(a.presentMarkedAt) || 0) - (Number(b.presentMarkedAt) || 0);
+  });
+
   let pickerHtml = '';
   if (waitingPerformers.length === 0) {
     pickerHtml = `
       <div style="color:var(--text-muted);text-align:center;padding:30px;font-size:13px">
         <div style="font-size:26px;margin-bottom:8px;">📍</div>
-        <div style="font-weight:700;font-size:14px;color:var(--text)">No waiting present performers for this round.</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Only participants marked present by the Monitor will appear here.</div>
+        <div style="font-weight:700;font-size:14px;color:var(--text)">${searchQuery ? 'No matching present performers found.' : 'No waiting present performers for this round.'}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${searchQuery ? 'Try clearing the search box.' : 'Only participants marked present by the Monitor will appear here.'}</div>
       </div>
     `;
   } else {
     pickerHtml = `
-      <div style="display:flex; flex-direction:column; gap:10px; max-height: 400px; overflow-y: auto; padding-right:5px;">
-        ${waitingPerformers.map(p => `
-          <div class="performer-item">
+      <div style="display:flex; flex-direction:column; gap:10px; max-height: 440px; overflow-y: auto; padding-right:5px;">
+        ${waitingPerformers.map(p => {
+          const catLabel = resolveCatName(p);
+          const hasAudio = hasParticipantAudio(p);
+          return `
+          <div class="performer-item" style="${p.isReady ? 'border-color:rgba(16,185,129,0.5); background:rgba(16,185,129,0.04);' : ''}">
             <div>
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span style="font-weight:800; font-size:15px; color:var(--text); letter-spacing:-0.2px;">${p.name}</span>
-                <span class="badge" style="background:rgba(16,185,129,0.15); color:#059669; font-size:10px; font-weight:800; padding:2px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.25);">✓ Present at Venue</span>
+                ${hasAudio ? '<span title="Audio track uploaded" style="font-size:14px;">🎵</span>' : ''}
+                ${p.isReady ? '<span class="badge" style="background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; font-size:10px; font-weight:800; padding:2px 8px; border-radius:6px;">🔥 READY</span>' : ''}
+                <span class="badge" style="background:rgba(16,185,129,0.15); color:#059669; font-size:10px; font-weight:800; padding:2px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.25);">✓ Present</span>
               </div>
               <div style="font-size:12px; color:var(--text-muted); font-family:var(--fm); margin-top:4px;">
-                ID: <span style="color:var(--text-dim); font-weight:600">${p.id}</span> | ${p.catName || p.gender || 'Participant'}
+                ID: <span style="color:var(--text-dim); font-weight:600">${p.id}</span> | ${catLabel}
                 ${p.presentMarkedAt ? ` · <span style="font-size:11px; opacity:0.8;">Stamped ${new Date(p.presentMarkedAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>` : ''}
               </div>
             </div>
-            <button class="btn btn-sm btn-blue" style="padding:8px 16px; border-radius:10px; font-weight:700; box-shadow: 0 4px 12px rgba(37,99,235,0.2);" onclick="pushToQueueFromList('${p.id}')">＋ Add to Queue</button>
+            <button class="btn btn-sm btn-blue" style="padding:8px 16px; border-radius:10px; font-weight:700; box-shadow: 0 4px 12px rgba(37,99,235,0.2); white-space:nowrap;" onclick="pushToQueueFromList('${p.id}')">＋ Add to Queue</button>
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     `;
   }
 
-  const events = data?.events || [];
-  const activeEv = events.find(e => String(e.id) === String(activeEvId));
   const eventSponsors = (activeEv && activeEv.switchStates && activeEv.switchStates.sponsors) ? activeEv.switchStates.sponsors : [];
   
   const sidebarSponsorsEl = document.getElementById('sidebar-sponsors');
