@@ -8874,7 +8874,11 @@ function updateSidebarUserInfo() {
   const cfg = ROLE_PROFILE_CONFIG[localRole] || ROLE_PROFILE_CONFIG.monitor;
   let name = 'Monitor', email = '';
   if (localUser) {
-    try { const u = JSON.parse(localUser); name = u.name || 'Monitor'; email = u.email || ''; } catch(e) {}
+    try {
+      const u = JSON.parse(localUser);
+      name = u.name || u.fullname || (u.email ? u.email.split('@')[0] : 'Monitor');
+      email = u.email || '';
+    } catch(e) {}
   }
   const avatarEl = document.getElementById('sidebar-user-avatar');
   const nameEl = document.getElementById('sidebar-user-name');
@@ -8882,8 +8886,8 @@ function updateSidebarUserInfo() {
   const portalEl = document.getElementById('sidebar-portal-label');
   if (avatarEl) { avatarEl.textContent = name.charAt(0).toUpperCase(); avatarEl.style.background = cfg.color; }
   if (nameEl) nameEl.textContent = name;
-  if (roleEl) { roleEl.textContent = cfg.label; roleEl.style.color = cfg.color; }
-  if (portalEl) portalEl.textContent = 'Monitor Panel'; // Portal name stays fixed
+  if (roleEl) { roleEl.textContent = email || cfg.label; roleEl.style.color = cfg.color; }
+  if (portalEl) portalEl.textContent = 'Monitor Panel';
 }
 
 function showMonitorProfileModal() {
@@ -9182,11 +9186,14 @@ function setRoundPresent(p, round, isPresent) {
 let lastRenderedStateHash = '';
 let lastHydratedEventId = null; // Track which event was last loaded in hydrate(), to protect formFields from resetting on participant deletes
 function hydrate() {
+  try { updateSidebarUserInfo(); } catch(e) {}
   const s = syncEngine.getData();
   if (!s) return;
   
   const currentHash = JSON.stringify(s);
-  if (currentHash === lastRenderedStateHash) return; // Prevent unnecessary re-renders to stop UI flickering
+  const assignedNameElCheck = document.getElementById('assigned-event-name');
+  const isInitialUnloaded = !assignedNameElCheck || assignedNameElCheck.textContent === 'Loading...';
+  if (!isInitialUnloaded && currentHash === lastRenderedStateHash) return; // Prevent unnecessary re-renders to stop UI flickering
   lastRenderedStateHash = currentHash;
 
   
@@ -9275,10 +9282,13 @@ function hydrate() {
   }
 
   const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));
+  const activeEvName = activeEv ? (activeEv.name || activeEv.title) : 'No Event Assigned';
   
-  // Update locked event display in sidebar
+  // Update locked event display in sidebar & topbar
   const assignedNameEl = document.getElementById('assigned-event-name');
-  if (assignedNameEl) assignedNameEl.textContent = activeEv ? activeEv.name : 'No Event Assigned';
+  if (assignedNameEl) assignedNameEl.textContent = activeEvName;
+  const topbarEventEl = document.getElementById('topbar-event-name');
+  if (topbarEventEl) topbarEventEl.textContent = activeEvName;
   
   const seenIds = new Set();
   participants = (s.participants || []).filter(p => {
@@ -14653,7 +14663,7 @@ async function downloadCompleteScoresAndParticipantsBackup() {
   }
 }
 
-function downloadRegs(format = 'excel') {
+async function downloadRegs(format = 'excel') {
   let eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   
   const s = (document.getElementById('reg-search')?.value || '').toLowerCase();
