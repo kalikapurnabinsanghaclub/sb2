@@ -1,11 +1,3 @@
-<script>
-// Clean up stale default 1+4 formula from previous sessions
-try {
-  if (localStorage.getItem('knsdc_ranking_formula') === '1+4' && localStorage.getItem('knsdc_ranking_formula_active') !== '1') {
-    localStorage.removeItem('knsdc_ranking_formula');
-  }
-} catch(e) {}
-</script>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,12 +5,45 @@ try {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@600;700;800&family=Syne:wght@700;800;900&display=swap" rel="stylesheet"/>
 <title>KNSDC — Host Panel</title>
+<link rel="manifest" href="/manifest-host.json"/>
+<meta name="theme-color" id="pwa-theme-color" content="#070a14"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="KNSDC Host"/>
+<link rel="apple-touch-icon" href="/logo.png"/>
+<link rel="icon" type="image/png" href="/logo.png"/>
+<script>
+try {
+  if (localStorage.getItem('knsdc_ranking_formula') === '1+4' && localStorage.getItem('knsdc_ranking_formula_active') !== '1') {
+    localStorage.removeItem('knsdc_ranking_formula');
+  }
+} catch(e) {}
+</script>
 <!-- Zero-Egress Native System Font Stack (0 KB download overhead) -->
 <script>
+  // Auto-sync PWA Top Status Bar & Bottom System Navigation Bar with active theme
+  window.syncHostSystemBarsWithTheme = function() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const barColor = isDark ? '#070a14' : '#f8fafc';
+    const metaTheme = document.getElementById('pwa-theme-color') || document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute('content', barColor);
+    const metaApple = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (metaApple) metaApple.setAttribute('content', isDark ? 'black-translucent' : 'default');
+    document.documentElement.style.backgroundColor = barColor;
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    if (document.body) document.body.style.backgroundColor = barColor;
+  };
+
   // Apply theme immediately to prevent FOUC
   (function() {
     const savedTheme = localStorage.getItem('knsdc_host_theme');
     if (savedTheme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    window.syncHostSystemBarsWithTheme();
+    try {
+      new MutationObserver(() => window.syncHostSystemBarsWithTheme())
+        .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    } catch (e) {}
   })();
 </script>
 <script>
@@ -851,6 +876,9 @@ try {
       <div id="host-status-dot" class="live-dot"></div>
       <span id="host-status-text" style="font-size:11px;color:var(--text-dim);font-family:var(--fm)">LIVE</span>
       <span id="live-clock" style="font-size:13px;font-weight:600;color:var(--text-dim);font-family:monospace;margin-left:4px"></span>
+      <button type="button" id="host-install-btn" onclick="triggerHostAppInstall()" title="Install Host Portal as App" style="display:none;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:11px;font-weight:800;background:linear-gradient(135deg,#4f46e5,#6366f1);color:#ffffff;border:none;box-shadow:0 3px 10px rgba(79,70,229,0.35);cursor:pointer;white-space:nowrap;margin-left:8px;transition:all 0.2s;">
+        <span>📲</span> <span>Install App</span>
+      </button>
       <button class="btn btn-ghost btn-sm" style="border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:6px;font-weight:700;margin-left:10px;padding:4px 10px;font-size:11px" onclick="refreshPortal(this)">
         <span class="refresh-icon">🔄</span> Refresh
       </button>
@@ -3510,6 +3538,7 @@ function toggleTheme() {
     document.documentElement.setAttribute('data-theme', 'dark');
     localStorage.setItem('knsdc_host_theme', 'dark');
   }
+  if (typeof window.syncHostSystemBarsWithTheme === 'function') window.syncHostSystemBarsWithTheme();
 }
 
 // Set initial switch state
@@ -3594,5 +3623,64 @@ if (typeof BroadcastChannel !== 'undefined') {
   });
 })();
 </script>
+
+<script>
+// ════════════════════════════════════════
+// HOST PORTAL PWA INSTALLATION & SERVICE WORKER
+// ════════════════════════════════════════
+(function initHostPWA() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    });
+  }
+
+  window._deferredHostInstallPrompt = null;
+  const installBtn = document.getElementById('host-install-btn');
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window._deferredHostInstallPrompt = e;
+    if (installBtn && !isStandalone) {
+      installBtn.style.display = 'inline-flex';
+    }
+  });
+
+  window.addEventListener('appinstalled', () => {
+    window._deferredHostInstallPrompt = null;
+    if (installBtn) installBtn.style.display = 'none';
+    if (typeof toast === 'function') toast('✅ KNSDC Host App installed on your device!');
+  });
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+  if (isIOS && !isStandalone && installBtn) {
+    installBtn.style.display = 'inline-flex';
+  }
+})();
+
+window.triggerHostAppInstall = async function() {
+  if (window._deferredHostInstallPrompt) {
+    window._deferredHostInstallPrompt.prompt();
+    const choice = await window._deferredHostInstallPrompt.userChoice;
+    if (choice && choice.outcome === 'accepted') {
+      const btn = document.getElementById('host-install-btn');
+      if (btn) btn.style.display = 'none';
+    }
+    window._deferredHostInstallPrompt = null;
+    return;
+  }
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+  if (isIOS) {
+    alert('To install on iPhone/iPad:\n1. Tap the Share button (⬆️) at the bottom of Safari.\n2. Scroll down and tap "Add to Home Screen".');
+  } else {
+    alert('To install on Android:\nTap the browser menu (⋮) at the top-right and select "Install app" or "Add to Home screen".');
+  }
+};
+</script>
+
 </body>
 </html>
