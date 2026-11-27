@@ -1,17 +1,24 @@
-<script>
-// Clean up stale default 1+4 formula from previous sessions
-try {
-  if (localStorage.getItem('knsdc_ranking_formula') === '1+4' && localStorage.getItem('knsdc_ranking_formula_active') !== '1') {
-    localStorage.removeItem('knsdc_ranking_formula');
-  }
-} catch(e) {}
-</script>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>KNSDC — Judge Panel</title>
+<link rel="manifest" href="/manifest-judge.json"/>
+<meta name="theme-color" content="#f59e0b"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="KNSDC Judge"/>
+<link rel="apple-touch-icon" href="/logo.png"/>
+<link rel="icon" type="image/png" href="/logo.png"/>
+<script>
+try {
+  if (localStorage.getItem('knsdc_ranking_formula') === '1+4' && localStorage.getItem('knsdc_ranking_formula_active') !== '1') {
+    localStorage.removeItem('knsdc_ranking_formula');
+  }
+} catch(e) {}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;1,600&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,500&family=Syne:wght@600;700;800;900&display=swap" rel="stylesheet"/>
@@ -2439,6 +2446,11 @@ try {
       <button type="button" id="judge-sync-indicator" onclick="showNetworkSpeedOnSynced()" title="Tap to view live Download & Upload speed (5s)" style="display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:20px;font-size:11.5px;font-weight:800;background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.28);transition:all 0.25s cubic-bezier(0.16,1,0.3,1);cursor:pointer;white-space:nowrap;box-shadow:0 2px 10px rgba(34,197,94,0.08);">
         <span id="judge-sync-dot" class="sync-dot-blink green" style="width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0;"></span>
         <span id="judge-sync-text">Synced</span>
+      </button>
+
+      <!-- PWA Install App Button (Auto-shown when installable) -->
+      <button type="button" id="judge-install-btn" onclick="triggerJudgeAppInstall()" title="Install Judge Portal as App" style="display:none;align-items:center;gap:6px;padding:6px 13px;border-radius:20px;font-size:11.5px;font-weight:800;background:linear-gradient(135deg,#f59e0b,#d97706);color:#ffffff;border:none;box-shadow:0 3px 12px rgba(245,158,11,0.35);cursor:pointer;white-space:nowrap;transition:all 0.2s;">
+        <span>📲</span> <span>Install App</span>
       </button>
 
       <!-- Tactile Refresh Button -->
@@ -10672,5 +10684,65 @@ async function applyJudgeAvatarAdjustments() {
 }
 window.applyJudgeAvatarAdjustments = applyJudgeAvatarAdjustments;
 </script>
+
+<script>
+// ════════════════════════════════════════
+// JUDGE PORTAL PWA INSTALLATION & SERVICE WORKER
+// ════════════════════════════════════════
+(function initJudgePWA() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    });
+  }
+
+  window._deferredJudgeInstallPrompt = null;
+  const installBtn = document.getElementById('judge-install-btn');
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window._deferredJudgeInstallPrompt = e;
+    if (installBtn && !isStandalone) {
+      installBtn.style.display = 'inline-flex';
+    }
+  });
+
+  window.addEventListener('appinstalled', () => {
+    window._deferredJudgeInstallPrompt = null;
+    if (installBtn) installBtn.style.display = 'none';
+    if (typeof toast === 'function') toast('✅ KNSDC Judge App installed on your device!');
+  });
+
+  // On iPhone/iPad Safari (no beforeinstallprompt), show Install button if not yet installed
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+  if (isIOS && !isStandalone && installBtn) {
+    installBtn.style.display = 'inline-flex';
+  }
+})();
+
+window.triggerJudgeAppInstall = async function() {
+  if (window._deferredJudgeInstallPrompt) {
+    window._deferredJudgeInstallPrompt.prompt();
+    const choice = await window._deferredJudgeInstallPrompt.userChoice;
+    if (choice && choice.outcome === 'accepted') {
+      const btn = document.getElementById('judge-install-btn');
+      if (btn) btn.style.display = 'none';
+    }
+    window._deferredJudgeInstallPrompt = null;
+    return;
+  }
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+  if (isIOS) {
+    alert('To install on iPhone/iPad:\n1. Tap the Share button (⬆️) at the bottom of Safari.\n2. Scroll down and tap "Add to Home Screen".');
+  } else {
+    alert('To install on Android:\nTap the browser menu (⋮) at the top-right and select "Install app" or "Add to Home screen".');
+  }
+};
+</script>
+
 </body>
 </html>
