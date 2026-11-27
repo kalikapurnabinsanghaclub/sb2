@@ -9190,19 +9190,48 @@ function hydrate() {
   lastRenderedStateHash = currentHash;
 
   
-  EVENTS = (s.events || []).filter(e => {
+  // ── Monitor Auto-Event Lock & Multi-Field Assignment Matcher ──
+  const monitorUser = localStorage.getItem('kns_user');
+  try { monitorEmail = (JSON.parse(monitorUser || '{}').email || '').trim().toLowerCase(); } catch(e) {}
+
+  const allStateEvents = s.events || [];
+
+  // Robust helper to check if this event belongs to the logged-in monitor/staff
+  const isAssignedToMonitor = (ev) => {
+    if (!ev || !monitorEmail) return false;
+    // 1. Array staff
+    if (Array.isArray(ev.staff)) {
+      if (ev.staff.some(x => String(x || '').trim().toLowerCase() === monitorEmail)) return true;
+    }
+    // 2. String staff (JSON or comma/substring)
+    if (typeof ev.staff === 'string') {
+      try {
+        const parsed = JSON.parse(ev.staff);
+        if (Array.isArray(parsed) && parsed.some(x => String(x || '').trim().toLowerCase() === monitorEmail)) return true;
+      } catch(ex) {}
+      if (ev.staff.toLowerCase().includes(monitorEmail)) return true;
+    }
+    // 3. Direct monitor assignment fields
+    const directFields = [
+      ev.assigned_monitor, ev.assignedMonitor, ev.monitor,
+      ev.monitor_email, ev.monitorEmail, ev.organizerEmail, ev.applicant_email
+    ];
+    if (directFields.some(x => String(x || '').trim().toLowerCase() === monitorEmail)) return true;
+    return false;
+  };
+
+  // Find assigned event from ALL events first
+  const myAssignedEv = allStateEvents.find(isAssignedToMonitor);
+
+  // Filter EVENTS: cultural events PLUS the monitor's assigned event (even if sports)
+  EVENTS = allStateEvents.filter(e => {
+    if (myAssignedEv && String(e.id) === String(myAssignedEv.id)) return true;
     const cat = String(e.cat || e.type || e.category || '').toLowerCase();
     return cat !== 'sports';
   });
 
-  // ── Monitor Auto-Event Lock ──
-  // Find the event assigned to this monitor by matching their email
-  // against event.staff[]. If found, lock to that event.
-  const monitorUser = localStorage.getItem('kns_user');
-  try { monitorEmail = JSON.parse(monitorUser || '{}').email || ''; } catch(e) {}
-
   if (monitorEmail) {
-    if (monitorEmail.toLowerCase() === 'kalikapurnabinsanghaclub@gmail.com') {
+    if (monitorEmail === 'kalikapurnabinsanghaclub@gmail.com') {
       if (!activeEventId) activeEventId = s.activeEventId || (EVENTS[0] ? String(EVENTS[0].id) : null);
       
       const selWrap = document.getElementById('assigned-event-name')?.parentElement;
@@ -9219,29 +9248,30 @@ function hydrate() {
         sel.style.color = 'var(--text)';
         sel.style.fontWeight = '700';
         sel.onchange = (e) => {
-          activeEventId = e.target.value;
-          const ev = EVENTS.find(x => String(x.id) === activeEventId);
-          if (ev) window.eventName = ev.name;
-          renderGlobalEventSelector();
-          syncEngine.notify();
+          const newId = e.target.value;
+          if (newId !== activeEventId) {
+            activeEventId = newId;
+            const ev = EVENTS.find(x => String(x.id) === activeEventId);
+            if (ev) window.eventName = ev.name;
+            try { localStorage.setItem('knsdc_activeEventId', activeEventId); } catch(ex){}
+            renderGlobalEventSelector();
+            hydrate();
+          }
         };
       }
+    } else if (myAssignedEv) {
+      // Locked permanently to this monitor's assigned event!
+      activeEventId = String(myAssignedEv.id);
+      window.eventName = myAssignedEv.name || myAssignedEv.title;
+      try { localStorage.setItem('knsdc_activeEventId', activeEventId); } catch(ex){}
+      if (syncEngine && syncEngine.state) syncEngine.state.activeEventId = activeEventId;
     } else {
-      const assignedEv = EVENTS.find(e =>
-        Array.isArray(e.staff) && e.staff.map(x => (x || '').toLowerCase()).includes(monitorEmail.toLowerCase())
-      );
-      if (assignedEv && String(assignedEv.id) !== String(activeEventId)) {
-        activeEventId = String(assignedEv.id);
-        window.eventName = assignedEv.name;
-      } else if (assignedEv) {
-        activeEventId = String(assignedEv.id);
-      } else {
-        activeEventId = s.activeEventId || (EVENTS[0] ? String(EVENTS[0].id) : null);
-      }
+      activeEventId = s.activeEventId || (EVENTS[0] ? String(EVENTS[0].id) : null);
+      if (activeEventId) try { localStorage.setItem('knsdc_activeEventId', activeEventId); } catch(ex){}
     }
   } else {
-    // No email found — fallback: use saved activeEventId or the first available event
     activeEventId = s.activeEventId || (EVENTS[0] ? String(EVENTS[0].id) : null);
+    if (activeEventId) try { localStorage.setItem('knsdc_activeEventId', activeEventId); } catch(ex){}
   }
 
   const activeEv = EVENTS.find(e => String(e.id) === String(activeEventId));

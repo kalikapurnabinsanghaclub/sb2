@@ -1190,6 +1190,37 @@
 
   <!-- STAFF MANAGEMENT PAGE -->
   <div class="pp" id="pp-staff">
+    <!-- ── PENDING STAFF & EVENT REQUESTS CARD ── -->
+    <div class="card" style="margin-bottom:20px; border: 1px solid rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.02);">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="card-title" style="margin:0; display:flex; align-items:center; gap:8px;">
+            <span>⏳</span> Pending Staff & Event Requests (অপেক্ষারত আবেদনসমূহ)
+          </div>
+          <span id="staff-pending-badge" style="background:#f59e0b; color:#000; font-size:11px; font-weight:800; padding:2px 8px; border-radius:12px; display:none;">0 Pending</span>
+        </div>
+        <div style="font-size:11px; color:var(--text-muted);">
+          1-Click Approve promotes event to live & activates staff login without re-filling forms!
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="tbl" style="width:100%">
+          <thead>
+            <tr>
+              <th>Applicant</th>
+              <th>Role</th>
+              <th>Proposed Event</th>
+              <th>Type</th>
+              <th>Schedule</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pending-staff-tbody">
+            <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Checking for pending applications...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
     <div class="card" style="margin-bottom:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
@@ -2367,7 +2398,92 @@ window.deleteMsg = async (id) => {
 };
 
 
+
+window.renderPendingStaffRequests = () => {
+  const tbody = document.getElementById('pending-staff-tbody');
+  const badge = document.getElementById('staff-pending-badge');
+  if (!tbody) return;
+  const s = window.syncEngine ? window.syncEngine.getData() : {};
+  const requests = (s.eventRequests || []).filter(r => r.status === 'pending');
+
+  if (badge) {
+    badge.textContent = `${requests.length} Pending`;
+    badge.style.display = requests.length > 0 ? 'inline-block' : 'none';
+  }
+
+  if (requests.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">🎉 No pending staff or event requests right now.</td></tr>';
+    return;
+  }
+
+  const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  };
+
+  tbody.innerHTML = requests.map(r => {
+    const roleEmoji = r.applicant_role === 'monitor' ? '🛡️' : (r.applicant_role === 'umpire' ? '🏏' : (r.applicant_role === 'referee' ? '⚽' : '👤'));
+    const typeBadge = r.event_type === 'sports' ? '<span class="badge" style="background:#10b981;color:#fff">🏆 Sports</span>' : '<span class="badge" style="background:#8b5cf6;color:#fff">🎭 Cultural</span>';
+    return `
+      <tr style="background:rgba(245, 158, 11, 0.04);">
+        <td>
+          <div style="font-weight:700;color:var(--text);">${escapeHtml(r.applicant_name)}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(r.applicant_email)}</div>
+        </td>
+        <td>
+          <span class="badge" style="background:var(--amber);color:#000;font-weight:800;">
+            ${roleEmoji} ${String(r.applicant_role || 'monitor').toUpperCase()}
+          </span>
+        </td>
+        <td>
+          <div style="font-weight:800;color:var(--blue);">${escapeHtml(r.event_name)}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(r.venue || 'Main Venue')}</div>
+        </td>
+        <td>${typeBadge}</td>
+        <td><span style="font-size:11px;color:var(--text-muted);">${r.start_date || 'TBD'} ${r.start_time || ''}</span></td>
+        <td>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-amber btn-xs" onclick="adminApproveStaffEvent('${r.id}')" style="font-weight:800;">
+              ✅ Approve & Launch
+            </button>
+            <button class="btn btn-ghost btn-xs" style="color:var(--red);" onclick="adminRejectStaffEvent('${r.id}')">
+              ❌ Reject
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
+window.adminApproveStaffEvent = async (reqId) => {
+  if (!confirm('Are you sure you want to approve this staff member and launch their event? No re-filling needed!')) return;
+  if (!window.syncEngine || !window.syncEngine.approveStaffEventRequest) return;
+  toast('Approving request and activating event...');
+  const res = await window.syncEngine.approveStaffEventRequest(reqId);
+  if (res.success) {
+    toast('✅ Approved! Event is live and Staff member can now log in.');
+    if (typeof renderStaffPage === 'function') renderStaffPage();
+    if (typeof window.refreshUI === 'function') window.refreshUI('events');
+  } else {
+    alert('Error approving request: ' + res.error);
+  }
+};
+
+window.adminRejectStaffEvent = async (reqId) => {
+  if (!confirm('Are you sure you want to reject this request?')) return;
+  if (!window.syncEngine || !window.syncEngine.rejectStaffEventRequest) return;
+  const res = await window.syncEngine.rejectStaffEventRequest(reqId);
+  if (res.success) {
+    toast('Request rejected.');
+    if (typeof renderStaffPage === 'function') renderStaffPage();
+  } else {
+    alert('Error rejecting: ' + res.error);
+  }
+};
+
 window.renderStaffPage = async (state) => {
+  if (typeof renderPendingStaffRequests === 'function') renderPendingStaffRequests();
   const tbody = document.getElementById('staff-tbody');
   if (!tbody) return;
   if (!window.syncEngine || !window.syncEngine.listStaffMembers) {
