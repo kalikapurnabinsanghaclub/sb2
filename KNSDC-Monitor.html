@@ -3354,7 +3354,7 @@
     
     <div style="display:flex;align-items:center;gap:10px">
       <button class="btn btn-ghost btn-sm" id="monitor-server-btn" style="border:1px solid rgba(147, 51, 234, 0.4); background:rgba(147, 51, 234, 0.08); color:var(--purple, #a855f7); border-radius:10px; display:flex; align-items:center; gap:6px; font-weight:800; margin-right:8px; cursor:pointer;" onclick="openSuperMonitorHub()" title="Monitor Server Infrastructure & Cloud Quota Hub">
-        <span style="font-size:14px;">🖥️</span> Monitor Server
+        <span style="font-size:15px;">🖥️</span>
       </button>
       <button class="btn btn-ghost btn-sm" style="border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:6px;font-weight:700;margin-right:8px" onclick="refreshPortal(this)">
         <span class="refresh-icon">🔄</span> Refresh Portal
@@ -3676,20 +3676,16 @@
 
     <!-- ROUND PIPELINE -->
     <div class="card" style="margin-bottom:14px">
-      <div class="card-header">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div class="card-title">Round Pipeline</div>
-        <span class="badge b-amber">Active Event</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge" style="background:rgba(147,51,234,0.12);color:var(--purple,#a855f7);border:1px solid rgba(147,51,234,0.25);font-weight:800;display:inline-flex;align-items:center;gap:5px" id="pipeline-total-reg">
+            📋 Total Registered: <span id="pipeline-total-count">0</span>
+          </span>
+          <span class="badge b-amber">Active Event</span>
+        </div>
       </div>
       <div class="round-pipeline" id="round-pipeline"></div>
-      <div style="margin-top:16px;padding-top:16px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:6px;background:var(--surface);border-radius:12px;padding:12px">
-         <div style="font-size:12px;font-weight:800;color:var(--text);white-space:nowrap;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🚀</span> AUTO-SYNC PIPELINE</div>
-         <select id="dash-promo-from" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);font-size:9px;background:#fff;outline:none;font-family:var(--fm);font-weight:700">
-            <option value="audition">Audition → Qualified</option>
-            <option value="qualified">Qualified → Semifinal</option>
-            <option value="semifinal">Semifinal → Final</option>
-         </select>
-         <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;border:none;border-radius:8px;padding:6px 12px;font-weight:800;font-size:9px;margin-left:auto" onclick="autoPromoteTopN()">⚡ PROMOTE TOP N PER CAT</button>
-      </div>
     </div>
 
     <!-- BOTTOM ROW: Attendance + Judge Status -->
@@ -9156,9 +9152,24 @@ function ensureRoundPresence(p) {
 }
 
 function hasReachedRound(p, targetRound) {
-  const roundOrder = (typeof getEventRounds === 'function') ? getEventRounds().map(r => r.id) : ['audition', 'qualified', 'semifinal', 'final'];
-  const currentIdx = roundOrder.indexOf(p.round || roundOrder[0] || 'audition');
-  const targetIdx = roundOrder.indexOf(targetRound);
+  if (!p) return false;
+  const roundDefs = (typeof getEventRounds === 'function') ? getEventRounds() : [];
+  const roundOrder = roundDefs.length > 0 ? roundDefs.map(r => String(r.id).toLowerCase().trim()) : ['audition', 'qualified', 'semifinal', 'final'];
+  const curRound = String(p.round || roundOrder[0] || 'audition').toLowerCase().trim().replace(/[^a-z0-9_]/g, '_');
+  const tgtRound = String(targetRound || '').toLowerCase().trim().replace(/[^a-z0-9_]/g, '_');
+
+  if (curRound === tgtRound) return true;
+  if (p.promotedFrom && typeof p.promotedFrom === 'object') {
+    const fromKeys = Object.keys(p.promotedFrom).map(k => String(k).toLowerCase().trim().replace(/[^a-z0-9_]/g, '_'));
+    if (fromKeys.includes(tgtRound)) return true;
+  }
+  if (p.roundScores && p.roundScores[targetRound]) return true;
+
+  const currentIdx = roundOrder.indexOf(curRound);
+  const targetIdx = roundOrder.indexOf(tgtRound);
+  if (currentIdx === -1 || targetIdx === -1) {
+    return curRound === tgtRound;
+  }
   return currentIdx >= targetIdx;
 }
 
@@ -11175,21 +11186,48 @@ function renderDashStats(){
 }
 
 function renderRoundPipeline(){
+  const pipelineEl = document.getElementById('round-pipeline');
+  if (!pipelineEl) return;
+
   const roundDefs = getEventRounds();
   const rounds = roundDefs.map(r => r.id);
   const labels = roundDefs.map(r => r.name);
-  const data = participants.filter(p => String(p.eventId) === String(activeEventId));
-  const counts = rounds.map(r => data.filter(p=>p.round===r).length);
-  const presentCounts = rounds.map(r => data.filter(p=>p.round===r && getRoundPresent(p, r)).length);
-  const activeRound = rounds[0] || "audition";
-  document.getElementById('round-pipeline').innerHTML = rounds.map((r,i)=>`
-    <div class="rp-step">
-      <div class="rp-box ${r===activeRound?'active':counts[i]>0?'done':''}">
-        <div class="rp-num" style="color:${r===activeRound?'var(--amber2)':counts[i]>0?'var(--green2)':'var(--text-muted)'}">${counts[i]}</div>
-        <div class="rp-lbl">${labels[i]}</div>
-        <div style="font-size:9px;color:var(--green2);font-weight:700;margin-top:2px">${presentCounts[i]} present</div>
-      </div>
-    </div>`).join('');
+
+  // Match event participants, supporting missing/unassigned fallback
+  const data = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+
+  // Update Total Registered count badge in header
+  const totalCountEl = document.getElementById('pipeline-total-count');
+  if (totalCountEl) totalCountEl.textContent = data.length;
+
+  // Reached count: all participants who reached/qualified for this round
+  const reachedCounts = rounds.map(r => data.filter(p => hasReachedRound(p, r)).length);
+  // Current active count in this round
+  const currentCounts = rounds.map(r => data.filter(p => String(p.round || '').toLowerCase().trim().replace(/[^a-z0-9_]/g, '_') === String(r).toLowerCase().trim().replace(/[^a-z0-9_]/g, '_')).length);
+  // Present count for this round
+  const presentCounts = rounds.map(r => data.filter(p => hasReachedRound(p, r) && getRoundPresent(p, r)).length);
+
+  pipelineEl.innerHTML = rounds.map((r, i) => {
+    const reached = reachedCounts[i];
+    const current = currentCounts[i];
+    const present = presentCounts[i];
+    const isDone = (reached > 0 && current === 0 && i < rounds.length - 1);
+    const isActive = (current > 0 || (i === 0 && reached === 0));
+
+    let statusText = `${present} present`;
+    if (current > 0 && reached !== current) {
+      statusText += ` · ${current} in stage`;
+    }
+
+    return `
+      <div class="rp-step">
+        <div class="rp-box ${isActive ? 'active' : isDone ? 'done' : ''}">
+          <div class="rp-num" style="color:${isActive ? 'var(--amber2)' : reached > 0 ? 'var(--green2)' : 'var(--text-muted)'}">${reached}</div>
+          <div class="rp-lbl">${labels[i]}</div>
+          <div style="font-size:9px;color:${present > 0 ? 'var(--green2)' : 'var(--text-dim)'};font-weight:700;margin-top:3px">${statusText}</div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 function renderStageView(){
