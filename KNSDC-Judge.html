@@ -10261,57 +10261,122 @@ window.showNetworkSpeedOnSynced = async function() {
   window._showingNetSpeed = true;
   if (window._netSpeedTimer) clearTimeout(window._netSpeedTimer);
 
-  // Instant feedback while measuring
-  indicator.style.background = 'rgba(14, 165, 233, 0.14)';
-  indicator.style.borderColor = 'rgba(14, 165, 233, 0.4)';
-  indicator.style.color = '#38bdf8';
-  if (dot) dot.className = 'sync-dot-blink green';
-  text.textContent = '⚡ Testing...';
-
-  let downMbps = null;
-  let upMbps = null;
-
-  try {
-    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    if (conn && typeof conn.downlink === 'number' && conn.downlink > 0) {
-      downMbps = conn.downlink;
-    }
-
-    // Measure live local asset throughput (0 external egress / tiny same-origin probe)
-    const t0 = performance.now();
-    const resp = await fetch('logo.png?speedprobe=' + Date.now(), { cache: 'no-store' });
-    const blob = await resp.blob();
-    const dtSec = Math.max(0.005, (performance.now() - t0) / 1000);
-    const measuredMbps = (blob.size * 8) / (dtSec * 1000000);
-
-    if (!downMbps) {
-      downMbps = Math.max(0.5, Math.min(measuredMbps, 150));
-    }
-    // Estimate upload speed from downlink & RTT characteristics (typical asymmetric mobile/broadband ratio ~0.42x)
-    const rttFactor = (conn && conn.rtt) ? Math.max(0.25, Math.min(0.65, 45 / Math.max(20, conn.rtt))) : 0.42;
-    upMbps = Math.max(0.2, downMbps * rttFactor);
-  } catch (e) {
-    downMbps = navigator.onLine ? 12.4 : 0;
-    upMbps = navigator.onLine ? 5.2 : 0;
-  }
-
-  const fmtSpeed = (mbps) => {
-    if (!navigator.onLine || mbps <= 0) return '0 Kbps';
-    return mbps >= 1 ? `${mbps.toFixed(1)} Mbps` : `${Math.round(mbps * 1000)} Kbps`;
-  };
-
   const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
+
   if (!navigator.onLine) {
     indicator.style.background = 'rgba(239, 68, 68, 0.14)';
     indicator.style.borderColor = 'rgba(239, 68, 68, 0.35)';
     indicator.style.color = isDarkTheme ? '#f87171' : '#dc2626';
+    if (dot) dot.className = 'sync-dot-blink red';
     text.textContent = 'Offline · ↓0 ↑0';
-  } else {
-    indicator.style.background = 'rgba(14, 165, 233, 0.14)';
-    indicator.style.borderColor = 'rgba(14, 165, 233, 0.42)';
-    indicator.style.color = isDarkTheme ? '#38bdf8' : '#0369a1';
-    text.textContent = `↓ ${fmtSpeed(downMbps)} · ↑ ${fmtSpeed(upMbps)}`;
+    window._netSpeedTimer = setTimeout(() => {
+      window._showingNetSpeed = false;
+      updateJudgeSyncStatusBadge();
+    }, 5000);
+    return;
   }
+
+  indicator.style.background = 'rgba(14, 165, 233, 0.14)';
+  indicator.style.borderColor = 'rgba(14, 165, 233, 0.42)';
+  indicator.style.color = isDarkTheme ? '#38bdf8' : '#0369a1';
+  if (dot) dot.className = 'sync-dot-blink green';
+  text.textContent = '⚡ Testing ↓...';
+
+  let downMbps = 0;
+  let upMbps = 0;
+
+  // 1. ACTUAL DOWNLOAD SPEED TEST (1 MB stream from Cloudflare Edge, max 1.5s)
+  try {
+    const ctrl = new AbortController();
+    const abortId = setTimeout(() => ctrl.abort(), 1500);
+    const resp = await fetch('https://speed.cloudflare.com/__down?bytes=1000000&r=' + Date.now(), {
+      cache: 'no-store',
+      signal: ctrl.signal
+    });
+
+    if (resp.ok && resp.body && typeof resp.body.getReader === 'function') {
+      const reader = resp.body.getReader();
+      let received = 0;
+      let tStart = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (tStart === 0) tStart = performance.now();
+          received += value.byteLength;
+        }
+      } catch (abortErr) {
+        // Timed out at 1.5s on slower connection — still compute speed from received bytes
+      }
+      clearTimeout(abortId);
+      const dtSec = Math.max(0.02, (performance.now() - (tStart || performance.now())) / 1000);
+      if (received > 0) {
+        downMbps = (received * 8) / (dtSec * 1000000);
+      }
+    } else {
+      clearTimeout(abortId);
+      const t0 = performance.now();
+      const buf = await resp.arrayBuffer();
+      const dtSec = Math.max(0.01, (performance.now() - t0) / 1000);
+      downMbps = (buf.byteLength * 8) / (dtSec * 1000000);
+    }
+  } catch (e) {
+    // Fallback to same-origin static HTML probe if external speed endpoint is blocked
+    try {
+      const t0 = performance.now();
+      const r = await fetch('KNSDC-Judge.html?sp=' + Date.now(), { cache: 'no-store' });
+      const b = await r.arrayBuffer();
+      const dtSec = Math.max(0.01, (performance.now() - t0) / 1000);
+      downMbps = (b.byteLength * 8) / (dtSec * 1000000);
+    } catch (e2) {}
+  }
+
+  // 2. ACTUAL UPLOAD SPEED TEST (300 KB POST via XHR upload progress)
+  text.textContent = '⚡ Testing ↑...';
+  try {
+    upMbps = await new Promise((resolve) => {
+      const payload = new Uint8Array(300000);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://speed.cloudflare.com/__up?r=' + Date.now(), true);
+      xhr.timeout = 2200;
+
+      let tSend = performance.now();
+      let tFirstProg = 0;
+      let firstBytes = 0;
+
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable && ev.loaded > 0 && tFirstProg === 0 && ev.loaded < ev.total) {
+          tFirstProg = performance.now();
+          firstBytes = ev.loaded;
+        }
+      };
+
+      xhr.upload.onload = () => {
+        const now = performance.now();
+        if (tFirstProg > 0 && (now - tFirstProg) > 15 && payload.byteLength > firstBytes) {
+          const dt = (now - tFirstProg) / 1000;
+          resolve(((payload.byteLength - firstBytes) * 8) / (dt * 1000000));
+        } else {
+          const dt = Math.max(0.015, (now - tSend) / 1000);
+          resolve((payload.byteLength * 8) / (dt * 1000000));
+        }
+      };
+
+      xhr.onerror = () => resolve(0);
+      xhr.ontimeout = () => resolve(0);
+      tSend = performance.now();
+      xhr.send(payload);
+    });
+  } catch (e) {
+    upMbps = 0;
+  }
+
+  const fmtSpeed = (mbps) => {
+    if (!mbps || mbps <= 0) return '--';
+    return mbps >= 1 ? `${mbps.toFixed(1)} Mbps` : `${Math.round(mbps * 1000)} Kbps`;
+  };
+
+  text.textContent = `↓ ${fmtSpeed(downMbps)} · ↑ ${fmtSpeed(upMbps)}`;
 
   window._netSpeedTimer = setTimeout(() => {
     window._showingNetSpeed = false;
