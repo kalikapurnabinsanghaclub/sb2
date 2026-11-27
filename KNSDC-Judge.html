@@ -2838,6 +2838,49 @@ try {
   </div>
 </div>
 
+
+<!-- JUDGE AVATAR ZOOM & ADJUST MODAL -->
+<div class="overlay" id="judge-avatar-adjuster-modal" style="display:none; z-index:3000;">
+  <div class="modal" style="max-width:400px; padding:18px; border-radius:20px;">
+    <div class="mhd" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px;">
+      <div class="mtitle" style="font-weight:800; font-size:15px; color:var(--text); display:flex; align-items:center; gap:6px;">
+        <span>✏️</span> Center &amp; Zoom Avatar
+      </div>
+      <button class="btn btn-icon btn-ghost" onclick="closeJudgeAvatarAdjuster()">✕</button>
+    </div>
+    
+    <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+      <div id="judge-crop-viewport" style="position:relative; width:220px; height:220px; border-radius:50%; overflow:hidden; border:3px solid var(--amber2); box-shadow:0 6px 20px rgba(0,0,0,0.3); background:#0f172a; cursor:grab; touch-action:none; user-select:none;">
+        <canvas id="judge-crop-canvas" width="220" height="220" style="display:block; width:100%; height:100%; pointer-events:auto;"></canvas>
+      </div>
+      <div style="font-size:11px; color:var(--tmuted); font-weight:600;">👆 Drag to center face • Pinch or slide to zoom</div>
+
+      <!-- Zoom Bar -->
+      <div style="width:100%; background:var(--surface2); padding:8px 12px; border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700;">
+          <span>🔍 Zoom</span>
+          <span id="judge-crop-zoom-label" style="color:var(--amber2); font-family:monospace;">100%</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="adjustJudgeAvatarZoomStep(-0.1)" style="font-weight:bold; font-size:16px; padding:2px 8px;">−</button>
+          <input type="range" id="judge-crop-zoom-slider" min="0.5" max="3.5" step="0.02" value="1.0" oninput="onJudgeAvatarZoomSlider(this.value)" style="flex:1; accent-color:var(--amber2); cursor:pointer;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="adjustJudgeAvatarZoomStep(0.1)" style="font-weight:bold; font-size:16px; padding:2px 8px;">+</button>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:2px;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="rotateJudgeAvatarCrop()" style="flex:1; font-size:11px; font-weight:700;">↻ Rotate 90°</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="resetJudgeAvatarCrop()" style="flex:1; font-size:11px; font-weight:700;">↺ Center</button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display:flex; gap:10px; width:100%;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" onclick="closeJudgeAvatarAdjuster()">Cancel</button>
+        <button type="button" class="btn btn-amber" style="flex:2; font-weight:800;" onclick="applyJudgeAvatarAdjustments()">💾 Save Avatar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- JUDGE PROFILE MODAL -->
 <div class="overlay" id="judge-profile-modal" style="display:none; z-index: 2500;">
   <div class="modal" style="max-width:480px; max-height:90vh; overflow-y:auto;">
@@ -2854,9 +2897,12 @@ try {
           <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.6); color:white; font-size:10px; padding:3px 0; border-bottom-left-radius:40px; border-bottom-right-radius:40px; text-transform:uppercase; font-weight:bold;">Upload</div>
           <div id="pm-avatar-loading" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); border-radius:50%; align-items:center; justify-content:center; color:white; font-size:20px;">⏳</div>
         </div>
-        <div style="margin-bottom: 12px;">
+        <div style="margin-bottom: 12px; display:flex; justify-content:center; gap:8px;">
           <button class="btn btn-sm" style="background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:20px; font-weight:700; font-size:11px; padding:4px 12px; display:inline-flex; align-items:center; gap:6px; box-shadow:var(--shadow-sm);" onclick="document.getElementById('pm-selfie-upload').click()">
             <span style="font-size:14px">📸</span> Take Selfie
+          </button>
+          <button class="btn btn-sm" style="background:linear-gradient(135deg, var(--amber2), var(--amber)); color:#fff; border:none; border-radius:20px; font-weight:700; font-size:11px; padding:4px 12px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(245,158,11,0.3);" onclick="openJudgeAvatarAdjuster()">
+            <span style="font-size:14px">✏️</span> Zoom &amp; Adjust
           </button>
         </div>
         <input type="file" id="pm-avatar-upload" accept="image/*" style="display:none" onchange="uploadJudgeAvatar(event)">
@@ -4770,6 +4816,14 @@ async function uploadJudgeAvatar(event) {
   if (isUploadingAvatar) return;
   const file = event.target.files[0];
   if (!file) return;
+  event.target.value = "";
+  // Open adjuster so judge can zoom and center avatar
+  openJudgeAvatarAdjuster(file);
+}
+
+async function uploadJudgeAvatarDirect(file) {
+  if (isUploadingAvatar) return;
+  if (!file) return;
   
   if (file.size > 5 * 1024 * 1024) {
     toast("File too large. Max size 5MB.");
@@ -5857,6 +5911,7 @@ function renderOnStage() {
                       <!-- Pure Zero-Egress Remote Control Virtual Anchor (0 KB Audio Download) -->
                       <audio id="judge-audio-${idx}" src="${safeUrl}" data-url="${safeUrl}" data-participant-id="${p.id}" preload="metadata" style="display:none;" onloadedmetadata="onJudgeAudioMetadataLoaded(this, ${idx})" ontimeupdate="onJudgeAudioTimeUpdate(this, ${idx})" onended="onJudgeAudioEnded(this, ${idx})"></audio>
                       
+                      
                       <!-- Custom Play/Pause Button -->
                       <button id="judge-play-btn-${idx}" onclick="toggleCustomAudio('judge', '${p.id}', '${safeUrl}', ${idx})" style="width:60px; height:60px; border-radius:50%; background:linear-gradient(135deg, #10b981, #059669); color:white; border:2px solid rgba(255,255,255,0.4); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 24px rgba(16,185,129,0.5); flex-shrink:0; transition:all 0.2s;" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'">
                         <svg id="judge-play-icon-${idx}" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="margin-left:4px;"><path d="M8 5v14l11-7z"/></svg>
@@ -6081,9 +6136,14 @@ window.updateCustomAudioUI = function(source, idx) {
   const audioEl = document.getElementById(`${source}-audio-${idx}`);
   const isPlaying = st ? st.isPlaying : false;
   const currentTime = st ? (st.currentTime || 0) : 0;
-  const duration = (audioEl && audioEl.duration && !isNaN(audioEl.duration) && audioEl.duration > 0) 
+  let duration = (audioEl && audioEl.duration && !isNaN(audioEl.duration) && audioEl.duration > 0) 
     ? Math.round(audioEl.duration) 
-    : ((st && st.duration) ? st.duration : 0);
+    : ((st && st.duration && st.duration > 0) ? st.duration : 0);
+  
+  // Mobile fallback: if browser deferred metadata, fallback to round duration
+  if (!duration && (window.activeRoundDuration || 180)) {
+    duration = window.activeRoundDuration || 180;
+  }
 
   const playIcon = document.getElementById(`${source}-play-icon-${idx}`);
   const pauseIcon = document.getElementById(`${source}-pause-icon-${idx}`);
@@ -9209,14 +9269,54 @@ syncEngine.subscribe((state) => {
   // Sync onstage timer
   handleJudgeTimerSync(state.onstageTimer);
 
+  // Continuous live audio status sync from Venue Monitor (ensures mobile is 100% accurate)
+  if (state.liveAudioStatus) {
+    const live = state.liveAudioStatus;
+    Object.keys(window.judgeAudioState || {}).forEach(idx => {
+      const st = window.judgeAudioState[idx];
+      if (st && live.url && (st.url.includes(live.url) || live.url.includes(st.url))) {
+        if (live.duration && !isNaN(live.duration) && live.duration > 0) {
+          st.duration = Math.round(live.duration);
+        }
+        if (live.isPlaying) {
+          const elapsed = Math.max(0, Math.round((Date.now() - (live.updatedAt || Date.now())) / 1000));
+          st.currentTime = Math.min(st.duration || 9999, Math.round((live.currentTime || 0) + elapsed));
+          st.startedAt = Date.now() - (st.currentTime * 1000);
+          if (!st.isPlaying) {
+            st.isPlaying = true;
+            if (st.timer) clearInterval(st.timer);
+            st.timer = setInterval(() => {
+              st.currentTime = Math.round((Date.now() - st.startedAt) / 1000);
+              if (st.duration > 0 && st.currentTime >= st.duration) {
+                st.isPlaying = false;
+                clearInterval(st.timer);
+                st.timer = null;
+              }
+              window.updateCustomAudioUI('judge', idx);
+            }, 500);
+          }
+        } else {
+          st.isPlaying = false;
+          st.currentTime = Math.round(live.currentTime || 0);
+          if (st.timer) { clearInterval(st.timer); st.timer = null; }
+        }
+        window.updateCustomAudioUI('judge', idx);
+      }
+    });
+  }
+
   // Handle remote audio commands from Monitor (Zero-Egress Virtual Sync)
   if (state.remoteAudioCommand) {
     const cmd = state.remoteAudioCommand;
     if (cmd.timestamp && cmd.timestamp !== window.lastRemoteAudioCommandTime) {
       window.lastRemoteAudioCommandTime = cmd.timestamp;
       
-      // Ignore stale commands and commands we sent ourselves
-      if (Date.now() - cmd.timestamp < 10000 && cmd.senderId !== JUDGE.id) {
+      // Check if command is active (duration-aware to prevent dropped status on mobile)
+      const isCmdActive = (cmd.action === 'metadata') || 
+                          (Date.now() - cmd.timestamp < 10000) ||
+                          (cmd.action === 'play' && cmd.duration && (Date.now() - cmd.timestamp < (cmd.duration * 1000 + 10000)));
+
+      if (isCmdActive && cmd.senderId !== (typeof JUDGE !== 'undefined' && JUDGE ? JUDGE.id : '')) {
         Object.keys(window.judgeAudioState || {}).forEach(idx => {
           const st = window.judgeAudioState[idx];
           if (st && cmd.url && (st.url.includes(cmd.url) || cmd.url.includes(st.url))) {
@@ -9226,7 +9326,10 @@ syncEngine.subscribe((state) => {
             st.currentTime = Math.round(cmd.time || 0);
             st.startedAt = Date.now() - (st.currentTime * 1000);
 
-            if (cmd.action === 'play') {
+            if (cmd.action === 'metadata') {
+              if (cmd.duration && !isNaN(cmd.duration)) st.duration = Math.round(cmd.duration);
+              window.updateCustomAudioUI('judge', idx);
+            } else if (cmd.action === 'play') {
               st.isPlaying = true;
               if (st.timer) clearInterval(st.timer);
               st.timer = setInterval(() => {
@@ -9580,3 +9683,239 @@ if (typeof BroadcastChannel !== 'undefined') {
 </script>
 </body>
 </html>
+// Mobile Audio Unlock Listener: Tapping anywhere on mobile forces audio metadata initialization
+if (typeof window !== 'undefined') {
+  window.addEventListener('touchstart', function _unlockJudgeMobileAudio() {
+    window.removeEventListener('touchstart', _unlockJudgeMobileAudio);
+    const audios = document.querySelectorAll('audio[id^="judge-audio-"]');
+    audios.forEach(a => {
+      try { a.load(); } catch(e){}
+    });
+  }, { once: true, passive: true });
+}
+
+
+
+// ============================================================================
+// JUDGE AVATAR ZOOM & ADJUST CONTROLLER (Pure Zero-Egress Touch/Mouse)
+// ============================================================================
+window.judgeAvatarCropState = {
+  img: null,
+  rawSrc: null,
+  scale: 1.0,
+  baseFitScale: 1.0,
+  minScale: 0.5,
+  maxScale: 3.5,
+  posX: 0,
+  posY: 0,
+  rotation: 0,
+  isDragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  initialPinchDist: 0,
+  initialPinchScale: 1.0
+};
+
+function openJudgeAvatarAdjuster(optionalUrlOrFile) {
+  let src = '';
+  if (optionalUrlOrFile instanceof File || optionalUrlOrFile instanceof Blob) {
+    src = URL.createObjectURL(optionalUrlOrFile);
+  } else if (typeof optionalUrlOrFile === 'string') {
+    src = optionalUrlOrFile;
+  } else if (JUDGE && JUDGE.avatar) {
+    src = JUDGE.avatar;
+  }
+
+  if (!src) {
+    document.getElementById('pm-avatar-upload').click();
+    return;
+  }
+
+  const modal = document.getElementById('judge-avatar-adjuster-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+
+  const img = new Image();
+  if (/^https?:/i.test(src)) img.crossOrigin = 'anonymous';
+  img.onload = function() {
+    window.judgeAvatarCropState.img = img;
+    window.judgeAvatarCropState.rawSrc = src;
+    resetJudgeAvatarCrop(false);
+    initJudgeAvatarCropEvents();
+    renderJudgeAvatarCrop();
+  };
+  img.onerror = function() {
+    toast('Could not load avatar for adjustment.');
+    closeJudgeAvatarAdjuster();
+  };
+  img.src = src;
+}
+window.openJudgeAvatarAdjuster = openJudgeAvatarAdjuster;
+
+function closeJudgeAvatarAdjuster() {
+  const modal = document.getElementById('judge-avatar-adjuster-modal');
+  if (modal) modal.style.display = 'none';
+}
+window.closeJudgeAvatarAdjuster = closeJudgeAvatarAdjuster;
+
+function resetJudgeAvatarCrop(shouldRender = true) {
+  const st = window.judgeAvatarCropState;
+  const canvas = document.getElementById('judge-crop-canvas');
+  if (st.img && canvas) {
+    const iw = st.img.naturalWidth || st.img.width || 1;
+    const ih = st.img.naturalHeight || st.img.height || 1;
+    st.baseFitScale = Math.max(canvas.width / iw, canvas.height / ih);
+  } else {
+    st.baseFitScale = 1.0;
+  }
+  st.scale = 1.0;
+  st.posX = 0;
+  st.posY = 0;
+  st.rotation = 0;
+  const slider = document.getElementById('judge-crop-zoom-slider');
+  const label = document.getElementById('judge-crop-zoom-label');
+  if (slider) slider.value = '1.0';
+  if (label) label.textContent = '100%';
+  if (shouldRender) renderJudgeAvatarCrop();
+}
+window.resetJudgeAvatarCrop = resetJudgeAvatarCrop;
+
+function onJudgeAvatarZoomSlider(val) {
+  const st = window.judgeAvatarCropState;
+  st.scale = Math.max(st.minScale, Math.min(st.maxScale, parseFloat(val) || 1.0));
+  const label = document.getElementById('judge-crop-zoom-label');
+  if (label) label.textContent = Math.round(st.scale * 100) + '%';
+  renderJudgeAvatarCrop();
+}
+window.onJudgeAvatarZoomSlider = onJudgeAvatarZoomSlider;
+
+function adjustJudgeAvatarZoomStep(step) {
+  const st = window.judgeAvatarCropState;
+  st.scale = Math.max(st.minScale, Math.min(st.maxScale, Math.round((st.scale + step) * 100) / 100));
+  const slider = document.getElementById('judge-crop-zoom-slider');
+  const label = document.getElementById('judge-crop-zoom-label');
+  if (slider) slider.value = String(st.scale);
+  if (label) label.textContent = Math.round(st.scale * 100) + '%';
+  renderJudgeAvatarCrop();
+}
+window.adjustJudgeAvatarZoomStep = adjustJudgeAvatarZoomStep;
+
+function rotateJudgeAvatarCrop() {
+  const st = window.judgeAvatarCropState;
+  st.rotation = (st.rotation + 90) % 360;
+  renderJudgeAvatarCrop();
+}
+window.rotateJudgeAvatarCrop = rotateJudgeAvatarCrop;
+
+function renderJudgeAvatarCrop() {
+  const canvas = document.getElementById('judge-crop-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const st = window.judgeAvatarCropState;
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, cw, ch);
+
+  if (!st.img) return;
+  const iw = st.img.naturalWidth || st.img.width || 1;
+  const ih = st.img.naturalHeight || st.img.height || 1;
+
+  ctx.save();
+  ctx.translate(cw / 2 + st.posX, ch / 2 + st.posY);
+  ctx.rotate((st.rotation * Math.PI) / 180);
+  const effScale = st.baseFitScale * st.scale;
+  ctx.scale(effScale, effScale);
+  ctx.drawImage(st.img, -iw / 2, -ih / 2, iw, ih);
+  ctx.restore();
+}
+
+function initJudgeAvatarCropEvents() {
+  const vp = document.getElementById('judge-crop-viewport');
+  if (!vp || vp._eventsBound) return;
+  vp._eventsBound = true;
+  const st = window.judgeAvatarCropState;
+
+  vp.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      st.isDragging = true;
+      st.dragStartX = e.touches[0].clientX - st.posX;
+      st.dragStartY = e.touches[0].clientY - st.posY;
+    } else if (e.touches.length === 2) {
+      st.isDragging = false;
+      st.initialPinchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      st.initialPinchScale = st.scale;
+    }
+  }, { passive: false });
+
+  vp.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && st.isDragging) {
+      st.posX = e.touches[0].clientX - st.dragStartX;
+      st.posY = e.touches[0].clientY - st.dragStartY;
+      renderJudgeAvatarCrop();
+    } else if (e.touches.length === 2 && st.initialPinchDist > 0) {
+      const curDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      st.scale = Math.max(st.minScale, Math.min(st.maxScale, st.initialPinchScale * (curDist / st.initialPinchDist)));
+      const slider = document.getElementById('judge-crop-zoom-slider');
+      const label = document.getElementById('judge-crop-zoom-label');
+      if (slider) slider.value = String(st.scale);
+      if (label) label.textContent = Math.round(st.scale * 100) + '%';
+      renderJudgeAvatarCrop();
+    }
+  }, { passive: false });
+
+  vp.addEventListener('touchend', () => { st.isDragging = false; st.initialPinchDist = 0; });
+  vp.addEventListener('mousedown', (e) => {
+    st.isDragging = true;
+    st.dragStartX = e.clientX - st.posX;
+    st.dragStartY = e.clientY - st.posY;
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!st.isDragging) return;
+    st.posX = e.clientX - st.dragStartX;
+    st.posY = e.clientY - st.dragStartY;
+    renderJudgeAvatarCrop();
+  });
+  window.addEventListener('mouseup', () => { st.isDragging = false; });
+}
+
+async function applyJudgeAvatarAdjustments() {
+  const st = window.judgeAvatarCropState;
+  const canvas = document.getElementById('judge-crop-canvas');
+  if (!st.img || !canvas) {
+    closeJudgeAvatarAdjuster();
+    return;
+  }
+
+  const exportSize = 512;
+  const expCanvas = document.createElement('canvas');
+  expCanvas.width = exportSize;
+  expCanvas.height = exportSize;
+  const expCtx = expCanvas.getContext('2d');
+  const mult = exportSize / canvas.width;
+
+  expCtx.save();
+  expCtx.translate(exportSize / 2 + st.posX * mult, exportSize / 2 + st.posY * mult);
+  expCtx.rotate((st.rotation * Math.PI) / 180);
+  const effScale = st.baseFitScale * st.scale * mult;
+  expCtx.scale(effScale, effScale);
+  expCtx.drawImage(st.img, -(st.img.naturalWidth || st.img.width) / 2, -(st.img.naturalHeight || st.img.height) / 2);
+  expCtx.restore();
+
+  expCanvas.toBlob(async (blob) => {
+    if (!blob) { closeJudgeAvatarAdjuster(); return; }
+    closeJudgeAvatarAdjuster();
+    const fakeFile = new File([blob], 'judge_avatar.jpg', { type: 'image/jpeg' });
+    await uploadJudgeAvatarDirect(fakeFile);
+  }, 'image/jpeg', 0.95);
+}
+window.applyJudgeAvatarAdjustments = applyJudgeAvatarAdjustments;

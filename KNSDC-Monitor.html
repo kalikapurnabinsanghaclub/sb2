@@ -17149,7 +17149,7 @@ function _doRenderVenueParticipants(){
               <!-- Transport Controls Row -->
               <div class="stage-controls-row">
                 <!-- Hidden audio element for On-Stage Performer -->
-                <audio id="monitor-audio-${idx}" src="${item.url}" preload="auto" style="display:none;" ontimeupdate="updateCustomAudioUI('monitor', ${idx})" onloadedmetadata="updateCustomAudioUI('monitor', ${idx})" onended="window.markAudioCompleted('${onStage.id}')"></audio>
+                <audio id="monitor-audio-${idx}" src="${item.url}" data-url="${item.url}" data-participant-id="${onStage.id}" preload="auto" style="display:none;" ontimeupdate="updateCustomAudioUI('monitor', ${idx})" onloadedmetadata="onMonitorAudioMetadataLoaded(this, ${idx}, '${onStage.id}')" onended="window.markAudioCompleted('${onStage.id}')"></audio>
                 
                 <!-- Custom Play/Pause Button -->
                 <button id="monitor-play-btn-${idx}" class="stage-play-btn" onclick="toggleCustomAudio('monitor', '${onStage.id}', decodeURIComponent('${encodeURIComponent(item.url || '')}'), ${idx})" title="Play/Pause Stage Audio">
@@ -26924,6 +26924,28 @@ window.seekCustomAudioEnd = function(source, participantId, url, idx) {
   dispatchRemoteAudioCommand(participantId, url, 'seek', time, source, audioEl.duration);
 };
 
+
+window.onMonitorAudioMetadataLoaded = function(audioEl, idx, participantId) {
+  window.updateCustomAudioUI('monitor', idx);
+  if (audioEl && audioEl.duration && !isNaN(audioEl.duration) && audioEl.duration > 0) {
+    const dur = Math.round(audioEl.duration);
+    window.dispatchRemoteAudioCommand(participantId, audioEl.src, 'metadata', 0, 'monitor', dur);
+    if (window.syncEngine) {
+      window.syncEngine.setData(st => ({
+        ...st,
+        liveAudioStatus: {
+          participantId: participantId || '',
+          url: audioEl.src,
+          isPlaying: !audioEl.paused,
+          currentTime: Math.round(audioEl.currentTime || 0),
+          duration: dur,
+          updatedAt: Date.now()
+        }
+      }));
+    }
+  }
+};
+
 window.updateCustomAudioUI = function(source, idx) {
   const audioEl = document.getElementById(`${source}-audio-${idx}`);
   const playIcon = document.getElementById(`${source}-play-icon-${idx}`);
@@ -26955,6 +26977,26 @@ window.updateCustomAudioUI = function(source, idx) {
     if (currentSpan) currentSpan.textContent = formatAudioTime(audioEl.currentTime);
     if (seekBar && document.activeElement !== seekBar) {
       seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
+    }
+    
+    // Periodically broadcast live playback status so connected mobile judges stay in lockstep
+    if (source === 'monitor' && !audioEl.paused && window.syncEngine) {
+      const now = Date.now();
+      if (!window._lastAudioSyncBroadcast || (now - window._lastAudioSyncBroadcast) >= 1500) {
+        window._lastAudioSyncBroadcast = now;
+        const pid = audioEl.getAttribute('data-participant-id') || '';
+        window.syncEngine.setData(st => ({
+          ...st,
+          liveAudioStatus: {
+            participantId: pid,
+            url: audioEl.src,
+            isPlaying: true,
+            currentTime: Math.round(audioEl.currentTime),
+            duration: Math.round(audioEl.duration),
+            updatedAt: now
+          }
+        }));
+      }
     }
   }
 };
