@@ -3723,7 +3723,7 @@
     <div id="rt-applied">
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <div class="sbox" style="flex:1;min-width:180px"><span class="sicon">🔍 <span id="reg-count" style="font-size:9px; margin-left:4px; opacity:0.7">0</span></span><input type="text" placeholder="Name, phone, ID…" oninput="filterApplied(this.value)"/></div>
+          <div class="sbox" style="flex:1;min-width:180px;position:relative;display:flex;align-items:center;"><span class="sicon">🔍 <span id="reg-count" style="font-size:9px; margin-left:4px; opacity:0.7">0</span></span><input type="search" id="reg-search" name="knsdc_participant_search_term" autocomplete="chrome-off" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')" placeholder="Name, phone, ID…" oninput="filterApplied(this.value)" style="padding-right:24px;width:100%;"/><span id="reg-search-clear" onclick="clearRegSearch()" style="position:absolute;right:8px;cursor:pointer;font-size:12px;color:var(--text-dim);display:none;user-select:none;" title="Clear search">✖</span></div>
           <select style="width:150px!important" onchange="filterAppliedCat(this.value)" id="cat-filter-sel">
             <option value="">All Categories</option>
           </select>
@@ -11352,61 +11352,95 @@ function renderStageView(){
 }
 
 function renderAttendanceBreakdown(){
-  const venues_local = venues;
-  const data = participants.filter(p => String(p.eventId) === String(activeEventId));
+  const breakdownEl = document.getElementById('attendance-breakdown');
+  if (!breakdownEl) return;
+
+  const data = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   
   const dates = [...new Set(data.map(p => {
-    const d = p.date || p.regDate || '';
-    return d.includes('T') ? d.split('T')[0] : d;
-  }))].filter(Boolean).sort();
+    const d = p.date || p.auditionDate || p.regDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date'])) || '';
+    return (typeof d === 'string' && d.includes('T')) ? d.split('T')[0] : d;
+  }))].filter(d => d && typeof d === 'string' && d !== 'null' && d !== 'undefined' && d.trim() !== '').sort();
   
   let html = '';
-  dates.forEach(d => {
-    const dp = data.filter(p => {
-      const pd = p.date || p.regDate || '';
-      const pDateOnly = pd.includes('T') ? pd.split('T')[0] : pd;
-      return pDateOnly === d;
-    });
-    const present = dp.filter(p=>getRoundPresent(p, p.round)).length;
-    const pct = dp.length>0 ? Math.round(present/dp.length*100) : 0;
-    
-    let label = d;
-    try {
-      const dt = new Date(d);
-      if (!isNaN(dt.getTime())) {
-        label = dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-      }
-    } catch(e) {}
-
-    html += `<div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-        <span style="font-family:var(--fm);color:var(--text-dim)">📅 ${label}</span>
-        <span>${present}/${dp.length} <span class="badge b-green">${pct}%</span></span>
-      </div>
-      <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%;background:var(--green2)"></div></div>
+  if (dates.length === 0) {
+    html = `<div style="text-align:center;padding:22px 10px;color:var(--text-muted);font-family:var(--fm);font-size:12px;">
+      <div style="font-size:28px;margin-bottom:6px">📅</div>
+      <div>No dated attendance entries yet for this event</div>
     </div>`;
-  });
+  } else {
+    html = '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">';
+    dates.forEach(d => {
+      const dp = data.filter(p => {
+        const pd = p.date || p.auditionDate || p.regDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date'])) || '';
+        const pDateOnly = (typeof pd === 'string' && pd.includes('T')) ? pd.split('T')[0] : pd;
+        return pDateOnly === d;
+      });
+      const present = dp.filter(p => getRoundPresent(p, p.round)).length;
+      const pct = dp.length > 0 ? Math.round(present / dp.length * 100) : 0;
+      
+      let dayNum = '—';
+      let monthStr = 'DATE';
+      let weekdayStr = '';
+      let fullLabel = d;
+      try {
+        const dt = new Date(d);
+        if (!isNaN(dt.getTime())) {
+          dayNum = String(dt.getDate()).padStart(2, '0');
+          monthStr = dt.toLocaleDateString('en-IN', { month: 'short' }).toUpperCase();
+          weekdayStr = dt.toLocaleDateString('en-IN', { weekday: 'short' }).toUpperCase();
+          fullLabel = dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+      } catch(e) {}
+
+      html += `
+      <div style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;box-shadow:0 1px 4px rgba(0,0,0,0.02);transition:all 0.2s ease;">
+        <!-- CALENDAR DATE TILE -->
+        <div style="flex-shrink:0;width:44px;height:48px;background:var(--surface2, #1e293b);border:1px solid rgba(239,68,68,0.35);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+          <div style="width:100%;background:linear-gradient(135deg, #ef4444, #dc2626);color:#fff;font-size:8.5px;font-weight:900;letter-spacing:0.8px;padding:1.5px 0;text-transform:uppercase;">${monthStr}</div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:var(--text);line-height:1;font-family:var(--fm);">${dayNum}</div>
+          <div style="font-size:7px;font-weight:800;color:var(--text-dim);margin-bottom:1.5px;text-transform:uppercase;">${weekdayStr}</div>
+        </div>
+        
+        <!-- PROGRESS & STATS -->
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:6px;">
+            <div style="font-size:12.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fullLabel}</div>
+            <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+              <span style="font-size:11.5px;font-weight:800;color:var(--text);font-family:var(--fm);">${present}/${dp.length}</span>
+              <span class="badge ${pct === 100 ? 'b-green' : pct >= 50 ? 'b-amber' : 'b-red'}" style="font-size:9.5px;padding:2px 5px;border-radius:5px;font-weight:800;">${pct}%</span>
+            </div>
+          </div>
+          <div class="score-bar" style="height:6px;background:rgba(255,255,255,0.06);border-radius:6px;overflow:hidden;">
+            <div class="score-bar-fill" style="width:${pct}%;height:100%;border-radius:6px;background:${pct === 100 ? 'linear-gradient(90deg, #10b981, #22c55e)' : pct >= 50 ? 'linear-gradient(90deg, #f59e0b, #eab308)' : 'linear-gradient(90deg, #ef4444, #f87171)'};transition:width 0.4s ease;"></div>
+          </div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
   // Dynamic Category present breakdown
   const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
   let categoryBreakdown = '';
   
   if (evCats.length > 0) {
-    categoryBreakdown = '<hr/><div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">';
+    categoryBreakdown = '<hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;"/><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">';
     evCats.forEach(cat => {
       const pCount = data.filter(p => String(p.catId) === String(cat.id) && getRoundPresent(p, p.round)).length;
-      categoryBreakdown += `<div class="stat ${cat.color || 'blue'}" style="flex:1;min-width:120px;padding:12px"><div class="stat-num" style="font-size:22px">${pCount}</div><div class="stat-lbl">${cat.name}</div></div>`;
+      categoryBreakdown += `<div class="stat ${cat.color || 'blue'}" style="flex:1;min-width:110px;padding:10px;border-radius:10px;"><div class="stat-num" style="font-size:20px">${pCount}</div><div class="stat-lbl">${cat.name}</div></div>`;
     });
     categoryBreakdown += '</div>';
   } else {
     const b13 = data.filter(p=>p.age<13&&getRoundPresent(p, p.round)).length;
     const a13 = data.filter(p=>p.age>=13&&getRoundPresent(p, p.round)).length;
-    categoryBreakdown = `<hr/><div style="display:flex;gap:10px;margin-top:10px">
-      <div class="stat blue" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${b13}</div><div class="stat-lbl">Below 13 present</div></div>
-      <div class="stat purple" style="flex:1;padding:12px"><div class="stat-num" style="font-size:22px">${a13}</div><div class="stat-lbl">Above 13 present</div></div>
+    categoryBreakdown = `<hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;"/><div style="display:flex;gap:8px;margin-top:10px">
+      <div class="stat blue" style="flex:1;padding:10px;border-radius:10px;"><div class="stat-num" style="font-size:20px">${b13}</div><div class="stat-lbl">Below 13 present</div></div>
+      <div class="stat purple" style="flex:1;padding:10px;border-radius:10px;"><div class="stat-num" style="font-size:20px">${a13}</div><div class="stat-lbl">Above 13 present</div></div>
     </div>`;
   }
   html += categoryBreakdown;
-  document.getElementById('attendance-breakdown').innerHTML = html;
+  breakdownEl.innerHTML = html;
 }
 
 function renderJudgeStatus(){
@@ -12901,7 +12935,28 @@ let regSearchFilter = '';
 let regCatFilter = '';
 let regVenueFilter = '';
 
-function filterApplied(v){ regSearchFilter = v; renderApplied(); }
+function clearRegSearch() {
+  const el = document.getElementById('reg-search');
+  if (el) el.value = '';
+  regSearchFilter = '';
+  const clr = document.getElementById('reg-search-clear');
+  if (clr) clr.style.display = 'none';
+  renderApplied();
+}
+
+function filterApplied(v){
+  if (v && v.includes('@knsdc.in') && !v.includes(' ')) {
+    const el = document.getElementById('reg-search');
+    if (el && el.value === v) el.value = '';
+    regSearchFilter = '';
+    renderApplied();
+    return;
+  }
+  regSearchFilter = v || '';
+  const clr = document.getElementById('reg-search-clear');
+  if (clr) clr.style.display = regSearchFilter ? 'block' : 'none';
+  renderApplied();
+}
 function filterAppliedCat(v){ regCatFilter = v; renderApplied(); }
 function filterAppliedVenue(v){ regVenueFilter = v; renderApplied(); }
 function filterAppliedDate(v){ regDateFilter = v; renderApplied(); }
