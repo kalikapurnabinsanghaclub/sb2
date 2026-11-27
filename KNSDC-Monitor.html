@@ -10962,6 +10962,14 @@ function updateNbadges(){
 }
 
 function nav(page, el) {
+  // Persist active section for refresh & navigation
+  try {
+    sessionStorage.setItem('knsdc_monitor_active_page', page);
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', '#' + page);
+    }
+  } catch (e) {}
+
   // Hide all pages
   document.querySelectorAll('.pp').forEach(p => p.classList.remove('active'));
   // Show target page
@@ -11044,14 +11052,32 @@ function nav(page, el) {
   // Specific page renders
   try {
     if (page === 'dashboard') renderDashboard();
-    if (page === 'registration') renderApplied();
+    if (page === 'registration') {
+      let savedRegTab = 'applied';
+      try {
+        savedRegTab = sessionStorage.getItem('knsdc_monitor_reg_tab') || 'applied';
+      } catch (e) {}
+      if (typeof regTab === 'function') {
+        regTab(savedRegTab);
+      } else {
+        renderApplied();
+      }
+    }
     if (page === 'venue') renderVenueMonitor();
     if (page === 'statistics') {
-      if (currentStatsTab === 'roundwise') renderRoundwiseStats();
-      if (currentStatsTab === 'judges') renderJudgeStats();
-      if (currentStatsTab === 'comparative') renderComparativeStats();
-      if (currentStatsTab === 'feedback') renderFeedbacks();
-      if (currentStatsTab === 'publicvotes') renderPublicVotes();
+      let savedStatsTab = (typeof currentStatsTab !== 'undefined' && currentStatsTab) ? currentStatsTab : 'roundwise';
+      try {
+        savedStatsTab = sessionStorage.getItem('knsdc_monitor_stats_tab') || savedStatsTab;
+      } catch (e) {}
+      if (typeof statsTab === 'function') {
+        statsTab(savedStatsTab);
+      } else {
+        if (currentStatsTab === 'roundwise') renderRoundwiseStats();
+        if (currentStatsTab === 'judges') renderJudgeStats();
+        if (currentStatsTab === 'comparative') renderComparativeStats();
+        if (currentStatsTab === 'feedback') renderFeedbacks();
+        if (currentStatsTab === 'publicvotes') renderPublicVotes();
+      }
     }
     if (page === 'leaderboard') renderLeaderboard();
     if (page === 'promotion') renderPromoList();
@@ -12216,6 +12242,9 @@ document.addEventListener('click', function(e) {
 // ══════════════════════════════════════════
 function regTab(tab, el){
   currentRegTab2 = tab;
+  try {
+    sessionStorage.setItem('knsdc_monitor_reg_tab', tab);
+  } catch (e) {}
   document.querySelectorAll('#reg-tabs .tab').forEach(t=>t.classList.remove('active'));
   if (el && el.classList) {
     el.classList.add('active');
@@ -18366,8 +18395,16 @@ function saveScores(){
 // ══════════════════════════════════════════
 function statsTab(tab, el){
   currentStatsTab = tab;
+  try {
+    sessionStorage.setItem('knsdc_monitor_stats_tab', tab);
+  } catch (e) {}
   document.querySelectorAll('#pp-statistics .tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
+  if (el && el.classList) {
+    el.classList.add('active');
+  } else {
+    const match = document.querySelector(`#pp-statistics .tab[onclick*="'${tab}'"]`) || document.querySelector(`#pp-statistics .tab[onclick*='"${tab}"']`);
+    if (match) match.classList.add('active');
+  }
   ['individual','roundwise','judges','comparative','feedback','publicvotes'].forEach(t=>{
     const el2 = document.getElementById('st-'+t);
     if(el2) el2.style.display = t===tab?'block':'none';
@@ -25680,10 +25717,35 @@ syncEngine.subscribe(s => {
 });
 
 try {
-  nav('dashboard');
+  const hashPage = location.hash ? location.hash.replace('#', '').trim() : '';
+  let savedPage = '';
+  try {
+    savedPage = sessionStorage.getItem('knsdc_monitor_active_page') || '';
+  } catch (e) {}
+
+  let targetPage = 'dashboard';
+  if (hashPage && document.getElementById('pp-' + hashPage)) {
+    targetPage = hashPage;
+  } else if (savedPage && document.getElementById('pp-' + savedPage)) {
+    targetPage = savedPage;
+  }
+  nav(targetPage);
 } catch (e) {
   console.error('[Initialization Error] Monitor portal failed to launch:', e);
 }
+
+// Support browser back/forward and hash changes
+window.addEventListener('hashchange', () => {
+  try {
+    const hp = location.hash ? location.hash.replace('#', '').trim() : '';
+    if (hp && document.getElementById('pp-' + hp)) {
+      const activeP = document.querySelector('.pp.active');
+      if (!activeP || activeP.id !== 'pp-' + hp) {
+        nav(hp);
+      }
+    }
+  } catch (e) {}
+});
 
 // DASH-BUG-FIX 7: Debounced system status toggle — rapid clicks on the
 // LIVE/OFFLINE master switch only fire one setData + syncAll (the last click).
