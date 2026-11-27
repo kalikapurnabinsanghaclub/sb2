@@ -1839,15 +1839,37 @@ function renderDashboard() {
     return st === 'done' || st === 'completed' || st === 'finished';
   };
   
-  // Total registered in this round (case-insensitive, defaults to audition)
-  const roundRegistered = scoped.filter(p => String(p.round || 'audition').toLowerCase() === round);
-  // Present participants only — verified by Monitor attendance / roundPresence stamp
-  const filtered = roundRegistered.filter(p => getRoundPresent(p, round));
-  
+  const HOST_ROUNDS = ['audition', 'qualified', 'semifinal', 'final'];
+  const getHostRoundIdx = (rnd) => {
+    const idx = HOST_ROUNDS.indexOf(String(rnd || '').toLowerCase().trim());
+    return idx === -1 ? 0 : idx;
+  };
+  const selectedRoundIdx = getHostRoundIdx(round);
+
+  // Promoted-aware registered in this round (includes current round + promoted past it + round history)
+  const roundRegistered = scoped.filter(p => {
+    const pRound = String(p.round || 'audition').toLowerCase().trim();
+    const pIdx = getHostRoundIdx(pRound);
+    const hasRoundScore = p.roundScores && p.roundScores[round] && Object.keys(p.roundScores[round]).length > 0;
+    const hasRoundPres = p.roundPresence && p.roundPresence[round] && p.roundPresence[round].present;
+    return pRound === round || pIdx > selectedRoundIdx || hasRoundScore || hasRoundPres;
+  });
+
+  // Present participants in this round (or already promoted past it)
+  const filtered = roundRegistered.filter(p => getRoundPresent(p, round) || getHostRoundIdx(p.round) > selectedRoundIdx);
+
+  // Active-in-round waiting performers (strictly current round so promoted performers don't re-enter queue)
+  const currentRoundPresent = scoped.filter(p =>
+    String(p.round || 'audition').toLowerCase().trim() === round && getRoundPresent(p, round)
+  );
+
   const totalPresent = filtered.length;
   const totalRegistered = roundRegistered.length;
-  const done = filtered.filter(isDoneStatus).length;
-  const wait = filtered.filter(isWaitingStatus).length;
+  const done = filtered.filter(p => {
+    const pIdx = getHostRoundIdx(p.round);
+    return pIdx > selectedRoundIdx || isDoneStatus(p);
+  }).length;
+  const wait = currentRoundPresent.filter(isWaitingStatus).length;
   const queue = scoped.filter(p => String(p.stageStatus || '').toLowerCase() === 'queue').length;
 
   const statTotalEl = document.getElementById('stat-total');
@@ -1863,7 +1885,7 @@ function renderDashboard() {
   if(!container) return;
   
   const searchQuery = String(window._hostDashSearch || '').trim().toLowerCase();
-  let waitingPerformers = filtered.filter(isWaitingStatus);
+  let waitingPerformers = currentRoundPresent.filter(isWaitingStatus);
   if (searchQuery) {
     waitingPerformers = waitingPerformers.filter(p =>
       String(p.name || '').toLowerCase().includes(searchQuery) ||
@@ -1936,6 +1958,43 @@ function renderDashboard() {
     }
   }
 
+  const roundPipelineRows = HOST_ROUNDS.map((r, rIdx) => {
+    const rParts = scoped.filter(p => {
+      const pRound = String(p.round || 'audition').toLowerCase().trim();
+      const pIdx = getHostRoundIdx(pRound);
+      const hasRoundScore = p.roundScores && p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0;
+      const hasRoundPres = p.roundPresence && p.roundPresence[r] !== undefined && p.roundPresence[r].present;
+      return pRound === r || pIdx > rIdx || hasRoundScore || hasRoundPres;
+    });
+    if (!rParts.length) return '';
+    const promotedCount = rParts.filter(p => getHostRoundIdx(p.round) > rIdx).length;
+    const completedCount = rParts.filter(p => {
+      const pRound = String(p.round || 'audition').toLowerCase().trim();
+      const pIdx = getHostRoundIdx(pRound);
+      if (pIdx > rIdx) return true;
+      if (pRound === r && isDoneStatus(p)) return true;
+      if (p.roundScores && p.roundScores[r] && Object.keys(p.roundScores[r]).length > 0) return true;
+      return false;
+    }).length;
+    const pct = Math.round((completedCount / rParts.length) * 100);
+    const promotedBadge = promotedCount > 0
+      ? `<span class="badge" style="background:rgba(16,185,129,0.14);color:#10b981;border:1px solid rgba(16,185,129,0.28);font-size:10px;padding:2px 8px;border-radius:10px;font-weight:800;">⬆️ ${promotedCount} promoted</span>`
+      : '';
+    return `<div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;flex-wrap:wrap;gap:6px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="badge" style="background:rgba(99,102,241,0.14);color:var(--primary);border:1px solid rgba(99,102,241,0.25);font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px;text-transform:uppercase;">${r}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--text);">${rParts.length} participants</span>
+          ${promotedBadge}
+        </div>
+        <span style="font-size:11.5px;color:var(--text-muted);font-family:var(--fm);font-weight:700;">${completedCount}/${rParts.length} completed · ${pct}%</span>
+      </div>
+      <div style="width:100%;height:8px;background:var(--surface2, rgba(148,163,184,0.18));border-radius:999px;overflow:hidden;">
+        <div style="width:${pct}%;height:100%;border-radius:999px;background:linear-gradient(90deg,${pct===100?'#10b981,#059669':'#f59e0b,#d97706'});transition:width 0.35s ease;"></div>
+      </div>
+    </div>`;
+  }).join('');
+
   container.innerHTML = `
     <div class="g2" style="margin-bottom: 20px;">
       <div class="card" style="text-align:center">
@@ -1946,6 +2005,18 @@ function renderDashboard() {
         <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Performers in Queue</div>
         <div style="font-size:32px;font-weight:900;color:var(--sky)">${queue}</div>
       </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+        <h3 style="font-family:var(--fh);font-size:15px;font-weight:800;margin:0;color:var(--text);display:flex;align-items:center;gap:8px;">
+          📊 Round Pipeline
+        </h3>
+        <span class="badge" style="background:rgba(59,130,246,0.14);color:#3b82f6;border:1px solid rgba(59,130,246,0.28);font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;">
+          📋 Total Registered: ${scoped.length}
+        </span>
+      </div>
+      ${roundPipelineRows || '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:12px;">No participants registered yet.</div>'}
     </div>
     
     <div class="card" style="margin-top:20px;">
