@@ -25,6 +25,18 @@ LANGUAGE plpgsql
 SECURITY DEFINER   -- runs as function owner, not calling user
 AS $$
 BEGIN
+  -- Step 2a: Enforce Server-Side Score Lock Check
+  -- If monitor operator has toggled 'lockScore' in switchStates or scores_locked is true, abort!
+  IF EXISTS (
+    SELECT 1 FROM sync_state 
+    WHERE (
+      (COALESCE(data->'switchStates'->>'lockScore', 'false'))::boolean = true OR
+      (COALESCE(data->>'scores_locked', 'false'))::boolean = true
+    )
+  ) THEN
+    RAISE EXCEPTION 'Scores are currently LOCKED by the Monitor control desk.';
+  END IF;
+
   UPDATE public_registrations
   SET
     -- Merge only this judge's scores into round_scores->p_round->p_judge_id

@@ -1846,6 +1846,42 @@ try {
     .hide-mobile { display: none !important; }
   }
 
+
+  /* Blinking Live Connection Status Badge Animation */
+  @keyframes syncPulseGreen {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+    70% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  }
+  @keyframes syncPulseYellow {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.8); }
+    70% { transform: scale(1.2); box-shadow: 0 0 0 8px rgba(234, 179, 8, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+  }
+  @keyframes syncPulseRed {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); }
+    70% { transform: scale(1.25); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  }
+  .sync-dot-blink {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .sync-dot-blink.green {
+    background: #22c55e;
+    animation: syncPulseGreen 1.8s infinite;
+  }
+  .sync-dot-blink.yellow {
+    background: #eab308;
+    animation: syncPulseYellow 1.2s infinite;
+  }
+  .sync-dot-blink.red {
+    background: #ef4444;
+    animation: syncPulseRed 0.8s infinite;
+  }
 </style>
 </head>
 <body>
@@ -2251,6 +2287,14 @@ try {
 
   <!-- ACTUAL SCORING CONTENT -->
   <div id="scoring-content-wrap">
+    <!-- BLINKING CONNECTION STATUS BADGE -->
+    <div id="judge-sync-badge-wrap" style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:8px 14px;margin-bottom:14px;font-family:var(--fm);box-shadow:0 2px 8px rgba(0,0,0,0.02);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="judge-sync-dot" class="sync-dot-blink green"></span>
+        <span id="judge-sync-text" style="font-size:13px;font-weight:800;color:#22c55e;">Cloud Synced 🟢</span>
+      </div>
+      <div id="judge-sync-subtext" style="font-size:11px;color:var(--text-muted);font-weight:700;">All scores safely saved in database</div>
+    </div>
     <div class="g2" style="margin-bottom:14px">
 
     <!-- LEFT: ON STAGE + SEARCH -->
@@ -9680,6 +9724,47 @@ if (typeof BroadcastChannel !== 'undefined') {
   } catch(e) {}
 }
 
+</script>
+
+<!-- LIVE SYNC STATUS BADGE UPDATER -->
+<script>
+function updateJudgeSyncStatusBadge() {
+  const dot = document.getElementById('judge-sync-dot');
+  const text = document.getElementById('judge-sync-text');
+  const subtext = document.getElementById('judge-sync-subtext');
+  if (!dot || !text || !subtext) return;
+
+  const isOnline = navigator.onLine;
+  let outboxCount = 0;
+  try {
+    const rawOutbox = localStorage.getItem('knsdc_outbox');
+    if (rawOutbox) {
+      const arr = JSON.parse(rawOutbox);
+      if (Array.isArray(arr)) outboxCount = arr.length;
+    }
+  } catch(e) {}
+
+  if (!isOnline) {
+    dot.className = 'sync-dot-blink red';
+    text.innerHTML = 'Network Offline 🔴';
+    text.style.color = '#ef4444';
+    subtext.innerText = outboxCount > 0 ? `${outboxCount} score(s) buffered offline` : 'Working offline (safe)';
+  } else if (outboxCount > 0) {
+    dot.className = 'sync-dot-blink yellow';
+    text.innerHTML = 'Syncing to Cloud 🟡';
+    text.style.color = '#eab308';
+    subtext.innerText = `Buffering ${outboxCount} score(s)... Uploading now`;
+  } else {
+    dot.className = 'sync-dot-blink green';
+    text.innerHTML = 'Cloud Synced 🟢';
+    text.style.color = '#22c55e';
+    subtext.innerText = 'All scores safely saved in database';
+  }
+}
+window.addEventListener('online', updateJudgeSyncStatusBadge);
+window.addEventListener('offline', updateJudgeSyncStatusBadge);
+setInterval(updateJudgeSyncStatusBadge, 2500);
+document.addEventListener('DOMContentLoaded', updateJudgeSyncStatusBadge);
 </script>
 </body>
 </html>

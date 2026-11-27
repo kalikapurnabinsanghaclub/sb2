@@ -14580,7 +14580,50 @@ async function saveNewRegAsync() {
   }
 }
 
-async function downloadRegs(format = 'excel') {
+async function downloadCompleteScoresAndParticipantsBackup() {
+  try {
+    const pList = (typeof participants !== 'undefined' && Array.isArray(participants)) ? participants : [];
+    const st = (window.syncEngine && typeof syncEngine.getData === 'function') ? syncEngine.getData() : {};
+    
+    const backupData = {
+      exportedAt: new Date().toISOString(),
+      activeEventId: (typeof activeEventId !== 'undefined' ? activeEventId : null),
+      totalParticipants: pList.length,
+      participants: pList.map(p => ({
+        id: p.id,
+        name: p.name,
+        chestNo: p.chestNo || p.rollNo || p.bib || '',
+        category: p.category || p.catId || '',
+        phone: p.phone || '',
+        attendance: p.attendance || 'absent',
+        round_scores: p.round_scores || {},
+        round_comments: p.round_comments || {},
+        scores: p.scores || {},
+        finalScore: p.finalScore || p.totalScore || 0
+      })),
+      events: st.events || [],
+      judgeAgreements: st.judgeAgreements || [],
+      switchStates: st.switchStates || {}
+    };
+
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const timeStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.href = url;
+    a.download = `KNSDC_Full_Backup_Scores_and_Participants_${timeStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (typeof toast === 'function') toast('💾 Full JSON Backup of Scores & Participants downloaded!');
+  } catch(e) {
+    console.error('[Backup] Error exporting backup:', e);
+    alert('Failed to generate backup: ' + e.message);
+  }
+}
+
+function downloadRegs(format = 'excel') {
   let eventParticipants = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
   
   const s = (document.getElementById('reg-search')?.value || '').toLowerCase();
