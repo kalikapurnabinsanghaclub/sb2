@@ -4070,6 +4070,29 @@ function getParticipantRoundScore(p, roundId) {
   return Math.round(total * 100) / 100;
 }
 
+function getJudgeRoundMaxPossibleScore(roundId, activeEvId, allSubjects, presentJudgesCount) {
+  const targetR = String(roundId || '').toLowerCase();
+  
+  // 1. Check if the active event rounds explicitly define maxMarks or maxScore
+  if (typeof getEventRounds === 'function') {
+    const rounds = getEventRounds();
+    const rConfig = rounds.find(r => r.id.toLowerCase() === targetR);
+    if (rConfig && (rConfig.maxMarks || rConfig.maxScore || rConfig.totalMarks)) {
+      return Number(rConfig.maxMarks || rConfig.maxScore || rConfig.totalMarks);
+    }
+  }
+
+  // 2. Check if subjects are scoped to this specific round
+  const roundScopedSubjects = (allSubjects || []).filter(s => {
+    if (!s.round && !s.roundId && !s.round_id) return true;
+    const sRound = String(s.round || s.roundId || s.round_id).toLowerCase();
+    return sRound === targetR;
+  });
+
+  const subMarks = roundScopedSubjects.reduce((sum, s) => sum + (Number(s.maxMarks) || 10), 0) || 50;
+  return (presentJudgesCount || 1) * subMarks;
+}
+
 const judgeEvRounds = [
   { id: 'audition', name: 'Round 1 (Audition)' },
   { id: 'qualified', name: 'Round 2 (Qualified)' },
@@ -4187,6 +4210,22 @@ function renderJudgeLeaderboard() {
   }
   const formulaTerms = (isCustomFormula && activeFormulaStr) ? parseJudgeFormula(activeFormulaStr) : [];
 
+  // Dynamic Maximum Score: if custom formula, sum individual round max scores (e.g. R1:100 + R2:150 = 250)
+  let effectiveMaxPossibleScore = maxPossibleScore;
+  if (isCustomFormula && formulaTerms.length > 0) {
+    let formulaMaxSum = 0;
+    formulaTerms.forEach(t => {
+      if (t.sign > 0) {
+        formulaMaxSum += getJudgeRoundMaxPossibleScore(t.roundId, activeEvId, allSubjects, presentJudgesCount);
+      }
+    });
+    if (formulaMaxSum > 0) {
+      effectiveMaxPossibleScore = formulaMaxSum;
+    }
+  } else {
+    effectiveMaxPossibleScore = getJudgeRoundMaxPossibleScore(String(currentJudgeLeaderRound || 'audition').toLowerCase(), activeEvId, allSubjects, presentJudgesCount);
+  }
+
   // Dynamically sync and populate Category Selector options without destructive DOM wipes
   const catSelect = document.getElementById('judge-lb-cat-filter');
   if (catSelect) {
@@ -4240,7 +4279,7 @@ function renderJudgeLeaderboard() {
   });
 
   // State hash check to avoid redundant DOM thrashing
-  const currentStateHash = `${currentJudgeLeaderRound}##${activeCatId}##${activeEvId}##${presentJudgesCount}##${maxPossibleScore}##${scoredList.map(p => `${p.id}:${p.totalScore}`).join('|')}`;
+  const currentStateHash = `${currentJudgeLeaderRound}##${activeCatId}##${activeEvId}##${presentJudgesCount}##${effectiveMaxPossibleScore}##${scoredList.map(p => `${p.id}:${p.totalScore}`).join('|')}`;
   if (window._lastJudgeLeaderboardHash === currentStateHash) {
     return;
   }
@@ -4296,7 +4335,7 @@ function renderJudgeLeaderboard() {
                       <th style="width:60px; text-align:center;">Rank</th>
                       <th>Participant Info</th>
                       <th class="hide-mobile">Category</th>
-                      <th style="text-align:right;">Global Score</th>
+                      <th style="text-align:right;">${isCustomFormula ? 'Formula Score & Breakdown' : 'Global Score'}</th>
                   </tr>
               </thead>
               <tbody>
@@ -4333,7 +4372,19 @@ function renderJudgeLeaderboard() {
                                   <div class="judge-score-val" style="font-family:var(--fh); font-size:18px; font-weight:900; color:${isTop3 ? 'var(--gold2)' : 'var(--blue)'};">
                                       ${p.totalScore} <span style="font-size:11px; font-weight:normal; opacity:0.8;">pts</span>
                                   </div>
-                                  <div style="font-size:9px; color:var(--text-dim); font-family:var(--fm);">/ ${maxPossibleScore} max</div>
+                                  <div style="font-size:9.5px; color:var(--text-dim); font-family:var(--fm); font-weight:700;">/ ${effectiveMaxPossibleScore} max</div>
+                                  ${(isCustomFormula && p.formulaBreakdown && p.formulaBreakdown.length > 0) ? `
+                                  <div style="font-size:10px; color:var(--text-muted); display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end; margin-top:5px;">
+                                      ${p.formulaBreakdown.map((b, bIdx) => {
+                                          const signText = bIdx === 0 ? (b.sign < 0 ? '− ' : '') : (b.sign < 0 ? ' − ' : ' ＋ ');
+                                          const col = b.sign < 0 ? '#ef4444' : '#10b981';
+                                          const bg = b.sign < 0 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)';
+                                          const border = b.sign < 0 ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)';
+                                          return `<span style="background:${bg}; color:${col}; border:1px solid ${border}; padding:2px 7px; border-radius:6px; font-weight:800; font-family:var(--fm);">
+                                              ${signText}R${b.roundNum}: ${b.score}
+                                          </span>`;
+                                      }).join('')}
+                                  </div>` : ''}
                               </td>
                           </tr>
                       `;
@@ -4367,7 +4418,7 @@ function renderJudgeLeaderboard() {
                       <th style="width:60px; text-align:center;">Rank</th>
                       <th>Participant Info</th>
                       <th class="hide-mobile">Category</th>
-                      <th style="text-align:right;">Global Score</th>
+                      <th style="text-align:right;">${isCustomFormula ? 'Formula Score & Breakdown' : 'Global Score'}</th>
                   </tr>
               </thead>
               <tbody>
@@ -4404,7 +4455,19 @@ function renderJudgeLeaderboard() {
                                   <div class="judge-score-val" style="font-family:var(--fh); font-size:18px; font-weight:900; color:${isTop3 ? 'var(--gold2)' : 'var(--blue)'};">
                                       ${p.totalScore} <span style="font-size:11px; font-weight:normal; opacity:0.8;">pts</span>
                                   </div>
-                                  <div style="font-size:9px; color:var(--text-dim); font-family:var(--fm);">/ ${maxPossibleScore} max</div>
+                                  <div style="font-size:9.5px; color:var(--text-dim); font-family:var(--fm); font-weight:700;">/ ${effectiveMaxPossibleScore} max</div>
+                                  ${(isCustomFormula && p.formulaBreakdown && p.formulaBreakdown.length > 0) ? `
+                                  <div style="font-size:10px; color:var(--text-muted); display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end; margin-top:5px;">
+                                      ${p.formulaBreakdown.map((b, bIdx) => {
+                                          const signText = bIdx === 0 ? (b.sign < 0 ? '− ' : '') : (b.sign < 0 ? ' − ' : ' ＋ ');
+                                          const col = b.sign < 0 ? '#ef4444' : '#10b981';
+                                          const bg = b.sign < 0 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)';
+                                          const border = b.sign < 0 ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)';
+                                          return `<span style="background:${bg}; color:${col}; border:1px solid ${border}; padding:2px 7px; border-radius:6px; font-weight:800; font-family:var(--fm);">
+                                              ${signText}R${b.roundNum}: ${b.score}
+                                          </span>`;
+                                      }).join('')}
+                                  </div>` : ''}
                               </td>
                           </tr>
                       `;
