@@ -3692,7 +3692,14 @@
     <div class="g2">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Attendance Breakdown</div>
+          <div class="card-header-tabs" style="display:flex;align-items:center;gap:6px;">
+            <button id="dash-cal-tab-attend" class="btn btn-sm" onclick="switchDashboardCalTab('attendance')" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:8px;background:rgba(34,197,94,0.18);color:#22c55e;border:1px solid rgba(34,197,94,0.38);cursor:pointer;transition:all 0.2s ease;box-shadow:0 0 10px rgba(34,197,94,0.15);">
+              🗓️ Attendance
+            </button>
+            <button id="dash-cal-tab-reg" class="btn btn-sm" onclick="switchDashboardCalTab('registration')" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:8px;background:rgba(255,255,255,0.05);color:var(--text-dim);border:1px solid var(--border);cursor:pointer;transition:all 0.2s ease;">
+              📋 Registration
+            </button>
+          </div>
           <button class="btn btn-ghost btn-sm" onclick="nav('registration',document.querySelector('.nav-item:nth-child(2)'))">Detail</button>
         </div>
         <div id="attendance-breakdown"></div>
@@ -11352,32 +11359,80 @@ function renderStageView(){
 }
 
 // ══════════════════════════════════════════
-// ATTENDANCE CALENDAR STATE & CONTROLS
+// DUAL CALENDAR STATE & CONTROLS (Attendance & Registration)
 // ══════════════════════════════════════════
+window._activeDashboardCalTab = window._activeDashboardCalTab || 'attendance';
 window._attendCalYear = window._attendCalYear || null;
 window._attendCalMonth = (window._attendCalMonth !== undefined && window._attendCalMonth !== null) ? window._attendCalMonth : null;
 window._attendCalSelectedDate = window._attendCalSelectedDate || null;
 
+window._regCalYear = window._regCalYear || null;
+window._regCalMonth = (window._regCalMonth !== undefined && window._regCalMonth !== null) ? window._regCalMonth : null;
+window._regCalSelectedDate = window._regCalSelectedDate || null;
+
+function switchDashboardCalTab(tab) {
+  window._activeDashboardCalTab = tab;
+  renderAttendanceBreakdown();
+}
+
 function changeAttendanceCalMonth(delta) {
-  if (window._attendCalYear === null || window._attendCalMonth === null) {
+  const isReg = (window._activeDashboardCalTab === 'registration');
+  let y = isReg ? window._regCalYear : window._attendCalYear;
+  let m = isReg ? window._regCalMonth : window._attendCalMonth;
+  if (y === null || m === null) {
     const now = new Date();
-    window._attendCalYear = now.getFullYear();
-    window._attendCalMonth = now.getMonth();
+    y = now.getFullYear();
+    m = now.getMonth();
   }
-  window._attendCalMonth += delta;
-  if (window._attendCalMonth < 0) {
-    window._attendCalMonth = 11;
-    window._attendCalYear--;
-  } else if (window._attendCalMonth > 11) {
-    window._attendCalMonth = 0;
-    window._attendCalYear++;
+  m += delta;
+  if (m < 0) {
+    m = 11;
+    y--;
+  } else if (m > 11) {
+    m = 0;
+    y++;
+  }
+  if (isReg) {
+    window._regCalYear = y;
+    window._regCalMonth = m;
+  } else {
+    window._attendCalYear = y;
+    window._attendCalMonth = m;
   }
   renderAttendanceBreakdown();
 }
 
 function selectAttendanceCalDate(dateStr) {
-  window._attendCalSelectedDate = (window._attendCalSelectedDate === dateStr) ? null : dateStr;
+  if (window._activeDashboardCalTab === 'registration') {
+    window._regCalSelectedDate = (window._regCalSelectedDate === dateStr) ? null : dateStr;
+  } else {
+    window._attendCalSelectedDate = (window._attendCalSelectedDate === dateStr) ? null : dateStr;
+  }
   renderAttendanceBreakdown();
+}
+
+function _calGetLocalDateStr(val) {
+  if (!val) return '';
+  try {
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+      return val.trim();
+    }
+    const dt = (typeof val === 'number') ? new Date(val) : new Date(String(val));
+    if (isNaN(dt.getTime())) return '';
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  } catch(e) { return ''; }
+}
+
+function _calFormatTime(val) {
+  if (!val) return '';
+  try {
+    const dt = (typeof val === 'number') ? new Date(val) : new Date(String(val));
+    if (isNaN(dt.getTime())) return '';
+    return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch(e) { return ''; }
 }
 
 function renderAttendanceBreakdown(){
@@ -11385,30 +11440,283 @@ function renderAttendanceBreakdown(){
   if (!breakdownEl) return;
 
   const data = participants.filter(p => String(p.eventId) === String(activeEventId) || !p.eventId);
+  const isReg = (window._activeDashboardCalTab === 'registration');
 
-  // Collect all unique participant dates
-  const dateEntries = [];
-  data.forEach(p => {
-    const raw = p.date || p.auditionDate || p.regDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date'])) || '';
-    if (raw && typeof raw === 'string') {
-      const dStr = raw.includes('T') ? raw.split('T')[0] : raw.trim();
-      if (dStr && dStr !== 'null' && dStr !== 'undefined' && dStr !== '[]') {
-        dateEntries.push({ date: dStr, participant: p });
+  // Update tab button styles in header
+  const attendBtn = document.getElementById('dash-cal-tab-attend');
+  const regBtn = document.getElementById('dash-cal-tab-reg');
+  if (attendBtn && regBtn) {
+    if (isReg) {
+      attendBtn.style.background = 'rgba(255,255,255,0.05)';
+      attendBtn.style.color = 'var(--text-dim)';
+      attendBtn.style.borderColor = 'var(--border)';
+      attendBtn.style.boxShadow = 'none';
+
+      regBtn.style.background = 'rgba(168,85,247,0.18)';
+      regBtn.style.color = '#a855f7';
+      regBtn.style.borderColor = 'rgba(168,85,247,0.38)';
+      regBtn.style.boxShadow = '0 0 10px rgba(168,85,247,0.15)';
+    } else {
+      attendBtn.style.background = 'rgba(34,197,94,0.18)';
+      attendBtn.style.color = '#22c55e';
+      attendBtn.style.borderColor = 'rgba(34,197,94,0.38)';
+      attendBtn.style.boxShadow = '0 0 10px rgba(34,197,94,0.15)';
+
+      regBtn.style.background = 'rgba(255,255,255,0.05)';
+      regBtn.style.color = 'var(--text-dim)';
+      regBtn.style.borderColor = 'var(--border)';
+      regBtn.style.boxShadow = 'none';
+    }
+  }
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // ═══════════════════════════════════════════════════════
+  // MODE 1: REGISTRATION CALENDAR
+  // ═══════════════════════════════════════════════════════
+  if (isReg) {
+    const regDateEntries = [];
+    data.forEach(p => {
+      const raw = p.regDate || p.created_at || p.registeredAt || p.createdAt || (p.formAnswers && (p.formAnswers['Registration Date'] || p.formAnswers['Date'])) || '';
+      const dStr = _calGetLocalDateStr(raw) || _calGetLocalDateStr(p.date);
+      if (dStr) {
+        regDateEntries.push({ date: dStr, participant: p, rawTime: raw });
       }
+    });
+
+    const uniqueRegDates = [...new Set(regDateEntries.map(e => e.date))].sort();
+
+    // Auto-focus calendar month if not set
+    if (window._regCalYear === null || window._regCalMonth === null) {
+      if (uniqueRegDates.length > 0) {
+        // focus on latest date with registrations
+        const lastDate = uniqueRegDates[uniqueRegDates.length - 1];
+        const parts = lastDate.split('-');
+        window._regCalYear = parseInt(parts[0], 10);
+        window._regCalMonth = parseInt(parts[1], 10) - 1;
+      } else {
+        const now = new Date();
+        window._regCalYear = now.getFullYear();
+        window._regCalMonth = now.getMonth();
+      }
+    }
+
+    const curYear = window._regCalYear;
+    const curMonth = window._regCalMonth;
+    const monthName = monthNames[curMonth];
+
+    // Map dates to registration stats
+    const regDatesMap = {};
+    uniqueRegDates.forEach(d => {
+      const entries = regDateEntries.filter(e => e.date === d);
+      regDatesMap[d] = {
+        count: entries.length,
+        entries: entries,
+        participants: entries.map(e => e.participant)
+      };
+    });
+
+    const firstDayOfWeek = new Date(curYear, curMonth, 1).getDay();
+    const totalDaysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+    const prevMonthTotalDays = new Date(curYear, curMonth, 0).getDate();
+
+    const monthPrefix = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+    const thisMonthDates = uniqueRegDates.filter(d => d.startsWith(monthPrefix));
+    let monthTotalReg = 0;
+    thisMonthDates.forEach(d => {
+      if (regDatesMap[d]) monthTotalReg += regDatesMap[d].count;
+    });
+
+    // Build Calendar HTML
+    let html = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.02);">
+      <!-- MONTH NAVIGATION -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:4px 6px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:16px;">📋</span>
+          <span style="font-size:14px;font-weight:800;color:var(--text);letter-spacing:-0.2px;">${monthName} ${curYear}</span>
+          <span class="badge" style="background:rgba(168,85,247,0.12);color:#a855f7;border:1px solid rgba(168,85,247,0.3);font-size:10px;font-weight:700;margin-left:4px;">${monthTotalReg} Registered</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(-1)" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);" title="Previous Month">◀</button>
+          <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(1)" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);" title="Next Month">▶</button>
+        </div>
+      </div>
+
+      <!-- DAY HEADERS -->
+      <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;text-align:center;margin-bottom:6px;">
+        ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<span style="font-size:10px;font-weight:800;color:var(--text-dim);letter-spacing:0.3px;padding:2px 0;">${d}</span>`).join('')}
+      </div>
+
+      <!-- DAYS GRID -->
+      <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;">`;
+
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      const prevDateNum = prevMonthTotalDays - firstDayOfWeek + i + 1;
+      html += `
+      <div style="min-height:50px;border-radius:8px;border:1px solid transparent;background:rgba(255,255,255,0.01);opacity:0.3;padding:4px;display:flex;flex-direction:column;align-items:flex-end;">
+        <span style="font-size:10px;color:var(--text-muted);">${prevDateNum}</span>
+      </div>`;
+    }
+
+    const todayStr = _calGetLocalDateStr(new Date());
+
+    for (let day = 1; day <= totalDaysInMonth; day++) {
+      const dayStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const isToday = (dayStr === todayStr);
+      const isSelected = (window._regCalSelectedDate === dayStr);
+      const info = regDatesMap[dayStr];
+
+      if (info && info.count > 0) {
+        const bg = isSelected ? 'rgba(168,85,247,0.22)' : 'rgba(168,85,247,0.09)';
+        const border = isSelected ? '2px solid #a855f7' : '1px solid rgba(168,85,247,0.32)';
+        const shadow = isSelected ? '0 0 12px rgba(168,85,247,0.3)' : 'none';
+
+        html += `
+        <div onclick="selectAttendanceCalDate('${dayStr}')" style="min-height:50px;border-radius:8px;border:${border};background:${bg};box-shadow:${shadow};padding:4px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;transition:all 0.15s ease;position:relative;">
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+            <span style="font-size:10px;font-weight:800;color:${isSelected ? '#c084fc' : '#a855f7'};font-family:var(--fm);">${day}</span>
+            ${isToday ? '<span style="width:5px;height:5px;border-radius:50%;background:#38bdf8;"></span>' : ''}
+          </div>
+          <div style="text-align:center;padding:2px 0;">
+            <div style="font-size:11px;font-weight:800;color:#c084fc;line-height:1.1;">+${info.count}</div>
+            <div style="font-size:8.5px;font-weight:700;color:var(--text-dim);letter-spacing:0.2px;">Reg</div>
+          </div>
+        </div>`;
+      } else {
+        html += `
+        <div style="min-height:50px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:rgba(255,255,255,0.01);padding:4px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;">
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+            <span style="font-size:10px;font-weight:600;color:var(--text-muted);font-family:var(--fm);">${day}</span>
+            ${isToday ? '<span style="width:5px;height:5px;border-radius:50%;background:#38bdf8;"></span>' : ''}
+          </div>
+        </div>`;
+      }
+    }
+
+    html += `
+      </div>
+    </div>`;
+
+    // Selected Date Details or Month Summary
+    if (window._regCalSelectedDate && regDatesMap[window._regCalSelectedDate]) {
+      const sel = regDatesMap[window._regCalSelectedDate];
+      let selFormatted = window._regCalSelectedDate;
+      try {
+        const parts = window._regCalSelectedDate.split('-');
+        const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        selFormatted = dt.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+      } catch(e) {}
+
+      html += `
+      <div style="background:var(--surface);border:1.5px solid #a855f7;border-radius:12px;padding:12px 14px;margin-bottom:12px;box-shadow:0 4px 16px rgba(168,85,247,0.15);animation:fadeUp 0.25s ease;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:15px;">📋</span>
+            <span style="font-size:13px;font-weight:800;color:var(--text);">${selFormatted}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="badge" style="background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3);font-weight:800;font-size:11px;">
+              ${sel.count} Participant${sel.count > 1 ? 's' : ''} Registered
+            </span>
+            <button class="btn btn-ghost btn-xs" onclick="selectAttendanceCalDate('${window._regCalSelectedDate}')" style="font-size:11px;padding:2px 6px;color:var(--text-dim);" title="Close detail">✕</button>
+          </div>
+        </div>
+        
+        <!-- Registered Participants List -->
+        <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;padding-right:4px;">
+          ${sel.entries.map((entry, idx) => {
+            const p = entry.participant;
+            const timeStr = _calFormatTime(entry.rawTime || p.regDate || p.created_at);
+            const isPres = getRoundPresent(p, p.round);
+            const catObj = categories.find(c => String(c.id) === String(p.catId));
+            const catName = catObj ? catObj.name : (p.category || p.catName || 'General');
+            return `
+            <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:8px 10px;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                <span style="font-family:var(--fm);font-size:11px;font-weight:800;color:var(--text-muted);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px;">#${p.id}</span>
+                <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  <div style="font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;">${p.name || 'Unnamed'}</div>
+                  <div style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:8px;margin-top:2px;">
+                    <span>🏷️ ${catName}</span>
+                    ${p.phone ? `<span>📞 ${p.phone}</span>` : ''}
+                    ${timeStr ? `<span>⏰ ${timeStr}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+              <div style="flex-shrink:0;">
+                <span class="badge ${isPres ? 'b-green' : 'b-purple'}" style="font-size:9.5px;font-weight:700;">
+                  ${isPres ? '✓ Present' : 'Registered'}
+                </span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    } else if (thisMonthDates.length > 0) {
+      html += `
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:12px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-dim);">
+          ${monthName} Total: <b style="color:var(--text);">${monthTotalReg}</b> Participants Registered
+        </div>
+        <span class="badge b-purple" style="font-weight:800;font-size:10.5px;">All-Time: ${data.length}</span>
+      </div>`;
+    }
+
+    // Category Registration Distribution
+    const evCats = categories.filter(c => String(c.eventId) === String(activeEventId) || !c.eventId);
+    let catHtml = '';
+    if (evCats.length > 0) {
+      catHtml = '<hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;"/><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">';
+      evCats.forEach(cat => {
+        const cCount = data.filter(p => String(p.catId) === String(cat.id)).length;
+        catHtml += `<div class="stat ${cat.color || 'purple'}" style="flex:1;min-width:110px;padding:10px;border-radius:10px;"><div class="stat-num" style="font-size:20px">${cCount}</div><div class="stat-lbl">${cat.name} (Reg)</div></div>`;
+      });
+      catHtml += '</div>';
+    } else {
+      catHtml = `<hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;"/><div style="display:flex;gap:8px;margin-top:10px">
+        <div class="stat purple" style="flex:1;padding:10px;border-radius:10px;"><div class="stat-num" style="font-size:20px">${data.length}</div><div class="stat-lbl">Total Registered</div></div>
+      </div>`;
+    }
+    html += catHtml;
+    breakdownEl.innerHTML = html;
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // MODE 2: ATTENDANCE CALENDAR (When participants were present)
+  // ═══════════════════════════════════════════════════════
+  const attendDateEntries = [];
+  data.forEach(p => {
+    const isPres = getRoundPresent(p, p.round);
+    const markTime = getRoundMarkedAt(p, p.round) || p.presentMarkedAt;
+    const markDate = markTime ? _calGetLocalDateStr(markTime) : '';
+    const rawAud = p.date || p.auditionDate || (p.formAnswers && (p.formAnswers['Audition Date'] || p.formAnswers['Date'] || p.formAnswers['Preferred Date'])) || '';
+    const audDate = _calGetLocalDateStr(rawAud);
+
+    // Primary date is the date participant was marked present, fallback to scheduled audition date
+    const primaryDate = (isPres && markDate) ? markDate : (audDate || markDate);
+    if (primaryDate) {
+      attendDateEntries.push({
+        date: primaryDate,
+        participant: p,
+        isPresent: isPres,
+        markTime: markTime,
+        audDate: audDate
+      });
     }
   });
 
-  const uniqueDates = [...new Set(dateEntries.map(e => e.date))].sort();
+  const uniqueDates = [...new Set(attendDateEntries.map(e => e.date))].sort();
 
-  // If calendar month not initialized, auto-focus on the event dates month or current month
+  // Auto-focus calendar month if not set
   if (window._attendCalYear === null || window._attendCalMonth === null) {
     if (uniqueDates.length > 0) {
-      // Find latest or first valid date
       for (const d of uniqueDates) {
-        const parsed = new Date(d);
-        if (!isNaN(parsed.getTime())) {
-          window._attendCalYear = parsed.getFullYear();
-          window._attendCalMonth = parsed.getMonth();
+        const parts = d.split('-');
+        if (parts.length === 3) {
+          window._attendCalYear = parseInt(parts[0], 10);
+          window._attendCalMonth = parseInt(parts[1], 10) - 1;
           break;
         }
       }
@@ -11422,29 +11730,27 @@ function renderAttendanceBreakdown(){
 
   const curYear = window._attendCalYear;
   const curMonth = window._attendCalMonth;
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const monthName = monthNames[curMonth];
 
   // Map dates to attendance stats
   const datesMap = {};
   uniqueDates.forEach(d => {
-    const list = dateEntries.filter(e => e.date === d).map(e => e.participant);
-    const presentCount = list.filter(p => getRoundPresent(p, p.round)).length;
+    const list = attendDateEntries.filter(e => e.date === d);
+    const presentCount = list.filter(e => e.isPresent).length;
     const pct = list.length > 0 ? Math.round((presentCount / list.length) * 100) : 0;
     datesMap[d] = {
       total: list.length,
       present: presentCount,
       pct: pct,
-      participants: list
+      entries: list,
+      participants: list.map(e => e.participant)
     };
   });
 
-  // Calculate days in current calendar month
-  const firstDayOfWeek = new Date(curYear, curMonth, 1).getDay(); // 0 = Sun
+  const firstDayOfWeek = new Date(curYear, curMonth, 1).getDay();
   const totalDaysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
   const prevMonthTotalDays = new Date(curYear, curMonth, 0).getDate();
 
-  // Total event dates in this active month
   const monthPrefix = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
   const thisMonthDates = uniqueDates.filter(d => d.startsWith(monthPrefix));
   let monthTotalParts = 0;
@@ -11464,64 +11770,62 @@ function renderAttendanceBreakdown(){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:4px 6px;">
       <div style="display:flex;align-items:center;gap:6px;">
         <span style="font-size:16px;">🗓️</span>
-        <span style="font-size:14px;font-weight:900;color:var(--text);letter-spacing:0.5px;font-family:var(--fm);">${monthName} ${curYear}</span>
-        ${thisMonthDates.length > 0 ? `<span class="badge b-green" style="font-size:10px;padding:2px 7px;font-weight:800;">${thisMonthDates.length} Event Date${thisMonthDates.length > 1 ? 's' : ''}</span>` : ''}
+        <span style="font-size:14px;font-weight:800;color:var(--text);letter-spacing:-0.2px;">${monthName} ${curYear}</span>
+        <span class="badge ${monthPct === 100 ? 'b-green' : 'b-amber'}" style="font-size:10px;font-weight:700;margin-left:4px;">${monthTotalPresent}/${monthTotalParts} Present (${monthPct}%)</span>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
-        <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(-1)" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" title="Previous Month">◀</button>
-        <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(1)" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" title="Next Month">▶</button>
+        <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(-1)" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);" title="Previous Month">◀</button>
+        <button class="btn btn-ghost btn-xs" onclick="changeAttendanceCalMonth(1)" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);" title="Next Month">▶</button>
       </div>
     </div>
 
-    <!-- WEEKDAYS HEADER -->
-    <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;text-align:center;margin-bottom:6px;font-family:var(--fm);">
-      <div style="font-size:9.5px;font-weight:900;color:#ef4444;padding:4px 0;">SUN</div>
-      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">MON</div>
-      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">TUE</div>
-      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">WED</div>
-      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">THU</div>
-      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">FRI</div>
-      <div style="font-size:9.5px;font-weight:800;color:var(--text-dim);padding:4px 0;">SAT</div>
+    <!-- DAY HEADERS -->
+    <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;text-align:center;margin-bottom:6px;">
+      ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<span style="font-size:10px;font-weight:800;color:var(--text-dim);letter-spacing:0.3px;padding:2px 0;">${d}</span>`).join('')}
     </div>
 
-    <!-- CALENDAR GRID -->
+    <!-- DAYS GRID -->
     <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;">`;
 
-  // Previous month trailing days
   for (let i = 0; i < firstDayOfWeek; i++) {
-    const prevDay = prevMonthTotalDays - firstDayOfWeek + i + 1;
-    html += `<div style="min-height:50px;border-radius:8px;background:rgba(255,255,255,0.01);opacity:0.25;display:flex;align-items:flex-start;justify-content:flex-end;padding:4px;font-size:10px;font-family:var(--fm);color:var(--text-muted);">${prevDay}</div>`;
+    const prevDateNum = prevMonthTotalDays - firstDayOfWeek + i + 1;
+    html += `
+    <div style="min-height:50px;border-radius:8px;border:1px solid transparent;background:rgba(255,255,255,0.01);opacity:0.3;padding:4px;display:flex;flex-direction:column;align-items:flex-end;">
+      <span style="font-size:10px;color:var(--text-muted);">${prevDateNum}</span>
+    </div>`;
   }
 
-  // Current month days
+  const todayStr = _calGetLocalDateStr(new Date());
+
   for (let day = 1; day <= totalDaysInMonth; day++) {
-    const dayStr = String(day).padStart(2, '0');
-    const dateKey = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${dayStr}`;
-    const info = datesMap[dateKey];
-    const isSelected = (window._attendCalSelectedDate === dateKey);
+    const dayStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const isToday = (dayStr === todayStr);
+    const isSelected = (window._attendCalSelectedDate === dayStr);
+    const info = datesMap[dayStr];
 
     if (info) {
-      const isFull = info.pct === 100;
-      const borderCol = isSelected ? 'var(--blue, #3b82f6)' : isFull ? 'rgba(34, 197, 94, 0.6)' : 'rgba(234, 179, 8, 0.6)';
-      const bgCol = isSelected ? 'rgba(59, 130, 246, 0.15)' : isFull ? 'rgba(34, 197, 94, 0.1)' : 'rgba(234, 179, 8, 0.1)';
-      const badgeBg = isFull ? '#22c55e' : '#eab308';
+      const bg = isSelected ? 'rgba(34,197,94,0.22)' : 'rgba(34,197,94,0.08)';
+      const border = isSelected ? '2px solid #22c55e' : (info.pct === 100 ? '1px solid rgba(34,197,94,0.4)' : '1px solid rgba(234,179,8,0.3)');
+      const shadow = isSelected ? '0 0 12px rgba(34,197,94,0.3)' : 'none';
 
       html += `
-      <div onclick="selectAttendanceCalDate('${dateKey}')" style="min-height:50px;border-radius:8px;border:1.5px solid ${borderCol};background:${bgCol};padding:3px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;box-shadow:${isSelected ? '0 0 10px rgba(59,130,246,0.3)' : '0 2px 5px rgba(0,0,0,0.03)'};position:relative;" title="Date: ${dateKey} | ${info.present}/${info.total} Present (${info.pct}%)">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:11px;font-weight:900;color:var(--text);font-family:var(--fm);">${day}</span>
-          <span style="width:5px;height:5px;border-radius:50%;background:${badgeBg};display:inline-block;"></span>
+      <div onclick="selectAttendanceCalDate('${dayStr}')" style="min-height:50px;border-radius:8px;border:${border};background:${bg};box-shadow:${shadow};padding:4px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;transition:all 0.15s ease;position:relative;">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+          <span style="font-size:10px;font-weight:800;color:${isSelected ? '#4ade80' : 'var(--text)'};font-family:var(--fm);">${day}</span>
+          ${isToday ? '<span style="width:5px;height:5px;border-radius:50%;background:#38bdf8;"></span>' : ''}
         </div>
-        <div style="text-align:center;margin-top:auto;">
-          <div style="font-size:8.5px;font-weight:900;background:${badgeBg};color:#fff;border-radius:3px;padding:1px 2px;line-height:1;display:inline-block;">${info.present}/${info.total}</div>
-          <div style="font-size:7.5px;font-weight:800;color:${isFull ? '#22c55e' : '#eab308'};margin-top:1px;">${info.pct}%</div>
+        <div style="text-align:center;padding:2px 0;">
+          <div style="font-size:10.5px;font-weight:800;color:${info.present > 0 ? '#22c55e' : 'var(--text-dim)'};line-height:1.1;">${info.present} Pres</div>
+          <div style="font-size:8.5px;font-weight:600;color:var(--text-dim);">${info.pct}% (${info.present}/${info.total})</div>
         </div>
       </div>`;
     } else {
-      // Regular non-event day
       html += `
-      <div style="min-height:50px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:rgba(255,255,255,0.01);padding:4px;display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-end;">
-        <span style="font-size:10px;font-weight:600;color:var(--text-muted);font-family:var(--fm);">${day}</span>
+      <div style="min-height:50px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:rgba(255,255,255,0.01);padding:4px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+          <span style="font-size:10px;font-weight:600;color:var(--text-muted);font-family:var(--fm);">${day}</span>
+          ${isToday ? '<span style="width:5px;height:5px;border-radius:50%;background:#38bdf8;"></span>' : ''}
+        </div>
       </div>`;
     }
   }
@@ -11535,37 +11839,55 @@ function renderAttendanceBreakdown(){
     const sel = datesMap[window._attendCalSelectedDate];
     let selFormatted = window._attendCalSelectedDate;
     try {
-      const dt = new Date(window._attendCalSelectedDate);
-      if (!isNaN(dt.getTime())) {
-        selFormatted = dt.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
-      }
+      const parts = window._attendCalSelectedDate.split('-');
+      const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      selFormatted = dt.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
     } catch(e) {}
 
     html += `
-    <div style="background:var(--surface);border:1.5px solid var(--blue,#3b82f6);border-radius:12px;padding:10px 14px;margin-bottom:12px;box-shadow:0 4px 14px rgba(59,130,246,0.1);animation:fadeUp 0.3s ease;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="background:var(--surface);border:1.5px solid var(--blue,#3b82f6);border-radius:12px;padding:12px 14px;margin-bottom:12px;box-shadow:0 4px 14px rgba(59,130,246,0.1);animation:fadeUp 0.3s ease;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:8px;">
         <div style="display:flex;align-items:center;gap:6px;">
-          <span style="font-size:14px;">📌</span>
-          <span style="font-size:12.5px;font-weight:800;color:var(--text);">${selFormatted}</span>
+          <span style="font-size:15px;">📌</span>
+          <span style="font-size:13px;font-weight:800;color:var(--text);">${selFormatted}</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <span class="badge ${sel.pct === 100 ? 'b-green' : 'b-amber'}" style="font-weight:800;font-size:10px;">${sel.present}/${sel.total} Present (${sel.pct}%)</span>
-          <button class="btn btn-ghost btn-xs" onclick="selectAttendanceCalDate('${window._attendCalSelectedDate}')" style="font-size:10px;padding:2px 5px;color:var(--text-dim);" title="Close detail">✕</button>
+          <span class="badge ${sel.pct === 100 ? 'b-green' : 'b-amber'}" style="font-weight:800;font-size:11px;">${sel.present}/${sel.total} Present (${sel.pct}%)</span>
+          <button class="btn btn-ghost btn-xs" onclick="selectAttendanceCalDate('${window._attendCalSelectedDate}')" style="font-size:11px;padding:2px 6px;color:var(--text-dim);" title="Close detail">✕</button>
         </div>
       </div>
       
-      <!-- Attendees chips -->
-      <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:100px;overflow-y:auto;">
-        ${sel.participants.map(p => {
-          const isPres = getRoundPresent(p, p.round);
-          return `<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:6px;background:${isPres ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)'};color:${isPres ? '#22c55e' : '#ef4444'};border:1px solid ${isPres ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'};">
-            ${isPres ? '✓' : '✗'} ${p.name || p.id}
-          </span>`;
+      <!-- Attendees Cards -->
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;padding-right:4px;">
+        ${sel.entries.map(entry => {
+          const p = entry.participant;
+          const isPres = entry.isPresent;
+          const timeStr = _calFormatTime(entry.markTime);
+          const catObj = categories.find(c => String(c.id) === String(p.catId));
+          const catName = catObj ? catObj.name : (p.category || p.catName || 'General');
+          return `
+          <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:8px 10px;gap:8px;">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+              <span style="font-family:var(--fm);font-size:11px;font-weight:800;color:var(--text-muted);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px;">#${p.id}</span>
+              <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;">${p.name || 'Unnamed'}</div>
+                <div style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:8px;margin-top:2px;">
+                  <span>🏷️ ${catName}</span>
+                  ${p.phone ? `<span>📞 ${p.phone}</span>` : ''}
+                  ${timeStr ? `<span>⏱️ Marked: ${timeStr}</span>` : ''}
+                </div>
+              </div>
+            </div>
+            <div style="flex-shrink:0;">
+              <span class="badge ${isPres ? 'b-green' : 'b-amber'}" style="font-size:9.5px;font-weight:700;">
+                ${isPres ? '✓ Present' : '⏳ Scheduled'}
+              </span>
+            </div>
+          </div>`;
         }).join('')}
       </div>
     </div>`;
   } else if (thisMonthDates.length > 0) {
-    // Month overall summary bar
     html += `
     <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:12px;">
       <div style="font-size:11px;font-weight:700;color:var(--text-dim);">
@@ -11583,7 +11905,7 @@ function renderAttendanceBreakdown(){
     categoryBreakdown = '<hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;"/><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">';
     evCats.forEach(cat => {
       const pCount = data.filter(p => String(p.catId) === String(cat.id) && getRoundPresent(p, p.round)).length;
-      categoryBreakdown += `<div class="stat ${cat.color || 'blue'}" style="flex:1;min-width:110px;padding:10px;border-radius:10px;"><div class="stat-num" style="font-size:20px">${pCount}</div><div class="stat-lbl">${cat.name}</div></div>`;
+      categoryBreakdown += `<div class="stat ${cat.color || 'blue'}" style="flex:1;min-width:110px;padding:10px;border-radius:10px;"><div class="stat-num" style="font-size:20px">${pCount}</div><div class="stat-lbl">${cat.name} (Present)</div></div>`;
     });
     categoryBreakdown += '</div>';
   } else {
